@@ -11,17 +11,19 @@ use linop_core::{Auth, endpoint};
 use linop_sftp::Entry;
 
 pub fn draw(frame: &mut Frame, app: &mut App) {
-    match &mut app.mode {
+    match app.mode {
         Mode::Picker => {
             app.shell_area = None;
             draw_picker(frame, app);
         }
-        Mode::Connecting { name } => {
+        Mode::Connecting { ref name } => {
             app.shell_area = None;
             draw_connecting(frame, name);
         }
-        Mode::Session(s) => {
-            app.shell_area = Some(draw_session(frame, s));
+        Mode::Session => {
+            if let Some(session) = app.sessions.get_mut(app.active) {
+                app.shell_area = Some(draw_session(frame, session));
+            }
         }
     }
     if let Some(dialog) = &app.dialog {
@@ -34,13 +36,53 @@ fn draw_picker(frame: &mut Frame, app: &mut App) {
     let [body, footer] = Layout::vertical([Constraint::Min(0), Constraint::Length(2)]).areas(area);
 
     let conns = app.connections();
-    let title = format!(" Linop · {} 个连接 ", conns.len());
+    let n_sessions = app.sessions.len();
+    let title = format!(" Linop · {n_sessions} 个在线会话 · {} 个连接 ", conns.len());
     let block = Block::default()
         .title(title)
         .borders(Borders::ALL)
         .border_style(Style::new().fg(Color::Cyan));
 
-    if conns.is_empty() {
+    // 统一选择域:在线会话(绿点)在前,连接 profile 在后。
+    let mut items: Vec<ListItem> = app
+        .sessions
+        .iter()
+        .map(|s| {
+            ListItem::new(Line::from(vec![
+                Span::styled("● ", Style::new().fg(Color::Green)),
+                Span::styled(format!("{:<16}", s.profile.name), Style::new().bold()),
+                Span::raw(format!(" {}", endpoint(&s.profile))),
+                Span::styled(
+                    if s.active_transfer.is_some() {
+                        "  [传输中]"
+                    } else {
+                        "  [在线]"
+                    },
+                    Style::new().fg(Color::DarkGray),
+                ),
+            ]))
+        })
+        .collect();
+    items.extend(conns.iter().map(|c| {
+        let auth_label = match &c.auth {
+            Auth::Key { .. } => "密钥",
+            Auth::Password { password } if password.is_empty() => "密码未配置",
+            Auth::Password { .. } => "密码",
+        };
+        let forwards = if c.forwards.is_empty() {
+            String::new()
+        } else {
+            format!("  [{} 条转发]", c.forwards.len())
+        };
+        ListItem::new(Line::from(vec![
+            Span::styled(format!("{:<16}", c.name), Style::new().bold()),
+            Span::raw(format!(" {:<34}", endpoint(c))),
+            Span::styled(format!("[{auth_label}]"), Style::new().fg(Color::DarkGray)),
+            Span::styled(forwards, Style::new().fg(Color::DarkGray)),
+        ]))
+    }));
+
+    if items.is_empty() {
         let hint = format!(
             "还没有连接配置。\n\n编辑 {} 添加连接,例如:\n\n[my-server]\nhost = \"192.168.1.10\"\nusername = \"root\"\npassword = \"...\"\n\n保存后按 r 重新加载。",
             linop_core::default_connections_path().display()
@@ -50,27 +92,6 @@ fn draw_picker(frame: &mut Frame, app: &mut App) {
             body,
         );
     } else {
-        let items: Vec<ListItem> = conns
-            .iter()
-            .map(|c| {
-                let auth_label = match &c.auth {
-                    Auth::Key { .. } => "密钥",
-                    Auth::Password { password } if password.is_empty() => "密码未配置",
-                    Auth::Password { .. } => "密码",
-                };
-                let forwards = if c.forwards.is_empty() {
-                    String::new()
-                } else {
-                    format!("  [{} 条转发]", c.forwards.len())
-                };
-                ListItem::new(Line::from(vec![
-                    Span::styled(format!("{:<16}", c.name), Style::new().bold()),
-                    Span::raw(format!(" {:<34}", endpoint(c))),
-                    Span::styled(format!("[{auth_label}]"), Style::new().fg(Color::DarkGray)),
-                    Span::styled(forwards, Style::new().fg(Color::DarkGray)),
-                ]))
-            })
-            .collect();
         let mut state = ListState::default();
         state.select(Some(app.picker_sel));
         frame.render_stateful_widget(
@@ -87,7 +108,9 @@ fn draw_picker(frame: &mut Frame, app: &mut App) {
         );
     }
 
-    let mut footer_lines = vec![Line::from("↑/↓ 选择 · Enter 连接 · r 重载 · q 退出")];
+    let mut footer_lines = vec![Line::from(
+        "↑/↓ 选择 · Enter 连接/切换会话 · x 断开会话 · r 重载 · q 退出",
+    )];
     if !app.notice.is_empty() {
         footer_lines.push(Line::from(Span::styled(
             app.notice.clone(),
@@ -144,9 +167,9 @@ fn draw_session(frame: &mut Frame, s: &mut SessionState) -> (u16, u16) {
     }
 
     let tab_hint = match s.tab {
-        Tab::Shell => "PgUp/PgDn 回滚 · F9 断开",
+        Tab::Shell => "PgUp/PgDn 回滚 · F8 会话列表 · F9 断开",
         Tab::Files => "d 下载 · u 上传 · n 新建 · R 改名 · x 删除 · Tab 换窗格",
-        Tab::Forwards => "F9 断开",
+        Tab::Forwards => "F8 会话列表 · F9 断开",
     };
     let mut status_spans = vec![
         Span::styled(
@@ -333,7 +356,13 @@ fn draw_dialog(frame: &mut Frame, dialog: &Dialog) {
 
     let mut lines = vec![Line::from(dialog.prompt.clone())];
     if dialog.action.needs_input() {
-        lines.push(Line::from(format!("{}█", dialog.input)));
+        let shown = if dialog.secret {
+            // 掩码输入:点号遮蔽,不显示明文。
+            "●".repeat(dialog.input.chars().count())
+        } else {
+            dialog.input.clone()
+        };
+        lines.push(Line::from(format!("{shown}█")));
         lines.push(Line::from(Span::styled(
             "Enter 确认 · Esc 取消",
             Style::new().fg(Color::DarkGray),

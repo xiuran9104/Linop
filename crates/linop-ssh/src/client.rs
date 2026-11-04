@@ -59,7 +59,8 @@ impl russh::client::Handler for ClientHandler {
     }
 }
 
-/// 已认证的 SSH 会话。
+/// 已认证的 SSH 会话。可克隆(共享底层连接句柄),克隆方可各自开通道。
+#[derive(Clone)]
 pub struct Session {
     handle: std::sync::Arc<Handle<ClientHandler>>,
     banner: Arc<Mutex<Option<String>>>,

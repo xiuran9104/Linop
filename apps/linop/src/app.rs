@@ -22,11 +22,15 @@ pub enum AppEvent {
     Key(KeyEvent),
     Paste(String),
     Resize,
-    ShellOutput(Vec<u8>),
-    ShellClosed,
+    ShellOutput(u64, Vec<u8>),
+    ShellClosed(u64),
     Connected(Result<Box<Connected>, String>),
     /// 输入设备失效(非终端运行 / stdin 关闭):无法再交互,退出应用。
     InputClosed,
+    /// 后台传输进度(会话 ID,累计字节)。
+    TransferProgress(u64, u64),
+    /// 后台传输结束(会话 ID;Ok 为累计字节,Err 中 "已取消" 表示用户取消)。
+    TransferFinished(u64, Result<u64, String>),
 }
 
 // --- 防挂死超时常量:任何网络 await 都有上限,坏连接不允许冻结事件循环 ---
@@ -70,10 +74,20 @@ pub struct Connected {
 pub enum DialogAction {
     MkdirRemote,
     MkdirLocal,
-    RenameRemote { old: String },
-    RenameLocal { old: String },
-    DeleteRemote { entry: Entry },
-    DeleteLocal { entry: Entry },
+    RenameRemote {
+        old: String,
+    },
+    RenameLocal {
+        old: String,
+    },
+    DeleteRemote {
+        entry: Entry,
+    },
+    DeleteLocal {
+        entry: Entry,
+    },
+    /// 在 picker 上就地输入密码后连接(仅本次会话生效,不落盘)。
+    ConnectPassword(Box<Connection>),
 }
 
 impl DialogAction {
@@ -86,7 +100,7 @@ impl DialogAction {
     }
 }
 
-/// 模态对话框:文本输入或删除确认,覆盖在文件页上方。
+/// 模态对话框:文本输入或删除确认,覆盖在文件页/连接列表上方。
 pub struct Dialog {
     pub title: String,
     pub prompt: String,
@@ -96,6 +110,8 @@ pub struct Dialog {
     pub error: String,
     /// 执行成功后写入状态栏的消息(由 execute_dialog 填写)。
     pub status: String,
+    /// 掩码输入(密码):界面显示 ●,不显示明文。
+    pub secret: bool,
 }
 
 impl Dialog {
@@ -110,8 +126,8 @@ pub enum Mode {
     Picker,
     /// 连接建立中。
     Connecting { name: String },
-    /// 已连接会话。
-    Session(Box<SessionState>),
+    /// 正在查看某个会话(具体是哪个由 App.active 指示)。
+    Session,
 }
 
 /// 会话内标签页。
@@ -139,6 +155,8 @@ pub struct FilesState {
 }
 
 pub struct SessionState {
+    /// 会话唯一 ID,事件路由用。
+    pub id: u64,
     pub profile: Connection,
     pub ssh: Session,
     pub writer: ShellWriter,
@@ -149,8 +167,34 @@ pub struct SessionState {
     pub term: Terminal,
     pub tab: Tab,
     pub files: FilesState,
+    /// 进行中的后台传输(单会话同时只允许一个)。
+    pub active_transfer: Option<ActiveTransfer>,
     /// 底部状态栏消息(最近一次操作的反馈)。
     pub status: String,
+}
+
+/// 一次后台传输的进度状态。
+pub struct ActiveTransfer {
+    pub direction: &'static str,
+    pub name: String,
+    pub total: u64,
+    pub transferred: u64,
+    pub cancel: linop_sftp::CancelFlag,
+}
+
+impl ActiveTransfer {
+    /// 状态栏进度文案,如 "下载 big.iso 45%(14 MiB/31 MiB) · c 取消"。
+    fn label(&self) -> String {
+        let done = linop_sftp::human_size(self.transferred);
+        let size = linop_sftp::human_size(self.total);
+        let percent = (self.transferred * 100)
+            .checked_div(self.total)
+            .map_or_else(String::new, |p| format!("{p:3}%"));
+        format!(
+            "{} {} {}({}/{}) · c 取消",
+            self.direction, self.name, percent, done, size
+        )
+    }
 }
 
 pub struct App {
@@ -159,6 +203,10 @@ pub struct App {
     /// picker 页全局提示(错误等)。
     pub notice: String,
     pub mode: Mode,
+    /// 并存会话列表;active 指示当前查看的会话。
+    pub sessions: Vec<SessionState>,
+    pub active: usize,
+    next_sid: u64,
     /// 打开中的模态对话框(文件页操作)。
     pub dialog: Option<Dialog>,
     /// draw 阶段记录的 shell 内容区尺寸;事件循环据此同步仿真器与 PTY。
@@ -172,6 +220,9 @@ impl App {
             picker_sel: 0,
             notice: String::new(),
             mode: Mode::Picker,
+            sessions: Vec::new(),
+            active: 0,
+            next_sid: 0,
             dialog: None,
             shell_area: None,
         }
@@ -181,12 +232,51 @@ impl App {
         self.registry.connections()
     }
 
+    /// picker 统一选择域总长:在线会话数 + 连接 profile 数。
+    fn picker_len(&self) -> usize {
+        self.sessions.len() + self.connections().len()
+    }
+
     fn move_picker(&mut self, delta: i32) {
-        let len = self.connections().len();
+        let len = self.picker_len();
         if len == 0 {
             return;
         }
         self.picker_sel = (self.picker_sel as i32 + delta).rem_euclid(len as i32) as usize;
+    }
+
+    /// 当前活动会话(可变)。
+    fn session_mut(&mut self) -> Option<&mut SessionState> {
+        self.sessions.get_mut(self.active)
+    }
+
+    /// 按会话 ID 查找;返回 (下标, 会话)。
+    fn session_by_id(&mut self, id: u64) -> Option<(usize, &mut SessionState)> {
+        self.sessions.iter_mut().enumerate().find(|(_, s)| s.id == id)
+    }
+
+    /// 断开并移除指定下标的会话;调整 active,会话清空时回到列表。
+    async fn disconnect_at(&mut self, idx: usize) {
+        if idx >= self.sessions.len() {
+            return;
+        }
+        let session = self.sessions.remove(idx);
+        if self.active >= self.sessions.len() {
+            self.active = self.sessions.len().saturating_sub(1);
+        }
+        if self.sessions.is_empty() {
+            self.mode = Mode::Picker;
+        }
+        teardown_session(session).await;
+    }
+
+    /// 断开全部会话(退出前清理)。
+    async fn disconnect_all(&mut self) {
+        for session in std::mem::take(&mut self.sessions) {
+            teardown_session(session).await;
+        }
+        self.active = 0;
+        self.mode = Mode::Picker;
     }
 
     /// 开始连接指定 profile。
@@ -208,7 +298,7 @@ impl App {
             }
             AppEvent::Key(_) => {}
             AppEvent::Paste(text) => {
-                if let Mode::Session(s) = &mut self.mode
+                if let Some(s) = self.session_mut()
                     && s.tab == Tab::Shell
                 {
                     let bytes = keys::paste(&text, s.term.bracketed_paste());
@@ -220,20 +310,52 @@ impl App {
                 }
             }
             AppEvent::Resize => {}
-            AppEvent::ShellOutput(bytes) => {
-                if let Mode::Session(s) = &mut self.mode {
+            AppEvent::ShellOutput(id, bytes) => {
+                if let Some((_, s)) = self.session_by_id(id) {
                     s.term.feed(&bytes);
                 }
             }
-            AppEvent::ShellClosed => {
-                if let Some(s) = self.mode_swap_to_picker() {
-                    self.notice = format!("{} 的会话已结束", s.profile.name);
-                    teardown_session(s).await;
+            AppEvent::ShellClosed(id) => {
+                if let Some((idx, _)) = self.session_by_id(id) {
+                    let name = self.sessions[idx].profile.name.clone();
+                    let was_active = matches!(self.mode, Mode::Session) && idx == self.active;
+                    self.disconnect_at(idx).await;
+                    self.notice = format!("{name} 的会话已结束");
+                    if was_active && !self.sessions.is_empty() {
+                        self.mode = Mode::Picker;
+                    }
                 }
             }
             AppEvent::InputClosed => {
                 self.notice = "输入设备已关闭,退出".to_string();
                 return false;
+            }
+            AppEvent::TransferProgress(id, bytes) => {
+                if let Some((_, s)) = self.session_by_id(id)
+                    && let Some(transfer) = &mut s.active_transfer
+                {
+                    transfer.transferred = bytes;
+                    s.status = transfer.label();
+                }
+            }
+            AppEvent::TransferFinished(id, result) => {
+                if let Some((_, s)) = self.session_by_id(id)
+                    && let Some(transfer) = s.active_transfer.take()
+                {
+                    s.status = match result {
+                        Ok(bytes) => format!(
+                            "{}完成:{}({})",
+                            transfer.direction,
+                            transfer.name,
+                            linop_sftp::human_size(bytes)
+                        ),
+                        Err(msg) => {
+                            format!("{}失败:{} · {}", transfer.direction, transfer.name, msg)
+                        }
+                    };
+                    s.refresh_local();
+                    s.refresh_remote().await;
+                }
             }
         }
         true
@@ -242,17 +364,53 @@ impl App {
     async fn on_key(&mut self, key: KeyEvent, tx: &mpsc::UnboundedSender<AppEvent>) -> bool {
         // 模态对话框优先接管按键。
         if let Some(dialog) = self.dialog.take() {
-            self.handle_dialog_key(key, dialog).await;
+            self.handle_dialog_key(key, dialog, tx).await;
             return true;
         }
         match &mut self.mode {
             Mode::Picker => match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => return false,
+                KeyCode::Char('q') | KeyCode::Esc => {
+                    self.disconnect_all().await;
+                    return false;
+                }
                 KeyCode::Up | KeyCode::Char('k') => self.move_picker(-1),
                 KeyCode::Down | KeyCode::Char('j') => self.move_picker(1),
+                KeyCode::Char('x') => {
+                    // 断开选中行的在线会话。
+                    if self.picker_sel < self.sessions.len() {
+                        let idx = self.picker_sel;
+                        self.disconnect_at(idx).await;
+                        self.picker_sel = self.picker_sel.min(self.picker_len().saturating_sub(1));
+                    }
+                }
                 KeyCode::Enter => {
-                    if let Some(conn) = self.connections().get(self.picker_sel).cloned() {
-                        self.connect(&conn, tx);
+                    // 在线会话行:切换过去;连接行:发起新连接。
+                    if self.picker_sel < self.sessions.len() {
+                        self.active = self.picker_sel;
+                        self.mode = Mode::Session;
+                        return true;
+                    }
+                    let profile_idx = self.picker_sel - self.sessions.len();
+                    let Some(conn) = self.connections().get(profile_idx).cloned() else {
+                        return true;
+                    };
+                    {
+                        if let Auth::Password { password } = &conn.auth
+                            && password.is_empty()
+                        {
+                            // 密码未配置:就地弹掩码输入框,不落盘。
+                            self.dialog = Some(Dialog {
+                                title: format!("连接 {}", conn.name),
+                                prompt: format!("输入 {} 的密码:", linop_core::endpoint(&conn)),
+                                input: String::new(),
+                                action: DialogAction::ConnectPassword(Box::new(conn)),
+                                error: String::new(),
+                                status: String::new(),
+                                secret: true,
+                            });
+                        } else {
+                            self.connect(&conn, tx);
+                        }
                     }
                 }
                 KeyCode::Char('r') => match Registry::load_default() {
@@ -269,28 +427,33 @@ impl App {
                 // 任意键取消连接:回到列表;迟到的结果由 on_connected 丢弃。
                 self.mode = Mode::Picker;
             }
-            Mode::Session(s) => {
+            Mode::Session => {
                 if key.modifiers.contains(KeyModifiers::CONTROL)
                     && matches!(key.code, KeyCode::Char('q') | KeyCode::Char('Q'))
                 {
-                    let session = self.mode_swap_to_picker();
-                    if let Some(s) = session {
-                        teardown_session(s).await;
-                    }
+                    self.disconnect_all().await;
                     return false;
                 }
+                let Some(s) = self.session_mut() else {
+                    self.mode = Mode::Picker;
+                    return true;
+                };
                 match key.code {
                     KeyCode::F(1) => s.tab = Tab::Shell,
                     KeyCode::F(2) => s.tab = Tab::Files,
                     KeyCode::F(3) => s.tab = Tab::Forwards,
+                    // 回到列表,会话保持在线。
+                    KeyCode::F(8) => self.mode = Mode::Picker,
+                    // 断开当前会话并回到列表。
                     KeyCode::F(9) => {
-                        let session = self.mode_swap_to_picker();
-                        if let Some(s) = session {
-                            self.notice = format!("已断开 {}", s.profile.name);
-                            teardown_session(s).await;
-                        }
+                        let idx = self.active;
+                        let name = self.sessions[idx].profile.name.clone();
+                        self.mode = Mode::Picker;
+                        self.picker_sel = idx.min(self.picker_len().saturating_sub(1));
+                        self.disconnect_at(idx).await;
+                        self.notice = format!("已断开 {name}");
                     }
-                    _ => self.session_key(key).await,
+                    _ => self.session_key(key, tx).await,
                 }
             }
         }
@@ -298,7 +461,24 @@ impl App {
     }
 
     /// 对话框按键:Esc 关闭、Enter 执行、退格/字符编辑输入。
-    async fn handle_dialog_key(&mut self, key: KeyEvent, mut dialog: Dialog) {
+    async fn handle_dialog_key(
+        &mut self,
+        key: KeyEvent,
+        mut dialog: Dialog,
+        tx: &mpsc::UnboundedSender<AppEvent>,
+    ) {
+        // 密码连接对话框不经过 execute_dialog(它作用于会话,而此时在 picker)。
+        if let (KeyCode::Enter, DialogAction::ConnectPassword(conn)) = (key.code, &dialog.action) {
+            if dialog.input.is_empty() {
+                dialog.error = "密码不能为空,Esc 取消".into();
+                self.dialog = Some(dialog);
+            } else {
+                let mut conn = (**conn).clone();
+                conn.auth = Auth::password(dialog.input.clone());
+                self.connect(&conn, tx);
+            }
+            return;
+        }
         match key.code {
             KeyCode::Esc => {}
             KeyCode::Enter => {
@@ -330,14 +510,14 @@ impl App {
     }
 
     fn status_to_session(&mut self, message: &str) {
-        if let Mode::Session(s) = &mut self.mode {
+        if let Some(s) = self.session_mut() {
             s.status = message.to_string();
         }
     }
 
     /// 执行对话框动作;成功时已顺手刷新对应窗格。
     async fn execute_dialog(&mut self, dialog: &mut Dialog) -> Result<(), String> {
-        let Mode::Session(s) = &mut self.mode else {
+        let Some(s) = self.session_mut() else {
             return Err("会话已断开".to_string());
         };
         let name = dialog.input.trim();
@@ -392,6 +572,10 @@ impl App {
                 s.refresh_remote().await;
                 dialog.status = format!("已删除远端 {}", entry.name);
             }
+            DialogAction::ConnectPassword(_) => {
+                // 已在 handle_dialog_key 里先行处理,不会走到这里。
+                return Err("内部错误:密码对话框不应进入会话执行".to_string());
+            }
             DialogAction::DeleteLocal { entry } => {
                 let path = s.files.local_cwd.join(&entry.name);
                 if entry.is_dir {
@@ -408,9 +592,9 @@ impl App {
         Ok(())
     }
 
-    async fn session_key(&mut self, key: KeyEvent) {
-        let Mode::Session(s) = &mut self.mode else {
-            unreachable!()
+    async fn session_key(&mut self, key: KeyEvent, tx: &mpsc::UnboundedSender<AppEvent>) {
+        let Some(s) = self.session_mut() else {
+            return;
         };
         match s.tab {
             Tab::Shell => match key.code {
@@ -426,6 +610,13 @@ impl App {
                 }
             },
             Tab::Files => match key.code {
+                // 取消进行中的后台传输。
+                KeyCode::Char('c') => {
+                    if let Some(transfer) = &s.active_transfer {
+                        transfer.cancel.cancel();
+                        s.status = format!("正在取消 {} {}…", transfer.direction, transfer.name);
+                    }
+                }
                 KeyCode::Tab | KeyCode::Left | KeyCode::Right => {
                     s.files.active = match s.files.active {
                         Pane::Remote => Pane::Local,
@@ -436,8 +627,8 @@ impl App {
                 KeyCode::Down | KeyCode::Char('j') => s.move_selection(1),
                 KeyCode::Backspace => s.enter_parent().await,
                 KeyCode::Enter => s.enter_selected().await,
-                KeyCode::Char('d') => s.download_selected().await,
-                KeyCode::Char('u') => s.upload_selected().await,
+                KeyCode::Char('d') => s.download_selected(tx),
+                KeyCode::Char('u') => s.upload_selected(tx),
                 KeyCode::Char('n') => {
                     let (title, action) = match s.files.active {
                         Pane::Remote => ("新建远端目录", DialogAction::MkdirRemote),
@@ -525,14 +716,16 @@ impl App {
                     forwards,
                     forward_errors,
                 } = *boxed;
+                self.next_sid += 1;
+                let sid = self.next_sid;
                 let tx = tx.clone();
                 tokio::spawn(async move {
                     while let Some(bytes) = reader.read_output().await {
-                        if tx.send(AppEvent::ShellOutput(bytes)).is_err() {
+                        if tx.send(AppEvent::ShellOutput(sid, bytes)).is_err() {
                             break;
                         }
                     }
-                    let _ = tx.send(AppEvent::ShellClosed);
+                    let _ = tx.send(AppEvent::ShellClosed(sid));
                 });
 
                 let (remote_entries, warn) =
@@ -553,7 +746,8 @@ impl App {
                     format!("已连接 {},自动转发 {} 条", profile.name, forwards.len())
                 });
                 let (cols, rows) = self.shell_area.unwrap_or((80, 24));
-                self.mode = Mode::Session(Box::new(SessionState {
+                self.sessions.push(SessionState {
+                    id: sid,
                     profile,
                     ssh,
                     writer,
@@ -562,6 +756,7 @@ impl App {
                     forward_failures: forward_errors,
                     term: Terminal::new(cols, rows),
                     tab: Tab::Shell,
+                    active_transfer: None,
                     files: FilesState {
                         local_cwd,
                         local_entries,
@@ -571,7 +766,9 @@ impl App {
                         active: Pane::Remote,
                     },
                     status,
-                }));
+                });
+                self.active = self.sessions.len() - 1;
+                self.mode = Mode::Session;
             }
             Err(msg) => {
                 if matches!(self.mode, Mode::Connecting { .. }) {
@@ -582,24 +779,12 @@ impl App {
         }
     }
 
-    /// 把 Session 模式换回 Picker 并取走会话状态;非会话模式返回 None。
-    fn mode_swap_to_picker(&mut self) -> Option<SessionState> {
-        if matches!(self.mode, Mode::Session(_)) {
-            match std::mem::replace(&mut self.mode, Mode::Picker) {
-                Mode::Session(s) => Some(*s),
-                _ => unreachable!(),
-            }
-        } else {
-            None
-        }
-    }
-
     /// draw 之后调用:把仿真器与远端 PTY 同步到布局给出的内容区尺寸。
     pub async fn sync_size(&mut self) {
         let Some((cols, rows)) = self.shell_area else {
             return;
         };
-        let Mode::Session(s) = &mut self.mode else {
+        let Some(s) = self.session_mut() else {
             return;
         };
         if s.term.cols() != cols || s.term.rows() != rows {
@@ -703,8 +888,41 @@ impl SessionState {
         }
     }
 
-    /// 下载远端选中项到本地窗格当前目录。
-    async fn download_selected(&mut self) {
+    /// 启动后台传输;同一时间只允许一个,进行中再按 d/u 会提示。
+    fn spawn_transfer(
+        &mut self,
+        direction: &'static str,
+        name: String,
+        remote_abs: String,
+        local_path: PathBuf,
+        upload: bool,
+        tx: &mpsc::UnboundedSender<AppEvent>,
+    ) {
+        if self.active_transfer.is_some() {
+            self.status = "已有传输进行中,先按 c 取消".to_string();
+            return;
+        }
+        let ssh = self.ssh.clone();
+        let sid = self.id;
+        let cancel = linop_sftp::CancelFlag::new();
+        self.active_transfer = Some(ActiveTransfer {
+            direction,
+            name: name.clone(),
+            total: 0,
+            transferred: 0,
+            cancel: cancel.clone(),
+        });
+        self.status = format!("{direction} {name} …");
+        let tx = tx.clone();
+        tokio::spawn(async move {
+            let result =
+                transfer_job(sid, ssh, &remote_abs, &local_path, upload, &cancel, &tx).await;
+            let _ = tx.send(AppEvent::TransferFinished(sid, result));
+        });
+    }
+
+    /// 下载远端选中项到本地窗格当前目录(后台流式)。
+    fn download_selected(&mut self, tx: &mpsc::UnboundedSender<AppEvent>) {
         let Some(entry) = self
             .files
             .remote_entries
@@ -714,46 +932,78 @@ impl SessionState {
             return;
         };
         let target = self.files.local_cwd.join(&entry.name);
-        match capped(
-            SFTP_TRANSFER_TIMEOUT_SECS,
-            self.sftp.download(&entry.name, &target),
-        )
-        .await
-        {
-            Ok(()) => {
-                self.files.local_entries = list_local(&self.files.local_cwd);
-                self.status = format!("已下载 {} → {}", entry.name, target.display());
-            }
-            Err(e) => self.status = format!("下载失败:{e}"),
-        }
+        let remote_abs = remote_absolute(self.sftp.cwd(), &entry.name);
+        self.spawn_transfer("下载", entry.name, remote_abs, target, false, tx);
     }
 
-    /// 上传本地选中项到远端当前目录。
-    async fn upload_selected(&mut self) {
+    /// 上传本地选中项到远端当前目录(后台流式)。
+    fn upload_selected(&mut self, tx: &mpsc::UnboundedSender<AppEvent>) {
         let Some(entry) = self.files.local_entries.get(self.files.local_sel).cloned() else {
             return;
         };
         let source = self.files.local_cwd.join(&entry.name);
-        match capped(
-            SFTP_TRANSFER_TIMEOUT_SECS,
-            self.sftp.upload(&source, &entry.name),
+        let remote_abs = remote_absolute(self.sftp.cwd(), &entry.name);
+        self.spawn_transfer("上传", entry.name, remote_abs, source, true, tx);
+    }
+}
+
+/// 以 cwd 为基准拼出远端绝对路径(传输任务用独立 SFTP 会话,必须绝对路径)。
+fn remote_absolute(cwd: &str, name: &str) -> String {
+    if cwd == "/" {
+        format!("/{name}")
+    } else {
+        format!("{cwd}/{name}")
+    }
+}
+
+/// 后台传输体:独立打开 SFTP 通道,流式拷贝,节流上报进度。
+/// 返回最后一次上报的字节数;取消映射为 "已取消"。
+async fn transfer_job(
+    sid: u64,
+    ssh: Session,
+    remote: &str,
+    local: &Path,
+    upload: bool,
+    cancel: &linop_sftp::CancelFlag,
+    tx: &mpsc::UnboundedSender<AppEvent>,
+) -> Result<u64, String> {
+    let sftp = Sftp::open(&ssh)
+        .await
+        .map_err(|e| format!("打开传输通道失败:{e}"))?;
+    let mut last_reported: u64 = 0;
+    let mut report = |done: u64, total: u64| {
+        if done == total || done.saturating_sub(last_reported) >= step_of(total) {
+            last_reported = done;
+            let _ = tx.send(AppEvent::TransferProgress(sid, done));
+        }
+    };
+    let result = if upload {
+        sftp.upload_streaming(
+            local,
+            remote,
+            &mut |_, done, total| report(done, total),
+            cancel,
         )
         .await
-        {
-            Ok(()) => {
-                if let Ok(entries) = capped(SFTP_META_TIMEOUT_SECS, self.sftp.list_dir(".")).await {
-                    self.files.remote_entries = entries;
-                }
-                self.status = format!(
-                    "已上传 {} → {}:{}",
-                    entry.name,
-                    self.profile.host,
-                    self.sftp.cwd()
-                );
-            }
-            Err(e) => self.status = format!("上传失败:{e}"),
-        }
+    } else {
+        sftp.download_streaming(
+            remote,
+            local,
+            &mut |_, done, total| report(done, total),
+            cancel,
+        )
+        .await
+    };
+    match result {
+        Ok(()) => Ok(last_reported),
+        Err(linop_sftp::SftpError::Cancelled) => Err("已取消".to_string()),
+        Err(e) => Err(e.to_string()),
     }
+}
+
+/// 进度上报步长:总量的 1%(至少一个块 32 KiB),避免事件洪泛。
+fn step_of(total: u64) -> u64 {
+    (total / 100).max(32 * 1024)
 }
 
 /// 构造一个空输入的对话框。
@@ -765,6 +1015,7 @@ fn new_dialog(title: &str, prompt: &str, action: DialogAction) -> Dialog {
         action,
         error: String::new(),
         status: String::new(),
+        secret: false,
     }
 }
 
@@ -877,7 +1128,7 @@ async fn connect(profile: Connection, cols: u16, rows: u16) -> Result<Connected,
         && password.is_empty()
     {
         return Err(format!(
-            "连接 {} 未配置密码,请在 {} 的对应表里补全 password 或改用 key_path",
+            "连接 {} 未配置密码;在列表中选中它按 Enter 可交互输入(不落盘),或在 {} 补全 password / 改用 key_path",
             profile.name,
             linop_core::default_connections_path().display()
         ));

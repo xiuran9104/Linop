@@ -80,3 +80,89 @@ async fn browse_upload_download() -> anyhow::Result<()> {
     sftp.close().await?;
     Ok(())
 }
+
+/// 流式传输:多分块文件往返、进度回调、取消语义。
+#[tokio::test]
+async fn streaming_transfer_roundtrip_and_cancel() -> anyhow::Result<()> {
+    let root = tempfile::tempdir()?;
+    let sftp = sftp_on(root.path()).await?;
+
+    // 约 10 个分块的数据,内容可校验。
+    let payload: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
+    let local_src = tempfile::tempdir()?;
+    let src = local_src.path().join("big.bin");
+    std::fs::write(&src, &payload)?;
+
+    // 上传:进度应单调递增至文件总长。
+    let mut seen_done: u64 = 0;
+    let mut seen_total: u64 = 0;
+    sftp.upload_streaming(
+        &src,
+        "big.bin",
+        &mut |_, done, total| {
+            assert!(done >= seen_done, "进度必须单调不减");
+            seen_done = done;
+            seen_total = total;
+        },
+        &linop_sftp::CancelFlag::new(),
+    )
+    .await?;
+    assert_eq!(seen_total, payload.len() as u64);
+    assert_eq!(seen_done, payload.len() as u64);
+
+    // 下载到另一个位置并逐字节比对。
+    let local_dst = tempfile::tempdir()?;
+    let dst = local_dst.path().join("big.bin");
+    sftp.download_streaming(
+        "big.bin",
+        &dst,
+        &mut |_, _, _| {},
+        &linop_sftp::CancelFlag::new(),
+    )
+    .await?;
+    assert_eq!(std::fs::read(&dst)?, payload);
+
+    // 取消:预置取消标志,下载应返回 Cancelled,不留下正式/临时文件。
+    let cancel = linop_sftp::CancelFlag::new();
+    cancel.cancel();
+    let dst2 = local_dst.path().join("never.bin");
+    let err = sftp
+        .download_streaming("big.bin", &dst2, &mut |_, _, _| {}, &cancel)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(err, linop_sftp::SftpError::Cancelled),
+        "应返回 Cancelled:{err}"
+    );
+    assert!(!dst2.exists(), "取消后不应有正式文件");
+    assert!(
+        !local_dst.path().join("never.bin.linop-part").exists(),
+        "取消后不应残留临时文件"
+    );
+
+    // 目录递归流式:上传目录再下载回来。
+    let dir_src = local_src.path().join("proj");
+    std::fs::create_dir_all(&dir_src)?;
+    std::fs::write(dir_src.join("a.txt"), b"aaa")?;
+    std::fs::write(dir_src.join("b.txt"), b"bbb")?;
+    sftp.upload_streaming(
+        &dir_src,
+        "proj",
+        &mut |_, _, _| {},
+        &linop_sftp::CancelFlag::new(),
+    )
+    .await?;
+    let dir_dst = local_dst.path().join("proj");
+    sftp.download_streaming(
+        "proj",
+        &dir_dst,
+        &mut |_, _, _| {},
+        &linop_sftp::CancelFlag::new(),
+    )
+    .await?;
+    assert_eq!(std::fs::read(dir_dst.join("a.txt"))?, b"aaa");
+    assert_eq!(std::fs::read(dir_dst.join("b.txt"))?, b"bbb");
+
+    sftp.close().await?;
+    Ok(())
+}

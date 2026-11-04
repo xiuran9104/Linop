@@ -105,7 +105,7 @@ async fn picker_connect_shell_files_disconnect() -> anyhow::Result<()> {
         Duration::from_secs(5),
     )
     .await;
-    assert!(matches!(app.mode, Mode::Session(_)), "应进入会话模式");
+    assert!(matches!(app.mode, Mode::Session), "应进入会话模式");
 
     // 3. shell 页:键入字符,echo 服务器应回显到仿真终端。
     for c in ['h', 'i'] {
@@ -124,7 +124,7 @@ async fn picker_connect_shell_files_disconnect() -> anyhow::Result<()> {
 
     // 4. 文件页:把本地窗格指到临时目录,上传 hello.txt 到远端。
     app.handle(key(KeyCode::F(2)), &tx).await;
-    if let Mode::Session(ref mut s) = app.mode {
+    if let Some(s) = app.sessions.get_mut(app.active) {
         s.files.local_cwd = local_dir.path().to_path_buf();
         s.files.local_entries = vec![local_entry("hello.txt", 11)];
         s.files.active = Pane::Local;
@@ -148,7 +148,15 @@ async fn picker_connect_shell_files_disconnect() -> anyhow::Result<()> {
         remote_root.path().join("hello.txt").exists(),
         "远端应收到上传的文件"
     );
-    if let Mode::Session(ref mut s) = app.mode {
+    if let Some(s) = app.sessions.get(app.active) {
+        assert!(s.active_transfer.is_none(), "上传结束后不应残留传输状态");
+        assert!(
+            s.status.contains("上传完成"),
+            "状态栏应报上传完成:{:?}",
+            s.status
+        );
+    }
+    if let Some(s) = app.sessions.get_mut(app.active) {
         s.files.active = Pane::Remote;
     }
 
@@ -168,6 +176,13 @@ async fn picker_connect_shell_files_disconnect() -> anyhow::Result<()> {
         b"hello-linop",
         "下载应还原文件内容"
     );
+    if let Some(s) = app.sessions.get(app.active) {
+        assert!(
+            s.status.contains("下载完成"),
+            "状态栏应报下载完成:{:?}",
+            s.status
+        );
+    }
 
     // 6. 对话框操作:新建目录 → 重命名 → 删除(远端窗格,选中项为第 0 项)。
     app.handle(key(KeyCode::Char('n')), &tx).await;
@@ -266,4 +281,167 @@ fn encode_matches_term_modes() {
         Some(b"\x1bOA".to_vec())
     );
     assert_eq!(term.cursor(), Some((0, 0)));
+}
+
+/// 空密码 profile:Enter 弹掩码输入框,输入后完成连接;明文不出现在屏幕上。
+#[tokio::test]
+async fn empty_password_prompts_masked_and_connects() -> anyhow::Result<()> {
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    let remote_root = tempfile::tempdir()?;
+    let server = linop_testsupport::TestSshServer::start_with_sftp(remote_root.path()).await?;
+    let mut conn = Connection::new(
+        "pw-e2e",
+        server.addr.ip().to_string(),
+        "u",
+        Auth::password(""),
+    );
+    conn.port = server.addr.port();
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(vec![conn].into_iter().collect());
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+    redraw(&mut terminal, &mut app).await;
+
+    // Enter 应弹出密码输入框而不是直接连接失败。
+    app.handle(key(KeyCode::Enter), &tx).await;
+    assert!(app.dialog.is_some(), "空密码应弹掩码输入框");
+    assert!(!matches!(app.mode, Mode::Connecting { .. }));
+
+    for c in "secret1".chars() {
+        app.handle(key(KeyCode::Char(c)), &tx).await;
+    }
+    redraw(&mut terminal, &mut app).await;
+    let text = screen_text(&terminal);
+    assert!(!text.contains("secret1"), "屏幕不得出现密码明文");
+    assert!(text.contains("●"), "掩码点号应可见");
+
+    // Enter 确认 → 用输入的密码连接(测试服务器接受任意密码)。
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(matches!(app.mode, Mode::Session), "输入密码后应连上");
+
+    app.handle(key(KeyCode::F(9)), &tx).await;
+    server.shutdown();
+    unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
+    Ok(())
+}
+
+/// 多会话:两台服务器并存,F8 回列表不断开,Enter 切换,F9 断当前,x 断指定行。
+#[tokio::test]
+async fn multiple_sessions_coexist_and_switch() -> anyhow::Result<()> {
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    let root_a = tempfile::tempdir()?;
+    let root_b = tempfile::tempdir()?;
+    let server_a = linop_testsupport::TestSshServer::start_with_sftp(root_a.path()).await?;
+    let server_b = linop_testsupport::TestSshServer::start_with_sftp(root_b.path()).await?;
+
+    let named = |name: &str, addr: &std::net::SocketAddr| {
+        let mut c = Connection::new(name, addr.ip().to_string(), "u", Auth::password("p"));
+        c.port = addr.port();
+        c
+    };
+    let registry: Registry = vec![named("one", &server_a.addr), named("two", &server_b.addr)]
+        .into_iter()
+        .collect();
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(registry);
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+    redraw(&mut terminal, &mut app).await;
+
+    // 连接 one,输入 aa。
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(matches!(app.mode, Mode::Session));
+    for c in ['a', 'a'] {
+        app.handle(key(KeyCode::Char(c)), &tx).await;
+    }
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(2),
+    )
+    .await;
+    assert!(screen_text(&terminal).contains("aa"));
+
+    // F8 回列表:会话仍在线,列表显示在线段。
+    app.handle(key(KeyCode::F(8)), &tx).await;
+    assert!(matches!(app.mode, Mode::Picker));
+    assert_eq!(app.sessions.len(), 1, "F8 不断开会话");
+    redraw(&mut terminal, &mut app).await;
+    assert!(screen_text(&terminal).contains("●"), "在线会话段应显示");
+
+    // 下移两行到 profile two(列表 = [会话one, profile one, profile two]),建立第二个会话。
+    app.handle(key(KeyCode::Down), &tx).await;
+    app.handle(key(KeyCode::Down), &tx).await;
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert_eq!(app.sessions.len(), 2);
+    for c in ['b', 'b'] {
+        app.handle(key(KeyCode::Char(c)), &tx).await;
+    }
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(2),
+    )
+    .await;
+    let text = screen_text(&terminal);
+    assert!(text.contains("bb"), "第二个会话应显示自己的输入");
+    assert!(!text.contains("aa"), "切换后的终端不应残留上个会话的内容");
+
+    // 回列表,上移两行到第 0 行(会话 one)切换回去:终端内容还在。
+    app.handle(key(KeyCode::F(8)), &tx).await;
+    app.handle(key(KeyCode::Up), &tx).await;
+    app.handle(key(KeyCode::Up), &tx).await;
+    app.handle(key(KeyCode::Enter), &tx).await;
+    assert!(matches!(app.mode, Mode::Session));
+    assert_eq!(app.sessions[app.active].profile.name, "one");
+    redraw(&mut terminal, &mut app).await;
+    assert!(
+        screen_text(&terminal).contains("aa"),
+        "切回的会话应保留终端内容"
+    );
+
+    // F9 断开当前(one):剩 two,回到列表。
+    app.handle(key(KeyCode::F(9)), &tx).await;
+    assert_eq!(app.sessions.len(), 1);
+    assert_eq!(app.sessions[0].profile.name, "two");
+    assert!(matches!(app.mode, Mode::Picker));
+
+    // x 断开选中行的会话(two)。
+    app.handle(key(KeyCode::Char('x')), &tx).await;
+    assert!(app.sessions.is_empty());
+
+    server_a.shutdown();
+    server_b.shutdown();
+    unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
+    Ok(())
 }
