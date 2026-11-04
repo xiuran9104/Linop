@@ -6,7 +6,7 @@
 mod model;
 mod registry;
 
-pub use model::{Auth, Connection, PortForward};
+pub use model::{Auth, Connection, PortForward, RemoteForward};
 pub use registry::{Registry, config_dir, default_connections_path, endpoint, known_hosts_path};
 
 use std::fmt;

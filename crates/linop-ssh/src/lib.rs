@@ -9,7 +9,7 @@ mod host_keys;
 mod shell;
 
 pub use client::{ClientHandler, Session};
-pub use forward::LocalForward;
+pub use forward::{LocalForward, RemoteForward};
 pub use host_keys::{Decision, KnownHosts, KnownHostsPolicy};
 pub use shell::{ShellChannel, ShellReader, ShellWriter};
 
@@ -44,6 +44,19 @@ pub type Result<T> = std::result::Result<T, SshError>;
 
 /// 默认终端类型(xterm-256color,与 navop 终端一致)。
 pub const TERM_TYPE: &str = "xterm-256color";
+
+/// 私钥是否需要口令:密钥认证、未配置口令、且文件实际为加密格式。
+/// 供前端在连接前弹口令输入框。
+pub fn key_needs_passphrase(auth: &Auth) -> bool {
+    let Auth::Key { path, passphrase } = auth else {
+        return false;
+    };
+    passphrase.is_none()
+        && matches!(
+            russh::keys::load_secret_key(path, None),
+            Err(russh::keys::Error::KeyIsEncrypted)
+        )
+}
 
 /// 加载私钥文件并构造认证用密钥。
 pub(crate) fn load_key(auth: &Auth) -> Result<russh::keys::PrivateKeyWithHashAlg> {

@@ -307,40 +307,68 @@ fn render_pane(
 
 fn draw_forwards(frame: &mut Frame, body: Rect, s: &mut SessionState) {
     let block = Block::default()
-        .title(" 本地端口转发 ")
+        .title(" 端口转发(本地 -L / 反向 -R) ")
         .borders(Borders::ALL);
     let inner = block.inner(body);
     frame.render_widget(block, body);
 
+    // 统一列表:本地转发在前,反向转发在后,失败原因殿后;
+    // forwards_sel 对应运行中项(失败项不可选中)。
     let mut items: Vec<ListItem> = s
         .forwards
         .iter()
-        .map(|f| {
-            ListItem::new(Line::from(vec![
-                Span::styled("● 运行中  ", Style::new().fg(Color::Green)),
+        .enumerate()
+        .map(|(i, f)| {
+            let running = ListItem::new(Line::from(vec![
+                Span::styled("L ● 运行中  ", Style::new().fg(Color::Green)),
                 Span::styled(f.to_string(), Style::new().bold()),
-            ]))
+            ]));
+            (i, running)
+        })
+        .chain(s.remote_forwards.iter().enumerate().map(|(i, f)| {
+            let item = ListItem::new(Line::from(vec![
+                Span::styled("R ● 运行中  ", Style::new().fg(Color::Green)),
+                Span::styled(f.to_string(), Style::new().bold()),
+            ]));
+            (i + s.forwards.len(), item)
+        }))
+        .map(|(i, item)| {
+            if i == s.forwards_sel {
+                item.style(
+                    Style::new()
+                        .bg(Color::DarkGray)
+                        .add_modifier(Modifier::BOLD),
+                )
+            } else {
+                item
+            }
         })
         .collect();
-    items.extend(s.forward_failures.iter().map(|(fwd, err)| {
+    items.extend(s.forward_failures.iter().map(|err| {
         ListItem::new(Line::from(vec![
             Span::styled("✗ 失败    ", Style::new().fg(Color::Red)),
-            Span::styled(
-                format!(
-                    "127.0.0.1:{} → {}:{}",
-                    fwd.local_port, fwd.remote_host, fwd.remote_port
-                ),
-                Style::new().bold(),
-            ),
-            Span::styled(format!("  {err}"), Style::new().fg(Color::DarkGray)),
+            Span::styled(err.clone(), Style::new().fg(Color::DarkGray)),
         ]))
     }));
     if items.is_empty() {
         items.push(ListItem::new(
-            "没有自动启动的转发。在 connections.toml 中为连接配置 [[连接.forwards]]。",
+            "没有运行中的转发。在 connections.toml 中配置 [[连接.forwards]](本地)或 [[连接.remote_forwards]](反向)。",
         ));
     }
-    frame.render_widget(List::new(items), inner);
+    let total_running = s.forwards.len() + s.remote_forwards.len();
+    let mut hint = List::new(items);
+    if total_running > 0 {
+        hint = hint.highlight_style(
+            Style::new()
+                .bg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        );
+    }
+    let mut state = ListState::default();
+    if total_running > 0 {
+        state.select(Some(s.forwards_sel.min(total_running - 1)));
+    }
+    frame.render_stateful_widget(hint, inner, &mut state);
 }
 
 /// 居中模态对话框:标题 + 说明 + 输入行(█ 作光标)/确认行 + 错误行。

@@ -9,3 +9,10 @@ mod ssh;
 
 pub use sftp::FsSftpHandler;
 pub use ssh::{ServerOptions, TestSshServer};
+
+/// 读取 OpenSSH 公钥文件(测试用)。
+pub fn load_public_key(
+    path: &std::path::Path,
+) -> Result<russh::keys::PublicKey, russh::keys::Error> {
+    russh::keys::load_public_key(path)
+}

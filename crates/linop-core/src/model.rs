@@ -55,6 +55,29 @@ impl PortForward {
     }
 }
 
+/// 一条反向端口转发规则(-R):远端机器在 `bind_host:bind_port` 上
+/// 收到的连接经 SSH 隧道回到本机,连到 `target_host:target_port`。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteForward {
+    /// 远端监听地址,默认 "127.0.0.1"。
+    pub bind_host: String,
+    /// 远端监听端口;0 表示让远端分配。
+    pub bind_port: u16,
+    pub target_host: String,
+    pub target_port: u16,
+}
+
+impl RemoteForward {
+    pub fn new(bind_port: u16, target_host: impl Into<String>, target_port: u16) -> Self {
+        RemoteForward {
+            bind_host: "127.0.0.1".to_string(),
+            bind_port,
+            target_host: target_host.into(),
+            target_port,
+        }
+    }
+}
+
 /// 一条 SSH 连接 profile。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Connection {
@@ -66,6 +89,8 @@ pub struct Connection {
     pub auth: Auth,
     /// 建立连接后自动/手动启动的本地端口转发规则。
     pub forwards: Vec<PortForward>,
+    /// 建立连接后自动启动的反向转发规则(-R)。
+    pub remote_forwards: Vec<RemoteForward>,
     pub notes: Option<String>,
 }
 
@@ -83,6 +108,7 @@ impl Connection {
             username: username.into(),
             auth,
             forwards: Vec::new(),
+            remote_forwards: Vec::new(),
             notes: None,
         }
     }
@@ -115,6 +141,16 @@ impl Connection {
                     local_port: f.local_port,
                     remote_host: f.remote_host.clone(),
                     remote_port: f.remote_port,
+                })
+                .collect(),
+            remote_forwards: self
+                .remote_forwards
+                .iter()
+                .map(|f| RawRemoteForward {
+                    bind_host: Some(f.bind_host.clone()),
+                    bind_port: f.bind_port,
+                    target_host: f.target_host.clone(),
+                    target_port: f.target_port,
                 })
                 .collect(),
             notes: self.notes.clone(),
@@ -150,6 +186,16 @@ impl From<&RawConnection> for Connection {
                     remote_port: f.remote_port,
                 })
                 .collect(),
+            remote_forwards: raw
+                .remote_forwards
+                .iter()
+                .map(|f| RemoteForward {
+                    bind_host: f.bind_host.clone().unwrap_or_else(|| "127.0.0.1".into()),
+                    bind_port: f.bind_port,
+                    target_host: f.target_host.clone(),
+                    target_port: f.target_port,
+                })
+                .collect(),
             notes: raw.notes.clone(),
         }
     }
@@ -176,6 +222,17 @@ pub(crate) struct RawConnection {
     pub key_passphrase: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub forwards: Vec<RawForward>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub remote_forwards: Vec<RawRemoteForward>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+pub(crate) struct RawRemoteForward {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bind_host: Option<String>,
+    pub bind_port: u16,
+    pub target_host: String,
+    pub target_port: u16,
 }

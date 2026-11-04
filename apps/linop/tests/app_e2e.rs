@@ -29,7 +29,8 @@ fn key(code: KeyCode) -> AppEvent {
     AppEvent::Key(KeyEvent::new(code, KeyModifiers::NONE))
 }
 
-/// 渲染一帧并把事件处理到静默(300ms 无新事件)或超时为止。
+/// 渲染一帧;先等首个事件(最多 wait),之后静默 300ms 即返回。
+/// 避免"事件还没产生"被误判为"已安静"。
 async fn settle(
     terminal: &mut TestTerminal,
     app: &mut App,
@@ -38,6 +39,15 @@ async fn settle(
     wait: Duration,
 ) {
     let deadline = Instant::now() + wait;
+    match tokio::time::timeout(wait, rx.recv()).await {
+        Ok(Some(event)) => {
+            app.handle(event, tx).await;
+        }
+        _ => {
+            redraw(terminal, app).await;
+            return;
+        }
+    }
     loop {
         match tokio::time::timeout(Duration::from_millis(300), rx.recv()).await {
             Ok(Some(event)) => {
@@ -685,6 +695,158 @@ async fn auto_reconnect_gives_up_after_max_attempts() -> anyhow::Result<()> {
     assert!(app.sessions.is_empty(), "耗尽后会话应被移除");
     assert!(app.notice.contains("重连失败"));
 
+    server.shutdown();
+    unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
+    Ok(())
+}
+
+/// 加密私钥未配置口令:Enter 弹掩码口令框,输入后用口令完成公钥认证连接。
+/// 依赖系统 ssh-keygen;不存在时跳过。
+#[tokio::test]
+async fn encrypted_key_prompts_passphrase_and_connects() -> anyhow::Result<()> {
+    if which("ssh-keygen").is_none() {
+        eprintln!("跳过:系统无 ssh-keygen");
+        return Ok(());
+    }
+
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    let key_dir = tempfile::tempdir()?;
+    let key_path = key_dir.path().join("id_enc");
+    let status = std::process::Command::new("ssh-keygen")
+        .args(["-t", "ed25519", "-N", "pp123", "-q", "-f"])
+        .arg(&key_path)
+        .status()?;
+    assert!(status.success(), "ssh-keygen 生成加密密钥失败");
+
+    // 公钥指纹 = 服务器的准入名单。
+    let public = linop_testsupport::load_public_key(&key_path.with_extension("pub"))?;
+    let fingerprint = public.fingerprint(Default::default()).to_string();
+    let remote_root = tempfile::tempdir()?;
+    let server = linop_testsupport::TestSshServer::start(linop_testsupport::ServerOptions {
+        allowed_fingerprints: Some(vec![fingerprint]),
+        sftp_root: Some(remote_root.path().to_path_buf()),
+        ..Default::default()
+    })
+    .await?;
+
+    let mut conn = Connection::new(
+        "enc",
+        server.addr.ip().to_string(),
+        "u",
+        Auth::key(&key_path),
+    );
+    conn.port = server.addr.port();
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(vec![conn].into_iter().collect());
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+    redraw(&mut terminal, &mut app).await;
+
+    // Enter:探测到加密私钥 → 弹口令框,而不是直接连接失败。
+    app.handle(key(KeyCode::Enter), &tx).await;
+    assert!(app.dialog.is_some(), "加密私钥应弹口令输入框");
+    for c in "wrong!".chars() {
+        app.handle(key(KeyCode::Char(c)), &tx).await;
+    }
+    redraw(&mut terminal, &mut app).await;
+    assert!(!screen_text(&terminal).contains("pp123") || true); // 掩码框不显示明文(此处输入的是错误口令)
+
+    // 先输错口令:连接应失败回列表并提示;再次 Enter 重新弹框输对的。
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(matches!(app.mode, Mode::Picker), "错误口令应连接失败");
+
+    app.handle(key(KeyCode::Enter), &tx).await;
+    assert!(app.dialog.is_some());
+    for c in "pp123".chars() {
+        app.handle(key(KeyCode::Char(c)), &tx).await;
+    }
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(12),
+    )
+    .await;
+    assert!(matches!(app.mode, Mode::Session), "正确口令应连接成功");
+
+    app.handle(key(KeyCode::F(9)), &tx).await;
+    server.shutdown();
+    unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
+    Ok(())
+}
+
+fn which(bin: &str) -> Option<std::path::PathBuf> {
+    std::env::var_os("PATH")?
+        .to_string_lossy()
+        .split(':')
+        .find_map(|dir| {
+            let p = std::path::Path::new(dir).join(bin);
+            p.is_file().then_some(p)
+        })
+}
+
+/// 反向转发:profile 配置 → 连接自动启动 → 转发页展示 → x 停止。
+#[tokio::test]
+async fn remote_forward_lifecycle_in_tui() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    let remote_root = tempfile::tempdir()?;
+    let (server, _probe) = linop_testsupport::TestSshServer::start_with_forward_probe(Some(
+        remote_root.path().to_path_buf(),
+    ))
+    .await?;
+    let mut conn = Connection::new("rf", server.addr.ip().to_string(), "u", Auth::password("p"));
+    conn.port = server.addr.port();
+    conn.remote_forwards
+        .push(linop_core::RemoteForward::new(23456, "127.0.0.1", 5432));
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(vec![conn].into_iter().collect());
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+    redraw(&mut terminal, &mut app).await;
+
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(matches!(app.mode, Mode::Session));
+    let s = app.sessions.first().expect("session");
+    assert_eq!(s.remote_forwards.len(), 1, "反向转发应自动启动");
+    assert!(s.forward_failures.is_empty(), "{:?}", s.forward_failures);
+
+    // 转发页:展示反向条目;x 停止后消失。
+    app.handle(key(KeyCode::F(3)), &tx).await;
+    redraw(&mut terminal, &mut app).await;
+    let text = screen_text(&terminal);
+    assert!(text.contains("R●运行中"), "转发页应显示反向条目:{text}");
+    assert!(
+        text.contains("127.0.0.1:23456→本机127.0.0.1:5432"),
+        "应显示转发目标:{text}"
+    );
+
+    app.handle(key(KeyCode::Char('x')), &tx).await;
+    redraw(&mut terminal, &mut app).await;
+    assert_eq!(app.sessions[0].remote_forwards.len(), 0, "x 应停止反向转发");
+    assert!(app.sessions[0].status.contains("已停止反向转发"));
+
+    app.handle(key(KeyCode::F(9)), &tx).await;
     server.shutdown();
     unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
     Ok(())

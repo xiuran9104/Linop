@@ -70,8 +70,9 @@ pub struct Connected {
     pub reader: ShellReader,
     pub sftp: Sftp,
     pub forwards: Vec<LocalForward>,
-    /// 启动失败的转发规则及原因(不致命,进转发页与状态栏)。
-    pub forward_errors: Vec<(linop_core::PortForward, String)>,
+    pub remote_forwards: Vec<linop_ssh::RemoteForward>,
+    /// 启动失败的转发及原因(不致命,进转发页与状态栏)。
+    pub forward_errors: Vec<String>,
 }
 
 /// 模态对话框动作:决定 Enter 时执行什么、是否需要文本输入。
@@ -92,6 +93,8 @@ pub enum DialogAction {
     },
     /// 在 picker 上就地输入密码后连接(仅本次会话生效,不落盘)。
     ConnectPassword(Box<Connection>),
+    /// 在 picker 上就地输入私钥口令后连接(仅本次会话生效,不落盘)。
+    ConnectPassphrase(Box<Connection>),
     /// 删除一个连接 profile(picker 上执行,带确认)。
     DeleteProfile(String),
 }
@@ -276,8 +279,11 @@ pub struct SessionState {
     pub writer: ShellWriter,
     pub sftp: Sftp,
     pub forwards: Vec<LocalForward>,
-    /// 启动失败的转发规则及原因。
-    pub forward_failures: Vec<(linop_core::PortForward, String)>,
+    pub remote_forwards: Vec<linop_ssh::RemoteForward>,
+    /// 启动失败的转发及原因。
+    pub forward_failures: Vec<String>,
+    /// 转发页选中项(本地+反向统一序)。
+    pub forwards_sel: usize,
     pub term: Terminal,
     pub tab: Tab,
     pub files: FilesState,
@@ -449,9 +455,12 @@ impl App {
                     let profile = s.profile.clone();
                     let cols = s.term.cols();
                     let rows = s.term.rows();
-                    // 旧连接已死:停掉其转发,清掉传输状态。
+                    // 旧连接已死:停掉两类转发,清掉传输状态。
                     for forward in s.forwards.drain(..) {
                         forward.stop();
+                    }
+                    for remote in s.remote_forwards.drain(..) {
+                        let _ = tokio::time::timeout(Duration::from_secs(2), remote.stop()).await;
                     }
                     s.active_transfer = None;
                     s.reconnect = Some(ReconnectState::default());
@@ -574,6 +583,17 @@ impl App {
                                 prompt: format!("输入 {} 的密码:", linop_core::endpoint(&conn)),
                                 input: String::new(),
                                 action: DialogAction::ConnectPassword(Box::new(conn)),
+                                error: String::new(),
+                                status: String::new(),
+                                secret: true,
+                            });
+                        } else if linop_ssh::key_needs_passphrase(&conn.auth) {
+                            // 加密私钥未配置口令:就地弹掩码输入框。
+                            self.dialog = Some(Dialog {
+                                title: format!("连接 {}", conn.name),
+                                prompt: "私钥需要口令:".to_string(),
+                                input: String::new(),
+                                action: DialogAction::ConnectPassphrase(Box::new(conn)),
                                 error: String::new(),
                                 status: String::new(),
                                 secret: true,
@@ -762,7 +782,7 @@ impl App {
             }
             return;
         }
-        // 密码连接对话框不经过 execute_dialog(它作用于会话,而此时在 picker)。
+        // 密码/私钥口令连接对话框不经过 execute_dialog(它作用于会话,而此时在 picker)。
         if let (KeyCode::Enter, DialogAction::ConnectPassword(conn)) = (key.code, &dialog.action) {
             if dialog.input.is_empty() {
                 dialog.error = "密码不能为空,Esc 取消".into();
@@ -770,6 +790,20 @@ impl App {
             } else {
                 let mut conn = (**conn).clone();
                 conn.auth = Auth::password(dialog.input.clone());
+                self.connect(&conn, tx);
+            }
+            return;
+        }
+        if let (KeyCode::Enter, DialogAction::ConnectPassphrase(conn)) = (key.code, &dialog.action)
+        {
+            if dialog.input.is_empty() {
+                dialog.error = "口令不能为空,Esc 取消".into();
+                self.dialog = Some(dialog);
+            } else {
+                let mut conn = (**conn).clone();
+                if let Auth::Key { path, .. } = &conn.auth {
+                    conn.auth = Auth::key_with_passphrase(path.clone(), dialog.input.clone());
+                }
                 self.connect(&conn, tx);
             }
             return;
@@ -867,7 +901,9 @@ impl App {
                 s.refresh_remote().await;
                 dialog.status = format!("已删除远端 {}", entry.name);
             }
-            DialogAction::ConnectPassword(_) | DialogAction::DeleteProfile(_) => {
+            DialogAction::ConnectPassword(_)
+            | DialogAction::ConnectPassphrase(_)
+            | DialogAction::DeleteProfile(_) => {
                 // 已在 handle_dialog_key 里先行处理,不会走到这里。
                 return Err("内部错误:picker 对话框不应进入会话执行".to_string());
             }
@@ -989,7 +1025,43 @@ impl App {
                 }
                 _ => {}
             },
-            Tab::Forwards => {}
+            Tab::Forwards => {
+                let total = s.forwards.len() + s.remote_forwards.len();
+                match key.code {
+                    KeyCode::Up | KeyCode::Char('k') if total > 0 => {
+                        s.forwards_sel = (s.forwards_sel + total - 1) % total;
+                    }
+                    KeyCode::Down | KeyCode::Char('j') if total > 0 => {
+                        s.forwards_sel = (s.forwards_sel + 1) % total;
+                    }
+                    // 停止选中的转发(本地或反向)。
+                    KeyCode::Char('x') => {
+                        let idx = s.forwards_sel;
+                        if idx < s.forwards.len() {
+                            let forward = s.forwards.remove(idx);
+                            let label = forward.to_string();
+                            forward.stop();
+                            s.status = format!("已停止本地转发 {label}");
+                        } else if idx < total {
+                            let remote_idx = idx - s.forwards.len();
+                            let remote = s.remote_forwards.remove(remote_idx);
+                            let label = remote.to_string();
+                            match tokio::time::timeout(
+                                Duration::from_secs(WRITE_TIMEOUT_SECS),
+                                remote.stop(),
+                            )
+                            .await
+                            {
+                                Ok(()) => s.status = format!("已停止反向转发 {label}"),
+                                Err(_) => s.status = format!("停止反向转发超时:{label}"),
+                            }
+                        }
+                        let total = s.forwards.len() + s.remote_forwards.len();
+                        s.forwards_sel = s.forwards_sel.min(total.saturating_sub(1));
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 
@@ -1003,6 +1075,9 @@ impl App {
                 if !matches!(self.mode, Mode::Connecting { .. }) {
                     // 用户已取消:迟到的连接结果直接回收。
                     let conn = *boxed;
+                    for remote in conn.remote_forwards {
+                        let _ = tokio::time::timeout(Duration::from_secs(2), remote.stop()).await;
+                    }
                     teardown_parts(conn.ssh, conn.sftp, conn.forwards).await;
                     return;
                 }
@@ -1013,6 +1088,7 @@ impl App {
                     reader,
                     sftp,
                     forwards,
+                    remote_forwards,
                     forward_errors,
                 } = *boxed;
                 self.next_sid += 1;
@@ -1026,15 +1102,15 @@ impl App {
                     };
                 let local_cwd = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
                 let local_entries = list_local(&local_cwd);
-                let forward_note = (!forward_errors.is_empty()).then(|| {
-                    forward_errors
-                        .iter()
-                        .map(|(_, err)| err.clone())
-                        .collect::<Vec<_>>()
-                        .join(";")
-                });
+                let forward_note = (!forward_errors.is_empty()).then(|| forward_errors.join(";"));
                 let status = warn.or(forward_note).unwrap_or_else(|| {
-                    format!("已连接 {},自动转发 {} 条", profile.name, forwards.len())
+                    format!(
+                        "已连接 {},转发 {} 条(本地 {} + 反向 {})",
+                        profile.name,
+                        forwards.len() + remote_forwards.len(),
+                        forwards.len(),
+                        remote_forwards.len()
+                    )
                 });
                 let (cols, rows) = self.shell_area.unwrap_or((80, 24));
                 self.sessions.push(SessionState {
@@ -1046,7 +1122,9 @@ impl App {
                     writer,
                     sftp,
                     forwards,
+                    remote_forwards,
                     forward_failures: forward_errors,
+                    forwards_sel: 0,
                     term: Terminal::new(cols, rows),
                     tab: Tab::Shell,
                     active_transfer: None,
@@ -1115,6 +1193,7 @@ impl App {
             reader,
             sftp,
             forwards,
+            remote_forwards,
             forward_errors,
             ..
         } = *conn;
@@ -1130,6 +1209,7 @@ impl App {
         s.writer = writer;
         s.sftp = sftp;
         s.forwards = forwards;
+        s.remote_forwards = remote_forwards;
         s.reconnect = None;
         s.term
             .feed("\r\n\x1b[32m—— 已重连 ——\x1b[0m\r\n".as_bytes());
@@ -1411,6 +1491,10 @@ pub fn list_local(path: &Path) -> Vec<Entry> {
 /// 会话资源回收:停转发、关 SFTP、断开连接。
 async fn teardown_session(s: SessionState) {
     s.reader_task.abort();
+    for remote in s.remote_forwards {
+        let _ =
+            tokio::time::timeout(Duration::from_secs(TEARDOWN_TIMEOUT_SECS), remote.stop()).await;
+    }
     teardown_parts(s.ssh, s.sftp, s.forwards).await;
 }
 
@@ -1547,16 +1631,23 @@ async fn connect(profile: Connection, cols: u16, rows: u16) -> Result<Connected,
         .await
         .map_err(|e| format!("打开 SFTP 失败:{e}"))?;
     let mut forwards = Vec::new();
+    let mut remote_forwards = Vec::new();
     let mut forward_errors = Vec::new();
     for fwd in &profile.forwards {
         match ssh.open_local_forward(fwd).await {
             Ok(running) => forwards.push(running),
-            Err(e) => forward_errors.push((
-                fwd.clone(),
-                format!(
-                    "转发 127.0.0.1:{} → {}:{} 启动失败:{e}",
-                    fwd.local_port, fwd.remote_host, fwd.remote_port
-                ),
+            Err(e) => forward_errors.push(format!(
+                "转发 127.0.0.1:{} → {}:{} 启动失败:{e}",
+                fwd.local_port, fwd.remote_host, fwd.remote_port
+            )),
+        }
+    }
+    for rule in &profile.remote_forwards {
+        match ssh.open_remote_forward(rule).await {
+            Ok(running) => remote_forwards.push(running),
+            Err(e) => forward_errors.push(format!(
+                "反向转发 {}:{} → 本机 {}:{} 启动失败:{e}",
+                rule.bind_host, rule.bind_port, rule.target_host, rule.target_port
             )),
         }
     }
@@ -1567,6 +1658,7 @@ async fn connect(profile: Connection, cols: u16, rows: u16) -> Result<Connected,
         reader,
         sftp,
         forwards,
+        remote_forwards,
         forward_errors,
     })
 }

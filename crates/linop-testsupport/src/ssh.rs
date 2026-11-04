@@ -9,7 +9,7 @@ use std::time::Duration;
 use russh::keys::{PrivateKey, PublicKey};
 use russh::server::{Auth, ChannelOpenHandle, Msg, Session};
 use russh::{Channel, ChannelId};
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
 
 use crate::sftp::FsSftpHandler;
@@ -28,6 +28,9 @@ struct TestSession {
     sftp_channels: Arc<Mutex<HashSet<ChannelId>>>,
     /// SFTP 文件系统根目录;设置后启用 SFTP 子系统。
     sftp_root: Option<PathBuf>,
+    /// 反向转发探针出口:客户端请求 tcpip_forward 时,服务端模拟一条
+    /// 到达连接(写 "rf-probe"),把经客户端桥接回显的结果发到这里。
+    forward_probe: Option<Arc<tokio::sync::watch::Sender<Vec<u8>>>>,
     /// 是否把会话通道收到的数据回显回去(shell echo 测试)。
     echo_session_data: bool,
 }
@@ -128,6 +131,46 @@ impl russh::server::Handler for TestSession {
         Ok(())
     }
 
+    async fn tcpip_forward(
+        &mut self,
+        address: &str,
+        port: &mut u32,
+        session: &mut Session,
+    ) -> Result<bool, Self::Error> {
+        let Some(probe_tx) = self.forward_probe.clone() else {
+            // 未启用探针:直接允许转发请求(测试服务器宽松策略)。
+            return Ok(true);
+        };
+        // 允许转发,并在独立任务里模拟"有人连上了远端端口":向客户端发起
+        // forwarded-tcpip 通道,写探针并等待客户端桥到本地目标后的回显。
+        // 不能在回调内等待通道打开——事件循环正被本回调占用,会死锁。
+        let handle = session.handle();
+        let addr = address.to_string();
+        let port = *port;
+        tokio::spawn(async move {
+            let channel = match handle
+                .channel_open_forwarded_tcpip(&addr, port, "probe", 0)
+                .await
+            {
+                Ok(c) => c,
+                Err(_) => return,
+            };
+            let mut stream = channel.into_stream();
+            let _ = stream.write_all(b"rf-probe").await;
+            let mut buf = vec![0u8; 64];
+            let echoed =
+                match tokio::time::timeout(Duration::from_secs(3), stream.read(&mut buf)).await {
+                    Ok(Ok(n)) if n > 0 => {
+                        buf.truncate(n);
+                        buf
+                    }
+                    _ => Vec::new(),
+                };
+            let _ = probe_tx.send(echoed);
+        });
+        Ok(true)
+    }
+
     async fn channel_open_direct_tcpip(
         &mut self,
         channel: Channel<Msg>,
@@ -175,6 +218,9 @@ pub struct ServerOptions {
     /// 仅接受这些指纹的公钥;`None` 接受任意公钥。
     pub allowed_fingerprints: Option<Vec<String>>,
     pub echo_session_data: bool,
+    /// 启用后:客户端的 tcpip_forward 请求被接受,并立即发起探针连接
+    /// (见 [`TestSshServer::start_with_forward_probe`])。
+    pub forward_probe: Option<Arc<tokio::sync::watch::Sender<Vec<u8>>>>,
 }
 
 impl TestSshServer {
@@ -223,6 +269,7 @@ impl TestSshServer {
                     sftp_channels: sftp_channels.clone(),
                     sftp_root: opts.sftp_root.clone(),
                     echo_session_data: opts.echo_session_data,
+                    forward_probe: opts.forward_probe.clone(),
                 };
                 if let Ok(running) =
                     russh::server::run_stream(config.clone(), stream, handler).await
@@ -271,6 +318,22 @@ impl TestSshServer {
             ..Default::default()
         })
         .await
+    }
+
+    /// 带反向转发探针的服务器:客户端请求反向转发时,服务端模拟一条到达
+    /// 连接并尝试回显;结果通过 watch 读取(空 Vec 表示探针失败)。
+    /// `sftp_root` 可选:同时启用 SFTP 子系统。
+    pub async fn start_with_forward_probe(
+        sftp_root: Option<PathBuf>,
+    ) -> anyhow::Result<(Self, tokio::sync::watch::Receiver<Vec<u8>>)> {
+        let (tx, rx) = tokio::sync::watch::channel(Vec::new());
+        let server = Self::start(ServerOptions {
+            forward_probe: Some(Arc::new(tx)),
+            sftp_root,
+            ..Default::default()
+        })
+        .await?;
+        Ok((server, rx))
     }
 
     pub fn public_key(&self) -> PublicKey {

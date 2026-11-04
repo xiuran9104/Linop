@@ -131,3 +131,52 @@ async fn tofu_known_hosts_detects_mismatch() -> anyhow::Result<()> {
     assert!(err.is_err(), "host key mismatch must fail the connection");
     Ok(())
 }
+
+#[tokio::test]
+async fn remote_forward_tunnel_reaches_local_target() -> anyhow::Result<()> {
+    // 本地 echo 目标:反向通道的流量应经客户端桥回这里。
+    let echo_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
+    let echo_addr = echo_listener.local_addr()?;
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut sock, _)) = echo_listener.accept().await else {
+                break;
+            };
+            tokio::spawn(async move {
+                let (mut r, mut w) = sock.split();
+                let _ = tokio::io::copy(&mut r, &mut w).await;
+            });
+        }
+    });
+
+    let (server, mut probe) =
+        linop_testsupport::TestSshServer::start_with_forward_probe(None).await?;
+    let profile = conn_to(&server.addr, Auth::password("x"));
+    let ssh = Session::connect_profile(&profile, KnownHostsPolicy::AcceptAll).await?;
+
+    // 请求远端监听 23456;探针应把 "rf-probe" 桥到本地 echo 再回来。
+    let rule = linop_core::RemoteForward::new(23456, echo_addr.ip().to_string(), echo_addr.port());
+    let fwd = ssh.open_remote_forward(&rule).await?;
+    assert_eq!(fwd.bind_port, 23456);
+    assert_eq!(
+        fwd.to_string(),
+        format!("127.0.0.1:23456 → 本机 127.0.0.1:{}", echo_addr.port())
+    );
+
+    let mut echoed = Vec::new();
+    for _ in 0..20 {
+        if probe.changed().await.is_ok() && !probe.borrow().is_empty() {
+            echoed = probe.borrow().clone();
+            break;
+        }
+    }
+    assert_eq!(
+        echoed,
+        b"rf-probe".to_vec(),
+        "探针应经客户端桥接到本地目标并回显"
+    );
+
+    fwd.stop().await;
+    ssh.disconnect().await?;
+    Ok(())
+}
