@@ -12,6 +12,7 @@ use std::time::Duration;
 use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use linop_cast::{Cast, CastWriter};
 use linop_core::{Auth, Connection, Registry};
+use linop_db::{QueryResult, SqliteDb, StmtOutcome};
 use linop_monitor::ResourceSample;
 use linop_sftp::{Entry, Sftp};
 use linop_ssh::{KnownHosts, KnownHostsPolicy, LocalForward, Session, ShellReader, ShellWriter};
@@ -109,6 +110,10 @@ pub enum DialogAction {
     ImportProfiles(Vec<Connection>),
     /// 回放指定 .cast 文件(picker 上执行,输入路径)。
     OpenReplay,
+    /// 在数据库浏览中执行 SQL(输入框,Enter 执行)。
+    RunSql,
+    /// 删除一个数据库 profile(picker 上执行,带确认)。
+    DeleteDbProfile(String),
 }
 
 impl DialogAction {
@@ -119,7 +124,7 @@ impl DialogAction {
             DialogAction::DeleteRemote { .. } | DialogAction::DeleteLocal { .. }
         ) && !matches!(
             self,
-            DialogAction::ImportProfiles(_) | DialogAction::OpenReplay
+            DialogAction::ImportProfiles(_) | DialogAction::DeleteDbProfile(_)
         )
     }
 }
@@ -234,6 +239,7 @@ impl ConnectionForm {
 }
 
 /// 顶层模式。
+#[derive(Debug, Clone, PartialEq)]
 pub enum Mode {
     /// 连接列表。
     Picker,
@@ -243,6 +249,8 @@ pub enum Mode {
     Session,
     /// 回放一段 .cast 录制(不属于任何会话)。
     Replay,
+    /// 浏览一个数据库(SQLite):表列表 / 数据网格 / SQL 结果。
+    DbBrowse,
 }
 
 /// 会话内标签页。
@@ -343,6 +351,38 @@ pub struct SessionState {
     pub status: String,
 }
 
+/// 数据库浏览状态:连接 + 当前视图(表列表或数据网格)。
+pub struct DbBrowser {
+    pub profile: linop_core::DbProfile,
+    /// 连接共享给阻塞线程执行 SQL(Mutex:rusqlite Connection 非.Sync()。
+    db: std::sync::Arc<std::sync::Mutex<SqliteDb>>,
+    pub tables: Vec<linop_db::TableInfo>,
+    pub view: DbView,
+    /// 表列表选中行。
+    pub sel: usize,
+    /// 底部状态消息。
+    pub status: String,
+}
+
+impl DbBrowser {
+    /// 克隆共享句柄给阻塞线程。
+    fn db_handle(&self) -> std::sync::Arc<std::sync::Mutex<SqliteDb>> {
+        self.db.clone()
+    }
+}
+
+/// 数据库当前展示的视图。
+pub enum DbView {
+    /// 表/视图列表。
+    Tables,
+    /// 数据网格:来源(表名或 SQL)与结果。
+    Data {
+        title: String,
+        result: QueryResult,
+        page: usize,
+    },
+}
+
 /// 进行中的录制:写入器与目标文件。
 pub struct Recording {
     writer: CastWriter,
@@ -392,6 +432,8 @@ impl ActiveTransfer {
 
 pub struct App {
     pub registry: Registry,
+    /// 数据库 profile 注册表(databases.toml)。
+    pub db_registry: linop_core::DbRegistry,
     pub picker_sel: usize,
     /// picker 页全局提示(错误等)。
     pub notice: String,
@@ -408,12 +450,15 @@ pub struct App {
     pub shell_area: Option<(u16, u16)>,
     /// 打开中的录制回放(与 Mode::Replay 对应)。
     pub replay: Option<ReplayState>,
+    /// 打开中的数据库浏览(与 Mode::DbBrowse 对应)。
+    pub db: Option<DbBrowser>,
 }
 
 impl App {
     pub fn new(registry: Registry) -> Self {
         Self {
             registry,
+            db_registry: linop_core::DbRegistry::new(),
             picker_sel: 0,
             notice: String::new(),
             mode: Mode::Picker,
@@ -424,6 +469,7 @@ impl App {
             form: None,
             shell_area: None,
             replay: None,
+            db: None,
         }
     }
 
@@ -433,7 +479,15 @@ impl App {
 
     /// picker 统一选择域总长:在线会话数 + 连接 profile 数。
     fn picker_len(&self) -> usize {
-        self.sessions.len() + self.connections().len()
+        self.sessions.len() + self.connections().len() + self.db_registry.profiles().len()
+    }
+
+    /// picker 光标当前落到的数据库 profile(仅第三段有效)。
+    fn picked_db(&self) -> Option<&linop_core::DbProfile> {
+        let idx = self
+            .picker_sel
+            .checked_sub(self.sessions.len() + self.connections().len())?;
+        self.db_registry.profiles().get(idx)
     }
 
     fn move_picker(&mut self, delta: i32) {
@@ -666,16 +720,28 @@ impl App {
                         let idx = self.picker_sel;
                         self.disconnect_at(idx).await;
                         self.picker_sel = self.picker_sel.min(self.picker_len().saturating_sub(1));
-                    } else if let Some(conn) = self
-                        .connections()
-                        .get(self.picker_sel - self.sessions.len())
-                        .cloned()
-                    {
-                        // 连接行:删除配置(确认)。
+                    } else if self.picker_sel < self.sessions.len() + self.connections().len() {
+                        if let Some(conn) = self
+                            .connections()
+                            .get(self.picker_sel - self.sessions.len())
+                            .cloned()
+                        {
+                            // 连接行:删除配置(确认)。
+                            self.dialog = Some(new_dialog(
+                                "删除连接",
+                                &format!("删除连接配置 {}?Enter 确认 / Esc 取消", conn.name),
+                                DialogAction::DeleteProfile(conn.name.clone()),
+                            ));
+                        }
+                    } else if let Some(db) = self.picked_db().cloned() {
+                        // 数据库行:删除 profile(确认,不动数据库文件)。
                         self.dialog = Some(new_dialog(
-                            "删除连接",
-                            &format!("删除连接配置 {}?Enter 确认 / Esc 取消", conn.name),
-                            DialogAction::DeleteProfile(conn.name.clone()),
+                            "删除数据库配置",
+                            &format!(
+                                "移除数据库配置 {}?(仅删条目,不动文件)Enter 确认 / Esc 取消",
+                                db.name
+                            ),
+                            DialogAction::DeleteDbProfile(db.name.clone()),
                         ));
                     }
                 }
@@ -730,6 +796,13 @@ impl App {
                     if self.picker_sel < self.sessions.len() {
                         self.active = self.picker_sel;
                         self.mode = Mode::Session;
+                        return true;
+                    }
+                    // 数据库行:打开浏览模式。
+                    if self.picker_sel >= self.sessions.len() + self.connections().len() {
+                        if let Some(db) = self.picked_db().cloned() {
+                            self.open_db(db).await;
+                        }
                         return true;
                     }
                     let profile_idx = self.picker_sel - self.sessions.len();
@@ -796,14 +869,20 @@ impl App {
                         }
                     }
                 }
-                KeyCode::Char('r') => match Registry::load_default() {
-                    Ok(reg) => {
-                        self.registry = reg;
-                        self.picker_sel = 0;
-                        self.notice = "已重新加载连接列表".into();
+                KeyCode::Char('r') => {
+                    let db = linop_core::DbRegistry::load_default();
+                    match (Registry::load_default(), db) {
+                        (Ok(reg), Ok(dbs)) => {
+                            self.registry = reg;
+                            self.db_registry = dbs;
+                            self.picker_sel = 0;
+                            self.notice = "已重新加载连接与数据库列表".into();
+                        }
+                        (Err(e), _) | (_, Err(e)) => {
+                            self.notice = format!("重新加载失败:{e}");
+                        }
                     }
-                    Err(e) => self.notice = format!("重新加载失败:{e}"),
-                },
+                }
                 _ => {}
             },
             Mode::Connecting { .. } => {
@@ -811,6 +890,7 @@ impl App {
                 self.mode = Mode::Picker;
             }
             Mode::Replay => self.replay_key(key, tx).await,
+            Mode::DbBrowse => self.db_key(key, tx).await,
             Mode::Session => {
                 if key.modifiers.contains(KeyModifiers::CONTROL)
                     && matches!(key.code, KeyCode::Char('q') | KeyCode::Char('Q'))
@@ -1037,6 +1117,43 @@ impl App {
             }
             return;
         }
+        // 删除数据库 profile:作用于 picker。
+        if let (KeyCode::Enter, DialogAction::DeleteDbProfile(name)) = (&key.code, &dialog.action) {
+            let name = name.clone();
+            match self.db_registry.remove(&name) {
+                Ok(_) => {
+                    match self.db_registry.save(linop_core::default_databases_path()) {
+                        Ok(()) => self.notice = format!("已移除数据库配置 {name}(文件未动)"),
+                        Err(e) => self.notice = format!("移除失败(未保存):{e}"),
+                    }
+                    self.picker_sel = self.picker_sel.min(self.picker_len().saturating_sub(1));
+                }
+                Err(e) => self.notice = format!("移除失败:{e}"),
+            }
+            return;
+        }
+        // SQL 对话框:在数据库浏览模式内执行。
+        if let (KeyCode::Enter, DialogAction::RunSql) = (&key.code, &dialog.action) {
+            let sql = dialog.input.trim().to_string();
+            if sql.is_empty() {
+                dialog.error = "SQL 不能为空,Esc 取消".into();
+                self.dialog = Some(dialog);
+            } else if self.mode == Mode::DbBrowse && self.db.is_some() {
+                let outcome = self.run_sql_blocking(&sql).await;
+                // 错误保留对话框就地显示;成功关闭对话框并进入结果网格。
+                match &outcome {
+                    Err(msg) => {
+                        dialog.error = msg.clone();
+                        self.dialog = Some(dialog);
+                    }
+                    Ok(_) => apply_query(self, sql, outcome),
+                }
+            } else {
+                dialog.error = "数据库未打开(内部状态异常)".into();
+                self.dialog = Some(dialog);
+            }
+            return;
+        }
         // 回放对话框:读取并解析 cast,成功即进入回放模式。
         if let (KeyCode::Enter, DialogAction::OpenReplay) = (&key.code, &dialog.action) {
             let path = PathBuf::from(dialog.input.trim());
@@ -1161,7 +1278,9 @@ impl App {
             | DialogAction::ConnectPassphrase(_)
             | DialogAction::DeleteProfile(_)
             | DialogAction::ImportProfiles(_)
-            | DialogAction::OpenReplay => {
+            | DialogAction::OpenReplay
+            | DialogAction::RunSql
+            | DialogAction::DeleteDbProfile(_) => {
                 // 已在 handle_dialog_key 里先行处理,不会走到这里。
                 return Err("内部错误:picker 对话框不应进入会话执行".to_string());
             }
@@ -1451,6 +1570,156 @@ impl App {
                     Err(e) => s.status = format!("开始录制失败:{e}"),
                 }
             }
+        }
+    }
+
+    /// 打开数据库浏览:加载数据库并列出表;失败停留在列表并提示。
+    async fn open_db(&mut self, profile: linop_core::DbProfile) {
+        let path = profile.path.clone();
+        let task = tokio::task::spawn_blocking(move || {
+            let db = SqliteDb::open(&path)?;
+            let tables = db.tables()?;
+            Ok::<_, linop_db::DbError>((db, tables))
+        });
+        let outcome =
+            match tokio::time::timeout(Duration::from_secs(SFTP_META_TIMEOUT_SECS), task).await {
+                Ok(Ok(work)) => work,
+                Ok(Err(join)) => Err(linop_db::DbError::Query(format!("后台任务失败:{join}"))),
+                Err(_) => Err(linop_db::DbError::Query("打开数据库超时".into())),
+            };
+        match outcome {
+            Ok((db, tables)) => {
+                let name = profile.name.clone();
+                self.db = Some(DbBrowser {
+                    profile,
+                    db: std::sync::Arc::new(std::sync::Mutex::new(db)),
+                    tables,
+                    view: DbView::Tables,
+                    sel: 0,
+                    status: format!("已打开 {name}(Enter 看数据 · s 执行 SQL)"),
+                });
+                self.mode = Mode::DbBrowse;
+            }
+            Err(e) => self.notice = format!("打开数据库失败:{e}"),
+        }
+    }
+
+    /// 数据库浏览按键:表列表与数据网格两个视图分别处理。
+    async fn db_key(&mut self, key: KeyEvent, _tx: &mpsc::UnboundedSender<AppEvent>) {
+        if self.db.is_none() {
+            self.mode = Mode::Picker;
+            return;
+        }
+        let in_tables = matches!(self.db.as_ref().unwrap().view, DbView::Tables);
+        if in_tables {
+            match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => {
+                    self.db = None;
+                    self.mode = Mode::Picker;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if let Some(db) = self.db.as_mut()
+                        && !db.tables.is_empty()
+                    {
+                        let len = db.tables.len();
+                        db.sel = (db.sel + len - 1) % len;
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if let Some(db) = self.db.as_mut()
+                        && !db.tables.is_empty()
+                    {
+                        let len = db.tables.len();
+                        db.sel = (db.sel + 1) % len;
+                    }
+                }
+                // 刷新表列表(DDL 后结构可能变化)。
+                KeyCode::Char('r') => {
+                    if let Some(db) = self.db.as_mut() {
+                        let status = refresh_tables(db);
+                        db.status = status;
+                    }
+                }
+                // 进入表数据网格(SELECT * 该表)。
+                KeyCode::Enter => {
+                    let sql = self.db.as_ref().and_then(|db| {
+                        db.tables
+                            .get(db.sel)
+                            .map(|t| format!("SELECT * FROM \"{}\"", t.name.replace('"', "\"\"")))
+                    });
+                    let Some(sql) = sql else { return };
+                    let outcome = self.run_sql_blocking(&sql).await;
+                    apply_query(self, sql, outcome);
+                }
+                // 打开 SQL 输入框。
+                KeyCode::Char('s') => {
+                    self.dialog = Some(Dialog {
+                        title: "执行 SQL".to_string(),
+                        prompt: "SQL(单条语句,Enter 执行):".to_string(),
+                        input: String::new(),
+                        action: DialogAction::RunSql,
+                        error: String::new(),
+                        status: String::new(),
+                        secret: false,
+                    });
+                }
+                _ => {}
+            }
+        } else {
+            match key.code {
+                // 返回表列表。
+                KeyCode::Backspace | KeyCode::Esc | KeyCode::Char('q') => {
+                    if let Some(db) = self.db.as_mut() {
+                        db.view = DbView::Tables;
+                    }
+                }
+                // 重新执行当前视图来源(title 即原 SQL)。
+                KeyCode::Char('r') => {
+                    let sql = match self.db.as_ref().unwrap().view {
+                        DbView::Data { ref title, .. } => title.clone(),
+                        DbView::Tables => return,
+                    };
+                    let outcome = self.run_sql_blocking(&sql).await;
+                    apply_query(self, sql, outcome);
+                }
+                // 翻页。
+                KeyCode::Left | KeyCode::PageUp | KeyCode::Right | KeyCode::PageDown => {
+                    if let Some(db) = self.db.as_mut()
+                        && let DbView::Data { result, page, .. } = &mut db.view
+                    {
+                        let page_size = 20usize;
+                        let total_pages = result.rows.len().div_ceil(page_size).max(1);
+                        match key.code {
+                            KeyCode::Left | KeyCode::PageUp => {
+                                *page = page.saturating_sub(1);
+                            }
+                            _ => {
+                                if *page + 1 < total_pages {
+                                    *page += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// 在阻塞线程上执行 SQL(超时上限防大查询冻结事件循环)。
+    async fn run_sql_blocking(&mut self, sql: &str) -> std::result::Result<StmtOutcome, String> {
+        let handle = self.db.as_ref().expect("db_key 保证已打开").db_handle();
+        let sql = sql.to_string();
+        let task = tokio::task::spawn_blocking(move || {
+            handle
+                .lock()
+                .map_err(|_| linop_db::DbError::Query("数据库连接锁中毒".into()))
+                .and_then(|db| db.run(&sql))
+        });
+        match tokio::time::timeout(Duration::from_secs(SFTP_META_TIMEOUT_SECS), task).await {
+            Ok(Ok(outcome)) => outcome.map_err(|e| e.to_string()),
+            Ok(Err(join)) => Err(format!("后台任务失败:{join}")),
+            Err(_) => Err("SQL 执行超时".to_string()),
         }
     }
 
@@ -1789,6 +2058,52 @@ impl SessionState {
         let source = self.files.local_cwd.join(&entry.name);
         let remote_abs = remote_absolute(self.sftp.cwd(), &entry.name);
         self.spawn_transfer("上传", entry.name, remote_abs, source, true, tx);
+    }
+}
+
+/// 刷新数据库表列表(DDL 后)。
+fn refresh_tables(db: &mut DbBrowser) -> String {
+    let handle = db.db_handle();
+    let tables = handle
+        .lock()
+        .map_err(|e| e.to_string())
+        .and_then(|db| db.tables().map_err(|e| e.to_string()));
+    match tables {
+        Ok(tables) => {
+            let count = tables.len();
+            db.tables = tables;
+            db.sel = db.sel.min(count.saturating_sub(1));
+            format!("已刷新:{count} 张表/视图")
+        }
+        Err(e) => format!("刷新失败:{e}"),
+    }
+}
+
+/// 应用 SQL 结果:Rows → 数据网格;Exec → 状态栏消息。
+fn apply_query(app: &mut App, title: String, outcome: std::result::Result<StmtOutcome, String>) {
+    let Some(db) = app.db.as_mut() else { return };
+    match outcome {
+        Ok(StmtOutcome::Rows(result)) => {
+            let rows = result.rows.len();
+            let truncated = result.truncated;
+            db.view = DbView::Data {
+                title,
+                result,
+                page: 0,
+            };
+            db.status = if truncated {
+                format!("{rows}+ 行(已达行数上限)")
+            } else {
+                format!("{rows} 行")
+            };
+        }
+        Ok(StmtOutcome::Exec(exec)) => {
+            db.status = format!("影响 {} 行", exec.rows_affected);
+            refresh_tables(db);
+        }
+        Err(msg) => {
+            db.status = format!("SQL 失败:{msg}");
+        }
     }
 }
 

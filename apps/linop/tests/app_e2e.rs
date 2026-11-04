@@ -1207,3 +1207,119 @@ async fn record_session_then_replay() -> anyhow::Result<()> {
     assert!(app.replay.is_none());
     Ok(())
 }
+
+#[tokio::test]
+async fn sqlite_browse_and_sql() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+
+    // 建一个真实的 SQLite 库:两张表 + 一个视图 + 数据。
+    let db_dir = tempfile::tempdir()?;
+    let db_path = db_dir.path().join("app.db");
+    {
+        let conn = rusqlite::Connection::open(&db_path)?;
+        conn.execute_batch(
+            "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT);
+             CREATE TABLE logs (msg TEXT);
+             CREATE VIEW v_users AS SELECT name FROM users;
+             INSERT INTO users (name) VALUES ('alice'), ('bob');
+             INSERT INTO logs (msg) VALUES ('boot');",
+        )?;
+    }
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let registry: linop_core::Registry = Vec::new().into_iter().collect();
+    let mut app = app_mod::App::new(registry);
+    app.db_registry = vec![linop_core::DbProfile::sqlite("local", &db_path)]
+        .into_iter()
+        .collect();
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+
+    // picker:数据库行可见,Enter 进入浏览。
+    redraw(&mut terminal, &mut app).await;
+    assert!(
+        screen_text(&terminal).contains("local"),
+        "picker 应显示数据库行"
+    );
+    assert!(screen_text(&terminal).contains("sqlite"));
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(3),
+    )
+    .await;
+    assert!(matches!(app.mode, Mode::DbBrowse), "应进入数据库浏览");
+
+    let text = screen_text(&terminal);
+    assert!(text.contains("users"), "表列表应含 users:{text}");
+    assert!(text.contains("v_users"), "表列表应含视图:{text}");
+    assert!(text.contains("logs"));
+
+    // 选中 users(logs 排前,↓ 移动)→ Enter 查看数据。
+    app.handle(key(KeyCode::Down), &tx).await; // logs → users
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(3),
+    )
+    .await;
+    let text = screen_text(&terminal);
+    assert!(
+        text.contains("alice") && text.contains("bob"),
+        "数据网格应显示行:{text}"
+    );
+    assert!(
+        text.contains("id") && text.contains("name"),
+        "应有列头:{text}"
+    );
+
+    // Backspace 返回表列表;s 打开 SQL 输入,输入查询并执行。
+    app.handle(key(KeyCode::Backspace), &tx).await;
+    app.handle(key(KeyCode::Char('s')), &tx).await;
+    assert!(app.dialog.is_some(), "s 应打开 SQL 对话框");
+    for ch in "SELECT name FROM users WHERE id = 2".chars() {
+        app.handle(key(KeyCode::Char(ch)), &tx).await;
+    }
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(3),
+    )
+    .await;
+    assert!(app.dialog.is_none(), "SQL 成功应关闭对话框");
+    let text = screen_text(&terminal);
+    assert!(text.contains("bob"), "SQL 结果应显示 bob:{text}");
+    assert!(!text.contains("alice"), "过滤后不应显示 alice:{text}");
+
+    // 非法 SQL:错误留在对话框,可 Esc 关闭。
+    app.handle(key(KeyCode::Backspace), &tx).await; // 返回表列表
+    app.handle(key(KeyCode::Char('s')), &tx).await;
+    for ch in "SELEKT 1".chars() {
+        app.handle(key(KeyCode::Char(ch)), &tx).await;
+    }
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(3),
+    )
+    .await;
+    assert!(app.dialog.is_some(), "非法 SQL 应保留对话框显示错误");
+    app.handle(key(KeyCode::Esc), &tx).await; // 关闭对话框
+    app.handle(key(KeyCode::Char('q')), &tx).await; // 退出浏览
+    assert!(matches!(app.mode, Mode::Picker));
+    assert!(app.db.is_none());
+    Ok(())
+}

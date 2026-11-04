@@ -8,7 +8,7 @@ use ratatui::widgets::{
     Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph, Sparkline, Tabs, Wrap,
 };
 
-use crate::app::{App, ConnectionForm, Dialog, Mode, Pane, SessionState, Tab};
+use crate::app::{App, ConnectionForm, DbView, Dialog, Mode, Pane, SessionState, Tab};
 use linop_core::{Auth, endpoint};
 use linop_sftp::Entry;
 
@@ -30,6 +30,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Mode::Replay => {
             app.shell_area = None;
             draw_replay(frame, app);
+        }
+        Mode::DbBrowse => {
+            app.shell_area = None;
+            draw_db(frame, app);
         }
     }
     if let Some(form) = &app.form {
@@ -96,10 +100,22 @@ fn draw_picker(frame: &mut Frame, app: &mut App) {
         ]))
     }));
 
+    items.extend(app.db_registry.profiles().iter().map(|db| {
+        ListItem::new(Line::from(vec![
+            Span::styled(format!("{:<16}", db.name), Style::new().bold()),
+            Span::raw(format!(" {} ", db.path.display())),
+            Span::styled(
+                format!("[{}]", db.driver.as_str()),
+                Style::new().fg(Color::Magenta),
+            ),
+        ]))
+    }));
+
     if items.is_empty() {
         let hint = format!(
-            "还没有连接配置。\n\n编辑 {} 添加连接,例如:\n\n[my-server]\nhost = \"192.168.1.10\"\nusername = \"root\"\npassword = \"...\"\n\n保存后按 r 重新加载。",
-            linop_core::default_connections_path().display()
+            "还没有连接与数据库配置。\n\nSSH 连接编辑 {} ,例如:\n\n[my-server]\nhost = \"192.168.1.10\"\nusername = \"root\"\npassword = \"...\"\n\nSQLite 数据库编辑 {} ,例如:\n\n[local]\ndriver = \"sqlite\"\npath = \"/data/app.db\"\n\n保存后按 r 重新加载。",
+            linop_core::default_connections_path().display(),
+            linop_core::default_databases_path().display()
         );
         frame.render_widget(
             Paragraph::new(hint).wrap(Wrap { trim: false }).block(block),
@@ -569,6 +585,146 @@ fn draw_replay(frame: &mut Frame, app: &App) {
         )),
         footer,
     );
+}
+
+/// 数据库浏览页:表/视图列表,或数据网格(分页)。
+fn draw_db(frame: &mut Frame, app: &App) {
+    let Some(db) = app.db.as_ref() else {
+        return;
+    };
+    let area = frame.area();
+    let [body, status_bar] =
+        Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
+
+    match &db.view {
+        DbView::Tables => {
+            let block = Block::default()
+                .title(format!(
+                    " {} · {} · 表/视图 {} 张 ",
+                    db.profile.name,
+                    db.profile.path.display(),
+                    db.tables.len()
+                ))
+                .borders(Borders::ALL)
+                .border_style(Style::new().fg(Color::Cyan));
+            let inner = block.inner(body);
+            frame.render_widget(block, body);
+            let items: Vec<ListItem> = db
+                .tables
+                .iter()
+                .map(|t| {
+                    ListItem::new(Line::from(vec![
+                        Span::styled(format!("{:<28}", t.name), Style::new().bold()),
+                        Span::raw(format!("{:>8} 行  ", t.row_count)),
+                        Span::styled(t.columns.join(", "), Style::new().fg(Color::DarkGray)),
+                    ]))
+                })
+                .collect();
+            let mut state = ListState::default();
+            if !items.is_empty() {
+                state.select(Some(db.sel));
+            }
+            frame.render_stateful_widget(
+                List::new(items)
+                    .highlight_style(
+                        Style::new()
+                            .bg(Color::DarkGray)
+                            .add_modifier(Modifier::BOLD),
+                    )
+                    .highlight_symbol("▶ "),
+                inner,
+                &mut state,
+            );
+        }
+        DbView::Data {
+            title,
+            result,
+            page,
+        } => {
+            let block = Block::default()
+                .title(format!(
+                    " {} · {} 行{} · ←/→ 翻页 ",
+                    truncate(title, (body.width as usize).saturating_sub(12)),
+                    result.rows.len(),
+                    if result.truncated { "+" } else { "" }
+                ))
+                .borders(Borders::ALL)
+                .border_style(Style::new().fg(Color::Cyan));
+            let inner = block.inner(body);
+            frame.render_widget(block, body);
+
+            // 网格:首行表头,随后按页 20 行;列宽按内容抽样估算,超宽截断。
+            let page_size = 20usize;
+            let start = page * page_size;
+            let shown = result.rows.iter().skip(start).take(page_size);
+            let widths = column_widths(result, inner.width);
+            let mut lines = vec![Line::from(
+                result
+                    .columns
+                    .iter()
+                    .zip(&widths)
+                    .map(|(name, w)| {
+                        Span::styled(
+                            format!("{:<width$}", truncate(name, w - 2), width = w),
+                            Style::new().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                        )
+                    })
+                    .collect::<Vec<_>>(),
+            )];
+            for (i, row) in shown.enumerate() {
+                let spans = row
+                    .iter()
+                    .zip(&widths)
+                    .map(|(cell, w)| match cell {
+                        Some(text) => {
+                            Span::raw(format!("{:<width$}", truncate(text, w - 2), width = w))
+                        }
+                        None => Span::styled(
+                            format!("{:<width$}", "NULL", width = w),
+                            Style::new().fg(Color::DarkGray),
+                        ),
+                    })
+                    .collect::<Vec<_>>();
+                // 行号列帮助定位。
+                let mut line = vec![Span::styled(
+                    format!("{:>4} ", start + i + 1),
+                    Style::new().fg(Color::DarkGray),
+                )];
+                line.extend(spans);
+                lines.push(Line::from(line));
+            }
+            if result.rows.is_empty() {
+                lines.push(Line::from("(无结果)"));
+            }
+            frame.render_widget(Paragraph::new(lines), inner);
+        }
+    }
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!(" {} ", db.profile.name),
+                Style::new().bg(Color::Magenta).fg(Color::Black),
+            ),
+            Span::raw(" "),
+            Span::raw(db.status.clone()),
+            Span::styled(
+                match db.view {
+                    DbView::Tables => "  Enter 数据 · s SQL · r 刷新 · q 退出",
+                    DbView::Data { .. } => "  ←/→ 翻页 · Backspace 返回 · r 重查 · q 退出",
+                },
+                Style::new().fg(Color::DarkGray),
+            ),
+        ])),
+        status_bar,
+    );
+}
+
+/// 网格列宽分配:总宽按列数均分,最少 6 列字符(留分隔)。
+fn column_widths(result: &linop_db::QueryResult, available: u16) -> Vec<usize> {
+    let count = result.columns.len().max(1);
+    let per = (available as usize / count).max(6);
+    vec![per; count]
 }
 
 /// 居中模态对话框:标题 + 说明 + 输入行(█ 作光标)/确认行 + 错误行。
