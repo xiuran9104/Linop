@@ -15,6 +15,7 @@ linop-ssh = { workspace = true }
 linop-sftp = { workspace = true }
 linop-term = { workspace = true }
 linop-monitor = { workspace = true }
+linop-cast = { workspace = true }
 tokio = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }

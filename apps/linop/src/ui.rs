@@ -27,6 +27,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
                 app.shell_area = Some(draw_session(frame, session));
             }
         }
+        Mode::Replay => {
+            app.shell_area = None;
+            draw_replay(frame, app);
+        }
     }
     if let Some(form) = &app.form {
         draw_form(frame, form);
@@ -119,7 +123,7 @@ fn draw_picker(frame: &mut Frame, app: &mut App) {
     }
 
     let mut footer_lines = vec![Line::from(
-        "↑/↓ 选择 · Enter 连接/切换会话 · x 断开会话 · r 重载 · q 退出",
+        "↑/↓ 选择 · Enter 连接 · x 断开 · p 回放 · n 新建 · r 重载 · q 退出",
     )];
     if !app.notice.is_empty() {
         footer_lines.push(Line::from(Span::styled(
@@ -198,6 +202,12 @@ fn draw_session(frame: &mut Frame, s: &mut SessionState) -> (u16, u16) {
         Span::raw(s.status.clone()),
         Span::styled(format!("  {tab_hint}"), Style::new().fg(Color::DarkGray)),
     ];
+    if s.recording.is_some() {
+        status_spans.insert(
+            0,
+            Span::styled(" ⏺ REC ", Style::new().bg(Color::Red).fg(Color::White)),
+        );
+    }
     if s.term.scrollback_offset() > 0 {
         let scroll = Span::styled(
             format!(
@@ -513,6 +523,52 @@ fn human_kb(kb: u64) -> String {
     } else {
         format!("{kb} KiB")
     }
+}
+
+/// 回放页:录制事件重放进独立终端,标题栏显示进度与播放状态。
+fn draw_replay(frame: &mut Frame, app: &App) {
+    let Some(rp) = app.replay.as_ref() else {
+        return;
+    };
+    let area = frame.area();
+    let [body, footer] = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
+
+    let file = rp
+        .path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| rp.path.display().to_string());
+    let current = rp
+        .cast
+        .events
+        .get(rp.cursor.saturating_sub(1))
+        .map_or(0.0, |e| e.elapsed);
+    let state = if rp.playing {
+        "▶ 播放中"
+    } else {
+        "⏸ 已暂停"
+    };
+    let block = Block::default()
+        .title(format!(
+            " 回放 {file} · {state} · 事件 {}/{} · {:.1}s / {:.1}s ",
+            rp.cursor,
+            rp.cast.events.len(),
+            current,
+            rp.cast.duration_secs()
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::new().fg(Color::Cyan));
+    let inner = block.inner(body);
+    frame.render_widget(block, body);
+    frame.render_widget(&rp.term, inner);
+
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            " Space 播放/暂停 · → 下一事件 · ← 回退重放 · q 退出",
+            Style::new().fg(Color::DarkGray),
+        )),
+        footer,
+    );
 }
 
 /// 居中模态对话框:标题 + 说明 + 输入行(█ 作光标)/确认行 + 错误行。

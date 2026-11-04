@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use linop_cast::{Cast, CastWriter};
 use linop_core::{Auth, Connection, Registry};
 use linop_monitor::ResourceSample;
 use linop_sftp::{Entry, Sftp};
@@ -39,6 +40,8 @@ pub enum AppEvent {
     ReconnectTick(u64),
     /// 监控采样到达(会话 ID;Err 为采样/解析错误)。
     MonitorSample(u64, Result<ResourceSample, String>),
+    /// 回放:到点应用下一个事件。
+    ReplayTick,
 }
 
 // --- 防挂死超时常量:任何网络 await 都有上限,坏连接不允许冻结事件循环 ---
@@ -104,6 +107,8 @@ pub enum DialogAction {
     DeleteProfile(String),
     /// 从 ~/.ssh/config 导入连接(picker 上执行,带确认)。
     ImportProfiles(Vec<Connection>),
+    /// 回放指定 .cast 文件(picker 上执行,输入路径)。
+    OpenReplay,
 }
 
 impl DialogAction {
@@ -112,7 +117,10 @@ impl DialogAction {
         !matches!(
             self,
             DialogAction::DeleteRemote { .. } | DialogAction::DeleteLocal { .. }
-        ) && !matches!(self, DialogAction::ImportProfiles(_))
+        ) && !matches!(
+            self,
+            DialogAction::ImportProfiles(_) | DialogAction::OpenReplay
+        )
     }
 }
 
@@ -233,6 +241,8 @@ pub enum Mode {
     Connecting { name: String },
     /// 正在查看某个会话(具体是哪个由 App.active 指示)。
     Session,
+    /// 回放一段 .cast 录制(不属于任何会话)。
+    Replay,
 }
 
 /// 会话内标签页。
@@ -325,10 +335,30 @@ pub struct SessionState {
     /// 监控页数据与采样任务(进入监控页时懒启动)。
     pub monitor: MonitorState,
     pub monitor_parts: Option<MonitorParts>,
+    /// 进行中的会话录制(Shell 页按 v 开关)。
+    pub recording: Option<Recording>,
     /// 进行中的后台传输(单会话同时只允许一个)。
     pub active_transfer: Option<ActiveTransfer>,
     /// 底部状态栏消息(最近一次操作的反馈)。
     pub status: String,
+}
+
+/// 进行中的录制:写入器与目标文件。
+pub struct Recording {
+    writer: CastWriter,
+    path: PathBuf,
+}
+
+/// 回放状态:cast 事件按原始时间间隔喂进独立终端。
+pub struct ReplayState {
+    pub path: PathBuf,
+    pub cast: Cast,
+    /// 下一个待应用事件的下标。
+    pub cursor: usize,
+    pub term: Terminal,
+    pub playing: bool,
+    /// 播放调度任务;暂停/回退/退出时取消。
+    pub task: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// 一次后台传输的进度状态。
@@ -376,6 +406,8 @@ pub struct App {
     pub form: Option<ConnectionForm>,
     /// draw 阶段记录的 shell 内容区尺寸;事件循环据此同步仿真器与 PTY。
     pub shell_area: Option<(u16, u16)>,
+    /// 打开中的录制回放(与 Mode::Replay 对应)。
+    pub replay: Option<ReplayState>,
 }
 
 impl App {
@@ -391,6 +423,7 @@ impl App {
             dialog: None,
             form: None,
             shell_area: None,
+            replay: None,
         }
     }
 
@@ -482,6 +515,15 @@ impl App {
             AppEvent::ShellOutput(id, bytes) => {
                 if let Some((_, s)) = self.session_by_id(id) {
                     s.term.feed(&bytes);
+                    // 录制中:同步写盘;失败自动结束录制(文件已逐条 flush,不丢已录内容)。
+                    if let Some(rec) = &mut s.recording
+                        && rec.writer.write_output(&bytes).is_err()
+                        && let Some(rec) = s.recording.take()
+                    {
+                        let path = rec.path.display().to_string();
+                        let _ = rec.writer.finish();
+                        s.status = format!("录制写入失败已停止:{path}");
+                    }
                 }
             }
             AppEvent::ShellClosed(id) => {
@@ -535,6 +577,34 @@ impl App {
                         }
                         Err(msg) => s.monitor.error = msg,
                     }
+                }
+            }
+            AppEvent::ReplayTick => {
+                let mut next_delta = None;
+                let mut done = false;
+                if let Some(rp) = self.replay.as_mut()
+                    && rp.playing
+                {
+                    match rp.cast.events.get(rp.cursor).cloned() {
+                        Some(event) => {
+                            rp.term.feed(event.data.as_bytes());
+                            rp.cursor += 1;
+                            next_delta = rp
+                                .cast
+                                .events
+                                .get(rp.cursor)
+                                .map(|next| (next.elapsed - event.elapsed).max(0.0));
+                        }
+                        None => {
+                            rp.playing = false;
+                            done = true;
+                        }
+                    }
+                }
+                if done {
+                    self.cancel_replay_task();
+                } else if let Some(delta) = next_delta {
+                    self.schedule_replay_tick(delta, tx);
                 }
             }
             AppEvent::InputClosed => {
@@ -705,6 +775,27 @@ impl App {
                         }
                     }
                 }
+                // 回放录制:默认取最新 .cast,可在输入框改路径。
+                KeyCode::Char('p') => {
+                    let default = linop_core::newest_recording().map(|p| p.display().to_string());
+                    match default {
+                        Some(default) => {
+                            self.dialog = Some(Dialog {
+                                title: "回放录制".to_string(),
+                                prompt: "cast 文件路径:".to_string(),
+                                input: default,
+                                action: DialogAction::OpenReplay,
+                                error: String::new(),
+                                status: String::new(),
+                                secret: false,
+                            });
+                        }
+                        None => {
+                            self.notice =
+                                "暂无录制:进入会话后在 Shell 页按 v 开始/结束录制".to_string();
+                        }
+                    }
+                }
                 KeyCode::Char('r') => match Registry::load_default() {
                     Ok(reg) => {
                         self.registry = reg;
@@ -719,6 +810,7 @@ impl App {
                 // 任意键取消连接:回到列表;迟到的结果由 on_connected 丢弃。
                 self.mode = Mode::Picker;
             }
+            Mode::Replay => self.replay_key(key, tx).await,
             Mode::Session => {
                 if key.modifiers.contains(KeyModifiers::CONTROL)
                     && matches!(key.code, KeyCode::Char('q') | KeyCode::Char('Q'))
@@ -945,6 +1037,33 @@ impl App {
             }
             return;
         }
+        // 回放对话框:读取并解析 cast,成功即进入回放模式。
+        if let (KeyCode::Enter, DialogAction::OpenReplay) = (&key.code, &dialog.action) {
+            let path = PathBuf::from(dialog.input.trim());
+            let parsed = std::fs::read_to_string(&path)
+                .map_err(|e| e.to_string())
+                .and_then(|text| linop_cast::parse(&text).map_err(|e| e.to_string()));
+            match parsed {
+                Ok(cast) => {
+                    let term = Terminal::new(cast.width.max(1), cast.height.max(1));
+                    self.replay = Some(ReplayState {
+                        path: path.clone(),
+                        cast,
+                        cursor: 0,
+                        term,
+                        playing: true,
+                        task: None,
+                    });
+                    self.mode = Mode::Replay;
+                    self.schedule_replay_tick(0.0, tx);
+                }
+                Err(msg) => {
+                    dialog.error = format!("无法回放:{msg}");
+                    self.dialog = Some(dialog);
+                }
+            }
+            return;
+        }
         match key.code {
             KeyCode::Esc => {}
             KeyCode::Enter => {
@@ -1041,7 +1160,8 @@ impl App {
             DialogAction::ConnectPassword(_)
             | DialogAction::ConnectPassphrase(_)
             | DialogAction::DeleteProfile(_)
-            | DialogAction::ImportProfiles(_) => {
+            | DialogAction::ImportProfiles(_)
+            | DialogAction::OpenReplay => {
                 // 已在 handle_dialog_key 里先行处理,不会走到这里。
                 return Err("内部错误:picker 对话框不应进入会话执行".to_string());
             }
@@ -1067,6 +1187,7 @@ impl App {
         };
         match s.tab {
             Tab::Shell => match key.code {
+                KeyCode::Char('v') => self.toggle_recording(),
                 KeyCode::PageUp => s.term.scroll(1),
                 KeyCode::PageDown => s.term.scroll(-1),
                 _ if s.reconnect.is_some() => {
@@ -1210,6 +1331,129 @@ impl App {
         }
     }
 
+    /// 回放模式按键:Space 播放/暂停,→ 逐事件前进,← 回退重放,q 退出。
+    async fn replay_key(&mut self, key: KeyEvent, tx: &mpsc::UnboundedSender<AppEvent>) {
+        if self.replay.is_none() {
+            self.mode = Mode::Picker;
+            return;
+        }
+        match key.code {
+            KeyCode::Char('q') | KeyCode::Esc => {
+                self.cancel_replay_task();
+                self.replay = None;
+                self.mode = Mode::Picker;
+            }
+            KeyCode::Char(' ') => {
+                let resume = self.replay.as_mut().is_some_and(|rp| {
+                    rp.playing = !rp.playing;
+                    rp.playing
+                });
+                if resume {
+                    // schedule 内部先取消旧调度再按播放态重建。
+                    self.schedule_replay_tick(0.0, tx);
+                } else {
+                    self.cancel_replay_task();
+                }
+            }
+            // 逐事件前进(自动暂停,便于细看输出)。
+            KeyCode::Right => {
+                if let Some(rp) = self.replay.as_mut() {
+                    rp.playing = false;
+                    if let Some(event) = rp.cast.events.get(rp.cursor).cloned() {
+                        rp.term.feed(event.data.as_bytes());
+                        rp.cursor += 1;
+                    }
+                }
+                self.cancel_replay_task();
+            }
+            // 回退:重建终端重放到前一个事件(事件量小,重放开销可忽略)。
+            KeyCode::Left => {
+                if let Some(rp) = self.replay.as_mut() {
+                    rp.playing = false;
+                    rp.cursor = rp.cursor.saturating_sub(1);
+                    let mut term = Terminal::new(rp.cast.width.max(1), rp.cast.height.max(1));
+                    for event in &rp.cast.events[..rp.cursor] {
+                        term.feed(event.data.as_bytes());
+                    }
+                    rp.term = term;
+                }
+                self.cancel_replay_task();
+            }
+            _ => {}
+        }
+    }
+
+    /// 调度下一个回放事件:先取消旧调度,再按事件间隔睡到点。
+    fn schedule_replay_tick(&mut self, secs: f64, tx: &mpsc::UnboundedSender<AppEvent>) {
+        self.cancel_replay_task();
+        let Some(rp) = self.replay.as_mut() else {
+            return;
+        };
+        if !rp.playing {
+            return;
+        }
+        let tx = tx.clone();
+        let delay = std::time::Duration::from_secs_f64(secs.clamp(0.0, 3600.0));
+        rp.task = Some(tokio::spawn(async move {
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
+            let _ = tx.send(AppEvent::ReplayTick);
+        }));
+    }
+
+    fn cancel_replay_task(&mut self) {
+        if let Some(rp) = self.replay.as_mut()
+            && let Some(task) = rp.task.take()
+        {
+            task.abort();
+        }
+    }
+
+    /// Shell 页按 v:开始/结束会话录制。
+    fn toggle_recording(&mut self) {
+        let Some(s) = self.session_mut() else {
+            return;
+        };
+        match s.recording.take() {
+            Some(rec) => {
+                let path = rec.path.display().to_string();
+                match rec.writer.finish() {
+                    Ok(()) => s.status = format!("录制已保存:{path}"),
+                    Err(e) => s.status = format!("结束录制失败({path}):{e}"),
+                }
+            }
+            None => {
+                let dir = linop_core::recordings_dir();
+                let safe: String = s
+                    .profile
+                    .name
+                    .chars()
+                    .map(|c| {
+                        if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                            c
+                        } else {
+                            '_'
+                        }
+                    })
+                    .collect();
+                let secs = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                let path = dir.join(format!("{safe}-{secs}.cast"));
+                let (cols, rows) = (s.term.cols().max(1), s.term.rows().max(1));
+                match CastWriter::create(&path, cols, rows) {
+                    Ok(writer) => {
+                        s.status = format!("⏺ 录制中 → {}(按 v 结束)", path.display());
+                        s.recording = Some(Recording { writer, path });
+                    }
+                    Err(e) => s.status = format!("开始录制失败:{e}"),
+                }
+            }
+        }
+    }
+
     async fn on_connected(
         &mut self,
         result: Result<Box<Connected>, String>,
@@ -1269,6 +1513,7 @@ impl App {
                     forwards_sel: 0,
                     term: Terminal::new(cols, rows),
                     tab: Tab::Shell,
+                    recording: None,
                     monitor: MonitorState {
                         samples: VecDeque::new(),
                         error: String::new(),
@@ -1646,6 +1891,10 @@ pub fn list_local(path: &Path) -> Vec<Entry> {
 /// 会话资源回收:停转发、关 SFTP、断开连接。
 async fn teardown_session(s: SessionState) {
     s.reader_task.abort();
+    // 结束录制:逐条 flush 已落盘,这里只补尾并关闭文件。
+    if let Some(rec) = s.recording {
+        let _ = rec.writer.finish();
+    }
     if let Some(parts) = s.monitor_parts {
         parts.stop();
     }

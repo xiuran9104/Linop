@@ -1102,3 +1102,108 @@ async fn monitor_tab_samples_and_renders() -> anyhow::Result<()> {
     assert!(text.contains("负载"), "应显示负载文本:{text}");
     Ok(())
 }
+
+#[tokio::test]
+async fn record_session_then_replay() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    let remote_root = tempfile::tempdir()?;
+    let server = linop_testsupport::TestSshServer::start_with_sftp(remote_root.path()).await?;
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(test_registry(server.addr));
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+
+    // 连接进入会话。
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(matches!(app.mode, Mode::Session));
+
+    // v 开始录制:状态栏出现 REC。
+    app.handle(key(KeyCode::Char('v')), &tx).await;
+    redraw(&mut terminal, &mut app).await;
+    assert!(app.sessions[app.active].recording.is_some(), "v 应开启录制");
+    assert!(
+        screen_text(&terminal).contains("REC"),
+        "状态栏应显示 REC 标记"
+    );
+
+    // 往 shell 写入内容,echo 服务器把它回显 → ShellOutput 被录制。
+    app.handle(key(KeyCode::Char('h')), &tx).await;
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+
+    // v 结束录制:文件落盘且内容可解析。
+    app.handle(key(KeyCode::Char('v')), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(3),
+    )
+    .await;
+    assert!(
+        app.sessions[app.active].recording.is_none(),
+        "再次 v 应结束录制"
+    );
+    let cast_path = linop_core::newest_recording().expect("录制目录应有 .cast 文件");
+    let cast = linop_cast::parse(&std::fs::read_to_string(&cast_path)?)?;
+    assert!(!cast.events.is_empty(), "录制应至少包含一个输出事件");
+    assert!(
+        cast.output_text().contains('h'),
+        "回显内容应被录制:{}",
+        cast.output_text()
+    );
+
+    // F8 回列表 → p 打开回放对话框(默认最新录制)→ Enter 进入回放。
+    app.handle(key(KeyCode::F(8)), &tx).await;
+    redraw(&mut terminal, &mut app).await;
+    assert!(matches!(app.mode, Mode::Picker));
+    app.handle(key(KeyCode::Char('p')), &tx).await;
+    assert!(app.dialog.is_some(), "p 应打开回放路径对话框");
+
+    // 暂停自动播放(由调度任务驱动),改为手动逐事件,保证断言确定性。
+    app.handle(key(KeyCode::Enter), &tx).await;
+    assert!(matches!(app.mode, Mode::Replay), "Enter 应回放默认 cast");
+    assert!(app.replay.as_ref().unwrap().playing);
+    // Space 暂停 → 取消调度任务。
+    app.handle(key(KeyCode::Char(' ')), &tx).await;
+    assert!(!app.replay.as_ref().unwrap().playing, "Space 应暂停");
+
+    // → 逐事件前进,直到全部应用;屏幕应出现录制时的回显。
+    let total = app.replay.as_ref().unwrap().cast.events.len();
+    for _ in 0..total {
+        app.handle(key(KeyCode::Right), &tx).await;
+    }
+    redraw(&mut terminal, &mut app).await;
+    let text = screen_text(&terminal);
+    assert!(text.contains("回放"), "应显示回放标题栏:{text}");
+    assert!(text.contains('h'), "回放应重演出录制内容:{text}");
+    assert_eq!(app.replay.as_ref().unwrap().cursor, total);
+
+    // ← 回退一个事件:cursor 减一并重建终端(内容仍在,事件少一)。
+    app.handle(key(KeyCode::Left), &tx).await;
+    assert_eq!(app.replay.as_ref().unwrap().cursor, total - 1);
+
+    // q 退出回放,回到列表。
+    app.handle(key(KeyCode::Char('q')), &tx).await;
+    assert!(matches!(app.mode, Mode::Picker));
+    assert!(app.replay.is_none());
+    Ok(())
+}

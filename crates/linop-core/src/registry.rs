@@ -26,6 +26,30 @@ pub fn known_hosts_path() -> PathBuf {
     config_dir().join("known_hosts")
 }
 
+/// 会话录制(.cast,asciinema v2)目录。
+pub fn recordings_dir() -> PathBuf {
+    config_dir().join("recordings")
+}
+
+/// 录制目录里最新的 .cast 文件(回放默认目标);目录为空返回 None。
+pub fn newest_recording() -> Option<PathBuf> {
+    let dir = recordings_dir();
+    let mut best: Option<(std::time::SystemTime, PathBuf)> = None;
+    for entry in std::fs::read_dir(&dir).ok()?.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("cast") {
+            continue;
+        }
+        let Ok(modified) = entry.metadata().and_then(|m| m.modified()) else {
+            continue;
+        };
+        if best.as_ref().is_none_or(|(t, _)| modified > *t) {
+            best = Some((modified, path));
+        }
+    }
+    best.map(|(_, path)| path)
+}
+
 /// 连接注册表,保持按名称排序。
 #[derive(Debug, Clone, Default)]
 pub struct Registry {
