@@ -11,7 +11,7 @@ use ratatui::backend::TestBackend;
 use tokio::sync::mpsc;
 
 use linop::app::{
-    self as app_mod, App, AppEvent, MAX_RECONNECT_ATTEMPTS, Mode, Pane, ReconnectState,
+    self as app_mod, App, AppEvent, MAX_RECONNECT_ATTEMPTS, Mode, Pane, ReconnectState, Tab,
 };
 use linop::{keys, ui};
 
@@ -1048,4 +1048,57 @@ fn restore_home(old: Option<String>) {
             None => std::env::remove_var("HOME"),
         }
     }
+}
+
+#[tokio::test]
+async fn monitor_tab_samples_and_renders() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    // 连接流程需要 SFTP;exec 探针返回固定 /proc 形态输出。
+    let remote_root = tempfile::tempdir()?;
+    let server = linop_testsupport::TestSshServer::start_with_sftp(remote_root.path()).await?;
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(test_registry(server.addr));
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+
+    // 连接并进入会话。
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(matches!(app.mode, Mode::Session), "应已进入会话");
+
+    // F4 切到监控页:采样器懒启动,首个样本立即到达。
+    app.handle(key(KeyCode::F(4)), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+
+    let s = &app.sessions[app.active];
+    assert_eq!(s.tab, Tab::Monitor);
+    assert!(!s.monitor.samples.is_empty(), "监控页应已收到至少一个样本");
+    assert!(
+        s.monitor.error.is_empty(),
+        "采样不应报错:{}",
+        s.monitor.error
+    );
+
+    let text = screen_text(&terminal);
+    assert!(text.contains("CPU"), "应显示 CPU 区块:{text}");
+    assert!(text.contains("50%"), "内存应显示 50%:{text}");
+    assert!(text.contains("40%"), "磁盘应显示 40%:{text}");
+    assert!(text.contains("负载"), "应显示负载文本:{text}");
+    Ok(())
 }

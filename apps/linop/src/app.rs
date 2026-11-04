@@ -4,12 +4,14 @@
 //! 连接任务回执。SFTP 操作在事件循环内联执行(v0.1 足够:
 //! 操作期间的 shell 输出会先在通道中排队)。
 
+use std::collections::VecDeque;
 use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use linop_core::{Auth, Connection, Registry};
+use linop_monitor::ResourceSample;
 use linop_sftp::{Entry, Sftp};
 use linop_ssh::{KnownHosts, KnownHostsPolicy, LocalForward, Session, ShellReader, ShellWriter};
 use linop_term::Terminal;
@@ -35,6 +37,8 @@ pub enum AppEvent {
     ReconnectDone(u64, Result<Box<Connected>, String>),
     /// 自动重连:退避等待结束,发起下一次尝试。
     ReconnectTick(u64),
+    /// 监控采样到达(会话 ID;Err 为采样/解析错误)。
+    MonitorSample(u64, Result<ResourceSample, String>),
 }
 
 // --- 防挂死超时常量:任何网络 await 都有上限,坏连接不允许冻结事件循环 ---
@@ -232,11 +236,12 @@ pub enum Mode {
 }
 
 /// 会话内标签页。
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tab {
     Shell,
     Files,
     Forwards,
+    Monitor,
 }
 
 /// 文件页中当前操作的窗格。
@@ -253,6 +258,32 @@ pub struct FilesState {
     pub remote_sel: usize,
     pub local_sel: usize,
     pub active: Pane,
+}
+
+/// 监控页状态:样本环形缓冲 + 最近一次错误。
+pub struct MonitorState {
+    pub samples: VecDeque<ResourceSample>,
+    pub error: String,
+}
+
+impl MonitorState {
+    fn push(&mut self, sample: ResourceSample) {
+        if self.samples.len() >= linop_monitor::MAX_SAMPLES {
+            self.samples.pop_front();
+        }
+        self.samples.push_back(sample);
+    }
+}
+
+/// 运行中的采样任务(每个样本以 AppEvent::MonitorSample 形式回流)。
+pub struct MonitorParts {
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl MonitorParts {
+    fn stop(self) {
+        self.task.abort();
+    }
 }
 
 /// 断线自动重连进度。
@@ -291,6 +322,9 @@ pub struct SessionState {
     pub term: Terminal,
     pub tab: Tab,
     pub files: FilesState,
+    /// 监控页数据与采样任务(进入监控页时懒启动)。
+    pub monitor: MonitorState,
+    pub monitor_parts: Option<MonitorParts>,
     /// 进行中的后台传输(单会话同时只允许一个)。
     pub active_transfer: Option<ActiveTransfer>,
     /// 底部状态栏消息(最近一次操作的反馈)。
@@ -459,7 +493,10 @@ impl App {
                     let profile = s.profile.clone();
                     let cols = s.term.cols();
                     let rows = s.term.rows();
-                    // 旧连接已死:停掉两类转发,清掉传输状态。
+                    // 旧连接已死:停监控采样与转发,清掉传输状态。
+                    if let Some(parts) = s.monitor_parts.take() {
+                        parts.stop();
+                    }
                     for forward in s.forwards.drain(..) {
                         forward.stop();
                     }
@@ -488,6 +525,17 @@ impl App {
             }
             AppEvent::ReconnectDone(id, result) => {
                 self.on_reconnect_done(id, result, tx).await;
+            }
+            AppEvent::MonitorSample(id, sample) => {
+                if let Some((_, s)) = self.session_by_id(id) {
+                    match sample {
+                        Ok(sample) => {
+                            s.monitor.push(sample);
+                            s.monitor.error.clear();
+                        }
+                        Err(msg) => s.monitor.error = msg,
+                    }
+                }
             }
             AppEvent::InputClosed => {
                 self.notice = "输入设备已关闭,退出".to_string();
@@ -686,6 +734,7 @@ impl App {
                     KeyCode::F(1) => s.tab = Tab::Shell,
                     KeyCode::F(2) => s.tab = Tab::Files,
                     KeyCode::F(3) => s.tab = Tab::Forwards,
+                    KeyCode::F(4) => s.tab = Tab::Monitor,
                     // 回到列表,会话保持在线。
                     KeyCode::F(8) => self.mode = Mode::Picker,
                     // 断开当前会话并回到列表。
@@ -699,9 +748,29 @@ impl App {
                     }
                     _ => self.session_key(key, tx).await,
                 }
+                // 监控页需要采样器:懒启动(重连中/已停止则跳过)。
+                self.ensure_monitor(tx);
             }
         }
         true
+    }
+
+    /// 当前会话在监控页且尚无采样器时启动之;对端拒绝 exec 也不致命,
+    /// 错误会以 MonitorSample(Err) 形式显示在监控页。
+    fn ensure_monitor(&mut self, tx: &mpsc::UnboundedSender<AppEvent>) {
+        let Some(s) = self.sessions.get_mut(self.active) else {
+            return;
+        };
+        if s.tab != Tab::Monitor || s.monitor_parts.is_some() || s.reconnect.is_some() {
+            return;
+        }
+        let sid = s.id;
+        let ssh = s.ssh.clone();
+        let pump_tx = tx.clone();
+        let task = linop_monitor::Monitor::spawn_with(ssh, move |sample| {
+            let _ = pump_tx.send(AppEvent::MonitorSample(sid, sample));
+        });
+        s.monitor_parts = Some(MonitorParts { task });
     }
 
     /// 连接表单按键:↑/↓/Tab 切字段,Enter 保存,Esc 取消,退格/字符编辑。
@@ -1094,6 +1163,7 @@ impl App {
                 }
                 _ => {}
             },
+            Tab::Monitor => {}
             Tab::Forwards => {
                 let total = s.forwards.len() + s.remote_forwards.len() + s.dynamic_forwards.len();
                 match key.code {
@@ -1199,6 +1269,11 @@ impl App {
                     forwards_sel: 0,
                     term: Terminal::new(cols, rows),
                     tab: Tab::Shell,
+                    monitor: MonitorState {
+                        samples: VecDeque::new(),
+                        error: String::new(),
+                    },
+                    monitor_parts: None,
                     active_transfer: None,
                     files: FilesState {
                         local_cwd,
@@ -1276,6 +1351,10 @@ impl App {
             return;
         };
         let remote_cwd = s.sftp.cwd().to_string();
+        // 旧采样器若仍在(断线时未及清理),先停;稍后由 ensure_monitor 按需重启。
+        if let Some(parts) = s.monitor_parts.take() {
+            parts.stop();
+        }
         s.reader_task.abort();
         s.reader_task = spawn_shell_reader(tx.clone(), s.id, reader);
         s.ssh = ssh;
@@ -1296,6 +1375,8 @@ impl App {
         } else {
             format!("已重连;{} 条转发启动失败", forward_errors.len())
         };
+        // 停留在监控页时立即恢复采样。
+        self.ensure_monitor(tx);
     }
 
     /// draw 之后调用:把仿真器与远端 PTY 同步到布局给出的内容区尺寸。
@@ -1565,6 +1646,9 @@ pub fn list_local(path: &Path) -> Vec<Entry> {
 /// 会话资源回收:停转发、关 SFTP、断开连接。
 async fn teardown_session(s: SessionState) {
     s.reader_task.abort();
+    if let Some(parts) = s.monitor_parts {
+        parts.stop();
+    }
     for remote in s.remote_forwards {
         let _ =
             tokio::time::timeout(Duration::from_secs(TEARDOWN_TIMEOUT_SECS), remote.stop()).await;

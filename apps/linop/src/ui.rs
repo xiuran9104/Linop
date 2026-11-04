@@ -4,7 +4,9 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Tabs, Wrap};
+use ratatui::widgets::{
+    Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph, Sparkline, Tabs, Wrap,
+};
 
 use crate::app::{App, ConnectionForm, Dialog, Mode, Pane, SessionState, Tab};
 use linop_core::{Auth, endpoint};
@@ -149,13 +151,19 @@ fn draw_session(frame: &mut Frame, s: &mut SessionState) -> (u16, u16) {
     ])
     .areas(area);
 
-    let tabs = Tabs::new(vec![" Shell (F1) ", " 文件 (F2) ", " 转发 (F3) "])
-        .select(match s.tab {
-            Tab::Shell => 0,
-            Tab::Files => 1,
-            Tab::Forwards => 2,
-        })
-        .highlight_style(Style::new().bold().fg(Color::Cyan).underlined());
+    let tabs = Tabs::new(vec![
+        " Shell (F1) ",
+        " 文件 (F2) ",
+        " 转发 (F3) ",
+        " 监控 (F4) ",
+    ])
+    .select(match s.tab {
+        Tab::Shell => 0,
+        Tab::Files => 1,
+        Tab::Forwards => 2,
+        Tab::Monitor => 3,
+    })
+    .highlight_style(Style::new().bold().fg(Color::Cyan).underlined());
     frame.render_widget(tabs, tab_bar);
 
     let mut shell_inner = None;
@@ -172,12 +180,14 @@ fn draw_session(frame: &mut Frame, s: &mut SessionState) -> (u16, u16) {
         }
         Tab::Files => draw_files(frame, body, s),
         Tab::Forwards => draw_forwards(frame, body, s),
+        Tab::Monitor => draw_monitor(frame, body, s),
     }
 
     let tab_hint = match s.tab {
         Tab::Shell => "PgUp/PgDn 回滚 · F8 会话列表 · F9 断开",
         Tab::Files => "d 下载 · u 上传 · n 新建 · R 改名 · x 删除 · Tab 换窗格",
         Tab::Forwards => "F8 会话列表 · F9 断开",
+        Tab::Monitor => "每 5s 采样 · F8 会话列表 · F9 断开",
     };
     let mut status_spans = vec![
         Span::styled(
@@ -376,6 +386,133 @@ fn draw_forwards(frame: &mut Frame, body: Rect, s: &mut SessionState) {
         state.select(Some(s.forwards_sel.min(total_running - 1)));
     }
     frame.render_stateful_widget(hint, inner, &mut state);
+}
+
+/// 监控页:CPU/内存走势 sparkline + 磁盘用量 gauge + 负载文本。
+fn draw_monitor(frame: &mut Frame, body: Rect, s: &mut SessionState) {
+    let block = Block::default()
+        .title(format!(
+            " 资源监控 · {} · 间隔 5s ",
+            linop_core::endpoint(&s.profile)
+        ))
+        .borders(Borders::ALL);
+    let inner = block.inner(body);
+    frame.render_widget(block, body);
+
+    let [cpu_area, mem_area, disk_area, text_area] = Layout::vertical([
+        Constraint::Length(3),
+        Constraint::Length(3),
+        Constraint::Length(3),
+        Constraint::Min(0),
+    ])
+    .areas(inner);
+
+    let Some(latest) = s.monitor.samples.back().copied() else {
+        let waiting = if s.monitor.error.is_empty() {
+            "等待首个采样…".to_string()
+        } else {
+            format!("采样失败:{}(F4 重试 / 连接恢复后自动恢复)", s.monitor.error)
+        };
+        frame.render_widget(
+            Paragraph::new(waiting).style(Style::new().fg(Color::Yellow)),
+            text_area,
+        );
+        return;
+    };
+
+    // CPU 走势(0-100)。
+    let cpu_data: Vec<u64> = s
+        .monitor
+        .samples
+        .iter()
+        .map(|x| x.cpu_percent.round() as u64)
+        .collect();
+    frame.render_widget(
+        Sparkline::default()
+            .data(cpu_data)
+            .max(100)
+            .style(Style::new().fg(Color::Yellow))
+            .block(
+                Block::default()
+                    .title(format!(" CPU {:.1}% ", latest.cpu_percent))
+                    .borders(Borders::ALL),
+            ),
+        cpu_area,
+    );
+
+    // 内存走势(0-100)。
+    let mem_data: Vec<u64> = s
+        .monitor
+        .samples
+        .iter()
+        .map(|x| x.mem_percent().round() as u64)
+        .collect();
+    frame.render_widget(
+        Sparkline::default()
+            .data(mem_data)
+            .max(100)
+            .style(Style::new().fg(Color::Green))
+            .block(
+                Block::default()
+                    .title(format!(
+                        " 内存 {:.0}%({} / {}) ",
+                        latest.mem_percent(),
+                        human_kb(latest.mem_used_kb()),
+                        human_kb(latest.mem_total_kb)
+                    ))
+                    .borders(Borders::ALL),
+            ),
+        mem_area,
+    );
+
+    // 磁盘用量(根分区,单点 gauge)。
+    let disk_ratio = (latest.disk_percent() / 100.0).clamp(0.0, 1.0);
+    frame.render_widget(
+        Gauge::default()
+            .ratio(disk_ratio)
+            .label(format!(
+                "磁盘 {:.0}%({} / {})",
+                latest.disk_percent(),
+                human_kb(latest.disk_used_kb),
+                human_kb(latest.disk_total_kb)
+            ))
+            .gauge_style(Style::new().fg(Color::Magenta)),
+        disk_area,
+    );
+
+    // 负载与采样概况。
+    let mut lines = vec![Line::from(format!(
+        "负载 {:.2} / {:.2} / {:.2}(1/5/15 分钟)",
+        latest.load1, latest.load5, latest.load15
+    ))];
+    lines.push(Line::from(Span::styled(
+        format!(
+            "样本 {} 个(最多 {} 个)· 采样失败时显示原因",
+            s.monitor.samples.len(),
+            linop_monitor::MAX_SAMPLES
+        ),
+        Style::new().fg(Color::DarkGray),
+    )));
+    if !s.monitor.error.is_empty() {
+        lines.push(Line::from(Span::styled(
+            format!("最近一次采样失败:{}", s.monitor.error),
+            Style::new().fg(Color::Red),
+        )));
+    }
+    frame.render_widget(Paragraph::new(lines), text_area);
+}
+
+/// kB 数值的人类可读形式(MiB/GiB)。
+fn human_kb(kb: u64) -> String {
+    if kb >= 1024 * 1024 * 1024 {
+        format!("{:.1} TiB", kb as f64 / 1024.0 / 1024.0 / 1024.0 / 1024.0)
+    } else if kb >= 1024 * 1024 {
+        format!("{:.1} GiB", kb as f64 / 1024.0 / 1024.0)
+    } else if kb >= 1024 {
+        format!("{:.1} MiB", kb as f64 / 1024.0)
+    } else {
+        format!("{kb} KiB")
+    }
 }
 
 /// 居中模态对话框:标题 + 说明 + 输入行(█ 作光标)/确认行 + 错误行。

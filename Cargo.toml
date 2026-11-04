@@ -5,6 +5,7 @@ members = [
     "crates/linop-ssh",
     "crates/linop-sftp",
     "crates/linop-term",
+    "crates/linop-monitor",
     "crates/linop-testsupport",
     "apps/linop",
 ]
@@ -20,6 +21,7 @@ linop-core = { path = "crates/linop-core" }
 linop-ssh = { path = "crates/linop-ssh" }
 linop-sftp = { path = "crates/linop-sftp" }
 linop-term = { path = "crates/linop-term" }
+linop-monitor = { path = "crates/linop-monitor" }
 
 tokio = { version = "1", features = ["full"] }
 russh = "0.65"

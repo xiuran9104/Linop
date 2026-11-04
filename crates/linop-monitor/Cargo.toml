@@ -1,0 +1,15 @@
+[package]
+name = "linop-monitor"
+description = "Remote resource sampling over SSH exec (navop resource_view counterpart)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+linop-ssh = { workspace = true }
+
+[dev-dependencies]
+linop-testsupport = { path = "../linop-testsupport" }
+linop-core = { workspace = true }
+anyhow = { workspace = true }

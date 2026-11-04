@@ -216,6 +216,24 @@ impl Session {
         Ok(channel.into_stream())
     }
 
+    /// 执行单条远端命令并收集 stdout+stderr 输出(监控探针等场景)。
+    /// 命令退出后通道关闭,函数返回全部输出。
+    pub async fn exec(&self, command: &str) -> crate::Result<Vec<u8>> {
+        let channel = self.handle.channel_open_session().await?;
+        channel.exec(true, command).await?;
+        let (mut read, _write) = channel.split();
+        let mut out = Vec::new();
+        loop {
+            match read.wait().await {
+                Some(russh::ChannelMsg::Data { data }) => out.extend_from_slice(&data),
+                Some(russh::ChannelMsg::ExtendedData { data, .. }) => out.extend_from_slice(&data),
+                Some(russh::ChannelMsg::Eof) | Some(russh::ChannelMsg::Close) | None => break,
+                _ => continue,
+            }
+        }
+        Ok(out)
+    }
+
     /// 启动一条本地端口转发。
     pub async fn open_local_forward(&self, fwd: &PortForward) -> crate::Result<LocalForward> {
         LocalForward::start(self.handle.clone(), fwd).await

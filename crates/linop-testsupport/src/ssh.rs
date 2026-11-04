@@ -14,6 +14,16 @@ use tokio::net::{TcpListener, TcpStream};
 
 use crate::sftp::FsSftpHandler;
 
+/// 监控探针的固定输出:CPU 差分 ≈ 7.95%、内存 50%、磁盘 40%、负载 0.10/0.20/0.30。
+pub const PROBE_FIXTURE: &str = concat!(
+    "0.10 0.20 0.30 1/500 12345\n",
+    "MemTotal:       16384000 kB\n",
+    "MemAvailable:    8192000 kB\n",
+    "cpu  100 20 30 850 10 0 0 0 0 0\n",
+    "cpu  150 30 40 1650 20 0 0 0 0 0\n",
+    "/dev/sda1 49996160 19998464 27465728 43% /\n",
+);
+
 /// 每连接的 SSH 会话处理器。
 struct TestSession {
     /// 合法用户名/密码;`None` 表示接受公钥认证的任意已验证密钥。
@@ -109,6 +119,29 @@ impl russh::server::Handler for TestSession {
         if self.echo_session_data && !self.sftp_channels.lock().unwrap().contains(&channel) {
             session.data(channel, data.to_vec())?;
         }
+        Ok(())
+    }
+
+    /// exec:监控探针命令返回固定 /proc 形态输出(与 linop-monitor
+    /// 的 PROBE_COMMAND 对应),其余命令回显"已执行"。不真正执行命令。
+    async fn exec_request(
+        &mut self,
+        channel: ChannelId,
+        command: &[u8],
+        session: &mut Session,
+    ) -> Result<(), Self::Error> {
+        session.channel_success(channel)?;
+        self.channels.lock().unwrap().remove(&channel);
+        let command = String::from_utf8_lossy(command);
+        let command = command.as_ref();
+        let output = if command.contains("/proc/loadavg") {
+            PROBE_FIXTURE.as_bytes().to_vec()
+        } else {
+            format!("ran: {command}\n").into_bytes()
+        };
+        session.data(channel, output)?;
+        session.eof(channel)?;
+        session.close(channel)?;
         Ok(())
     }
 

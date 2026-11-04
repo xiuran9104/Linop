@@ -1388,6 +1388,7 @@ dependencies = [
  "crossterm",
  "dirs",
  "linop-core",
+ "linop-monitor",
  "linop-sftp",
  "linop-ssh",
  "linop-term",
@@ -1407,6 +1408,17 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "toml",
+]
+
+[[package]]
+name = "linop-monitor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "linop-core",
+ "linop-ssh",
+ "linop-testsupport",
+ "tokio",
 ]
 
 [[package]]
