@@ -851,3 +851,67 @@ async fn remote_forward_lifecycle_in_tui() -> anyhow::Result<()> {
     unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
     Ok(())
 }
+
+/// SOCKS 动态转发:profile 配置 dynamic_ports → 连接自动启动 → 转发页展示 → x 停止。
+#[tokio::test]
+async fn dynamic_forward_lifecycle_in_tui() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    let remote_root = tempfile::tempdir()?;
+    let server = linop_testsupport::TestSshServer::start_with_sftp(remote_root.path()).await?;
+    let mut conn = Connection::new(
+        "dyn",
+        server.addr.ip().to_string(),
+        "u",
+        Auth::password("p"),
+    );
+    conn.port = server.addr.port();
+    conn.dynamic_ports.push(0); // 内核分配,避免测试环境端口冲突
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(vec![conn].into_iter().collect());
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+    redraw(&mut terminal, &mut app).await;
+
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(matches!(app.mode, Mode::Session));
+    let s = app.sessions.first().expect("session");
+    assert_eq!(s.dynamic_forwards.len(), 1, "SOCKS 转发应自动启动");
+    assert!(s.forward_failures.is_empty(), "{:?}", s.forward_failures);
+
+    app.handle(key(KeyCode::F(3)), &tx).await;
+    redraw(&mut terminal, &mut app).await;
+    let text = screen_text(&terminal);
+    assert!(text.contains("D●运行中"), "转发页应显示 SOCKS 条目:{text}");
+    assert!(
+        text.contains("socks5://127.0.0.1:"),
+        "应显示入口地址:{text}"
+    );
+
+    app.handle(key(KeyCode::Char('x')), &tx).await;
+    redraw(&mut terminal, &mut app).await;
+    assert_eq!(
+        app.sessions[0].dynamic_forwards.len(),
+        0,
+        "x 应停止 SOCKS 转发"
+    );
+    assert!(
+        app.sessions[0].status.contains("已停止 SOCKS 转发"),
+        "{:?}",
+        app.sessions[0].status
+    );
+
+    app.handle(key(KeyCode::F(9)), &tx).await;
+    server.shutdown();
+    unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
+    Ok(())
+}

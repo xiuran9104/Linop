@@ -332,6 +332,13 @@ fn draw_forwards(frame: &mut Frame, body: Rect, s: &mut SessionState) {
             ]));
             (i + s.forwards.len(), item)
         }))
+        .chain(s.dynamic_forwards.iter().enumerate().map(|(i, f)| {
+            let item = ListItem::new(Line::from(vec![
+                Span::styled("D ● 运行中  ", Style::new().fg(Color::Green)),
+                Span::styled(f.to_string(), Style::new().bold()),
+            ]));
+            (i + s.forwards.len() + s.remote_forwards.len(), item)
+        }))
         .map(|(i, item)| {
             if i == s.forwards_sel {
                 item.style(
@@ -352,10 +359,10 @@ fn draw_forwards(frame: &mut Frame, body: Rect, s: &mut SessionState) {
     }));
     if items.is_empty() {
         items.push(ListItem::new(
-            "没有运行中的转发。在 connections.toml 中配置 [[连接.forwards]](本地)或 [[连接.remote_forwards]](反向)。",
+            "没有运行中的转发。在 connections.toml 中配置 [[连接.forwards]](本地)、[[连接.remote_forwards]](反向)或 dynamic_ports(SOCKS)。",
         ));
     }
-    let total_running = s.forwards.len() + s.remote_forwards.len();
+    let total_running = s.forwards.len() + s.remote_forwards.len() + s.dynamic_forwards.len();
     let mut hint = List::new(items);
     if total_running > 0 {
         hint = hint.highlight_style(

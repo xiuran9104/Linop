@@ -71,6 +71,7 @@ pub struct Connected {
     pub sftp: Sftp,
     pub forwards: Vec<LocalForward>,
     pub remote_forwards: Vec<linop_ssh::RemoteForward>,
+    pub dynamic_forwards: Vec<linop_ssh::DynamicForward>,
     /// 启动失败的转发及原因(不致命,进转发页与状态栏)。
     pub forward_errors: Vec<String>,
 }
@@ -280,6 +281,7 @@ pub struct SessionState {
     pub sftp: Sftp,
     pub forwards: Vec<LocalForward>,
     pub remote_forwards: Vec<linop_ssh::RemoteForward>,
+    pub dynamic_forwards: Vec<linop_ssh::DynamicForward>,
     /// 启动失败的转发及原因。
     pub forward_failures: Vec<String>,
     /// 转发页选中项(本地+反向统一序)。
@@ -461,6 +463,9 @@ impl App {
                     }
                     for remote in s.remote_forwards.drain(..) {
                         let _ = tokio::time::timeout(Duration::from_secs(2), remote.stop()).await;
+                    }
+                    for dynamic in s.dynamic_forwards.drain(..) {
+                        dynamic.stop();
                     }
                     s.active_transfer = None;
                     s.reconnect = Some(ReconnectState::default());
@@ -1026,7 +1031,7 @@ impl App {
                 _ => {}
             },
             Tab::Forwards => {
-                let total = s.forwards.len() + s.remote_forwards.len();
+                let total = s.forwards.len() + s.remote_forwards.len() + s.dynamic_forwards.len();
                 match key.code {
                     KeyCode::Up | KeyCode::Char('k') if total > 0 => {
                         s.forwards_sel = (s.forwards_sel + total - 1) % total;
@@ -1042,7 +1047,7 @@ impl App {
                             let label = forward.to_string();
                             forward.stop();
                             s.status = format!("已停止本地转发 {label}");
-                        } else if idx < total {
+                        } else if idx < s.forwards.len() + s.remote_forwards.len() {
                             let remote_idx = idx - s.forwards.len();
                             let remote = s.remote_forwards.remove(remote_idx);
                             let label = remote.to_string();
@@ -1055,6 +1060,12 @@ impl App {
                                 Ok(()) => s.status = format!("已停止反向转发 {label}"),
                                 Err(_) => s.status = format!("停止反向转发超时:{label}"),
                             }
+                        } else if idx < total {
+                            let dynamic_idx = idx - s.forwards.len() - s.remote_forwards.len();
+                            let dynamic = s.dynamic_forwards.remove(dynamic_idx);
+                            let label = dynamic.to_string();
+                            dynamic.stop();
+                            s.status = format!("已停止 SOCKS 转发 {label}");
                         }
                         let total = s.forwards.len() + s.remote_forwards.len();
                         s.forwards_sel = s.forwards_sel.min(total.saturating_sub(1));
@@ -1089,6 +1100,7 @@ impl App {
                     sftp,
                     forwards,
                     remote_forwards,
+                    dynamic_forwards,
                     forward_errors,
                 } = *boxed;
                 self.next_sid += 1;
@@ -1104,13 +1116,8 @@ impl App {
                 let local_entries = list_local(&local_cwd);
                 let forward_note = (!forward_errors.is_empty()).then(|| forward_errors.join(";"));
                 let status = warn.or(forward_note).unwrap_or_else(|| {
-                    format!(
-                        "已连接 {},转发 {} 条(本地 {} + 反向 {})",
-                        profile.name,
-                        forwards.len() + remote_forwards.len(),
-                        forwards.len(),
-                        remote_forwards.len()
-                    )
+                    let total = forwards.len() + remote_forwards.len() + dynamic_forwards.len();
+                    format!("已连接 {},转发 {total} 条", profile.name)
                 });
                 let (cols, rows) = self.shell_area.unwrap_or((80, 24));
                 self.sessions.push(SessionState {
@@ -1123,6 +1130,7 @@ impl App {
                     sftp,
                     forwards,
                     remote_forwards,
+                    dynamic_forwards,
                     forward_failures: forward_errors,
                     forwards_sel: 0,
                     term: Terminal::new(cols, rows),
@@ -1194,6 +1202,7 @@ impl App {
             sftp,
             forwards,
             remote_forwards,
+            dynamic_forwards,
             forward_errors,
             ..
         } = *conn;
@@ -1210,6 +1219,7 @@ impl App {
         s.sftp = sftp;
         s.forwards = forwards;
         s.remote_forwards = remote_forwards;
+        s.dynamic_forwards = dynamic_forwards;
         s.reconnect = None;
         s.term
             .feed("\r\n\x1b[32m—— 已重连 ——\x1b[0m\r\n".as_bytes());
@@ -1651,6 +1661,13 @@ async fn connect(profile: Connection, cols: u16, rows: u16) -> Result<Connected,
             )),
         }
     }
+    let mut dynamic_forwards = Vec::new();
+    for port in &profile.dynamic_ports {
+        match ssh.open_dynamic_forward(*port).await {
+            Ok(running) => dynamic_forwards.push(running),
+            Err(e) => forward_errors.push(format!("SOCKS 转发 127.0.0.1:{port} 启动失败:{e}")),
+        }
+    }
     Ok(Connected {
         profile,
         ssh,
@@ -1659,6 +1676,7 @@ async fn connect(profile: Connection, cols: u16, rows: u16) -> Result<Connected,
         sftp,
         forwards,
         remote_forwards,
+        dynamic_forwards,
         forward_errors,
     })
 }

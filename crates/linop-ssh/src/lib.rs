@@ -7,11 +7,13 @@ mod client;
 mod forward;
 mod host_keys;
 mod shell;
+mod socks;
 
 pub use client::{ClientHandler, Session};
 pub use forward::{LocalForward, RemoteForward};
 pub use host_keys::{Decision, KnownHosts, KnownHostsPolicy};
 pub use shell::{ShellChannel, ShellReader, ShellWriter};
+pub use socks::DynamicForward;
 
 use linop_core::Auth;
 

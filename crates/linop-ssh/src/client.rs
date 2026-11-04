@@ -12,6 +12,7 @@ use russh::keys::PublicKeyOrCertificate;
 use crate::forward::LocalForward;
 use crate::host_keys::{Decision, KnownHostsPolicy};
 use crate::shell::ShellChannel;
+use crate::socks::DynamicForward;
 use crate::{RemoteForward, SshError, TERM_TYPE, load_key};
 
 /// 远端反向通道到达的一条连接:由驱动任务桥接到本地目标。
@@ -199,6 +200,11 @@ impl Session {
             .await?;
         channel.request_shell(true).await?;
         Ok(ShellChannel::new(channel))
+    }
+
+    /// 启动一条 SOCKS5 动态转发(-D)。
+    pub async fn open_dynamic_forward(&self, local_port: u16) -> crate::Result<DynamicForward> {
+        DynamicForward::start(self.handle.clone(), local_port).await
     }
 
     /// 打开 SFTP 子系统通道流,交给 linop-sftp 使用。

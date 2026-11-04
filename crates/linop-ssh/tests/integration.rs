@@ -180,3 +180,69 @@ async fn remote_forward_tunnel_reaches_local_target() -> anyhow::Result<()> {
     ssh.disconnect().await?;
     Ok(())
 }
+
+#[tokio::test]
+async fn socks_dynamic_forward_proxies_to_target() -> anyhow::Result<()> {
+    use std::net::Ipv4Addr;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    // echo 目标:SOCKS CONNECT 的目的地。
+    let echo_listener = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await?;
+    let echo_addr = echo_listener.local_addr()?;
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut sock, _)) = echo_listener.accept().await else {
+                break;
+            };
+            tokio::spawn(async move {
+                let (mut r, mut w) = sock.split();
+                let _ = tokio::io::copy(&mut r, &mut w).await;
+            });
+        }
+    });
+
+    let server = TestSshServer::start_echo().await?;
+    let profile = conn_to(&server.addr, Auth::password("x"));
+    let ssh = Session::connect_profile(&profile, KnownHostsPolicy::AcceptAll).await?;
+    let fwd = ssh.open_dynamic_forward(0).await?; // 端口由内核分配
+
+    // SOCKS5:协商 → CONNECT(IPv4 字面量)→ 桥接数据。
+    let mut sock = tokio::net::TcpStream::connect(fwd.local_addr).await?;
+    sock.write_all(&[5, 1, 0]).await?;
+    let mut method = [0u8; 2];
+    sock.read_exact(&mut method).await?;
+    assert_eq!(&method, &[5, 0], "应选择无鉴权");
+
+    let ip: Ipv4Addr = "127.0.0.1".parse()?;
+    sock.write_all(&[5, 1, 0, 1]).await?;
+    sock.write_all(&ip.octets()).await?;
+    sock.write_all(&echo_addr.port().to_be_bytes()).await?;
+    let mut reply = [0u8; 10];
+    sock.read_exact(&mut reply).await?;
+    assert_eq!(reply[1], 0, "CONNECT 应成功:{reply:?}");
+
+    sock.write_all(b"socks-ping").await?;
+    let mut buf = vec![0u8; 32];
+    let n = tokio::time::timeout(Duration::from_secs(3), sock.read(&mut buf))
+        .await
+        .expect("echo 应在超时内返回")?;
+    assert_eq!(&buf[..n], b"socks-ping");
+
+    // 域名(atyp=3)路径:CONNECT "localhost" 的同一 echo 端口。
+    let mut sock2 = tokio::net::TcpStream::connect(fwd.local_addr).await?;
+    sock2.write_all(&[5, 1, 0]).await?;
+    sock2.read_exact(&mut method).await?;
+    sock2.write_all(&[5, 1, 0, 3]).await?;
+    sock2.write_all(&[b"localhost".len() as u8]).await?;
+    sock2.write_all(b"localhost").await?;
+    sock2.write_all(&echo_addr.port().to_be_bytes()).await?;
+    sock2.read_exact(&mut reply).await?;
+    assert_eq!(reply[1], 0, "域名 CONNECT 应成功:{reply:?}");
+
+    fwd.stop();
+    ssh.disconnect().await?;
+    Ok(())
+}
+
+/// use Duration:该测试直接引用。
+use std::time::Duration;

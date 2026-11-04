@@ -91,6 +91,8 @@ pub struct Connection {
     pub forwards: Vec<PortForward>,
     /// 建立连接后自动启动的反向转发规则(-R)。
     pub remote_forwards: Vec<RemoteForward>,
+    /// 建立连接后自动启动的 SOCKS5 动态转发本地端口(-D)。
+    pub dynamic_ports: Vec<u16>,
     pub notes: Option<String>,
 }
 
@@ -109,6 +111,7 @@ impl Connection {
             auth,
             forwards: Vec::new(),
             remote_forwards: Vec::new(),
+            dynamic_ports: Vec::new(),
             notes: None,
         }
     }
@@ -153,6 +156,7 @@ impl Connection {
                     target_port: f.target_port,
                 })
                 .collect(),
+            dynamic_ports: self.dynamic_ports.clone(),
             notes: self.notes.clone(),
         }
     }
@@ -196,6 +200,7 @@ impl From<&RawConnection> for Connection {
                     target_port: f.target_port,
                 })
                 .collect(),
+            dynamic_ports: raw.dynamic_ports.clone(),
             notes: raw.notes.clone(),
         }
     }
@@ -224,6 +229,8 @@ pub(crate) struct RawConnection {
     pub forwards: Vec<RawForward>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remote_forwards: Vec<RawRemoteForward>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dynamic_ports: Vec<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub notes: Option<String>,
 }
