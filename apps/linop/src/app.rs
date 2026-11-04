@@ -98,15 +98,17 @@ pub enum DialogAction {
     ConnectPassphrase(Box<Connection>),
     /// 删除一个连接 profile(picker 上执行,带确认)。
     DeleteProfile(String),
+    /// 从 ~/.ssh/config 导入连接(picker 上执行,带确认)。
+    ImportProfiles(Vec<Connection>),
 }
 
 impl DialogAction {
-    /// 输入型对话框(新建/重命名)需要文本框;删除只需确认。
+    /// 输入型对话框(新建/重命名)需要文本框;删除/导入只需确认。
     pub fn needs_input(&self) -> bool {
         !matches!(
             self,
             DialogAction::DeleteRemote { .. } | DialogAction::DeleteLocal { .. }
-        )
+        ) && !matches!(self, DialogAction::ImportProfiles(_))
     }
 }
 
@@ -559,6 +561,44 @@ impl App {
                         ));
                     }
                 }
+                // 从 ~/.ssh/config 导入。
+                KeyCode::Char('i') => {
+                    let path = linop_core::ssh_config::default_ssh_config_path();
+                    let text = match std::fs::read_to_string(&path) {
+                        Ok(text) => text,
+                        Err(_) => {
+                            self.notice = format!("未找到 ssh config:{}", path.display());
+                            return true;
+                        }
+                    };
+                    let parsed = linop_core::ssh_config::parse_ssh_config(&text);
+                    if parsed.is_empty() {
+                        self.notice = "ssh config 中没有可导入的主机".to_string();
+                        return true;
+                    }
+                    let skipped = parsed
+                        .iter()
+                        .filter(|c| self.registry.get(&c.name).is_some())
+                        .count();
+                    let fresh: Vec<Connection> = parsed
+                        .into_iter()
+                        .filter(|c| self.registry.get(&c.name).is_none())
+                        .collect();
+                    if fresh.is_empty() {
+                        self.notice = format!("{skipped} 个主机全部同名,无需导入");
+                        return true;
+                    }
+                    self.dialog = Some(new_dialog(
+                        "导入 ssh config",
+                        &format!(
+                            "从 {} 导入 {} 条(跳过 {} 个同名)?Enter 确认 / Esc 取消",
+                            path.display(),
+                            fresh.len(),
+                            skipped
+                        ),
+                        DialogAction::ImportProfiles(fresh),
+                    ));
+                }
                 // 新建/编辑连接配置。
                 KeyCode::Char('n') => self.form = Some(ConnectionForm::blank()),
                 KeyCode::Char('e') => {
@@ -582,16 +622,25 @@ impl App {
                         if let Auth::Password { password } = &conn.auth
                             && password.is_empty()
                         {
-                            // 密码未配置:就地弹掩码输入框,不落盘。
-                            self.dialog = Some(Dialog {
-                                title: format!("连接 {}", conn.name),
-                                prompt: format!("输入 {} 的密码:", linop_core::endpoint(&conn)),
-                                input: String::new(),
-                                action: DialogAction::ConnectPassword(Box::new(conn)),
-                                error: String::new(),
-                                status: String::new(),
-                                secret: true,
-                            });
+                            // 存在默认密钥且上次不是密钥失败:先试默认密钥直连;
+                            // 失败(错误文案标记)后再 Enter 才弹密码框。
+                            let has_default = linop_ssh::default_identity_paths()
+                                .iter()
+                                .any(|p| p.exists());
+                            let default_failed = self.notice.contains("默认密钥认证失败");
+                            if has_default && !default_failed {
+                                self.connect(&conn, tx);
+                            } else {
+                                self.dialog = Some(Dialog {
+                                    title: format!("连接 {}", conn.name),
+                                    prompt: format!("输入 {} 的密码:", linop_core::endpoint(&conn)),
+                                    input: String::new(),
+                                    action: DialogAction::ConnectPassword(Box::new(conn)),
+                                    error: String::new(),
+                                    status: String::new(),
+                                    secret: true,
+                                });
+                            }
                         } else if linop_ssh::key_needs_passphrase(&conn.auth) {
                             // 加密私钥未配置口令:就地弹掩码输入框。
                             self.dialog = Some(Dialog {
@@ -771,6 +820,20 @@ impl App {
         mut dialog: Dialog,
         tx: &mpsc::UnboundedSender<AppEvent>,
     ) {
+        // 导入 ssh config 确认:作用于 picker,先行处理。
+        if let (KeyCode::Enter, DialogAction::ImportProfiles(profiles)) =
+            (&key.code, &dialog.action)
+        {
+            let count = profiles.len();
+            for conn in profiles {
+                self.registry.upsert(conn.clone());
+            }
+            match self.registry.save(linop_core::default_connections_path()) {
+                Ok(()) => self.notice = format!("已从 ssh config 导入 {count} 条"),
+                Err(e) => self.notice = format!("导入失败(未保存):{e}"),
+            }
+            return;
+        }
         // 删除连接确认同样作用于 picker,先行处理。
         if let (KeyCode::Enter, DialogAction::DeleteProfile(name)) = (&key.code, &dialog.action) {
             let name = name.clone();
@@ -908,7 +971,8 @@ impl App {
             }
             DialogAction::ConnectPassword(_)
             | DialogAction::ConnectPassphrase(_)
-            | DialogAction::DeleteProfile(_) => {
+            | DialogAction::DeleteProfile(_)
+            | DialogAction::ImportProfiles(_) => {
                 // 已在 handle_dialog_key 里先行处理,不会走到这里。
                 return Err("内部错误:picker 对话框不应进入会话执行".to_string());
             }
@@ -1619,15 +1683,6 @@ fn spawn_connect(tx: mpsc::UnboundedSender<AppEvent>, profile: Connection, cols:
 
 /// 建立连接:认证 → shell → SFTP → 启动 profile 里的全部转发。
 async fn connect(profile: Connection, cols: u16, rows: u16) -> Result<Connected, String> {
-    if let Auth::Password { password } = &profile.auth
-        && password.is_empty()
-    {
-        return Err(format!(
-            "连接 {} 未配置密码;在列表中选中它按 Enter 可交互输入(不落盘),或在 {} 补全 password / 改用 key_path",
-            profile.name,
-            linop_core::default_connections_path().display()
-        ));
-    }
     let policy = KnownHostsPolicy::TrustOnFirstUse(KnownHosts::load_default());
     let ssh = Session::connect_profile(&profile, policy)
         .await

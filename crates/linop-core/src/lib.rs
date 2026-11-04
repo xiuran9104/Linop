@@ -5,6 +5,7 @@
 
 mod model;
 mod registry;
+pub mod ssh_config;
 
 pub use model::{Auth, Connection, PortForward, RemoteForward};
 pub use registry::{Registry, config_dir, default_connections_path, endpoint, known_hosts_path};

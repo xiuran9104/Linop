@@ -308,6 +308,10 @@ fn encode_matches_term_modes() {
 #[tokio::test]
 async fn empty_password_prompts_masked_and_connects() -> anyhow::Result<()> {
     let _env = env_guard().await;
+    // 隔离 HOME:空 HOME 下没有默认密钥,必然走密码输入框路径。
+    let isolated_home = tempfile::tempdir()?;
+    let old_home = std::env::var("HOME").ok();
+    unsafe { std::env::set_var("HOME", isolated_home.path()) };
     let config_dir = tempfile::tempdir()?;
     unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
     let remote_root = tempfile::tempdir()?;
@@ -353,6 +357,7 @@ async fn empty_password_prompts_masked_and_connects() -> anyhow::Result<()> {
     app.handle(key(KeyCode::F(9)), &tx).await;
     server.shutdown();
     unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
+    restore_home(old_home);
     Ok(())
 }
 
@@ -914,4 +919,133 @@ async fn dynamic_forward_lifecycle_in_tui() -> anyhow::Result<()> {
     server.shutdown();
     unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
     Ok(())
+}
+
+/// 默认密钥自动发现:HOME/.ssh/id_ed25519 存在且 profile 空密码 →
+/// Enter 直接连接(不弹框),用默认密钥完成公钥认证。
+#[tokio::test]
+async fn default_identity_used_for_empty_password_profile() -> anyhow::Result<()> {
+    if which("ssh-keygen").is_none() {
+        eprintln!("跳过:系统无 ssh-keygen");
+        return Ok(());
+    }
+    let _env = env_guard().await;
+    let isolated_home = tempfile::tempdir()?;
+    let ssh_dir = isolated_home.path().join(".ssh");
+    std::fs::create_dir_all(&ssh_dir)?;
+    let key_path = ssh_dir.join("id_ed25519");
+    let ok = std::process::Command::new("ssh-keygen")
+        .args(["-t", "ed25519", "-N", "", "-q", "-f"])
+        .arg(&key_path)
+        .status()?
+        .success();
+    assert!(ok);
+    let old_home = std::env::var("HOME").ok();
+    unsafe { std::env::set_var("HOME", isolated_home.path()) };
+
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    let public = linop_testsupport::load_public_key(&key_path.with_extension("pub"))?;
+    let fingerprint = public.fingerprint(Default::default()).to_string();
+    let remote_root = tempfile::tempdir()?;
+    let server = linop_testsupport::TestSshServer::start(linop_testsupport::ServerOptions {
+        allowed_fingerprints: Some(vec![fingerprint]),
+        sftp_root: Some(remote_root.path().to_path_buf()),
+        ..Default::default()
+    })
+    .await?;
+    let mut conn = Connection::new(
+        "bykey",
+        server.addr.ip().to_string(),
+        "u",
+        Auth::password(""),
+    );
+    conn.port = server.addr.port();
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(vec![conn].into_iter().collect());
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+    redraw(&mut terminal, &mut app).await;
+
+    // Enter:有默认密钥 → 不弹框直接连接。
+    app.handle(key(KeyCode::Enter), &tx).await;
+    assert!(app.dialog.is_none(), "有默认密钥时应直连而非弹框");
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    eprintln!("DI_NOTICE={:?}", app.notice);
+    assert!(matches!(app.mode, Mode::Session), "默认密钥应完成认证");
+
+    app.handle(key(KeyCode::F(9)), &tx).await;
+    server.shutdown();
+    unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
+    restore_home(old_home);
+    Ok(())
+}
+
+/// ssh config 导入:i 读取 → 确认 → 落盘;重复导入全部同名则提示跳过。
+#[tokio::test]
+async fn import_from_ssh_config() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    let ssh_conf = tempfile::tempdir()?;
+    let ssh_config_path = ssh_conf.path().join("config");
+    std::fs::write(
+        &ssh_config_path,
+        "Host web-1\n  HostName 192.168.1.10\n  Port 2222\n  User root\n\nHost *\n  User ignored\n",
+    )?;
+    unsafe { std::env::set_var("LINOP_SSH_CONFIG", &ssh_config_path) };
+
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(Registry::new());
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+    redraw(&mut terminal, &mut app).await;
+
+    app.handle(key(KeyCode::Char('i')), &tx).await;
+    assert!(app.dialog.is_some(), "i 应弹导入确认");
+    redraw(&mut terminal, &mut app).await;
+    let text = screen_text(&terminal);
+    // 对话框窄,文案可能折行:分段断言。
+    assert!(text.contains("导入1条"), "提示导入数量:{text}");
+    assert!(
+        text.contains("个同名") && text.contains("跳过0"),
+        "无同名冲突:{text}"
+    );
+
+    app.handle(key(KeyCode::Enter), &tx).await;
+    let conn = app.registry.get("web-1").expect("应导入 web-1");
+    assert_eq!(
+        (conn.host.as_str(), conn.port, conn.username.as_str()),
+        ("192.168.1.10", 2222, "root")
+    );
+    assert!(
+        std::fs::read_to_string(config_dir.path().join("connections.toml"))?.contains("web-1"),
+        "导入应落盘"
+    );
+
+    // 再次导入:全部同名 → 提示跳过,不再弹框。
+    app.notice.clear();
+    app.handle(key(KeyCode::Char('i')), &tx).await;
+    assert!(app.dialog.is_none(), "全部同名不应弹框");
+    assert!(app.notice.contains("1 个主机全部同名"), "{:?}", app.notice);
+
+    unsafe { std::env::remove_var("LINOP_SSH_CONFIG") };
+    unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
+    Ok(())
+}
+
+/// 恢复 HOME 环境变量。
+fn restore_home(old: Option<String>) {
+    unsafe {
+        match old {
+            Some(h) => std::env::set_var("HOME", h),
+            None => std::env::remove_var("HOME"),
+        }
+    }
 }

@@ -25,6 +25,8 @@ pub enum SshError {
     Io(#[from] std::io::Error),
     #[error("authentication failed for {user}@{host}")]
     AuthFailed { user: String, host: String },
+    #[error("默认密钥认证失败(未配置密码):{user}@{host}")]
+    NoAuth { user: String, host: String },
     #[error("host key mismatch for {host}: known {known}, got {got}")]
     HostKeyMismatch {
         host: String,
@@ -46,6 +48,17 @@ pub type Result<T> = std::result::Result<T, SshError>;
 
 /// 默认终端类型(xterm-256color,与 navop 终端一致)。
 pub const TERM_TYPE: &str = "xterm-256color";
+
+/// 常见默认私钥路径(按优先级):~/.ssh/{id_ed25519, id_ecdsa, id_rsa}。
+pub fn default_identity_paths() -> Vec<std::path::PathBuf> {
+    let ssh_dir = dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".ssh");
+    ["id_ed25519", "id_ecdsa", "id_rsa"]
+        .into_iter()
+        .map(|name| ssh_dir.join(name))
+        .collect()
+}
 
 /// 私钥是否需要口令:密钥认证、未配置口令、且文件实际为加密格式。
 /// 供前端在连接前弹口令输入框。
