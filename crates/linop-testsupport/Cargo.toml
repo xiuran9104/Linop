@@ -1,0 +1,13 @@
+[package]
+name = "linop-testsupport"
+description = "In-process SSH + SFTP test server for Linop integration tests (navop test-support style)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+tokio = { workspace = true }
+russh = { workspace = true }
+russh-sftp = { workspace = true }
+anyhow = { workspace = true }

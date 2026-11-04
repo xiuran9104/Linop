@@ -1,0 +1,15 @@
+[package]
+name = "linop-core"
+description = "Connection profiles and configuration registry for Linop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+dirs = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

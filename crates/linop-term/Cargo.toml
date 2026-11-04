@@ -1,0 +1,13 @@
+[package]
+name = "linop-term"
+description = "Terminal emulation (vt100 parser) with ratatui rendering"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+ratatui = { workspace = true }
+vt100 = { workspace = true }
+
+[dev-dependencies]
+crossterm = { workspace = true }
