@@ -55,12 +55,18 @@ fn draw_picker(frame: &mut Frame, app: &mut App) {
                 Span::styled(format!("{:<16}", s.profile.name), Style::new().bold()),
                 Span::raw(format!(" {}", endpoint(&s.profile))),
                 Span::styled(
-                    if s.active_transfer.is_some() {
+                    if s.reconnect.is_some() {
+                        "  [重连中]"
+                    } else if s.active_transfer.is_some() {
                         "  [传输中]"
                     } else {
                         "  [在线]"
                     },
-                    Style::new().fg(Color::DarkGray),
+                    if s.reconnect.is_some() {
+                        Style::new().fg(Color::Yellow)
+                    } else {
+                        Style::new().fg(Color::DarkGray)
+                    },
                 ),
             ]))
         })

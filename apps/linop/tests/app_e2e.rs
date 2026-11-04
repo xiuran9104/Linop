@@ -10,7 +10,9 @@ use linop_sftp::Entry;
 use ratatui::backend::TestBackend;
 use tokio::sync::mpsc;
 
-use linop::app::{self as app_mod, App, AppEvent, Mode, Pane};
+use linop::app::{
+    self as app_mod, App, AppEvent, MAX_RECONNECT_ATTEMPTS, Mode, Pane, ReconnectState,
+};
 use linop::{keys, ui};
 
 /// LINOP_CONFIG_DIR 是进程级环境变量:用它的测试必须持有此锁串行执行。
@@ -545,6 +547,145 @@ async fn connection_editor_create_edit_delete() -> anyhow::Result<()> {
     assert!(!std::fs::read_to_string(&toml_path)?.contains("web9"));
 
     drop(_rx);
+    unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
+    Ok(())
+}
+
+/// 意外断线(注入 ShellClosed)→ 自动重连成功:会话保留、终端内容保留、
+/// shell 恢复可输入,远端目录恢复。
+#[tokio::test]
+async fn auto_reconnect_restores_session() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    let remote_root = tempfile::tempdir()?;
+    let server = linop_testsupport::TestSshServer::start_with_sftp(remote_root.path()).await?;
+    let mut conn = Connection::new("rc", server.addr.ip().to_string(), "u", Auth::password("p"));
+    conn.port = server.addr.port();
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(vec![conn].into_iter().collect());
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+    redraw(&mut terminal, &mut app).await;
+
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    let sid = app.sessions[app.active].id;
+    for c in "old".chars() {
+        app.handle(key(KeyCode::Char(c)), &tx).await;
+    }
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(2),
+    )
+    .await;
+
+    // 模拟网络断开:注入 reader 任务会发出的 ShellClosed。
+    app.handle(AppEvent::ShellClosed(sid), &tx).await;
+    assert_eq!(app.sessions.len(), 1, "断线后会话保留");
+    let Some(s) = app.sessions.first() else {
+        unreachable!()
+    };
+    assert!(s.reconnect.is_some(), "应进入重连状态");
+
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    let Some(s) = app.sessions.first() else {
+        unreachable!()
+    };
+    assert!(
+        s.reconnect.is_none(),
+        "重连成功后清除重连状态:{:?}",
+        s.status
+    );
+    assert_eq!(app.sessions.len(), 1);
+
+    // 终端保留断线前的内容 + 新 shell 可输入。
+    let text = screen_text(&terminal);
+    assert!(text.contains("old"), "重连不丢终端历史");
+    for c in "new".chars() {
+        app.handle(key(KeyCode::Char(c)), &tx).await;
+    }
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(2),
+    )
+    .await;
+    assert!(
+        screen_text(&terminal).contains("new"),
+        "重连后 shell 应恢复输入"
+    );
+
+    app.handle(key(KeyCode::F(9)), &tx).await;
+    server.shutdown();
+    unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
+    Ok(())
+}
+
+/// 重连耗尽:预置尝试次数后注入失败回执 → 会话被移除。
+#[tokio::test]
+async fn auto_reconnect_gives_up_after_max_attempts() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    let remote_root = tempfile::tempdir()?;
+    let server = linop_testsupport::TestSshServer::start_with_sftp(remote_root.path()).await?;
+    let mut conn = Connection::new(
+        "gone",
+        server.addr.ip().to_string(),
+        "u",
+        Auth::password("p"),
+    );
+    conn.port = server.addr.port();
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(vec![conn].into_iter().collect());
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+    redraw(&mut terminal, &mut app).await;
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert_eq!(app.sessions.len(), 1);
+    let sid = app.sessions[0].id;
+
+    // 预置 attempts = MAX-1:注入一次失败回执即耗尽。
+    app.sessions[0].reconnect = Some(ReconnectState {
+        attempts: MAX_RECONNECT_ATTEMPTS - 1,
+    });
+    app.handle(
+        AppEvent::ReconnectDone(sid, Err("连接被拒".to_string())),
+        &tx,
+    )
+    .await;
+    assert!(app.sessions.is_empty(), "耗尽后会话应被移除");
+    assert!(app.notice.contains("重连失败"));
+
+    server.shutdown();
     unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
     Ok(())
 }

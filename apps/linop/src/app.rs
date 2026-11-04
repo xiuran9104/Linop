@@ -31,6 +31,10 @@ pub enum AppEvent {
     TransferProgress(u64, u64),
     /// 后台传输结束(会话 ID;Ok 为累计字节,Err 中 "已取消" 表示用户取消)。
     TransferFinished(u64, Result<u64, String>),
+    /// 自动重连:单次尝试完成(成功=新连接资源,失败=原因)。
+    ReconnectDone(u64, Result<Box<Connected>, String>),
+    /// 自动重连:退避等待结束,发起下一次尝试。
+    ReconnectTick(u64),
 }
 
 // --- 防挂死超时常量:任何网络 await 都有上限,坏连接不允许冻结事件循环 ---
@@ -245,9 +249,28 @@ pub struct FilesState {
     pub active: Pane,
 }
 
+/// 断线自动重连进度。
+#[derive(Default)]
+pub struct ReconnectState {
+    pub attempts: u32,
+}
+
+/// 自动重连最大尝试次数。
+pub const MAX_RECONNECT_ATTEMPTS: u32 = 5;
+
+/// 第 n 次失败后的退避秒数:1,2,4,8,8…
+fn reconnect_backoff(attempts: u32) -> Duration {
+    Duration::from_secs(1u64.saturating_add(1u64 << (attempts.saturating_sub(1)).min(3)) - 1)
+}
+
 pub struct SessionState {
     /// 会话唯一 ID,事件路由用。
     pub id: u64,
+    /// 断线重连状态;None = 在线。
+    pub reconnect: Option<ReconnectState>,
+    /// shell 输出转发任务句柄:重连/断开时主动终止,避免旧任务的
+    /// ShellClosed 再次触发重连循环。
+    pub reader_task: tokio::task::JoinHandle<()>,
     pub profile: Connection,
     pub ssh: Session,
     pub writer: ShellWriter,
@@ -418,15 +441,37 @@ impl App {
                 }
             }
             AppEvent::ShellClosed(id) => {
-                if let Some((idx, _)) = self.session_by_id(id) {
-                    let name = self.sessions[idx].profile.name.clone();
-                    let was_active = matches!(self.mode, Mode::Session) && idx == self.active;
-                    self.disconnect_at(idx).await;
-                    self.notice = format!("{name} 的会话已结束");
-                    if was_active && !self.sessions.is_empty() {
-                        self.mode = Mode::Picker;
+                // 意外断线:保留会话与终端内容,进入自动重连周期;
+                // 重连周期中 reader 的收尾事件忽略(可能重复到达)。
+                if let Some((_, s)) = self.session_by_id(id)
+                    && s.reconnect.is_none()
+                {
+                    let profile = s.profile.clone();
+                    let cols = s.term.cols();
+                    let rows = s.term.rows();
+                    // 旧连接已死:停掉其转发,清掉传输状态。
+                    for forward in s.forwards.drain(..) {
+                        forward.stop();
                     }
+                    s.active_transfer = None;
+                    s.reconnect = Some(ReconnectState::default());
+                    s.status = format!("{} 已断开,自动重连中…", profile.name);
+                    s.term
+                        .feed("\r\n\x1b[33m—— 连接断开,正在重连 ——\x1b[0m\r\n".as_bytes());
+                    spawn_reconnect_attempt(tx.clone(), id, profile, cols, rows);
                 }
+            }
+            AppEvent::ReconnectTick(id) => {
+                if let Some((_, s)) = self.session_by_id(id)
+                    && s.reconnect.is_some()
+                {
+                    let profile = s.profile.clone();
+                    let (cols, rows) = (s.term.cols(), s.term.rows());
+                    spawn_reconnect_attempt(tx.clone(), id, profile, cols, rows);
+                }
+            }
+            AppEvent::ReconnectDone(id, result) => {
+                self.on_reconnect_done(id, result, tx).await;
             }
             AppEvent::InputClosed => {
                 self.notice = "输入设备已关闭,退出".to_string();
@@ -850,6 +895,10 @@ impl App {
             Tab::Shell => match key.code {
                 KeyCode::PageUp => s.term.scroll(1),
                 KeyCode::PageDown => s.term.scroll(-1),
+                _ if s.reconnect.is_some() => {
+                    // 重连期间旧写半边已死:输入会失败/超时,直接暂停。
+                    s.status = "重连中,输入已暂停…".to_string();
+                }
                 _ => {
                     if let Some(bytes) = keys::encode(key, s.term.application_cursor()) {
                         match capped(WRITE_TIMEOUT_SECS, s.writer.write(&bytes)).await {
@@ -954,29 +1003,21 @@ impl App {
                 if !matches!(self.mode, Mode::Connecting { .. }) {
                     // 用户已取消:迟到的连接结果直接回收。
                     let conn = *boxed;
-                    teardown_parts(conn.profile, conn.ssh, conn.sftp, conn.forwards).await;
+                    teardown_parts(conn.ssh, conn.sftp, conn.forwards).await;
                     return;
                 }
                 let Connected {
                     profile,
                     ssh,
                     writer,
-                    mut reader,
+                    reader,
                     sftp,
                     forwards,
                     forward_errors,
                 } = *boxed;
                 self.next_sid += 1;
                 let sid = self.next_sid;
-                let tx = tx.clone();
-                tokio::spawn(async move {
-                    while let Some(bytes) = reader.read_output().await {
-                        if tx.send(AppEvent::ShellOutput(sid, bytes)).is_err() {
-                            break;
-                        }
-                    }
-                    let _ = tx.send(AppEvent::ShellClosed(sid));
-                });
+                let reader_task = spawn_shell_reader(tx.clone(), sid, reader);
 
                 let (remote_entries, warn) =
                     match capped(SFTP_META_TIMEOUT_SECS, sftp.list_dir(".")).await {
@@ -998,6 +1039,8 @@ impl App {
                 let (cols, rows) = self.shell_area.unwrap_or((80, 24));
                 self.sessions.push(SessionState {
                     id: sid,
+                    reconnect: None,
+                    reader_task,
                     profile,
                     ssh,
                     writer,
@@ -1027,6 +1070,78 @@ impl App {
                 }
             }
         }
+    }
+
+    /// 重连尝试回执:成功则无缝换上新连接资源;失败退避重试,耗尽则移除会话。
+    async fn on_reconnect_done(
+        &mut self,
+        id: u64,
+        result: Result<Box<Connected>, String>,
+        tx: &mpsc::UnboundedSender<AppEvent>,
+    ) {
+        let conn = match result {
+            Ok(conn) => conn,
+            Err(msg) => {
+                let Some((idx, s)) = self.session_by_id(id) else {
+                    return;
+                };
+                let name = s.profile.name.clone();
+                let Some(state) = s.reconnect.as_mut() else {
+                    return;
+                };
+                state.attempts += 1;
+                if state.attempts >= MAX_RECONNECT_ATTEMPTS {
+                    self.notice = format!(
+                        "{name} 重连失败(已尝试 {} 次),已移除",
+                        MAX_RECONNECT_ATTEMPTS
+                    );
+                    self.disconnect_at(idx).await;
+                } else {
+                    let backoff = reconnect_backoff(state.attempts);
+                    s.status = format!(
+                        "重连失败({msg}),{}s 后第 {}/{} 次尝试…",
+                        backoff.as_secs(),
+                        state.attempts + 1,
+                        MAX_RECONNECT_ATTEMPTS
+                    );
+                    spawn_reconnect_delay(tx.clone(), id, backoff);
+                }
+                return;
+            }
+        };
+        let Connected {
+            ssh,
+            writer,
+            reader,
+            sftp,
+            forwards,
+            forward_errors,
+            ..
+        } = *conn;
+        // 会话已被用户移除(F9):迟到结果直接回收。
+        let Some((_, s)) = self.session_by_id(id) else {
+            teardown_parts(ssh, sftp, forwards).await;
+            return;
+        };
+        let remote_cwd = s.sftp.cwd().to_string();
+        s.reader_task.abort();
+        s.reader_task = spawn_shell_reader(tx.clone(), s.id, reader);
+        s.ssh = ssh;
+        s.writer = writer;
+        s.sftp = sftp;
+        s.forwards = forwards;
+        s.reconnect = None;
+        s.term
+            .feed("\r\n\x1b[32m—— 已重连 ——\x1b[0m\r\n".as_bytes());
+        // 尽力恢复远端目录(新 SFTP 会话默认在主目录)。
+        if let Ok(entries) = capped(SFTP_META_TIMEOUT_SECS, s.sftp.enter(&remote_cwd)).await {
+            s.files.remote_entries = entries;
+        }
+        s.status = if forward_errors.is_empty() {
+            "已重连".to_string()
+        } else {
+            format!("已重连;{} 条转发启动失败", forward_errors.len())
+        };
     }
 
     /// draw 之后调用:把仿真器与远端 PTY 同步到布局给出的内容区尺寸。
@@ -1295,21 +1410,57 @@ pub fn list_local(path: &Path) -> Vec<Entry> {
 
 /// 会话资源回收:停转发、关 SFTP、断开连接。
 async fn teardown_session(s: SessionState) {
-    teardown_parts(s.profile, s.ssh, s.sftp, s.forwards).await;
+    s.reader_task.abort();
+    teardown_parts(s.ssh, s.sftp, s.forwards).await;
 }
 
-async fn teardown_parts(
-    _profile: Connection,
-    ssh: Session,
-    sftp: Sftp,
-    forwards: Vec<LocalForward>,
-) {
+async fn teardown_parts(ssh: Session, sftp: Sftp, forwards: Vec<LocalForward>) {
     for forward in forwards {
         forward.stop();
     }
     // 清理同样带上限:对端已消失时不能卡住事件循环。
     let _ = capped(TEARDOWN_TIMEOUT_SECS, sftp.close()).await;
     let _ = capped(TEARDOWN_TIMEOUT_SECS, ssh.disconnect()).await;
+}
+
+/// shell 输出转发任务:通道关闭时发出 ShellClosed(意外断线→自动重连入口)。
+fn spawn_shell_reader(
+    tx: mpsc::UnboundedSender<AppEvent>,
+    sid: u64,
+    mut reader: ShellReader,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        while let Some(bytes) = reader.read_output().await {
+            if tx.send(AppEvent::ShellOutput(sid, bytes)).is_err() {
+                break;
+            }
+        }
+        let _ = tx.send(AppEvent::ShellClosed(sid));
+    })
+}
+
+/// 单次重连尝试任务。
+fn spawn_reconnect_attempt(
+    tx: mpsc::UnboundedSender<AppEvent>,
+    sid: u64,
+    profile: Connection,
+    cols: u16,
+    rows: u16,
+) {
+    tokio::spawn(async move {
+        let result = capped(CONNECT_TIMEOUT_SECS, connect(profile, cols, rows))
+            .await
+            .map(Box::new);
+        let _ = tx.send(AppEvent::ReconnectDone(sid, result));
+    });
+}
+
+/// 重连退避任务:等待后触发下一次尝试。
+fn spawn_reconnect_delay(tx: mpsc::UnboundedSender<AppEvent>, sid: u64, secs: Duration) {
+    tokio::spawn(async move {
+        tokio::time::sleep(secs).await;
+        let _ = tx.send(AppEvent::ReconnectTick(sid));
+    });
 }
 
 /// 阻塞读 crossterm 事件并转发到事件循环;输入设备失效时通知退出。
