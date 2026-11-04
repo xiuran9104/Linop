@@ -6,7 +6,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Tabs, Wrap};
 
-use crate::app::{App, Dialog, Mode, Pane, SessionState, Tab};
+use crate::app::{App, ConnectionForm, Dialog, Mode, Pane, SessionState, Tab};
 use linop_core::{Auth, endpoint};
 use linop_sftp::Entry;
 
@@ -26,7 +26,9 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             }
         }
     }
-    if let Some(dialog) = &app.dialog {
+    if let Some(form) = &app.form {
+        draw_form(frame, form);
+    } else if let Some(dialog) = &app.dialog {
         draw_dialog(frame, dialog);
     }
 }
@@ -385,4 +387,59 @@ fn truncate(s: &str, width: usize) -> String {
         return s.to_string();
     }
     s.chars().take(width.saturating_sub(1)).collect::<String>() + "…"
+}
+
+/// 居中连接编辑表单:逐字段输入行(焦点行高亮 + █ 光标),掩码字段显示 ●。
+fn draw_form(frame: &mut Frame, form: &ConnectionForm) {
+    let area = frame.area();
+    let width = 60.min(area.width.saturating_sub(4));
+    let height = (form.fields.len() as u16 + 4).min(area.height.saturating_sub(2));
+    let rect = Rect {
+        x: area.x + (area.width.saturating_sub(width)) / 2,
+        y: area.y + (area.height.saturating_sub(height)) / 2,
+        width,
+        height,
+    };
+    frame.render_widget(Clear, rect);
+    let title = if form.original.is_some() {
+        " 编辑连接 "
+    } else {
+        " 新建连接 "
+    };
+    let block = Block::default()
+        .title(title)
+        .borders(Borders::ALL)
+        .border_style(Style::new().fg(Color::Cyan));
+    let inner = block.inner(rect);
+    frame.render_widget(block, rect);
+
+    let mut lines: Vec<Line> = form
+        .fields
+        .iter()
+        .enumerate()
+        .map(|(i, f)| {
+            let value = if f.secret {
+                "●".repeat(f.value.chars().count())
+            } else {
+                f.value.clone()
+            };
+            if i == form.focus {
+                Line::from(format!("{}: {value}█", f.label))
+                    .style(Style::new().bold().fg(Color::Yellow))
+            } else {
+                Line::from(format!("{}: {value}", f.label))
+            }
+        })
+        .collect();
+    lines.push(Line::from(Span::styled(
+        "↑/↓ 切换 · Enter 保存 · Esc 取消(密码留空=连接时输入;密钥路径优先)",
+        Style::new().fg(Color::DarkGray),
+    )));
+    if !form.error.is_empty() {
+        lines.push(Line::from(Span::styled(
+            form.error.clone(),
+            Style::new().fg(Color::Red),
+        )));
+    }
+    frame.render_widget(Paragraph::new(lines), inner);
 }

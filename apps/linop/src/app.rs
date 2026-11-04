@@ -88,6 +88,8 @@ pub enum DialogAction {
     },
     /// 在 picker 上就地输入密码后连接(仅本次会话生效,不落盘)。
     ConnectPassword(Box<Connection>),
+    /// 删除一个连接 profile(picker 上执行,带确认)。
+    DeleteProfile(String),
 }
 
 impl DialogAction {
@@ -117,6 +119,95 @@ pub struct Dialog {
 impl Dialog {
     fn status_message(&self) -> &str {
         &self.status
+    }
+}
+
+/// 表单单个字段。
+pub struct FormField {
+    pub label: &'static str,
+    pub value: String,
+    /// 掩码输入(密码)。
+    pub secret: bool,
+}
+
+/// 连接编辑表单:新建或修改 profile。字段固定顺序:
+/// 名称/主机/端口/用户名/密码/密钥路径(密钥优先,密码可为空=连接时输入)。
+pub struct ConnectionForm {
+    /// 编辑目标的现有连接名;None 表示新建。
+    pub original: Option<String>,
+    pub fields: Vec<FormField>,
+    pub focus: usize,
+    /// 校验/保存错误。
+    pub error: String,
+}
+
+/// 字段下标。
+const F_NAME: usize = 0;
+const F_HOST: usize = 1;
+const F_PORT: usize = 2;
+const F_USER: usize = 3;
+const F_PASSWORD: usize = 4;
+const F_KEY: usize = 5;
+
+impl ConnectionForm {
+    fn blank() -> Self {
+        Self {
+            original: None,
+            fields: vec![
+                FormField {
+                    label: "名称   ",
+                    value: String::new(),
+                    secret: false,
+                },
+                FormField {
+                    label: "主机   ",
+                    value: String::new(),
+                    secret: false,
+                },
+                FormField {
+                    label: "端口   ",
+                    value: "22".to_string(),
+                    secret: false,
+                },
+                FormField {
+                    label: "用户名 ",
+                    value: String::new(),
+                    secret: false,
+                },
+                FormField {
+                    label: "密码   ",
+                    value: String::new(),
+                    secret: true,
+                },
+                FormField {
+                    label: "密钥路径",
+                    value: String::new(),
+                    secret: false,
+                },
+            ],
+            focus: 0,
+            error: String::new(),
+        }
+    }
+
+    fn edit(conn: &Connection) -> Self {
+        let mut form = Self::blank();
+        form.original = Some(conn.name.clone());
+        form.fields[F_NAME].value = conn.name.clone();
+        form.fields[F_HOST].value = conn.host.clone();
+        form.fields[F_PORT].value = conn.port.to_string();
+        form.fields[F_USER].value = conn.username.clone();
+        match &conn.auth {
+            Auth::Password { password } => form.fields[F_PASSWORD].value = password.clone(),
+            Auth::Key { path, .. } => {
+                form.fields[F_KEY].value = path.display().to_string();
+            }
+        }
+        form
+    }
+
+    fn field(&self, idx: usize) -> &str {
+        self.fields[idx].value.trim()
     }
 }
 
@@ -183,15 +274,20 @@ pub struct ActiveTransfer {
 }
 
 impl ActiveTransfer {
-    /// 状态栏进度文案,如 "下载 big.iso 45%(14 MiB/31 MiB) · c 取消"。
+    /// 状态栏进度文案,如 "下载 big.iso [██████░░░░] 45%(14 MiB/31 MiB) · c 取消"。
     fn label(&self) -> String {
         let done = linop_sftp::human_size(self.transferred);
         let size = linop_sftp::human_size(self.total);
         let percent = (self.transferred * 100)
             .checked_div(self.total)
             .map_or_else(String::new, |p| format!("{p:3}%"));
+        let filled = (self.transferred * 10)
+            .checked_div(self.total)
+            .map_or(0, |v| v as usize)
+            .min(10);
+        let bar = format!("{}{}", "█".repeat(filled), "░".repeat(10 - filled));
         format!(
-            "{} {} {}({}/{}) · c 取消",
+            "{} {} [{bar}] {}({}/{}) · c 取消",
             self.direction, self.name, percent, done, size
         )
     }
@@ -209,6 +305,8 @@ pub struct App {
     next_sid: u64,
     /// 打开中的模态对话框(文件页操作)。
     pub dialog: Option<Dialog>,
+    /// 打开中的连接编辑表单。
+    pub form: Option<ConnectionForm>,
     /// draw 阶段记录的 shell 内容区尺寸;事件循环据此同步仿真器与 PTY。
     pub shell_area: Option<(u16, u16)>,
 }
@@ -224,6 +322,7 @@ impl App {
             active: 0,
             next_sid: 0,
             dialog: None,
+            form: None,
             shell_area: None,
         }
     }
@@ -252,7 +351,10 @@ impl App {
 
     /// 按会话 ID 查找;返回 (下标, 会话)。
     fn session_by_id(&mut self, id: u64) -> Option<(usize, &mut SessionState)> {
-        self.sessions.iter_mut().enumerate().find(|(_, s)| s.id == id)
+        self.sessions
+            .iter_mut()
+            .enumerate()
+            .find(|(_, s)| s.id == id)
     }
 
     /// 断开并移除指定下标的会话;调整 active,会话清空时回到列表。
@@ -362,9 +464,13 @@ impl App {
     }
 
     async fn on_key(&mut self, key: KeyEvent, tx: &mpsc::UnboundedSender<AppEvent>) -> bool {
-        // 模态对话框优先接管按键。
+        // 模态对话框与表单优先接管按键。
         if let Some(dialog) = self.dialog.take() {
             self.handle_dialog_key(key, dialog, tx).await;
+            return true;
+        }
+        if let Some(form) = self.form.take() {
+            self.handle_form_key(key, form);
             return true;
         }
         match &mut self.mode {
@@ -376,11 +482,30 @@ impl App {
                 KeyCode::Up | KeyCode::Char('k') => self.move_picker(-1),
                 KeyCode::Down | KeyCode::Char('j') => self.move_picker(1),
                 KeyCode::Char('x') => {
-                    // 断开选中行的在线会话。
                     if self.picker_sel < self.sessions.len() {
+                        // 会话行:断开。
                         let idx = self.picker_sel;
                         self.disconnect_at(idx).await;
                         self.picker_sel = self.picker_sel.min(self.picker_len().saturating_sub(1));
+                    } else if let Some(conn) = self
+                        .connections()
+                        .get(self.picker_sel - self.sessions.len())
+                        .cloned()
+                    {
+                        // 连接行:删除配置(确认)。
+                        self.dialog = Some(new_dialog(
+                            "删除连接",
+                            &format!("删除连接配置 {}?Enter 确认 / Esc 取消", conn.name),
+                            DialogAction::DeleteProfile(conn.name.clone()),
+                        ));
+                    }
+                }
+                // 新建/编辑连接配置。
+                KeyCode::Char('n') => self.form = Some(ConnectionForm::blank()),
+                KeyCode::Char('e') => {
+                    let idx = self.picker_sel.saturating_sub(self.sessions.len());
+                    if let Some(conn) = self.connections().get(idx).cloned() {
+                        self.form = Some(ConnectionForm::edit(&conn));
                     }
                 }
                 KeyCode::Enter => {
@@ -460,6 +585,115 @@ impl App {
         true
     }
 
+    /// 连接表单按键:↑/↓/Tab 切字段,Enter 保存,Esc 取消,退格/字符编辑。
+    fn handle_form_key(&mut self, key: KeyEvent, mut form: ConnectionForm) {
+        let field_count = form.fields.len();
+        match key.code {
+            KeyCode::Esc => {}
+            KeyCode::Up | KeyCode::BackTab => {
+                form.focus = (form.focus + field_count - 1) % field_count;
+                self.form = Some(form);
+            }
+            KeyCode::Down | KeyCode::Tab => {
+                form.focus = (form.focus + 1) % field_count;
+                self.form = Some(form);
+            }
+            KeyCode::Enter => match self.save_form(&form) {
+                Ok(name) => {
+                    self.notice = format!("已保存连接 {name}");
+                    // 光标跳到该连接所在行。
+                    if let Some(idx) = self.sessions.len().checked_add(
+                        self.registry
+                            .connections()
+                            .iter()
+                            .position(|c| c.name == name)
+                            .unwrap_or(0),
+                    ) {
+                        self.picker_sel = idx;
+                    }
+                }
+                Err(msg) => {
+                    form.error = msg;
+                    self.form = Some(form);
+                }
+            },
+            KeyCode::Backspace => {
+                form.fields[form.focus].value.pop();
+                self.form = Some(form);
+            }
+            KeyCode::Char(c)
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL.union(KeyModifiers::ALT)) =>
+            {
+                form.fields[form.focus].value.push(c);
+                self.form = Some(form);
+            }
+            _ => self.form = Some(form),
+        }
+    }
+
+    /// 校验并保存表单;返回保存的连接名。
+    fn save_form(&mut self, form: &ConnectionForm) -> Result<String, String> {
+        let name = form.field(F_NAME);
+        let host = form.field(F_HOST);
+        let username = form.field(F_USER);
+        if name.is_empty() {
+            return Err("名称不能为空".into());
+        }
+        if host.is_empty() {
+            return Err("主机不能为空".into());
+        }
+        if username.is_empty() {
+            return Err("用户名不能为空".into());
+        }
+        let port = if form.field(F_PORT).is_empty() {
+            22
+        } else {
+            form.field(F_PORT)
+                .parse::<u16>()
+                .map_err(|_| "端口必须是 1-65535 的数字".to_string())?
+        };
+        // 重名检查:改名(或新建)时不得与其他连接冲突。
+        if form.original.as_deref() != Some(name) && self.registry.get(name).is_some() {
+            return Err(format!("连接名 {name} 已存在"));
+        }
+        // 认证:密钥路径优先;密钥未变时沿用原 passphrase(表单不编辑它)。
+        let auth = if !form.field(F_KEY).is_empty() {
+            let passphrase = form
+                .original
+                .as_deref()
+                .and_then(|orig| self.registry.get(orig))
+                .and_then(|old| match &old.auth {
+                    Auth::Key { path, passphrase }
+                        if path.display().to_string() == form.field(F_KEY) =>
+                    {
+                        passphrase.clone()
+                    }
+                    _ => None,
+                });
+            Auth::key_with_passphrase(form.field(F_KEY), passphrase.unwrap_or_default())
+        } else {
+            // 密码留空:连接时弹掩码输入框。
+            Auth::password(form.field(F_PASSWORD))
+        };
+
+        let mut conn = Connection::new(name, host, username, auth);
+        conn.port = port;
+        // 表单不编辑 notes/forwards:编辑时保留原值。
+        if let Some(orig) = &form.original
+            && let Some(old) = self.registry.get(orig)
+        {
+            conn.notes = old.notes.clone();
+            conn.forwards = old.forwards.clone();
+        }
+        self.registry.upsert(conn);
+        self.registry
+            .save(linop_core::default_connections_path())
+            .map_err(|e| format!("写入配置失败:{e}"))?;
+        Ok(name.to_string())
+    }
+
     /// 对话框按键:Esc 关闭、Enter 执行、退格/字符编辑输入。
     async fn handle_dialog_key(
         &mut self,
@@ -467,6 +701,22 @@ impl App {
         mut dialog: Dialog,
         tx: &mpsc::UnboundedSender<AppEvent>,
     ) {
+        // 删除连接确认同样作用于 picker,先行处理。
+        if let (KeyCode::Enter, DialogAction::DeleteProfile(name)) = (&key.code, &dialog.action) {
+            let name = name.clone();
+            match self.registry.remove(&name) {
+                Ok(_) => {
+                    if let Err(e) = self.registry.save(linop_core::default_connections_path()) {
+                        self.notice = format!("删除失败(未保存):{e}");
+                    } else {
+                        self.notice = format!("已删除连接 {name}");
+                    }
+                    self.picker_sel = self.picker_sel.min(self.picker_len().saturating_sub(1));
+                }
+                Err(e) => self.notice = format!("删除失败:{e}"),
+            }
+            return;
+        }
         // 密码连接对话框不经过 execute_dialog(它作用于会话,而此时在 picker)。
         if let (KeyCode::Enter, DialogAction::ConnectPassword(conn)) = (key.code, &dialog.action) {
             if dialog.input.is_empty() {
@@ -572,9 +822,9 @@ impl App {
                 s.refresh_remote().await;
                 dialog.status = format!("已删除远端 {}", entry.name);
             }
-            DialogAction::ConnectPassword(_) => {
+            DialogAction::ConnectPassword(_) | DialogAction::DeleteProfile(_) => {
                 // 已在 handle_dialog_key 里先行处理,不会走到这里。
-                return Err("内部错误:密码对话框不应进入会话执行".to_string());
+                return Err("内部错误:picker 对话框不应进入会话执行".to_string());
             }
             DialogAction::DeleteLocal { entry } => {
                 let path = s.files.local_cwd.join(&entry.name);

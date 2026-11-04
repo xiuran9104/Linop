@@ -13,6 +13,14 @@ use tokio::sync::mpsc;
 use linop::app::{self as app_mod, App, AppEvent, Mode, Pane};
 use linop::{keys, ui};
 
+/// LINOP_CONFIG_DIR 是进程级环境变量:用它的测试必须持有此锁串行执行。
+/// 用异步 Mutex 以便跨 await 持有。
+static ENV_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+async fn env_guard() -> tokio::sync::MutexGuard<'static, ()> {
+    ENV_LOCK.lock().await
+}
+
 type TestTerminal = ratatui::Terminal<TestBackend>;
 
 fn key(code: KeyCode) -> AppEvent {
@@ -76,6 +84,7 @@ fn test_registry(addr: std::net::SocketAddr) -> Registry {
 
 #[tokio::test]
 async fn picker_connect_shell_files_disconnect() -> anyhow::Result<()> {
+    let _env = env_guard().await;
     let config_dir = tempfile::tempdir()?;
     unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
 
@@ -286,6 +295,7 @@ fn encode_matches_term_modes() {
 /// 空密码 profile:Enter 弹掩码输入框,输入后完成连接;明文不出现在屏幕上。
 #[tokio::test]
 async fn empty_password_prompts_masked_and_connects() -> anyhow::Result<()> {
+    let _env = env_guard().await;
     let config_dir = tempfile::tempdir()?;
     unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
     let remote_root = tempfile::tempdir()?;
@@ -337,6 +347,7 @@ async fn empty_password_prompts_masked_and_connects() -> anyhow::Result<()> {
 /// 多会话:两台服务器并存,F8 回列表不断开,Enter 切换,F9 断当前,x 断指定行。
 #[tokio::test]
 async fn multiple_sessions_coexist_and_switch() -> anyhow::Result<()> {
+    let _env = env_guard().await;
     let config_dir = tempfile::tempdir()?;
     unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
     let root_a = tempfile::tempdir()?;
@@ -442,6 +453,98 @@ async fn multiple_sessions_coexist_and_switch() -> anyhow::Result<()> {
 
     server_a.shutdown();
     server_b.shutdown();
+    unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
+    Ok(())
+}
+
+/// 连接编辑器:n 新建(含掩码字段)→ 保存落盘;e 编辑追加;删除确认后移除。
+#[tokio::test]
+async fn connection_editor_create_edit_delete() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    let toml_path = config_dir.path().join("connections.toml");
+
+    let (tx, _rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(Registry::new());
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+    redraw(&mut terminal, &mut app).await;
+    assert!(app.connections().is_empty());
+
+    // n 新建:名称 web9 → Tab 主机 10.0.0.9 → Tab 端口(默认 22)
+    // → Tab 用户名 root → Tab 密码 pw9 → Tab 密钥(留空)→ Enter。
+    app.handle(key(KeyCode::Char('n')), &tx).await;
+    assert!(app.form.is_some(), "n 应打开新建表单");
+    for field_input in ["web9", "10.0.0.9", "", "root", "pw9", ""] {
+        for c in field_input.chars() {
+            app.handle(key(KeyCode::Char(c)), &tx).await;
+        }
+        app.handle(key(KeyCode::Tab), &tx).await;
+    }
+    // 掩码字段:密码明文不上屏。
+    redraw(&mut terminal, &mut app).await;
+    assert!(
+        !screen_text(&terminal).contains("pw9"),
+        "密码字段必须掩码显示"
+    );
+    assert!(screen_text(&terminal).contains("●"));
+
+    app.handle(key(KeyCode::Enter), &tx).await;
+    assert!(app.form.is_none(), "保存成功后表单应关闭");
+    let conn = app.registry.get("web9").expect("registry 应包含 web9");
+    assert_eq!(
+        (conn.host.as_str(), conn.port, conn.username.as_str()),
+        ("10.0.0.9", 22, "root")
+    );
+    assert_eq!(conn.auth, Auth::password("pw9"));
+    assert!(
+        std::fs::read_to_string(&toml_path)?.contains("web9"),
+        "TOML 应落盘"
+    );
+    redraw(&mut terminal, &mut app).await;
+    assert!(screen_text(&terminal).contains("web9"), "列表应显示新连接");
+
+    // e 编辑:密码字段(第 5 个)追加 x → pw9x。
+    app.handle(key(KeyCode::Char('e')), &tx).await;
+    assert!(app.form.is_some(), "e 应打开编辑表单");
+    for _ in 0..4 {
+        app.handle(key(KeyCode::Tab), &tx).await;
+    }
+    app.handle(key(KeyCode::Char('x')), &tx).await;
+    app.handle(key(KeyCode::Enter), &tx).await;
+    assert_eq!(
+        app.registry.get("web9").unwrap().auth,
+        Auth::password("pw9x")
+    );
+
+    // 校验:重名冲突。新建表单填已有名称 web9 + 合法主机 → 保存报错且表单保留。
+    app.handle(key(KeyCode::Char('n')), &tx).await;
+    for c in "web9".chars() {
+        app.handle(key(KeyCode::Char(c)), &tx).await;
+    }
+    app.handle(key(KeyCode::Tab), &tx).await;
+    for c in "h9".chars() {
+        app.handle(key(KeyCode::Char(c)), &tx).await;
+    }
+    app.handle(key(KeyCode::Tab), &tx).await; // 跳过端口(默认 22)
+    app.handle(key(KeyCode::Tab), &tx).await;
+    for c in "root".chars() {
+        app.handle(key(KeyCode::Char(c)), &tx).await;
+    }
+    app.handle(key(KeyCode::Enter), &tx).await;
+    assert!(app.form.is_some(), "重名应保留表单并报错");
+    assert!(app.form.as_ref().unwrap().error.contains("已存在"));
+    app.handle(key(KeyCode::Esc), &tx).await;
+
+    // x 删除:确认 → registry 与 TOML 均移除。
+    app.picker_sel = 0; // 唯一 profile 行
+    app.handle(key(KeyCode::Char('x')), &tx).await;
+    assert!(app.dialog.is_some(), "x 应弹删除确认");
+    app.handle(key(KeyCode::Enter), &tx).await;
+    assert!(app.registry.get("web9").is_none());
+    assert!(!std::fs::read_to_string(&toml_path)?.contains("web9"));
+
+    drop(_rx);
     unsafe { std::env::remove_var("LINOP_CONFIG_DIR") };
     Ok(())
 }
