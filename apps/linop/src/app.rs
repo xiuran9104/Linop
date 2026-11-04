@@ -4,7 +4,9 @@
 //! 连接任务回执。SFTP 操作在事件循环内联执行(v0.1 足够:
 //! 操作期间的 shell 输出会先在通道中排队)。
 
+use std::future::Future;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use linop_core::{Auth, Connection, Registry};
@@ -23,6 +25,33 @@ pub enum AppEvent {
     ShellOutput(Vec<u8>),
     ShellClosed,
     Connected(Result<Box<Connected>, String>),
+    /// 输入设备失效(非终端运行 / stdin 关闭):无法再交互,退出应用。
+    InputClosed,
+}
+
+// --- 防挂死超时常量:任何网络 await 都有上限,坏连接不允许冻结事件循环 ---
+/// 连接全过程(TCP + 握手 + 认证 + shell/SFTP + 转发)。
+const CONNECT_TIMEOUT_SECS: u64 = 25;
+/// 按键写入 / PTY 尺寸同步。
+const WRITE_TIMEOUT_SECS: u64 = 5;
+/// 目录浏览等元数据操作。
+const SFTP_META_TIMEOUT_SECS: u64 = 15;
+/// 上传 / 下载。
+const SFTP_TRANSFER_TIMEOUT_SECS: u64 = 60;
+/// 断开清理。
+const TEARDOWN_TIMEOUT_SECS: u64 = 5;
+
+/// 给网络操作加超时上限:超时返回 Err(提示连接可能已断开),
+/// 业务错误转成消息字符串。事件循环因此永远不会被单个 await 挂死。
+async fn capped<T, E: std::fmt::Display>(
+    secs: u64,
+    fut: impl Future<Output = std::result::Result<T, E>>,
+) -> Result<T, String> {
+    match tokio::time::timeout(Duration::from_secs(secs), fut).await {
+        Ok(Ok(value)) => Ok(value),
+        Ok(Err(err)) => Err(err.to_string()),
+        Err(_) => Err("操作超时:连接可能已断开(F9 断开)".to_string()),
+    }
 }
 
 /// 一次已建立的连接及其全部资源。
@@ -183,8 +212,11 @@ impl App {
                     && s.tab == Tab::Shell
                 {
                     let bytes = keys::paste(&text, s.term.bracketed_paste());
-                    let _ = s.writer.write(&bytes).await;
-                    s.term.set_scrollback(0);
+                    if let Err(msg) = capped(WRITE_TIMEOUT_SECS, s.writer.write(&bytes)).await {
+                        s.status = msg;
+                    } else {
+                        s.term.set_scrollback(0);
+                    }
                 }
             }
             AppEvent::Resize => {}
@@ -198,6 +230,10 @@ impl App {
                     self.notice = format!("{} 的会话已结束", s.profile.name);
                     teardown_session(s).await;
                 }
+            }
+            AppEvent::InputClosed => {
+                self.notice = "输入设备已关闭,退出".to_string();
+                return false;
             }
         }
         true
@@ -267,7 +303,7 @@ impl App {
             KeyCode::Esc => {}
             KeyCode::Enter => {
                 dialog.error.clear();
-                match self.execute_dialog(&mut dialog).await {
+                match capped(SFTP_TRANSFER_TIMEOUT_SECS, self.execute_dialog(&mut dialog)).await {
                     Ok(()) => {
                         self.status_to_session(dialog.status_message());
                     }
@@ -382,8 +418,10 @@ impl App {
                 KeyCode::PageDown => s.term.scroll(-1),
                 _ => {
                     if let Some(bytes) = keys::encode(key, s.term.application_cursor()) {
-                        let _ = s.writer.write(&bytes).await;
-                        s.term.set_scrollback(0);
+                        match capped(WRITE_TIMEOUT_SECS, s.writer.write(&bytes)).await {
+                            Ok(()) => s.term.set_scrollback(0),
+                            Err(msg) => s.status = msg,
+                        }
                     }
                 }
             },
@@ -497,10 +535,11 @@ impl App {
                     let _ = tx.send(AppEvent::ShellClosed);
                 });
 
-                let (remote_entries, warn) = match sftp.list_dir(".").await {
-                    Ok(entries) => (entries, None),
-                    Err(e) => (Vec::new(), Some(format!("SFTP 目录读取失败:{e}"))),
-                };
+                let (remote_entries, warn) =
+                    match capped(SFTP_META_TIMEOUT_SECS, sftp.list_dir(".")).await {
+                        Ok(entries) => (entries, None),
+                        Err(e) => (Vec::new(), Some(format!("SFTP 目录读取失败:{e}"))),
+                    };
                 let local_cwd = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
                 let local_entries = list_local(&local_cwd);
                 let forward_note = (!forward_errors.is_empty()).then(|| {
@@ -565,7 +604,9 @@ impl App {
         };
         if s.term.cols() != cols || s.term.rows() != rows {
             s.term.resize(cols, rows);
-            let _ = s.writer.resize(cols, rows).await;
+            if let Err(msg) = capped(WRITE_TIMEOUT_SECS, s.writer.resize(cols, rows)).await {
+                s.status = msg;
+            }
         }
     }
 }
@@ -573,7 +614,7 @@ impl App {
 impl SessionState {
     /// 刷新远端条目缓存(保持 cwd 不变)。
     async fn refresh_remote(&mut self) {
-        if let Ok(entries) = self.sftp.list_dir(".").await {
+        if let Ok(entries) = capped(SFTP_META_TIMEOUT_SECS, self.sftp.list_dir(".")).await {
             self.files.remote_entries = entries;
             self.clamp_selection();
         }
@@ -621,7 +662,7 @@ impl SessionState {
                     self.status = format!("{} 不是目录", entry.name);
                     return;
                 }
-                match self.sftp.enter(&entry.name).await {
+                match capped(SFTP_META_TIMEOUT_SECS, self.sftp.enter(&entry.name)).await {
                     Ok(entries) => {
                         self.files.remote_entries = entries;
                         self.files.remote_sel = 0;
@@ -647,7 +688,7 @@ impl SessionState {
 
     async fn enter_parent(&mut self) {
         match self.files.active {
-            Pane::Remote => match self.sftp.go_parent().await {
+            Pane::Remote => match capped(SFTP_META_TIMEOUT_SECS, self.sftp.go_parent()).await {
                 Ok(entries) => {
                     self.files.remote_entries = entries;
                     self.files.remote_sel = 0;
@@ -673,7 +714,12 @@ impl SessionState {
             return;
         };
         let target = self.files.local_cwd.join(&entry.name);
-        match self.sftp.download(&entry.name, &target).await {
+        match capped(
+            SFTP_TRANSFER_TIMEOUT_SECS,
+            self.sftp.download(&entry.name, &target),
+        )
+        .await
+        {
             Ok(()) => {
                 self.files.local_entries = list_local(&self.files.local_cwd);
                 self.status = format!("已下载 {} → {}", entry.name, target.display());
@@ -688,9 +734,14 @@ impl SessionState {
             return;
         };
         let source = self.files.local_cwd.join(&entry.name);
-        match self.sftp.upload(&source, &entry.name).await {
+        match capped(
+            SFTP_TRANSFER_TIMEOUT_SECS,
+            self.sftp.upload(&source, &entry.name),
+        )
+        .await
+        {
             Ok(()) => {
-                if let Ok(entries) = self.sftp.list_dir(".").await {
+                if let Ok(entries) = capped(SFTP_META_TIMEOUT_SECS, self.sftp.list_dir(".")).await {
                     self.files.remote_entries = entries;
                 }
                 self.status = format!(
@@ -755,11 +806,12 @@ async fn teardown_parts(
     for forward in forwards {
         forward.stop();
     }
-    let _ = sftp.close().await;
-    let _ = ssh.disconnect().await;
+    // 清理同样带上限:对端已消失时不能卡住事件循环。
+    let _ = capped(TEARDOWN_TIMEOUT_SECS, sftp.close()).await;
+    let _ = capped(TEARDOWN_TIMEOUT_SECS, ssh.disconnect()).await;
 }
 
-/// 阻塞读 crossterm 事件并转发到事件循环。
+/// 阻塞读 crossterm 事件并转发到事件循环;输入设备失效时通知退出。
 pub fn spawn_input_thread(tx: mpsc::UnboundedSender<AppEvent>) {
     std::thread::spawn(move || {
         loop {
@@ -780,7 +832,11 @@ pub fn spawn_input_thread(tx: mpsc::UnboundedSender<AppEvent>) {
                     }
                 }
                 Ok(_) => {}
-                Err(_) => break,
+                Err(_) => {
+                    // 非 tty 运行或 stdin 关闭:再也无法收到按键,让应用退出。
+                    let _ = tx.send(AppEvent::InputClosed);
+                    break;
+                }
             }
         }
     });
@@ -806,9 +862,12 @@ pub async fn run(
 
 fn spawn_connect(tx: mpsc::UnboundedSender<AppEvent>, profile: Connection, cols: u16, rows: u16) {
     tokio::spawn(async move {
-        let _ = tx.send(AppEvent::Connected(
-            connect(profile, cols, rows).await.map(Box::new),
-        ));
+        // 整个连接过程(TCP + 认证 + shell/SFTP + 转发)受统一超时约束,
+        // 不可达的主机不会让"正在连接"界面无限停留。
+        let result = capped(CONNECT_TIMEOUT_SECS, connect(profile, cols, rows))
+            .await
+            .map(Box::new);
+        let _ = tx.send(AppEvent::Connected(result));
     });
 }
 
@@ -858,4 +917,67 @@ async fn connect(profile: Connection, cols: u16, rows: u16) -> Result<Connected,
         forwards,
         forward_errors,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn capped_passes_value_and_maps_errors() {
+        assert_eq!(capped(5, async { Ok::<_, &str>(7) }).await.unwrap(), 7);
+        assert_eq!(
+            capped(5, async { Err::<i32, _>("boom") })
+                .await
+                .unwrap_err(),
+            "boom"
+        );
+    }
+
+    #[tokio::test]
+    async fn capped_times_out_pending_future() {
+        let err = capped(1, std::future::pending::<Result<(), String>>())
+            .await
+            .unwrap_err();
+        assert!(err.contains("超时"), "挂起的未来应被超时截断:{err}");
+    }
+
+    /// 黑洞服务器:接受 TCP 但从不完成 SSH 握手;连接必须被截断而非挂死。
+    #[tokio::test]
+    async fn blackhole_connect_is_capped() {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            if let Ok((socket, _)) = listener.accept().await {
+                // 持有连接但不读不写,模拟网络黑洞。
+                let _socket = socket;
+                std::future::pending::<()>().await;
+            }
+        });
+        let mut conn =
+            Connection::new("blackhole", addr.ip().to_string(), "u", Auth::password("p"));
+        conn.port = addr.port();
+        let err = match capped(
+            1,
+            Session::connect_profile(&conn, KnownHostsPolicy::AcceptAll),
+        )
+        .await
+        {
+            Ok(_) => panic!("黑洞服务器上的连接不应成功"),
+            Err(msg) => msg,
+        };
+        assert!(err.contains("超时"), "黑洞应触发超时:{err}");
+    }
+
+    #[tokio::test]
+    async fn input_closed_quits_app() {
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let mut app = App::new(Registry::new());
+        assert!(
+            !app.handle(AppEvent::InputClosed, &tx).await,
+            "输入设备失效必须退出而不是冻结"
+        );
+    }
 }

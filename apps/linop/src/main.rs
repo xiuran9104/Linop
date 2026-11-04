@@ -13,6 +13,11 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn run() -> anyhow::Result<()> {
+    use crossterm::tty::IsTty;
+    if !std::io::stdout().is_tty() || !std::io::stdin().is_tty() {
+        anyhow::bail!("Linop 需要在终端(tty)里交互运行;当前 stdin/stdout 不是终端");
+    }
+
     let profile_arg = std::env::args().nth(1);
     let registry = linop_core::Registry::load_default().with_context(|| {
         format!(
