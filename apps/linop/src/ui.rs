@@ -109,9 +109,16 @@ fn draw_picker(frame: &mut Frame, app: &mut App) {
             linop_core::DbDriver::Sqlite => db.path.display().to_string(),
             linop_core::DbDriver::Redis => db.redis_endpoint(),
         };
+        let via = db
+            .via
+            .as_ref()
+            .map(|name| format!(" ⇄{name}"))
+            .unwrap_or_default();
         ListItem::new(Line::from(vec![
             Span::styled(format!("{:<16}", db.name), Style::new().bold()),
-            Span::raw(format!(" {target} ")),
+            Span::raw(format!(" {target}")),
+            Span::styled(via, Style::new().fg(Color::DarkGray)),
+            Span::raw(" "),
             Span::styled(
                 format!("[{}]", db.driver.as_str()),
                 Style::new().fg(Color::Magenta),

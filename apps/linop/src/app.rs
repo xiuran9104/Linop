@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use linop_cast::{Cast, CastWriter};
-use linop_core::{Auth, Connection, Registry};
+use linop_core::{Auth, Connection, PortForward, Registry};
 use linop_db::{QueryResult, SqliteDb, StmtOutcome};
 use linop_monitor::ResourceSample;
 use linop_redis::{KeyInfo as RedisKeyInfo, KeyValue, RedisClient};
@@ -395,6 +395,8 @@ pub struct RedisBrowser {
     pub profile: linop_core::DbProfile,
     /// 同步客户端共享给阻塞线程(Mutex:命令即发即收)。
     client: std::sync::Arc<std::sync::Mutex<RedisClient>>,
+    /// 经跳板机建立的隧道(直连时为 None);浏览期间必须存活。
+    tunnel: Option<RedisTunnel>,
     pub keys: Vec<RedisKeyInfo>,
     pub view: RedisView,
     pub sel: usize,
@@ -411,6 +413,23 @@ pub enum RedisView {
         kind: String,
         value: KeyValue,
     },
+}
+
+/// 一条存活的数据库隧道:SSH 会话 + 本地转发。
+/// 停止顺序:先转发后 SSH(转发依赖会话)。
+pub struct RedisTunnel {
+    ssh: Session,
+    forward: LocalForward,
+}
+
+impl RedisTunnel {
+    fn stop(self) {
+        self.forward.stop();
+        let ssh = self.ssh;
+        tokio::spawn(async move {
+            let _ = capped(TEARDOWN_TIMEOUT_SECS, ssh.disconnect()).await;
+        });
+    }
 }
 
 impl RedisBrowser {
@@ -1196,20 +1215,15 @@ impl App {
                         if let Some(browser) = self.redis.as_mut() {
                             let mut names = browser.keys_names();
                             names.retain(|k| k != &name);
-                            browser.keys = names
-                                .into_iter()
-                                .map(|name| RedisKeyInfo {
-                                    name,
-                                    kind: String::new(),
-                                    len: -1,
-                                    ttl_secs: -1,
-                                })
-                                .collect();
-                            browser.sel = browser.sel.min(browser.keys.len().saturating_sub(1));
-                            if let Err(msg) = refresh_redis_keys(browser) {
-                                browser.status = msg;
-                            } else {
-                                browser.status = format!("已删除 {name}");
+                            let client = browser.client();
+                            match refresh_redis_keys(client, names).await {
+                                Ok(infos) => {
+                                    browser.keys = infos;
+                                    browser.sel =
+                                        browser.sel.min(browser.keys.len().saturating_sub(1));
+                                    browser.status = format!("已删除 {name}");
+                                }
+                                Err(msg) => browser.status = msg,
                             }
                         }
                     }
@@ -1827,9 +1841,58 @@ impl App {
         }
     }
 
+    /// 关闭 Redis 浏览:先拆隧道(转发 → SSH),再清状态。
+    fn close_redis(&mut self) {
+        if let Some(browser) = self.redis.take()
+            && let Some(tunnel) = browser.tunnel
+        {
+            tunnel.stop();
+        }
+        self.mode = Mode::Picker;
+    }
+
+    /// 按 profile.via 建隧道:返回 (Redis 端点, 隧道)。
+    /// 直连时端点即 profile 本身;隧道为 None。
+    async fn open_db_tunnel(
+        &mut self,
+        profile: &linop_core::DbProfile,
+    ) -> Result<(String, Option<RedisTunnel>), String> {
+        let Some(via) = profile.via.clone() else {
+            return Ok((profile.redis_endpoint(), None));
+        };
+        let Some(jump) = self.registry.get(&via).cloned() else {
+            return Err(format!("跳板连接 {via} 不存在(检查 connections.toml)"));
+        };
+        let policy = KnownHostsPolicy::TrustOnFirstUse(KnownHosts::load_default());
+        let ssh = capped(
+            CONNECT_TIMEOUT_SECS,
+            Session::connect_profile(&jump, policy),
+        )
+        .await
+        .map_err(|msg| format!("连接跳板 {via} 失败:{msg}"))?;
+        let rule = PortForward::new(
+            0,
+            profile.host.clone().unwrap_or_default(),
+            profile.port.unwrap_or(6379),
+        );
+        let forward = ssh
+            .open_local_forward(&rule)
+            .await
+            .map_err(|e| format!("跳板 {via} 上建立转发失败:{e}"))?;
+        let endpoint = forward.local_addr.to_string();
+        Ok((endpoint, Some(RedisTunnel { ssh, forward })))
+    }
+
     /// 打开 Redis 浏览:连接 + AUTH + 首轮 SCAN。
+    /// profile 指定 `via` 时先经该 SSH 跳板建立本地隧道再连。
     async fn open_redis(&mut self, profile: linop_core::DbProfile) {
-        let endpoint = profile.redis_endpoint();
+        let (endpoint, tunnel) = match self.open_db_tunnel(&profile).await {
+            Ok(pair) => pair,
+            Err(msg) => {
+                self.notice = msg;
+                return;
+            }
+        };
         let password = profile.password.clone();
         let task = tokio::task::spawn_blocking(move || {
             let mut client = RedisClient::connect(&endpoint, password.as_deref())?;
@@ -1851,6 +1914,7 @@ impl App {
                 let mut browser = RedisBrowser {
                     profile,
                     client: std::sync::Arc::new(std::sync::Mutex::new(client)),
+                    tunnel,
                     keys: keys
                         .into_iter()
                         .map(|name| RedisKeyInfo {
@@ -1865,8 +1929,12 @@ impl App {
                     status: String::new(),
                 };
                 // SCAN 到的键可能已过期:补齐概要。
-                match refresh_redis_keys(&mut browser) {
-                    Ok(()) => {
+                let client = browser.client();
+                let names = browser.keys_names();
+                match refresh_redis_keys(client, names).await {
+                    Ok(infos) => {
+                        browser.keys = infos;
+                        browser.sel = 0;
                         browser.status =
                             format!("{} 个键 · Enter 看值 · x 删除 · r 重扫", browser.keys.len());
                         self.redis = Some(browser);
@@ -1907,8 +1975,7 @@ impl App {
         if in_keys {
             match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => {
-                    self.redis = None;
-                    self.mode = Mode::Picker;
+                    self.close_redis();
                 }
                 KeyCode::Up | KeyCode::Char('k') => {
                     if let Some(browser) = self.redis.as_mut()
@@ -1944,10 +2011,12 @@ impl App {
                                     })
                                     .collect();
                                 browser.sel = 0;
-                                match refresh_redis_keys(browser) {
-                                    Ok(()) => {
-                                        browser.status =
-                                            format!("已重扫:{} 个键", browser.keys.len());
+                                let client = browser.client();
+                                let names = browser.keys_names();
+                                match refresh_redis_keys(client, names).await {
+                                    Ok(infos) => {
+                                        browser.status = format!("已重扫:{} 个键", infos.len());
+                                        browser.keys = infos;
                                     }
                                     Err(msg) => browser.status = msg,
                                 }
@@ -2346,25 +2415,22 @@ impl SessionState {
     }
 }
 
-/// 拉取键概要(重扫与删除后刷新共用):阻塞线程上批量 TYPE/LEN/TTL。
-fn refresh_redis_keys(browser: &mut RedisBrowser) -> Result<(), String> {
-    let client = browser.client();
-    let names = browser.keys_names();
-    let result = std::thread::scope(|scope| {
-        let handle = scope.spawn(move || {
-            let mut client = client.lock().map_err(|_| "连接锁中毒".to_string())?;
-            client.key_infos(&names).map_err(|e| e.to_string())
-        });
-        handle.join().map_err(|_| "后台任务失败".to_string())?
+/// 拉取键概要(重扫与删除后刷新共用)。
+/// 必须走 spawn_blocking:隧道数据面(转发 accept 循环、SSH 会话)挂在
+/// 事件循环的 runtime 上,主线程同步等待会饿死它们 → 死锁。
+async fn refresh_redis_keys(
+    client: std::sync::Arc<std::sync::Mutex<RedisClient>>,
+    names: Vec<String>,
+) -> Result<Vec<RedisKeyInfo>, String> {
+    let task = tokio::task::spawn_blocking(move || {
+        let mut client = client.lock().map_err(|_| "连接锁中毒".to_string())?;
+        client.key_infos(&names).map_err(|e| e.to_string())
     });
-    match result {
-        Ok(infos) => {
-            let len = infos.len();
-            browser.keys = infos;
-            browser.sel = browser.sel.min(len.saturating_sub(1));
-            Ok(())
-        }
-        Err(msg) => Err(msg),
+    match tokio::time::timeout(Duration::from_secs(SFTP_META_TIMEOUT_SECS), task).await {
+        Ok(Ok(Ok(infos))) => Ok(infos),
+        Ok(Ok(Err(msg))) => Err(msg),
+        Ok(Err(join)) => Err(format!("后台任务失败:{join}")),
+        Err(_) => Err("Redis 命令超时".to_string()),
     }
 }
 

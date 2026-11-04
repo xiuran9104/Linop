@@ -36,6 +36,9 @@ struct TestSession {
     /// ChannelStream 和 `data` 回调,这些通道的数据属于 SFTP 协议,
     /// 回调里绝不能再回显,否则协议包会被弹回客户端导致会话崩溃。
     sftp_channels: Arc<Mutex<HashSet<ChannelId>>>,
+    /// direct-tcpip 桥接通道:这些通道的数据由桥接任务转发,
+    /// 回显逻辑必须跳过(否则隧道数据被原样弹回,回显与桥接竞速)。
+    forward_channels: Arc<Mutex<HashSet<ChannelId>>>,
     /// SFTP 文件系统根目录;设置后启用 SFTP 子系统。
     sftp_root: Option<PathBuf>,
     /// 反向转发探针出口:客户端请求 tcpip_forward 时,服务端模拟一条
@@ -116,7 +119,12 @@ impl russh::server::Handler for TestSession {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
-        if self.echo_session_data && !self.sftp_channels.lock().unwrap().contains(&channel) {
+        let bridged = {
+            let sftp = self.sftp_channels.lock().unwrap().contains(&channel);
+            let forwarded = self.forward_channels.lock().unwrap().contains(&channel);
+            sftp || forwarded
+        };
+        if self.echo_session_data && !bridged {
             session.data(channel, data.to_vec())?;
         }
         Ok(())
@@ -214,6 +222,7 @@ impl russh::server::Handler for TestSession {
         reply: ChannelOpenHandle,
         _session: &mut Session,
     ) -> Result<(), Self::Error> {
+        self.forward_channels.lock().unwrap().insert(channel.id());
         reply.accept().await;
         let target = format!("{host_to_connect}:{port_to_connect}");
         tokio::spawn(async move {
@@ -283,6 +292,7 @@ impl TestSshServer {
         tokio::spawn(async move {
             let channels = Arc::new(Mutex::new(HashMap::new()));
             let sftp_channels = Arc::new(Mutex::new(HashSet::new()));
+            let forward_channels = Arc::new(Mutex::new(HashSet::new()));
             loop {
                 let accept = tokio::select! {
                     _ = shutdown_task.notified() => break,
@@ -300,6 +310,7 @@ impl TestSshServer {
                     allowed_fingerprints: opts.allowed_fingerprints.clone(),
                     channels: channels.clone(),
                     sftp_channels: sftp_channels.clone(),
+                    forward_channels: forward_channels.clone(),
                     sftp_root: opts.sftp_root.clone(),
                     echo_session_data: opts.echo_session_data,
                     forward_probe: opts.forward_probe.clone(),

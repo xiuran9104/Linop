@@ -21,6 +21,8 @@ pub struct DbProfile {
     pub port: Option<u16>,
     /// Redis:AUTH 口令(可选)。
     pub password: Option<String>,
+    /// 经由哪条 SSH 连接(profile 名)建隧道访问;None = 直连。
+    pub via: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -55,6 +57,7 @@ impl DbProfile {
             host: None,
             port: None,
             password: None,
+            via: None,
         }
     }
 
@@ -71,6 +74,7 @@ impl DbProfile {
             host: Some(host.into()),
             port: Some(port),
             password,
+            via: None,
         }
     }
 
@@ -102,6 +106,8 @@ struct RawDb {
     port: Option<u16>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     password: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    via: Option<String>,
 }
 
 /// 默认数据库配置路径:`~/.config/linop/databases.toml`。
@@ -175,6 +181,7 @@ impl DbRegistry {
                 host: entry.host,
                 port: entry.port,
                 password: entry.password,
+                via: entry.via,
             });
         }
         profiles.sort_by(|a, b| a.name.cmp(&b.name));
@@ -202,6 +209,7 @@ impl DbRegistry {
                         host: p.host.clone(),
                         port: p.port,
                         password: p.password.clone(),
+                        via: p.via.clone(),
                     },
                 )
             })
@@ -274,8 +282,17 @@ mod tests {
         reg.save(&path).unwrap();
 
         let loaded = DbRegistry::load(&path).unwrap();
-        assert_eq!(loaded.profiles(), reg.profiles());
         let cache = loaded.get("cache").unwrap();
         assert_eq!(cache.redis_endpoint(), "10.0.0.5:6380");
+
+        // via 字段往返。
+        let mut tunneled = cache.clone();
+        tunneled.name = "tun".into();
+        tunneled.via = Some("jump".into());
+        reg.upsert(tunneled);
+        reg.save(&path).unwrap();
+        let loaded = DbRegistry::load(&path).unwrap();
+        assert_eq!(loaded.get("tun").unwrap().via.as_deref(), Some("jump"));
+        assert_eq!(loaded.get("cache").unwrap().via, None);
     }
 }

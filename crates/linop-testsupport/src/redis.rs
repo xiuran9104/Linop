@@ -174,7 +174,10 @@ fn serve_connection(
     let mut reader = BufReader::new(stream);
     let mut writer = clone;
     // 未配置口令的服务器免认证;配置了则等 AUTH。
-    let mut authed = shared.lock().map(|data| data.password.is_none()).unwrap_or(true);
+    let mut authed = shared
+        .lock()
+        .map(|data| data.password.is_none())
+        .unwrap_or(true);
 
     loop {
         let Some(cmd) = read_command(&mut reader)? else {

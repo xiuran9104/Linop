@@ -285,7 +285,10 @@ fn pairs(items: &[Reply], what: &str) -> Result<Vec<(String, String)>> {
         return Err(RedisError::Protocol(format!("{what} 应答不是偶数个字段")));
     }
     let (chunks, _) = flat.as_chunks::<2>();
-    Ok(chunks.iter().map(|[field, value]| (field.clone(), value.clone())).collect())
+    Ok(chunks
+        .iter()
+        .map(|[field, value]| (field.clone(), value.clone()))
+        .collect())
 }
 
 /// 读取一个 RESP 应答。

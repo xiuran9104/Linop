@@ -11,7 +11,7 @@
 - **文件**(F2) — 远程/本地双窗格浏览、目录进入/上级、上传、下载(目录递归)、新建目录、重命名、删除;传输为后台流式(32 KiB 分块,大文件不进内存),状态栏实时进度条,`c` 可取消,下载先落 `.linop-part` 再原子改名;
 - **转发**(F3) — 本地转发(-L)、反向转发(-R)、SOCKS 动态转发(-D)自动启动、统一展示(失败原因同页),会话内 `↑/↓` 选中、`x` 停止单条;
 - **数据库(SQLite)** — 表/视图列表(行数+列)、`Enter` 查看数据网格(分页、行号、NULL 灰显)、`s` 执行任意单条 SQL(SELECT 自动出网格,DML/DDL 显示影响行数并刷新表列表);SQL 全部在阻塞线程执行并带超时上限,大查询不冻结界面;驱动层已按多驱动划分,为 MySQL/PostgreSQL 留位;
-- **Redis 键浏览** — SCAN 键列表(类型/长度/TTL,五类分色)、`Enter` 查看值(string/list/hash/set/zset 按类型排版,分数与字段对齐)、`x` 删除(确认)、`r` 重扫;可选 AUTH 口令;纯 Rust RESP2 协议实现,零外部依赖;
+- **Redis 键浏览** — SCAN 键列表(类型/长度/TTL,五类分色)、`Enter` 查看值(string/list/hash/set/zset 按类型排版,分数与字段对齐)、`x` 删除(确认)、`r` 重扫;可选 AUTH 口令;`via = "跳板名"` 时经 SSH 本地隧道访问内网 Redis(浏览期间隧道保活,退出即拆);纯 Rust RESP2 协议实现,零外部依赖;
 - **会话录制回放** — Shell 页 `v` 一键录制(asciinema cast v2,逐事件 flush 崩溃不丢);UTF-8 跨包自动拼合;状态栏 `⏺ REC` 标记;列表页 `p` 回放最新录制(可改路径),支持 `Space` 播放/暂停、`→` 逐事件、`←` 回退重放,标准格式可直接 `asciinema play` 回放;
 - **监控**(F4) — 远端资源走势:CPU / 内存 sparkline、根分区磁盘用量、1/5/15 分钟负载;每 5s 经 SSH exec 读取 `/proc` 与 `df`(单条 POSIX 命令,CPU 用两次 `/proc/stat` 差分),保留 120 个样本(约 10 分钟);进入页面才启动采样,断线自动停止、重连后自动恢复;
 
@@ -63,6 +63,7 @@ path = "/data/app.db"
 driver = "redis"
 host = "10.0.0.5"
 port = 6379
+# via = "jump"           # 可选:经 connections.toml 里的跳板机建 SSH 隧道访问
 ```
 
 ## 按键

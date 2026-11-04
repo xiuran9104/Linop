@@ -1443,3 +1443,114 @@ async fn redis_browse_values_and_delete() -> anyhow::Result<()> {
     assert!(app.redis.is_none());
     Ok(())
 }
+
+#[tokio::test]
+async fn redis_over_ssh_tunnel() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+
+    // 数据面:迷你 Redis;跳板面:测试 SSH 服务器(direct-tcpip 桥接到 Redis)。
+    let redis_server = linop_testsupport::TestRedisServer::start(
+        linop_testsupport::RedisData::default().with_string("tunnel:ok", "yes"),
+    )?;
+    let jump = linop_testsupport::TestSshServer::start_echo().await?;
+
+    let mut jump_conn = linop_core::Connection::new(
+        "jump",
+        jump.addr.ip().to_string(),
+        "u",
+        linop_core::Auth::password("p"),
+    );
+    jump_conn.port = jump.addr.port();
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(vec![jump_conn].into_iter().collect());
+    let mut db_profile = linop_core::DbProfile::redis(
+        "cache",
+        redis_server.addr.ip().to_string(),
+        redis_server.addr.port(),
+        None,
+    );
+    db_profile.via = Some("jump".into());
+    app.db_registry = vec![db_profile].into_iter().collect();
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+
+    // picker:数据库行带 ⇄jump 标记;选中它(1 个 SSH 连接在前,↓ 到数据库段)。
+    redraw(&mut terminal, &mut app).await;
+    let text = screen_text(&terminal);
+    assert!(text.contains("⇄jump"), "数据库行应显示跳板标记:{text}");
+    app.handle(key(KeyCode::Down), &tx).await; // 0 会话 + 1 连接 → 数据库行
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+
+    // 经隧道浏览:键列表出现,值取回(数据真的穿过了 SSH 隧道)。
+    if !matches!(app.mode, Mode::RedisBrowse) {
+        panic!(
+            "应经跳板进入 Redis 浏览,mode={:?} notice={}",
+            app.mode, app.notice
+        );
+    }
+    let text = screen_text(&terminal);
+    assert!(text.contains("tunnel:ok"), "键列表应含 tunnel:ok:{text}");
+
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(3),
+    )
+    .await;
+    let text = screen_text(&terminal);
+    assert!(text.contains("yes"), "值应经隧道取回:{text}");
+
+    // 经隧道删除 + 退出(隧道资源应被回收)。
+    app.handle(key(KeyCode::Backspace), &tx).await;
+    app.handle(key(KeyCode::Char('x')), &tx).await;
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(3),
+    )
+    .await;
+    let browser = app.redis.as_ref().unwrap();
+    assert!(browser.keys.is_empty(), "删掉唯一键后列表应为空");
+
+    app.handle(key(KeyCode::Char('q')), &tx).await;
+    assert!(app.redis.is_none() && app.mode == Mode::Picker);
+    Ok(())
+}
+
+#[tokio::test]
+async fn redis_tunnel_missing_jump_reports_error() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+
+    let mut app = app_mod::App::new(linop_core::Registry::new());
+    let mut profile = linop_core::DbProfile::redis("cache", "10.0.0.99", 6379, None);
+    profile.via = Some("no-such-jump".into());
+    app.db_registry = vec![profile].into_iter().collect();
+
+    let (tx, _rx) = mpsc::unbounded_channel();
+    app.handle(key(KeyCode::Enter), &tx).await; // picker 第一行 = 数据库行
+    assert!(app.mode == Mode::Picker, "跳板缺失不应进入浏览");
+    assert!(
+        app.notice.contains("no-such-jump"),
+        "应提示跳板缺失:{}",
+        app.notice
+    );
+    Ok(())
+}
