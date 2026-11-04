@@ -1554,3 +1554,123 @@ async fn redis_tunnel_missing_jump_reports_error() -> anyhow::Result<()> {
     );
     Ok(())
 }
+
+#[tokio::test]
+async fn telnet_interactive_session() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    let server = linop_testsupport::TestTelnetServer::start()?;
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(linop_core::Registry::new());
+    app.telnet_registry = vec![linop_core::TelnetProfile::new(
+        "box",
+        server.addr.ip().to_string(),
+        server.addr.port(),
+    )]
+    .into_iter()
+    .collect();
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+
+    // picker:Telnet 行可见,Enter 进入终端页。
+    redraw(&mut terminal, &mut app).await;
+    let text = screen_text(&terminal);
+    assert!(
+        text.contains("box") && text.contains("[telnet]"),
+        "picker 应显示 Telnet 行:{text}"
+    );
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(app.mode == Mode::Telnet, "应进入 Telnet 终端页");
+
+    // 横幅经协商剥离后渲染(screen_text 去除空格)。
+    let text = screen_text(&terminal);
+    assert!(
+        text.contains("Welcometolinop-telnet-test"),
+        "应显示横幅:{text}"
+    );
+
+    // 打字 → 服务器回显。
+    for ch in "hi".chars() {
+        app.handle(key(KeyCode::Char(ch)), &tx).await;
+    }
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    let text = screen_text(&terminal);
+    assert!(text.contains(">hi"), "应显示回显行:{text}");
+
+    // F9 断开回列表。
+    app.handle(key(KeyCode::F(9)), &tx).await;
+    assert!(app.mode == Mode::Picker);
+    assert!(app.telnet.is_none());
+    assert!(app.notice.contains("已断开"));
+    Ok(())
+}
+
+#[tokio::test]
+async fn telnet_closed_event_returns_to_picker() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+    let server = linop_testsupport::TestTelnetServer::start()?;
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let mut app = app_mod::App::new(linop_core::Registry::new());
+    app.telnet_registry = vec![linop_core::TelnetProfile::new(
+        "t",
+        server.addr.ip().to_string(),
+        server.addr.port(),
+    )]
+    .into_iter()
+    .collect();
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(app.mode == Mode::Telnet);
+
+    // 对端关闭(quit 命令)→ TelnetClosed → 回列表并提示。
+    app.handle(key(KeyCode::Char('q')), &tx).await;
+    app.handle(key(KeyCode::Char('u')), &tx).await;
+    app.handle(key(KeyCode::Char('i')), &tx).await;
+    app.handle(key(KeyCode::Char('t')), &tx).await;
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(5),
+    )
+    .await;
+    assert!(app.mode == Mode::Picker, "对端关闭应回到列表");
+    assert!(app.telnet.is_none());
+    assert!(
+        app.notice.contains("已关闭"),
+        "应提示连接关闭:{}",
+        app.notice
+    );
+    Ok(())
+}

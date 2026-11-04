@@ -7,10 +7,12 @@
 mod redis;
 mod sftp;
 mod ssh;
+mod telnet;
 
 pub use redis::{RedisData, TestRedisServer};
 pub use sftp::FsSftpHandler;
 pub use ssh::{ServerOptions, TestSshServer};
+pub use telnet::TestTelnetServer;
 
 /// 读取 OpenSSH 公钥文件(测试用)。
 pub fn load_public_key(

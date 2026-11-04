@@ -17,6 +17,7 @@ use linop_monitor::ResourceSample;
 use linop_redis::{KeyInfo as RedisKeyInfo, KeyValue, RedisClient};
 use linop_sftp::{Entry, Sftp};
 use linop_ssh::{KnownHosts, KnownHostsPolicy, LocalForward, Session, ShellReader, ShellWriter};
+use linop_telnet::{TelnetClient, TelnetEvent};
 use linop_term::Terminal;
 use tokio::sync::mpsc;
 
@@ -44,6 +45,10 @@ pub enum AppEvent {
     MonitorSample(u64, Result<ResourceSample, String>),
     /// 回放:到点应用下一个事件。
     ReplayTick,
+    /// Telnet 输出到达。
+    TelnetOutput(Vec<u8>),
+    /// Telnet 连接死亡(读错误/EOF)。
+    TelnetClosed,
 }
 
 // --- 防挂死超时常量:任何网络 await 都有上限,坏连接不允许冻结事件循环 ---
@@ -119,6 +124,8 @@ pub enum DialogAction {
     },
     /// 删除一个数据库 profile(picker 上执行,带确认)。
     DeleteDbProfile(String),
+    /// 删除一个 Telnet profile(picker 上执行,带确认)。
+    DeleteTelnetProfile(String),
 }
 
 impl DialogAction {
@@ -130,7 +137,7 @@ impl DialogAction {
         ) && !matches!(
             self,
             DialogAction::ImportProfiles(_) | DialogAction::DeleteDbProfile(_)
-        )
+        ) && !matches!(self, DialogAction::DeleteTelnetProfile(_))
     }
 }
 
@@ -258,6 +265,8 @@ pub enum Mode {
     DbBrowse,
     /// 浏览一个 Redis:键列表 / 值视图。
     RedisBrowse,
+    /// 交互式 Telnet 终端(单会话)。
+    Telnet,
 }
 
 /// 会话内标签页。
@@ -432,6 +441,27 @@ impl RedisTunnel {
     }
 }
 
+/// 一个活动的 Telnet 会话。读循环跑在 std 线程上(阻塞 poll +
+/// shutdown 标志),读写半边分离,读轮询不会饿死写侧。
+pub struct TelnetSession {
+    pub profile: linop_core::TelnetProfile,
+    pub term: Terminal,
+    /// 置 true 让读循环在下个 POLL_TIMEOUT 到期后自行退出。
+    shutdown: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    writer: std::sync::Arc<std::sync::Mutex<linop_telnet::TelnetWriter>>,
+}
+
+impl TelnetSession {
+    fn writer(&self) -> std::sync::Arc<std::sync::Mutex<linop_telnet::TelnetWriter>> {
+        self.writer.clone()
+    }
+
+    fn stop(&self) {
+        self.shutdown
+            .store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 impl RedisBrowser {
     fn client(&self) -> std::sync::Arc<std::sync::Mutex<RedisClient>> {
         self.client.clone()
@@ -501,6 +531,8 @@ pub struct App {
     pub registry: Registry,
     /// 数据库 profile 注册表(databases.toml)。
     pub db_registry: linop_core::DbRegistry,
+    /// Telnet profile 注册表(telnet.toml)。
+    pub telnet_registry: linop_core::TelnetRegistry,
     pub picker_sel: usize,
     /// picker 页全局提示(错误等)。
     pub notice: String,
@@ -521,6 +553,8 @@ pub struct App {
     pub db: Option<DbBrowser>,
     /// 打开中的 Redis 浏览(与 Mode::RedisBrowse 对应)。
     pub redis: Option<RedisBrowser>,
+    /// 打开中的 Telnet 会话(与 Mode::Telnet 对应;单会话)。
+    pub telnet: Option<TelnetSession>,
 }
 
 impl App {
@@ -528,6 +562,7 @@ impl App {
         Self {
             registry,
             db_registry: linop_core::DbRegistry::new(),
+            telnet_registry: linop_core::TelnetRegistry::new(),
             picker_sel: 0,
             notice: String::new(),
             mode: Mode::Picker,
@@ -540,6 +575,7 @@ impl App {
             replay: None,
             db: None,
             redis: None,
+            telnet: None,
         }
     }
 
@@ -549,15 +585,35 @@ impl App {
 
     /// picker 统一选择域总长:在线会话数 + 连接 profile 数。
     fn picker_len(&self) -> usize {
-        self.sessions.len() + self.connections().len() + self.db_registry.profiles().len()
+        self.sessions.len()
+            + self.connections().len()
+            + self.db_registry.profiles().len()
+            + self.telnet_registry.profiles().len()
+    }
+
+    /// 数据库段起始下标(picker 四段布局)。
+    fn db_section_start(&self) -> usize {
+        self.sessions.len() + self.connections().len()
+    }
+
+    /// Telnet 段起始下标。
+    fn telnet_section_start(&self) -> usize {
+        self.db_section_start() + self.db_registry.profiles().len()
     }
 
     /// picker 光标当前落到的数据库 profile(仅第三段有效)。
     fn picked_db(&self) -> Option<&linop_core::DbProfile> {
-        let idx = self
-            .picker_sel
-            .checked_sub(self.sessions.len() + self.connections().len())?;
+        let idx = self.picker_sel.checked_sub(self.db_section_start())?;
+        if idx >= self.db_registry.profiles().len() {
+            return None;
+        }
         self.db_registry.profiles().get(idx)
+    }
+
+    /// picker 光标当前落到的 Telnet profile(仅第四段有效)。
+    fn picked_telnet(&self) -> Option<&linop_core::TelnetProfile> {
+        let idx = self.picker_sel.checked_sub(self.telnet_section_start())?;
+        self.telnet_registry.profiles().get(idx)
     }
 
     fn move_picker(&mut self, delta: i32) {
@@ -731,6 +787,19 @@ impl App {
                     self.schedule_replay_tick(delta, tx);
                 }
             }
+            AppEvent::TelnetOutput(bytes) => {
+                if let Some(session) = self.telnet.as_mut() {
+                    session.term.feed(&bytes);
+                }
+            }
+            AppEvent::TelnetClosed => {
+                if let Some(session) = self.telnet.take() {
+                    session.stop();
+                    let name = session.profile.name;
+                    self.notice = format!("Telnet {name} 连接已关闭");
+                }
+                self.mode = Mode::Picker;
+            }
             AppEvent::InputClosed => {
                 self.notice = "输入设备已关闭,退出".to_string();
                 return false;
@@ -813,6 +882,13 @@ impl App {
                             ),
                             DialogAction::DeleteDbProfile(db.name.clone()),
                         ));
+                    } else if let Some(telnet) = self.picked_telnet().cloned() {
+                        // Telnet 行:删除 profile(确认)。
+                        self.dialog = Some(new_dialog(
+                            "删除 Telnet 配置",
+                            &format!("移除 Telnet 配置 {}?Enter 确认 / Esc 取消", telnet.name),
+                            DialogAction::DeleteTelnetProfile(telnet.name.clone()),
+                        ));
                     }
                 }
                 // 从 ~/.ssh/config 导入。
@@ -868,10 +944,14 @@ impl App {
                         self.mode = Mode::Session;
                         return true;
                     }
-                    // 数据库行:打开浏览模式。
-                    if self.picker_sel >= self.sessions.len() + self.connections().len() {
+                    // 数据库 / Telnet 行:打开对应模式。
+                    if self.picker_sel >= self.db_section_start() {
                         if let Some(db) = self.picked_db().cloned() {
                             self.open_db(db).await;
+                            return true;
+                        }
+                        if let Some(telnet) = self.picked_telnet().cloned() {
+                            self.open_telnet(telnet, tx).await;
                         }
                         return true;
                     }
@@ -941,14 +1021,16 @@ impl App {
                 }
                 KeyCode::Char('r') => {
                     let db = linop_core::DbRegistry::load_default();
-                    match (Registry::load_default(), db) {
-                        (Ok(reg), Ok(dbs)) => {
+                    let telnet = linop_core::TelnetRegistry::load_default();
+                    match (Registry::load_default(), db, telnet) {
+                        (Ok(reg), Ok(dbs), Ok(tels)) => {
                             self.registry = reg;
                             self.db_registry = dbs;
+                            self.telnet_registry = tels;
                             self.picker_sel = 0;
-                            self.notice = "已重新加载连接与数据库列表".into();
+                            self.notice = "已重新加载连接 / 数据库 / Telnet 列表".into();
                         }
-                        (Err(e), _) | (_, Err(e)) => {
+                        (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
                             self.notice = format!("重新加载失败:{e}");
                         }
                     }
@@ -962,6 +1044,7 @@ impl App {
             Mode::Replay => self.replay_key(key, tx).await,
             Mode::DbBrowse => self.db_key(key, tx).await,
             Mode::RedisBrowse => self.redis_key(key, tx).await,
+            Mode::Telnet => self.telnet_key(key, tx).await,
             Mode::Session => {
                 if key.modifiers.contains(KeyModifiers::CONTROL)
                     && matches!(key.code, KeyCode::Char('q') | KeyCode::Char('Q'))
@@ -1203,6 +1286,23 @@ impl App {
             }
             return;
         }
+        // 删除 Telnet profile:作用于 picker。
+        if let (KeyCode::Enter, DialogAction::DeleteTelnetProfile(name)) =
+            (&key.code, &dialog.action)
+        {
+            let name = name.clone();
+            match self.telnet_registry.remove(&name) {
+                Ok(_) => {
+                    match self.telnet_registry.save(linop_core::default_telnet_path()) {
+                        Ok(()) => self.notice = format!("已移除 Telnet 配置 {name}"),
+                        Err(e) => self.notice = format!("移除失败(未保存):{e}"),
+                    }
+                    self.picker_sel = self.picker_sel.min(self.picker_len().saturating_sub(1));
+                }
+                Err(e) => self.notice = format!("移除失败:{e}"),
+            }
+            return;
+        }
         // 删除 Redis 键:在 Redis 浏览模式内执行。
         if let (KeyCode::Enter, DialogAction::DeleteRedisKey { name }) = (&key.code, &dialog.action)
         {
@@ -1390,7 +1490,8 @@ impl App {
             | DialogAction::OpenReplay
             | DialogAction::RunSql
             | DialogAction::DeleteDbProfile(_)
-            | DialogAction::DeleteRedisKey { .. } => {
+            | DialogAction::DeleteRedisKey { .. }
+            | DialogAction::DeleteTelnetProfile(_) => {
                 // 已在 handle_dialog_key 里先行处理,不会走到这里。
                 return Err("内部错误:picker 对话框不应进入会话执行".to_string());
             }
@@ -2073,6 +2174,119 @@ impl App {
                     }
                 }
                 _ => {}
+            }
+        }
+    }
+
+    /// 打开 Telnet 会话:TCP 连接 + 读轮询线程;失败停留在列表并提示。
+    async fn open_telnet(
+        &mut self,
+        profile: linop_core::TelnetProfile,
+        tx: &mpsc::UnboundedSender<AppEvent>,
+    ) {
+        let host = profile.host.clone();
+        let port = profile.port;
+        let task = tokio::task::spawn_blocking(move || TelnetClient::connect(&host, port));
+        let client =
+            match tokio::time::timeout(Duration::from_secs(CONNECT_TIMEOUT_SECS), task).await {
+                Ok(Ok(Ok(client))) => client,
+                Ok(Ok(Err(e))) => {
+                    self.notice = format!("连接 Telnet {} 失败:{e}", profile.name);
+                    return;
+                }
+                Ok(Err(join)) => {
+                    self.notice = format!("后台任务失败:{join}");
+                    return;
+                }
+                Err(_) => {
+                    self.notice = "连接超时".to_string();
+                    return;
+                }
+            };
+        let (reader, writer) = client.into_parts();
+        let reader = std::sync::Arc::new(std::sync::Mutex::new(reader));
+        let writer = std::sync::Arc::new(std::sync::Mutex::new(writer));
+        let shutdown = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        // 读循环:阻塞 poll + shutdown 标志(250ms 到期后检查)。
+        // 只锁读半边;写侧走独立句柄,不会被轮询饿死。
+        let reader_client = reader.clone();
+        let reader_shutdown = shutdown.clone();
+        let reader_tx = tx.clone();
+        std::thread::spawn(move || {
+            loop {
+                if reader_shutdown.load(std::sync::atomic::Ordering::Relaxed) {
+                    break;
+                }
+                let event = match reader_client.lock() {
+                    Err(_) => AppEvent::TelnetClosed,
+                    Ok(mut c) => match c.poll() {
+                        Ok(TelnetEvent::Data(bytes)) => AppEvent::TelnetOutput(bytes),
+                        Ok(TelnetEvent::Idle) => continue,
+                        Err(_) => AppEvent::TelnetClosed,
+                    },
+                };
+                if reader_tx.send(event).is_err() {
+                    break;
+                }
+            }
+        });
+        self.telnet = Some(TelnetSession {
+            profile,
+            term: Terminal::new(80, 24),
+            shutdown,
+            writer,
+        });
+        self.mode = Mode::Telnet;
+    }
+
+    /// Telnet 页按键:F9 断开回列表,Ctrl+Q 退出应用,其余编码后写 socket。
+    async fn telnet_key(&mut self, key: KeyEvent, _tx: &mpsc::UnboundedSender<AppEvent>) {
+        if self.telnet.is_none() {
+            self.mode = Mode::Picker;
+            return;
+        }
+        if key.code == KeyCode::F(9) {
+            if let Some(session) = self.telnet.take() {
+                let name = session.profile.name.clone();
+                session.stop();
+                self.mode = Mode::Picker;
+                self.notice = format!("已断开 {name}");
+            }
+            return;
+        }
+        if key.modifiers.contains(KeyModifiers::CONTROL)
+            && matches!(key.code, KeyCode::Char('q') | KeyCode::Char('Q'))
+        {
+            if let Some(session) = self.telnet.take() {
+                session.stop();
+            }
+            self.disconnect_all().await;
+            self.mode = Mode::Picker;
+            return;
+        }
+        let mut bytes = keys::encode(key, false).unwrap_or_default();
+        if bytes.is_empty() {
+            return;
+        }
+        // NVT:回车必须以 CR LF 发送(shell 的裸 CR 在 Telnet 上不完整)。
+        if bytes.last() == Some(&b'\r') {
+            bytes.push(b'\n');
+        }
+        let writer = self.telnet.as_ref().expect("已检查").writer();
+        let task = tokio::task::spawn_blocking(move || {
+            writer
+                .lock()
+                .map_err(|e| e.to_string())
+                .and_then(|mut c| c.write(&bytes).map_err(|e| e.to_string()))
+        });
+        match tokio::time::timeout(Duration::from_secs(WRITE_TIMEOUT_SECS), task).await {
+            Ok(Ok(Ok(()))) => {}
+            _ => {
+                if let Some(session) = self.telnet.take() {
+                    session.stop();
+                }
+                self.mode = Mode::Picker;
+                self.notice = "Telnet 写入失败,连接已关闭".to_string();
             }
         }
     }

@@ -1426,6 +1426,7 @@ dependencies = [
  "linop-redis",
  "linop-sftp",
  "linop-ssh",
+ "linop-telnet",
  "linop-term",
  "linop-testsupport",
  "ratatui",
@@ -1512,6 +1513,15 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+]
+
+[[package]]
+name = "linop-telnet"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "linop-testsupport",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

@@ -39,6 +39,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
             app.shell_area = None;
             draw_redis(frame, app);
         }
+        Mode::Telnet => {
+            app.shell_area = None;
+            draw_telnet(frame, app);
+        }
     }
     if let Some(form) = &app.form {
         draw_form(frame, form);
@@ -104,6 +108,13 @@ fn draw_picker(frame: &mut Frame, app: &mut App) {
         ]))
     }));
 
+    items.extend(app.telnet_registry.profiles().iter().map(|t| {
+        ListItem::new(Line::from(vec![
+            Span::styled(format!("{:<16}", t.name), Style::new().bold()),
+            Span::raw(format!(" {}:{} ", t.host, t.port)),
+            Span::styled("[telnet]", Style::new().fg(Color::Blue)),
+        ]))
+    }));
     items.extend(app.db_registry.profiles().iter().map(|db| {
         let target = match db.driver {
             linop_core::DbDriver::Sqlite => db.path.display().to_string(),
@@ -554,6 +565,43 @@ fn human_kb(kb: u64) -> String {
     } else {
         format!("{kb} KiB")
     }
+}
+
+/// Telnet 终端页:交互式 NVT 会话,F9 断开。
+fn draw_telnet(frame: &mut Frame, app: &App) {
+    let Some(session) = app.telnet.as_ref() else {
+        return;
+    };
+    let area = frame.area();
+    let [body, footer] = Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
+
+    let block = Block::default()
+        .title(format!(
+            " Telnet {} · {}:{} ",
+            session.profile.name, session.profile.host, session.profile.port
+        ))
+        .borders(Borders::ALL)
+        .border_style(Style::new().fg(Color::Blue));
+    let inner = block.inner(body);
+    frame.render_widget(block, body);
+    frame.render_widget(&session.term, inner);
+    if let Some((col, row)) = session.term.cursor() {
+        let (x, y) = (
+            inner.x + col.min(inner.width.saturating_sub(1)),
+            inner.y + row.min(inner.height.saturating_sub(1)),
+        );
+        if let Some(cell) = frame.buffer_mut().cell_mut((x, y)) {
+            cell.set_style(cell.style().add_modifier(Modifier::REVERSED));
+        }
+    }
+
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            " F9 断开 · Ctrl+Q 退出应用",
+            Style::new().fg(Color::DarkGray),
+        )),
+        footer,
+    );
 }
 
 /// 回放页:录制事件重放进独立终端,标题栏显示进度与播放状态。

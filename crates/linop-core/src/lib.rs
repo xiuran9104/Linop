@@ -7,6 +7,7 @@ mod db_registry;
 mod model;
 mod registry;
 pub mod ssh_config;
+mod telnet_registry;
 
 pub use db_registry::{DbDriver, DbProfile, DbRegistry, default_databases_path};
 pub use model::{Auth, Connection, PortForward, RemoteForward};
@@ -14,6 +15,7 @@ pub use registry::{
     Registry, config_dir, default_connections_path, endpoint, known_hosts_path, newest_recording,
     recordings_dir,
 };
+pub use telnet_registry::{TelnetProfile, TelnetRegistry, default_telnet_path};
 
 use std::fmt;
 
