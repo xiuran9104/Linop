@@ -8,6 +8,7 @@ members = [
     "crates/linop-monitor",
     "crates/linop-cast",
     "crates/linop-db",
+    "crates/linop-redis",
     "crates/linop-testsupport",
     "apps/linop",
 ]
@@ -26,6 +27,7 @@ linop-term = { path = "crates/linop-term" }
 linop-monitor = { path = "crates/linop-monitor" }
 linop-cast = { path = "crates/linop-cast" }
 linop-db = { path = "crates/linop-db" }
+linop-redis = { path = "crates/linop-redis" }
 
 tokio = { version = "1", features = ["full"] }
 russh = "0.65"

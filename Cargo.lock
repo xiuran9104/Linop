@@ -1423,6 +1423,7 @@ dependencies = [
  "linop-core",
  "linop-db",
  "linop-monitor",
+ "linop-redis",
  "linop-sftp",
  "linop-ssh",
  "linop-term",
@@ -1471,6 +1472,16 @@ dependencies = [
  "linop-core",
  "linop-ssh",
  "linop-testsupport",
+ "tokio",
+]
+
+[[package]]
+name = "linop-redis"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "linop-testsupport",
+ "thiserror 2.0.21",
  "tokio",
 ]
 

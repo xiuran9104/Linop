@@ -1,0 +1,14 @@
+[package]
+name = "linop-redis"
+description = "Minimal RESP2 Redis client for key browsing (navop redis_view counterpart)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror = { workspace = true }
+
+[dev-dependencies]
+linop-testsupport = { path = "../linop-testsupport" }
+anyhow = { workspace = true }
+tokio = { workspace = true }

@@ -4,9 +4,11 @@
 //! (密码/公钥认证、PTY shell 回显、direct-tcpip 转发、SFTP 子系统),
 //! 无需系统 sshd。
 
+mod redis;
 mod sftp;
 mod ssh;
 
+pub use redis::{RedisData, TestRedisServer};
 pub use sftp::FsSftpHandler;
 pub use ssh::{ServerOptions, TestSshServer};
 

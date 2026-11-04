@@ -17,6 +17,7 @@ linop-term = { workspace = true }
 linop-monitor = { workspace = true }
 linop-cast = { workspace = true }
 linop-db = { workspace = true }
+linop-redis = { workspace = true }
 tokio = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }

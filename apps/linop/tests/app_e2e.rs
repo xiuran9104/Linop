@@ -1323,3 +1323,123 @@ async fn sqlite_browse_and_sql() -> anyhow::Result<()> {
     assert!(app.db.is_none());
     Ok(())
 }
+
+#[tokio::test]
+async fn redis_browse_values_and_delete() -> anyhow::Result<()> {
+    let _env = env_guard().await;
+    let config_dir = tempfile::tempdir()?;
+    unsafe { std::env::set_var("LINOP_CONFIG_DIR", config_dir.path()) };
+
+    let server = linop_testsupport::TestRedisServer::start(
+        linop_testsupport::RedisData::default()
+            .with_string("app:name", "linop")
+            .with_hash("user:1", &[("name", "alice"), ("role", "admin")])
+            .with_zset("rank", &[(1.5, "a"), (0.5, "b")]),
+    )?;
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    let registry: linop_core::Registry = Vec::new().into_iter().collect();
+    let mut app = app_mod::App::new(registry);
+    app.db_registry = vec![linop_core::DbProfile::redis(
+        "cache",
+        server.addr.ip().to_string(),
+        server.addr.port(),
+        None,
+    )]
+    .into_iter()
+    .collect();
+    let mut terminal = TestTerminal::new(TestBackend::new(80, 24))?;
+
+    // picker 显示 redis 行,Enter 进入浏览。
+    redraw(&mut terminal, &mut app).await;
+    let text = screen_text(&terminal);
+    assert!(
+        text.contains("cache") && text.contains("redis"),
+        "picker 应显示 redis 行:{text}"
+    );
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(3),
+    )
+    .await;
+    assert!(matches!(app.mode, Mode::RedisBrowse), "应进入 Redis 浏览");
+
+    let text = screen_text(&terminal);
+    assert!(text.contains("app:name"), "键列表应含字符串键:{text}");
+    assert!(text.contains("user:1") && text.contains("rank"));
+    assert!(text.contains("string") && text.contains("hash") && text.contains("zset"));
+
+    // 字典序:app:name < rank < user:1。先看 rank(zset 分数)。
+    app.handle(key(KeyCode::Down), &tx).await;
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(3),
+    )
+    .await;
+    let text = screen_text(&terminal);
+    assert!(
+        text.contains("0.5") && text.contains("1.5"),
+        "zset 应显示分数:{text}"
+    );
+
+    // Backspace 返回;再 ↓ 到 user:1 看哈希字段。
+    app.handle(key(KeyCode::Backspace), &tx).await;
+    app.handle(key(KeyCode::Down), &tx).await;
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(3),
+    )
+    .await;
+    let text = screen_text(&terminal);
+    assert!(
+        text.contains("name") && text.contains("alice"),
+        "哈希字段应显示:{text}"
+    );
+    assert!(text.contains("admin"));
+
+    // 返回列表,↑↑ 回到 app:name,x 删除 → 确认后列表刷新。
+    app.handle(key(KeyCode::Backspace), &tx).await;
+    for _ in 0..2 {
+        app.handle(key(KeyCode::Up), &tx).await;
+    }
+    app.handle(key(KeyCode::Char('x')), &tx).await;
+    assert!(app.dialog.is_some(), "x 应弹删除确认");
+    app.handle(key(KeyCode::Enter), &tx).await;
+    settle(
+        &mut terminal,
+        &mut app,
+        &mut rx,
+        &tx,
+        Duration::from_secs(3),
+    )
+    .await;
+    let browser = app.redis.as_ref().expect("浏览应仍在");
+    assert!(
+        browser.keys.iter().all(|k| k.name != "app:name"),
+        "删除后键列表不应再有 app:name:{:?}",
+        browser.keys
+    );
+    assert_eq!(browser.keys.len(), 2);
+    assert!(browser.status.contains("已删除"));
+    let text = screen_text(&terminal);
+    assert!(text.contains("2个键"), "标题应显示 2 个键:{text}");
+    // 剩余键类型应为 hash 与 zset(没有 string 了)。
+    assert!(!text.contains("string"), "string 键应已消失:{text}");
+
+    app.handle(key(KeyCode::Char('q')), &tx).await;
+    assert!(matches!(app.mode, Mode::Picker));
+    assert!(app.redis.is_none());
+    Ok(())
+}

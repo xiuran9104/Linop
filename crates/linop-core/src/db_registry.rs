@@ -5,7 +5,10 @@ use std::path::PathBuf;
 
 use crate::{CoreError, Result};
 
-/// 一个数据库连接 profile。当前驱动:`sqlite`(本地文件);
+/// 一个数据库连接 profile。
+/// - `sqlite`:本地文件(`path`);
+/// - `redis`:TCP 服务(`host:port`,可选 `password`);
+///
 /// 驱动字段为后续 MySQL/PostgreSQL 等保留(navop 用扩展驱动支持更多数据库)。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DbProfile {
@@ -13,23 +16,31 @@ pub struct DbProfile {
     pub driver: DbDriver,
     /// SQLite:数据库文件路径。
     pub path: PathBuf,
+    /// Redis:主机与端口(缺省 6379)。
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    /// Redis:AUTH 口令(可选)。
+    pub password: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DbDriver {
     Sqlite,
+    Redis,
 }
 
 impl DbDriver {
     pub fn as_str(&self) -> &'static str {
         match self {
             DbDriver::Sqlite => "sqlite",
+            DbDriver::Redis => "redis",
         }
     }
 
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "sqlite" => Some(DbDriver::Sqlite),
+            "redis" => Some(DbDriver::Redis),
             _ => None,
         }
     }
@@ -41,7 +52,35 @@ impl DbProfile {
             name: name.into(),
             driver: DbDriver::Sqlite,
             path: path.into(),
+            host: None,
+            port: None,
+            password: None,
         }
+    }
+
+    pub fn redis(
+        name: impl Into<String>,
+        host: impl Into<String>,
+        port: u16,
+        password: Option<String>,
+    ) -> Self {
+        DbProfile {
+            name: name.into(),
+            driver: DbDriver::Redis,
+            path: PathBuf::new(),
+            host: Some(host.into()),
+            port: Some(port),
+            password,
+        }
+    }
+
+    /// Redis 端点 `host:port`(端口缺省 6379)。
+    pub fn redis_endpoint(&self) -> String {
+        format!(
+            "{}:{}",
+            self.host.clone().unwrap_or_default(),
+            self.port.unwrap_or(6379)
+        )
     }
 }
 
@@ -55,7 +94,14 @@ pub struct DbRegistry {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct RawDb {
     driver: String,
-    path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    host: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    port: Option<u16>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    password: Option<String>,
 }
 
 /// 默认数据库配置路径:`~/.config/linop/databases.toml`。
@@ -125,7 +171,10 @@ impl DbRegistry {
             profiles.push(DbProfile {
                 name,
                 driver,
-                path: PathBuf::from(entry.path),
+                path: PathBuf::from(entry.path.unwrap_or_default()),
+                host: entry.host,
+                port: entry.port,
+                password: entry.password,
             });
         }
         profiles.sort_by(|a, b| a.name.cmp(&b.name));
@@ -145,7 +194,14 @@ impl DbRegistry {
                     p.name.clone(),
                     RawDb {
                         driver: p.driver.as_str().to_string(),
-                        path: p.path.display().to_string(),
+                        path: if p.path.as_os_str().is_empty() {
+                            None
+                        } else {
+                            Some(p.path.display().to_string())
+                        },
+                        host: p.host.clone(),
+                        port: p.port,
+                        password: p.password.clone(),
                     },
                 )
             })
@@ -200,6 +256,26 @@ mod tests {
     #[test]
     fn driver_parse() {
         assert_eq!(DbDriver::parse("SQLite"), Some(DbDriver::Sqlite));
+        assert_eq!(DbDriver::parse("Redis"), Some(DbDriver::Redis));
         assert_eq!(DbDriver::parse("mysql"), None);
+    }
+
+    #[test]
+    fn redis_profile_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("databases.toml");
+        let mut reg = DbRegistry::new();
+        reg.upsert(DbProfile::redis(
+            "cache",
+            "10.0.0.5",
+            6380,
+            Some("secret".into()),
+        ));
+        reg.save(&path).unwrap();
+
+        let loaded = DbRegistry::load(&path).unwrap();
+        assert_eq!(loaded.profiles(), reg.profiles());
+        let cache = loaded.get("cache").unwrap();
+        assert_eq!(cache.redis_endpoint(), "10.0.0.5:6380");
     }
 }

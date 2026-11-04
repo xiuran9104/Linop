@@ -14,6 +14,7 @@ use linop_cast::{Cast, CastWriter};
 use linop_core::{Auth, Connection, Registry};
 use linop_db::{QueryResult, SqliteDb, StmtOutcome};
 use linop_monitor::ResourceSample;
+use linop_redis::{KeyInfo as RedisKeyInfo, KeyValue, RedisClient};
 use linop_sftp::{Entry, Sftp};
 use linop_ssh::{KnownHosts, KnownHostsPolicy, LocalForward, Session, ShellReader, ShellWriter};
 use linop_term::Terminal;
@@ -112,6 +113,10 @@ pub enum DialogAction {
     OpenReplay,
     /// 在数据库浏览中执行 SQL(输入框,Enter 执行)。
     RunSql,
+    /// 删除一个 Redis 键(浏览模式内,带确认)。
+    DeleteRedisKey {
+        name: String,
+    },
     /// 删除一个数据库 profile(picker 上执行,带确认)。
     DeleteDbProfile(String),
 }
@@ -251,6 +256,8 @@ pub enum Mode {
     Replay,
     /// 浏览一个数据库(SQLite):表列表 / 数据网格 / SQL 结果。
     DbBrowse,
+    /// 浏览一个 Redis:键列表 / 值视图。
+    RedisBrowse,
 }
 
 /// 会话内标签页。
@@ -383,6 +390,47 @@ pub enum DbView {
     },
 }
 
+/// Redis 浏览状态。
+pub struct RedisBrowser {
+    pub profile: linop_core::DbProfile,
+    /// 同步客户端共享给阻塞线程(Mutex:命令即发即收)。
+    client: std::sync::Arc<std::sync::Mutex<RedisClient>>,
+    pub keys: Vec<RedisKeyInfo>,
+    pub view: RedisView,
+    pub sel: usize,
+    pub status: String,
+}
+
+/// Redis 当前展示的视图。
+pub enum RedisView {
+    /// 键列表。
+    Keys,
+    /// 某个键的值。
+    Value {
+        key: String,
+        kind: String,
+        value: KeyValue,
+    },
+}
+
+impl RedisBrowser {
+    fn client(&self) -> std::sync::Arc<std::sync::Mutex<RedisClient>> {
+        self.client.clone()
+    }
+
+    /// SCAN 占位用的名字列表。
+    fn keys_names(&self) -> Vec<String> {
+        self.keys.iter().map(|k| k.name.clone()).collect()
+    }
+
+    /// 选中键的 (名称, 类型)。
+    fn picked(&self) -> Option<(String, String)> {
+        self.keys
+            .get(self.sel)
+            .map(|k| (k.name.clone(), k.kind.clone()))
+    }
+}
+
 /// 进行中的录制:写入器与目标文件。
 pub struct Recording {
     writer: CastWriter,
@@ -452,6 +500,8 @@ pub struct App {
     pub replay: Option<ReplayState>,
     /// 打开中的数据库浏览(与 Mode::DbBrowse 对应)。
     pub db: Option<DbBrowser>,
+    /// 打开中的 Redis 浏览(与 Mode::RedisBrowse 对应)。
+    pub redis: Option<RedisBrowser>,
 }
 
 impl App {
@@ -470,6 +520,7 @@ impl App {
             shell_area: None,
             replay: None,
             db: None,
+            redis: None,
         }
     }
 
@@ -891,6 +942,7 @@ impl App {
             }
             Mode::Replay => self.replay_key(key, tx).await,
             Mode::DbBrowse => self.db_key(key, tx).await,
+            Mode::RedisBrowse => self.redis_key(key, tx).await,
             Mode::Session => {
                 if key.modifiers.contains(KeyModifiers::CONTROL)
                     && matches!(key.code, KeyCode::Char('q') | KeyCode::Char('Q'))
@@ -1132,6 +1184,49 @@ impl App {
             }
             return;
         }
+        // 删除 Redis 键:在 Redis 浏览模式内执行。
+        if let (KeyCode::Enter, DialogAction::DeleteRedisKey { name }) = (&key.code, &dialog.action)
+        {
+            let name = name.clone();
+            if self.mode == Mode::RedisBrowse && self.redis.is_some() {
+                let target = name.clone();
+                let deleted = self.redis_call(move |client| client.del(&target)).await;
+                match deleted {
+                    Ok(true) => {
+                        if let Some(browser) = self.redis.as_mut() {
+                            let mut names = browser.keys_names();
+                            names.retain(|k| k != &name);
+                            browser.keys = names
+                                .into_iter()
+                                .map(|name| RedisKeyInfo {
+                                    name,
+                                    kind: String::new(),
+                                    len: -1,
+                                    ttl_secs: -1,
+                                })
+                                .collect();
+                            browser.sel = browser.sel.min(browser.keys.len().saturating_sub(1));
+                            if let Err(msg) = refresh_redis_keys(browser) {
+                                browser.status = msg;
+                            } else {
+                                browser.status = format!("已删除 {name}");
+                            }
+                        }
+                    }
+                    Ok(false) => {
+                        if let Some(browser) = self.redis.as_mut() {
+                            browser.status = format!("{name} 已不存在");
+                        }
+                    }
+                    Err(msg) => {
+                        dialog.error = msg;
+                        self.dialog = Some(dialog);
+                        return;
+                    }
+                }
+            }
+            return;
+        }
         // SQL 对话框:在数据库浏览模式内执行。
         if let (KeyCode::Enter, DialogAction::RunSql) = (&key.code, &dialog.action) {
             let sql = dialog.input.trim().to_string();
@@ -1280,7 +1375,8 @@ impl App {
             | DialogAction::ImportProfiles(_)
             | DialogAction::OpenReplay
             | DialogAction::RunSql
-            | DialogAction::DeleteDbProfile(_) => {
+            | DialogAction::DeleteDbProfile(_)
+            | DialogAction::DeleteRedisKey { .. } => {
                 // 已在 handle_dialog_key 里先行处理,不会走到这里。
                 return Err("内部错误:picker 对话框不应进入会话执行".to_string());
             }
@@ -1573,8 +1669,16 @@ impl App {
         }
     }
 
-    /// 打开数据库浏览:加载数据库并列出表;失败停留在列表并提示。
+    /// 打开数据库浏览:按驱动分派(SQLite / Redis)。
     async fn open_db(&mut self, profile: linop_core::DbProfile) {
+        match profile.driver {
+            linop_core::DbDriver::Sqlite => self.open_sqlite(profile).await,
+            linop_core::DbDriver::Redis => self.open_redis(profile).await,
+        }
+    }
+
+    /// 打开 SQLite 浏览:加载数据库并列出表;失败停留在列表并提示。
+    async fn open_sqlite(&mut self, profile: linop_core::DbProfile) {
         let path = profile.path.clone();
         let task = tokio::task::spawn_blocking(move || {
             let db = SqliteDb::open(&path)?;
@@ -1720,6 +1824,187 @@ impl App {
             Ok(Ok(outcome)) => outcome.map_err(|e| e.to_string()),
             Ok(Err(join)) => Err(format!("后台任务失败:{join}")),
             Err(_) => Err("SQL 执行超时".to_string()),
+        }
+    }
+
+    /// 打开 Redis 浏览:连接 + AUTH + 首轮 SCAN。
+    async fn open_redis(&mut self, profile: linop_core::DbProfile) {
+        let endpoint = profile.redis_endpoint();
+        let password = profile.password.clone();
+        let task = tokio::task::spawn_blocking(move || {
+            let mut client = RedisClient::connect(&endpoint, password.as_deref())?;
+            let keys = client.scan_keys(linop_redis::SCAN_BATCH)?;
+            Ok::<_, linop_redis::RedisError>((client, keys))
+        });
+        let outcome =
+            match tokio::time::timeout(Duration::from_secs(SFTP_META_TIMEOUT_SECS), task).await {
+                Ok(Ok(work)) => work,
+                Ok(Err(join)) => Err(linop_redis::RedisError::Io(std::io::Error::other(format!(
+                    "后台任务失败:{join}"
+                )))),
+                Err(_) => Err(linop_redis::RedisError::Io(std::io::Error::other(
+                    "连接超时",
+                ))),
+            };
+        match outcome {
+            Ok((client, keys)) => {
+                let mut browser = RedisBrowser {
+                    profile,
+                    client: std::sync::Arc::new(std::sync::Mutex::new(client)),
+                    keys: keys
+                        .into_iter()
+                        .map(|name| RedisKeyInfo {
+                            name,
+                            kind: String::new(),
+                            len: -1,
+                            ttl_secs: -1,
+                        })
+                        .collect(),
+                    view: RedisView::Keys,
+                    sel: 0,
+                    status: String::new(),
+                };
+                // SCAN 到的键可能已过期:补齐概要。
+                match refresh_redis_keys(&mut browser) {
+                    Ok(()) => {
+                        browser.status =
+                            format!("{} 个键 · Enter 看值 · x 删除 · r 重扫", browser.keys.len());
+                        self.redis = Some(browser);
+                        self.mode = Mode::RedisBrowse;
+                    }
+                    Err(msg) => self.notice = format!("Redis 键信息读取失败:{msg}"),
+                }
+            }
+            Err(e) => self.notice = format!("连接 Redis 失败:{e}"),
+        }
+    }
+
+    /// 在阻塞线程上跑一个 Redis 命令(超时上限防慢服务器冻结事件循环)。
+    async fn redis_call<T, F>(&self, f: F) -> Result<T, String>
+    where
+        T: Send + 'static,
+        F: FnOnce(&mut RedisClient) -> Result<T, linop_redis::RedisError> + Send + 'static,
+    {
+        let client = self.redis.as_ref().expect("redis_key 保证已打开").client();
+        let task = tokio::task::spawn_blocking(move || {
+            let mut client = client.lock().map_err(|_| "连接锁中毒".to_string())?;
+            f(&mut client).map_err(|e| e.to_string())
+        });
+        match tokio::time::timeout(Duration::from_secs(SFTP_META_TIMEOUT_SECS), task).await {
+            Ok(Ok(value)) => value,
+            Ok(Err(join)) => Err(format!("后台任务失败:{join}")),
+            Err(_) => Err("Redis 命令超时".to_string()),
+        }
+    }
+
+    /// Redis 浏览按键:键列表与值视图。
+    async fn redis_key(&mut self, key: KeyEvent, _tx: &mpsc::UnboundedSender<AppEvent>) {
+        if self.redis.is_none() {
+            self.mode = Mode::Picker;
+            return;
+        }
+        let in_keys = matches!(self.redis.as_ref().unwrap().view, RedisView::Keys);
+        if in_keys {
+            match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => {
+                    self.redis = None;
+                    self.mode = Mode::Picker;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if let Some(browser) = self.redis.as_mut()
+                        && !browser.keys.is_empty()
+                    {
+                        let len = browser.keys.len();
+                        browser.sel = (browser.sel + len - 1) % len;
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if let Some(browser) = self.redis.as_mut()
+                        && !browser.keys.is_empty()
+                    {
+                        let len = browser.keys.len();
+                        browser.sel = (browser.sel + 1) % len;
+                    }
+                }
+                // 重扫键空间。
+                KeyCode::Char('r') => {
+                    let names = self
+                        .redis_call(|client| client.scan_keys(linop_redis::SCAN_BATCH))
+                        .await;
+                    match names {
+                        Ok(names) => {
+                            if let Some(browser) = self.redis.as_mut() {
+                                browser.keys = names
+                                    .into_iter()
+                                    .map(|name| RedisKeyInfo {
+                                        name,
+                                        kind: String::new(),
+                                        len: -1,
+                                        ttl_secs: -1,
+                                    })
+                                    .collect();
+                                browser.sel = 0;
+                                match refresh_redis_keys(browser) {
+                                    Ok(()) => {
+                                        browser.status =
+                                            format!("已重扫:{} 个键", browser.keys.len());
+                                    }
+                                    Err(msg) => browser.status = msg,
+                                }
+                            }
+                        }
+                        Err(msg) => {
+                            if let Some(browser) = self.redis.as_mut() {
+                                browser.status = format!("重扫失败:{msg}");
+                            }
+                        }
+                    }
+                }
+                // 查看选中键的值。
+                KeyCode::Enter => {
+                    let picked = self.redis.as_ref().unwrap().picked();
+                    let Some((name, kind)) = picked else { return };
+                    let key = name.clone();
+                    let value_kind = kind.clone();
+                    let value = self
+                        .redis_call(move |client| client.key_value(&name, &value_kind))
+                        .await;
+                    match value {
+                        Ok(value) => {
+                            if let Some(browser) = self.redis.as_mut() {
+                                browser.view = RedisView::Value { key, kind, value };
+                            }
+                        }
+                        Err(msg) => {
+                            if let Some(browser) = self.redis.as_mut() {
+                                browser.status = format!("读取键失败:{msg}");
+                            }
+                        }
+                    }
+                }
+                // 删除选中键(确认)。
+                KeyCode::Char('x') => {
+                    let picked = self.redis.as_ref().unwrap().picked();
+                    if let Some((name, _)) = picked {
+                        self.dialog = Some(new_dialog(
+                            "删除键",
+                            &format!("删除键 {name}?Enter 确认 / Esc 取消"),
+                            DialogAction::DeleteRedisKey { name },
+                        ));
+                    }
+                }
+                _ => {}
+            }
+        } else {
+            match key.code {
+                // 返回键列表。
+                KeyCode::Backspace | KeyCode::Esc | KeyCode::Char('q') => {
+                    if let Some(browser) = self.redis.as_mut() {
+                        browser.view = RedisView::Keys;
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
@@ -2058,6 +2343,28 @@ impl SessionState {
         let source = self.files.local_cwd.join(&entry.name);
         let remote_abs = remote_absolute(self.sftp.cwd(), &entry.name);
         self.spawn_transfer("上传", entry.name, remote_abs, source, true, tx);
+    }
+}
+
+/// 拉取键概要(重扫与删除后刷新共用):阻塞线程上批量 TYPE/LEN/TTL。
+fn refresh_redis_keys(browser: &mut RedisBrowser) -> Result<(), String> {
+    let client = browser.client();
+    let names = browser.keys_names();
+    let result = std::thread::scope(|scope| {
+        let handle = scope.spawn(move || {
+            let mut client = client.lock().map_err(|_| "连接锁中毒".to_string())?;
+            client.key_infos(&names).map_err(|e| e.to_string())
+        });
+        handle.join().map_err(|_| "后台任务失败".to_string())?
+    });
+    match result {
+        Ok(infos) => {
+            let len = infos.len();
+            browser.keys = infos;
+            browser.sel = browser.sel.min(len.saturating_sub(1));
+            Ok(())
+        }
+        Err(msg) => Err(msg),
     }
 }
 
