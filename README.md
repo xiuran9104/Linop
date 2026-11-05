@@ -104,3 +104,21 @@ cargo test --workspace      # 79 测试,含进程内 e2e(无需系统 sshd)
 cargo clippy --workspace --all-targets
 cargo fmt --all
 ```
+
+## GUI 形态:内置 navop 全量源码(vendored)
+
+`vendor/navop/` 收录 [navop](https://github.com/feigeCode/navop) 完整源码
+(GPUI GPU 加速原生 GUI、多面板、主题、三语 i18n、加密同步 —— 即 README
+开篇对标的全部产品形态)。Linop 仓库已完成其本地化构建闭环:
+
+- **构建**:`docker run --rm -v $PWD/vendor/navop:/w navop-build:2 bash -c 'cd /w && cargo build -p navop'`
+  (镜像 = rust:1-slim + glib/gtk3/webkit2gtk-4.1/vulkan/mesa 全套系统依赖;
+  gpui-kit 的 git 依赖已改为 `file://` 本地 bare 仓库,不依赖外网 git)
+- **验证**:编译通过(~650 crates,6m50s);Xvfb + llvmpipe 软渲染下
+  GUI 完整启动,截图见 [`docs/navop-gui-verified.png`](docs/navop-gui-verified.png)
+- **许可**:navop 为 Apache-2.0,附 `NAVOP_LICENSE` 补充条款(禁止商业转售);
+  本仓库按其许可条款原样收录并保留全部声明
+
+Linop 自研部分(`crates/linop-*`、`apps/linop` TUI)与 navop 源码相互独立;
+`linop-i18n` / `linop-theme` / `linop-sync` 三个 crate 为同能力的轻量实现,
+可供任意前端(含 navop fork)复用。
