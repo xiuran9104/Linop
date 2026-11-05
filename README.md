@@ -118,6 +118,9 @@ cargo fmt --all
   GUI 完整启动,截图见 [`docs/navop-gui-verified.png`](docs/navop-gui-verified.png)
 - **许可**:navop 为 Apache-2.0,附 `NAVOP_LICENSE` 补充条款(禁止商业转售);
   本仓库按其许可条款原样收录并保留全部声明
+- **在 Windows 桌面运行(WSLg)**:`script/navop-gui.sh start` —— 容器挂载
+  X11 套接字与 GPU,Navop 窗口直接出现在 Windows 桌面
+  (`stop` / `status` / `logs` 子命令同理)
 
 Linop 自研部分(`crates/linop-*`、`apps/linop` TUI)与 navop 源码相互独立;
 `linop-i18n` / `linop-theme` / `linop-sync` 三个 crate 为同能力的轻量实现,
