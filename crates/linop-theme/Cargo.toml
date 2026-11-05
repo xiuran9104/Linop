@@ -1,0 +1,6 @@
+[package]
+name = "linop-theme"
+description = "Theme tokens for Linop frontends (dark / light / nord)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true

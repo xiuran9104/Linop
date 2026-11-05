@@ -10,6 +10,9 @@ members = [
     "crates/linop-db",
     "crates/linop-redis",
     "crates/linop-telnet",
+    "crates/linop-i18n",
+    "crates/linop-theme",
+    "crates/linop-sync",
     "crates/linop-testsupport",
     "apps/linop",
 ]
@@ -30,6 +33,9 @@ linop-cast = { path = "crates/linop-cast" }
 linop-db = { path = "crates/linop-db" }
 linop-redis = { path = "crates/linop-redis" }
 linop-telnet = { path = "crates/linop-telnet" }
+linop-i18n = { path = "crates/linop-i18n" }
+linop-theme = { path = "crates/linop-theme" }
+linop-sync = { path = "crates/linop-sync" }
 
 tokio = { version = "1", features = ["full"] }
 russh = "0.65"
@@ -40,6 +46,9 @@ vt100 = "0.18"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.41", features = ["bundled"] }
+aes-gcm = "0.10"
+argon2 = "0.5"
+getrandom = "0.2"
 toml = "1"
 anyhow = "1"
 thiserror = "2"
