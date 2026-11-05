@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "id": "com.linop.importer.config",
+  "name": "Linop Connections Importer",
+  "version": "0.1.0",
+  "engines": { "onetcli": ">=0.23.0-0" },
+  "runtime": {
+    "wasm": [{
+      "id": "linop-importer",
+      "module": "wasm/linop_importer_wasm.wasm",
+      "kind": "component"
+    }]
+  },
+  "permissions": [
+    "fs:read:~/.config/linop/connections.toml",
+    "fs:read:~/Library/Application Support/linop/connections.toml",
+    "fs:read:%APPDATA%/linop/connections.toml"
+  ],
+  "contributes": {
+    "connectionImporters": [{
+      "id": "linop-config",
+      "runtimeId": "linop-importer",
+      "displayName": "Linop",
+      "description": "Import SSH connections and port forwards from Linop's connections.toml",
+      "outputKinds": ["ssh", "port_forwarding"],
+      "platforms": ["linux", "macos", "windows"],
+      "candidateFiles": [
+        { "id": "linop-config-linux", "platform": "linux", "path": "~/.config/linop/connections.toml" },
+        { "id": "linop-config-macos", "platform": "macos", "path": "~/Library/Application Support/linop/connections.toml" },
+        { "id": "linop-config-windows", "platform": "windows", "path": "%APPDATA%/linop/connections.toml" }
+      ]
+    }]
+  }
+}

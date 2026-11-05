@@ -16,7 +16,7 @@ case "${1:-start}" in
       -v /mnt/wslg:/mnt/wslg \
       --device /dev/dri \
       -e DISPLAY=:0 \
-      "$IMAGE" bash -c "exec /w/target/debug/navop"
+      "$IMAGE" bash -c "exec /w/target/release/navop"
     echo "navop GUI 已启动(Windows 桌面应出现 Navop 窗口;docker logs $NAME 看日志)"
     ;;
   stop)

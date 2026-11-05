@@ -121,6 +121,19 @@ cargo fmt --all
 - **在 Windows 桌面运行(WSLg)**:`script/navop-gui.sh start` —— 容器挂载
   X11 套接字与 GPU,Navop 窗口直接出现在 Windows 桌面
   (`stop` / `status` / `logs` 子命令同理)
+- **release 构建**:`cargo build -p navop --release`(fat LTO + strip,
+  约 25 分钟),二进制 164M(debug 3.7G 的 4.4%);GUI 容器已默认切换
+- **渲染后端**:容器内无发行版打包的 dzn(D3D12 Vulkan)驱动
+  (Debian/Ubuntu/Fedora 均未启用),wgpu 落到 llvmpipe 软渲染 ——
+  可用;真 GPU 加速需自编 mesa(`-Dvulkan-drivers=dzn`)或等待上游
+- **Linop 扩展接入 navop**:`crates/linop-navop-importer` ——
+  wasm32-wasip2 组件,实现 navop `connection-importer` WIT world,
+  把 Linop 的 connections.toml(SSH + 本地/反向/SOCKS 转发)导入
+  navop 连接库;协议形状对齐宿主权威模型(原样拷贝于 vendored
+  connection-import-protocol,18 个单测含逐字段 JSON 断言与
+  validate_shape 校验);安装:`docker cp` 到
+  `/root/.navop-dev/config/extensions/composite/com.linop.importer.config/`
+  (engines 需 `>=0.23.0-0` 匹配 dev 预发布版,见 semver 预发布规则)
 
 Linop 自研部分(`crates/linop-*`、`apps/linop` TUI)与 navop 源码相互独立;
 `linop-i18n` / `linop-theme` / `linop-sync` 三个 crate 为同能力的轻量实现,
