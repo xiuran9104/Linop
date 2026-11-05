@@ -1,0 +1,32 @@
+[package]
+name = "remote_desktop"
+version = "0.15.2"
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
+connection_tunnel = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+semver = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+one-core = { workspace = true }
+process-util = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+tempfile = "3"
+
+[features]
+# Marker feature: enabled by `remote_desktop_view/windows-native-rdp` so that
+# other crates (e.g. extension-runtime's provider guard) can ask at runtime
+# whether the Windows native MSTSC backend was compiled into this build,
+# without each of them needing to re-declare and re-thread the feature.
+windows-native-rdp = []
+
+[lints]
+workspace = true

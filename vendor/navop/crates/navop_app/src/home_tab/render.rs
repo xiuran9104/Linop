@@ -1,0 +1,68 @@
+use super::*;
+
+impl Focusable for HomePage {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+impl Render for HomePage {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let global_user = GlobalCurrentUser::get_user(cx);
+        if global_user.is_none() && self.current_user.is_some() {
+            self.clear_authenticated_state();
+        }
+        // 检测会话过期：token 刷新失败时由回调设置静态标志，在此处响应
+        if crate::auth::check_and_reset_session_expired() {
+            self.clear_authenticated_state();
+            GlobalCurrentUser::set_user(None, cx);
+            // 延迟弹出登录对话框，避免在 render 中直接修改窗口
+            let view = cx.entity();
+            window.defer(cx, move |window, cx| {
+                view.update(cx, |this, cx| {
+                    this.show_login_dialog(window, cx);
+                });
+            });
+        }
+
+        if self.master_key_unlock_prompt_pending && self.saved_connections_locked() {
+            let view = cx.entity();
+            window.defer(cx, move |window, cx| {
+                view.update(cx, |this, cx| {
+                    this.show_pending_master_key_prompt(window, cx);
+                });
+            });
+        }
+
+        // 检测认证错误：登录/注册失败时显示错误提示
+        if let Some(error) = self.auth_error.take() {
+            let view = cx.entity();
+            window.defer(cx, move |window, cx| {
+                let error_msg = error.clone();
+                let view_for_ok = view.clone();
+                window.open_dialog(cx, move |dialog, _window, _cx| {
+                    let view_clone = view_for_ok.clone();
+                    dialog
+                        .title(t!("Auth.auth_error_title").to_string())
+                        .child(error_msg.clone().into_any_element())
+                        .alert()
+                        .on_ok(move |_, window, cx: &mut App| {
+                            // 关闭错误对话框后重新弹出登录对话框
+                            view_clone.update(cx, |this, cx| {
+                                this.show_login_dialog(window, cx);
+                            });
+                            true
+                        })
+                });
+            });
+        }
+
+        let content = self.render_home_layout(window, cx);
+
+        div()
+            .size_full()
+            .min_w_0()
+            .track_focus(&self.focus_handle)
+            .child(content)
+    }
+}

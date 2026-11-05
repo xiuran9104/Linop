@@ -1,0 +1,97 @@
+use std::path::Path;
+
+use anyhow::{Context, Result, anyhow};
+use db::ipc::{IpcDriverManifest, IpcDriverRegistry};
+
+use crate::extension::{ExtensionKind, ExtensionProvider, ExtensionSummary};
+
+pub struct DatabaseDriverExtensionProvider;
+
+impl ExtensionProvider for DatabaseDriverExtensionProvider {
+    fn kind(&self) -> ExtensionKind {
+        ExtensionKind::DatabaseDriver
+    }
+
+    fn list_installed(&self, root: &Path) -> Result<Vec<ExtensionSummary>> {
+        if !root.exists() {
+            return Ok(Vec::new());
+        }
+        Ok(IpcDriverRegistry::load_from_dir(root)
+            .map_err(|error| anyhow!("加载数据库驱动列表失败: {error}"))?
+            .drivers()
+            .iter()
+            .map(to_summary)
+            .collect())
+    }
+
+    fn install_from_dir(&self, dir: &Path) -> Result<ExtensionSummary> {
+        let manifest = IpcDriverRegistry::load_driver_from_dir(dir)
+            .map_err(|error| anyhow!("解析 driver manifest 失败: {error}"))?;
+        let manifest = manifest
+            .as_ref()
+            .ok_or_else(|| anyhow!("未在 {} 找到 driver.json", dir.display()))?;
+        validate_packaged_entry(&manifest.manifest_dir, &manifest.entry.command)?;
+        Ok(to_summary(manifest))
+    }
+
+    fn uninstall(&self, dir: &Path) -> Result<String> {
+        let name = dir
+            .file_name()
+            .and_then(|name| name.to_str())
+            .map(String::from)
+            .ok_or_else(|| anyhow!("无效的 driver 目录名: {}", dir.display()))?;
+        std::fs::remove_dir_all(dir).with_context(|| format!("删除驱动目录 {}", dir.display()))?;
+        Ok(name)
+    }
+}
+
+fn validate_packaged_entry(dir: &Path, command: &str) -> Result<()> {
+    let command_path = Path::new(command);
+    // Bare commands are resolved through PATH. Relative commands (including
+    // `./sidecar`) are package-local and must exist before installation.
+    if command_path.is_absolute() || command_path.parent().is_none() {
+        return Ok(());
+    }
+
+    let entry = dir.join(command_path);
+    let metadata = entry
+        .metadata()
+        .with_context(|| format!("驱动入口不存在: {}", entry.display()))?;
+    if !metadata.is_file() {
+        return Err(anyhow!("驱动入口不是文件: {}", entry.display()));
+    }
+
+    Ok(())
+}
+
+fn to_summary(manifest: &IpcDriverManifest) -> ExtensionSummary {
+    let description = if manifest.description.trim().is_empty() {
+        format!("{} 数据库驱动", manifest.name)
+    } else {
+        manifest.description.clone()
+    };
+    let version = if manifest.version.is_empty() {
+        "0.0.0".to_string()
+    } else {
+        manifest.version.clone()
+    };
+
+    let mut summary = ExtensionSummary::new(
+        ExtensionKind::DatabaseDriver,
+        manifest.id.clone(),
+        version,
+        manifest.manifest_dir.clone(),
+    )
+    .with_description(description)
+    .with_driver_id(manifest.id.clone())
+    .with_driver_api(manifest.api.clone())
+    .with_driver_compatibility(manifest.compatibility.clone());
+
+    if !manifest.ui.icon.is_empty() {
+        summary = summary.with_icon(manifest.ui.icon.clone());
+    }
+    if let Some(port) = manifest.ui.default_port {
+        summary = summary.with_default_port(port);
+    }
+    summary
+}

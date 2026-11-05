@@ -1,0 +1,17 @@
+[package]
+name = "html-preview"
+version = "0.15.2"
+publish.workspace = true
+edition.workspace = true
+
+[dependencies]
+dirs.workspace = true
+futures.workspace = true
+process-util.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

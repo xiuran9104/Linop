@@ -1,0 +1,389 @@
+use super::*;
+
+/// 正在调整大小的面板
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ResizingPanel {
+    LeftSidebar,
+    RightSidebar,
+    BottomSidebar,
+}
+
+/// IME composition state.
+pub(super) struct ImeState {
+    pub(super) marked_range: Option<std::ops::Range<usize>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum PendingTerminalAction {
+    ViMotion {
+        motion: ViMotion,
+        repetitions: u16,
+    },
+    ViToggleSelection(SelectionType),
+    ViYank,
+    ViScrollHalf(i32),
+    ViGotoTop,
+    ViGotoBottom,
+    ToggleViMode,
+    ResolveClearSelection {
+        accepts_live_input: bool,
+        had_block_selection: bool,
+    },
+    /// 复制完成后清空终端选区。
+    ///
+    /// 与 `ResolveClearSelection` 分开：后者在 VI 模式且无选区时会切换 VI 模式，
+    /// 而复制只应清掉选中背景，不能顺带改变模式或被当作 Escape。
+    ClearSelectionAfterCopy,
+    SelectAll,
+    ClearScreen,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) struct PendingTerminalSearch {
+    pub(super) direction: TerminalSearchDirection,
+    pub(super) repetitions: u16,
+}
+
+#[derive(Clone)]
+pub(crate) enum TerminalDuplicateSource {
+    Local(LocalConfig),
+    /// 由扩展声明的终端型连接启动的本地进程:带固定标题,退出后可按 Enter 重启。
+    Launched {
+        config: LocalConfig,
+        title: String,
+        /// 连接设置里选的图标;复制标签时一并带上。
+        icon: Option<Icon>,
+    },
+    Ssh {
+        connection: StoredConnection,
+        working_dir: Option<String>,
+        sync_path_with_terminal: bool,
+    },
+    Serial(StoredConnection),
+    Telnet(StoredConnection),
+}
+
+#[derive(Clone)]
+pub(super) struct SshReconnectSource {
+    pub(super) connection: StoredConnection,
+    pub(super) working_dir: Option<String>,
+    pub(super) sync_path_with_terminal: bool,
+}
+
+pub(super) fn resolve_ssh_reconnect_source(
+    source: &TerminalDuplicateSource,
+    load_connection: impl FnOnce(i64) -> anyhow::Result<Option<StoredConnection>>,
+) -> anyhow::Result<Option<SshReconnectSource>> {
+    let TerminalDuplicateSource::Ssh {
+        connection,
+        working_dir,
+        sync_path_with_terminal,
+    } = source
+    else {
+        return Ok(None);
+    };
+
+    let latest = match connection.id {
+        Some(id) => load_connection(id)?
+            .ok_or_else(|| anyhow::anyhow!("SSH connection {id} no longer exists"))?,
+        None => connection.clone(),
+    };
+    Ok(Some(SshReconnectSource {
+        connection: latest,
+        working_dir: working_dir.clone(),
+        sync_path_with_terminal: *sync_path_with_terminal,
+    }))
+}
+
+pub(super) fn live_terminal_input_supported(
+    live_connection_kind: Option<TerminalConnectionKind>,
+) -> bool {
+    live_connection_kind.is_some()
+}
+
+pub(super) fn live_ssh_feature_supported(
+    live_connection_kind: Option<TerminalConnectionKind>,
+) -> bool {
+    live_connection_kind == Some(TerminalConnectionKind::Ssh)
+}
+
+pub(super) fn terminal_tab_duplicate_supported(
+    source: Option<&TerminalDuplicateSource>,
+    live_connection_kind: Option<TerminalConnectionKind>,
+) -> bool {
+    matches!(
+        (source, live_connection_kind),
+        (
+            Some(TerminalDuplicateSource::Local(_) | TerminalDuplicateSource::Launched { .. }),
+            Some(TerminalConnectionKind::Local),
+        ) | (
+            Some(TerminalDuplicateSource::Ssh { .. }),
+            Some(TerminalConnectionKind::Ssh),
+        ) | (
+            Some(TerminalDuplicateSource::Serial(_)),
+            Some(TerminalConnectionKind::Serial),
+        ) | (
+            Some(TerminalDuplicateSource::Telnet(_)),
+            Some(TerminalConnectionKind::Telnet),
+        )
+    )
+}
+
+impl TerminalView {
+    pub(super) fn accepts_live_terminal_input(&self, cx: &App) -> bool {
+        let terminal = self.terminal.read(cx);
+        live_terminal_input_supported(terminal.live_connection_kind())
+            && terminal.ssh_credential_request().is_none()
+            && terminal.telnet_credential_request().is_none()
+            && terminal.ssh_mfa_request().is_none()
+            && terminal.host_key_verification_request().is_none()
+            && !terminal.is_locked()
+    }
+
+    /// 粘贴路径的实时终端模式。
+    ///
+    /// 代理到 `resolve_live_term_mode`（见 helpers.rs），集中维护
+    /// 「实时读取 + 快照回退」语义，避免各粘贴入口散落 try_lock。
+    pub(super) fn live_term_mode(&self, cx: &App) -> TermMode {
+        resolve_live_term_mode(
+            self.terminal.read(cx).term(),
+            self.terminal_frame_snapshot.mode,
+        )
+    }
+
+    pub(super) fn has_blocking_auth_prompt(&self, cx: &App) -> bool {
+        let terminal = self.terminal.read(cx);
+        terminal.ssh_credential_request().is_some()
+            || terminal.telnet_credential_request().is_some()
+            || terminal.ssh_mfa_request().is_some()
+            || terminal.host_key_verification_request().is_some()
+    }
+
+    pub(super) fn is_live_ssh_terminal(&self, cx: &App) -> bool {
+        live_ssh_feature_supported(self.terminal.read(cx).live_connection_kind())
+    }
+}
+
+pub(super) fn terminal_duplicate_source_with_cwd(
+    source: TerminalDuplicateSource,
+    current_working_dir: Option<&str>,
+) -> TerminalDuplicateSource {
+    let Some(cwd) = current_working_dir.filter(|cwd| !cwd.trim().is_empty()) else {
+        return source;
+    };
+    let cwd = cwd.to_string();
+
+    match source {
+        TerminalDuplicateSource::Local(mut config) => {
+            config.working_dir = Some(cwd);
+            TerminalDuplicateSource::Local(config)
+        }
+        // 启动参数是扩展声明的固定命令,复制时不改写工作目录。
+        launched @ TerminalDuplicateSource::Launched { .. } => launched,
+        TerminalDuplicateSource::Ssh {
+            connection,
+            sync_path_with_terminal,
+            ..
+        } => TerminalDuplicateSource::Ssh {
+            connection,
+            working_dir: Some(cwd),
+            sync_path_with_terminal,
+        },
+        TerminalDuplicateSource::Serial(connection) => TerminalDuplicateSource::Serial(connection),
+        TerminalDuplicateSource::Telnet(connection) => TerminalDuplicateSource::Telnet(connection),
+    }
+}
+
+/// Mouse interaction state.
+#[derive(Default)]
+pub(super) struct MouseState {
+    pub(super) selecting: bool,
+    pub(super) block_selecting: bool,
+    pub(super) pending_sgr_left_press: Option<PendingSgrMousePress>,
+    pub(super) last_click_point: Option<AlacPoint>,
+    pub(super) click_count: u32,
+    pub(super) last_click_time: Option<std::time::Instant>,
+}
+
+pub(super) struct PendingSgrMousePress {
+    pub(super) point: AlacPoint,
+    pub(super) position: Point<Pixels>,
+    pub(super) modifiers: Modifiers,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(super) enum PendingTerminalSelectionAction {
+    Clear,
+    Start {
+        selection_type: SelectionType,
+        point: AlacPoint,
+        side: Side,
+    },
+    Update {
+        point: AlacPoint,
+        side: Side,
+    },
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct TerminalScrollbarMetrics {
+    pub(super) viewport_size: Size<Pixels>,
+    pub(super) line_height: Pixels,
+    pub(super) cell_width: Pixels,
+}
+
+impl Default for TerminalScrollbarMetrics {
+    fn default() -> Self {
+        Self {
+            viewport_size: size(px(0.0), px(0.0)),
+            line_height: px(1.0),
+            cell_width: px(1.0),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct TerminalFontMetrics {
+    pub(super) requested_family: SharedString,
+    pub(super) fallbacks: Vec<SharedString>,
+    pub(super) font_size: Pixels,
+    pub(super) effective_family: SharedString,
+    pub(super) cell_width: Pixels,
+}
+
+impl TerminalFontMetrics {
+    pub(super) fn matches(
+        &self,
+        requested_family: &SharedString,
+        fallbacks: &[SharedString],
+        font_size: Pixels,
+    ) -> bool {
+        &self.requested_family == requested_family
+            && self.fallbacks == fallbacks
+            && self.font_size == font_size
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct TerminalFrameSnapshot {
+    pub(super) mode: TermMode,
+    pub(super) display_offset: usize,
+    pub(super) history_size: usize,
+    pub(super) screen_lines: usize,
+    pub(super) columns: usize,
+    pub(super) selection_present: bool,
+    pub(super) selection_text: Option<String>,
+    pub(super) block_selection_text: Option<String>,
+    pub(super) cursor_screen_line: i32,
+    pub(super) cursor_column: usize,
+}
+
+impl Default for TerminalFrameSnapshot {
+    fn default() -> Self {
+        Self {
+            mode: TermMode::empty(),
+            display_offset: 0,
+            history_size: 0,
+            screen_lines: DEFAULT_ROWS,
+            columns: DEFAULT_COLS,
+            selection_present: false,
+            selection_text: None,
+            block_selection_text: None,
+            cursor_screen_line: 0,
+            cursor_column: 0,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct TerminalScrollbarHandle {
+    pub(super) proxy: TerminalScrollProxy,
+    pub(super) metrics: Rc<RefCell<TerminalScrollbarMetrics>>,
+    pub(super) future_display_offset: Rc<StdCell<Option<usize>>>,
+    last_snapshot: Rc<RefCell<TerminalScrollSnapshot>>,
+}
+
+impl TerminalScrollbarHandle {
+    pub(super) fn new(
+        proxy: TerminalScrollProxy,
+        metrics: Rc<RefCell<TerminalScrollbarMetrics>>,
+    ) -> Self {
+        let last_snapshot = proxy.try_snapshot().unwrap_or_default();
+        Self {
+            proxy,
+            metrics,
+            future_display_offset: Rc::new(StdCell::new(None)),
+            last_snapshot: Rc::new(RefCell::new(last_snapshot)),
+        }
+    }
+
+    pub(super) fn take_future_display_offset(&self) -> Option<usize> {
+        self.future_display_offset.take()
+    }
+
+    pub(super) fn put_back_future_display_offset(&self, display_offset: usize) {
+        self.future_display_offset.set(Some(display_offset));
+    }
+
+    pub(super) fn future_display_offset(&self) -> Option<usize> {
+        self.future_display_offset.get()
+    }
+
+    pub(super) fn try_set_display_offset(&self, display_offset: usize) -> bool {
+        self.proxy.try_set_display_offset(display_offset)
+    }
+
+    pub(super) fn try_scroll_display_delta(&self, delta: i32) -> bool {
+        self.proxy.try_scroll_display_delta(delta)
+    }
+
+    fn snapshot_or_cached(&self) -> TerminalScrollSnapshot {
+        if let Some(snapshot) = self.proxy.try_snapshot() {
+            *self.last_snapshot.borrow_mut() = snapshot.clone();
+            snapshot
+        } else {
+            self.last_snapshot.borrow().clone()
+        }
+    }
+}
+
+impl ScrollbarHandle for TerminalScrollbarHandle {
+    fn viewport_bounds(&self) -> Bounds<Pixels> {
+        Bounds::new(Point::default(), self.metrics.borrow().viewport_size)
+    }
+
+    fn offset(&self) -> Point<Pixels> {
+        let metrics = self.metrics.borrow();
+        let line_height = metrics.line_height.max(px(1.0));
+        let snapshot = self.snapshot_or_cached();
+        let max_offset = snapshot.history_size;
+        let scroll_offset = max_offset.saturating_sub(snapshot.display_offset);
+        Point::new(px(0.0), -(scroll_offset as f32 * line_height))
+    }
+
+    fn set_offset(&self, offset: Point<Pixels>) {
+        let metrics = self.metrics.borrow();
+        let line_height = metrics.line_height.max(px(1.0));
+        let snapshot = self.snapshot_or_cached();
+        let max_offset = snapshot.history_size as i32;
+        if max_offset == 0 {
+            return;
+        }
+        let offset_delta = (offset.y / line_height).round() as i32;
+        let display_offset = (max_offset + offset_delta).clamp(0, max_offset) as usize;
+        self.future_display_offset.set(Some(display_offset));
+    }
+
+    fn content_size(&self) -> Size<Pixels> {
+        let metrics = self.metrics.borrow();
+        let line_height = metrics.line_height.max(px(1.0));
+        let snapshot = self.snapshot_or_cached();
+        let total_lines = snapshot.history_size + snapshot.screen_lines;
+        let height = line_height * total_lines as f32;
+        let width = metrics
+            .viewport_size
+            .width
+            .max(metrics.cell_width * snapshot.columns as f32);
+        size(width, height)
+    }
+}

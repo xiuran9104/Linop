@@ -1,0 +1,20 @@
+[package]
+name = "port_forwarding_view"
+version = "0.15.2"
+publish.workspace = true
+edition.workspace = true
+
+[dependencies]
+one-assets = { workspace = true }
+anyhow.workspace = true
+gpui.workspace = true
+gpui-component.workspace = true
+connection-form.workspace = true
+one-core.workspace = true
+port_forwarding.workspace = true
+rust-i18n.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

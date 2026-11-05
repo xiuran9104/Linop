@@ -1,0 +1,231 @@
+use super::*;
+
+#[test]
+fn multiline_non_empty_line_count_ignores_blank_lines() {
+    assert_eq!(multiline_non_empty_line_count("echo 1\n\n echo 2\n"), 2);
+    assert_eq!(multiline_non_empty_line_count("echo 1"), 1);
+}
+#[test]
+fn bracketed_paste_bytes_normalize_crlf_to_single_newlines() {
+    let bytes = terminal_paste_bytes("alpha\r\nbeta\r\n", TermMode::BRACKETED_PASTE);
+
+    assert_eq!(b"\x1b[200~alpha\nbeta\n\x1b[201~".to_vec(), bytes);
+}
+
+#[test]
+fn detect_unbracketed_paste_hazard_matches_heredoc() {
+    let text = "cat <<EOF\nhello\nEOF";
+    assert_eq!(
+        detect_unbracketed_paste_hazard(text),
+        Some(UnbracketedPasteHazard::HereDoc)
+    );
+}
+
+#[test]
+fn detect_unbracketed_paste_hazard_does_not_block_line_continuation() {
+    // 反斜杠续行是合法 shell 写法（如多行 wget/curl），不应被硬阻断；
+    // 无 bracketed paste 时仅由普通多行粘贴确认流程兜底。
+    assert_eq!(
+        detect_unbracketed_paste_hazard("echo hello \\\nworld"),
+        None
+    );
+}
+
+#[test]
+fn detect_unbracketed_paste_hazard_matches_unterminated_quote() {
+    assert!(has_unterminated_shell_quote("printf 'hello\nworld"));
+    assert_eq!(
+        detect_unbracketed_paste_hazard("printf 'hello\nworld"),
+        Some(UnbracketedPasteHazard::UnterminatedQuote)
+    );
+}
+
+#[test]
+fn detect_unbracketed_paste_hazard_ignores_plain_text() {
+    assert_eq!(
+        detect_unbracketed_paste_hazard("printf '%s\\n' hello"),
+        None
+    );
+    assert!(!has_unterminated_shell_quote("printf '%s\\n' hello"));
+}
+
+#[test]
+fn is_large_paste_triggers_on_line_count_or_bytes() {
+    let two_hundred_lines = (0..200)
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(!is_large_paste(&two_hundred_lines));
+
+    let over_lines = (0..201)
+        .map(|i| i.to_string())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(is_large_paste(&over_lines));
+
+    let over_bytes = "a".repeat(32 * 1024 + 1);
+    assert!(is_large_paste(&over_bytes));
+
+    assert!(!is_large_paste("echo hello"));
+}
+
+#[test]
+fn strip_dangerous_control_chars_keeps_newline_and_tab() {
+    assert_eq!(
+        strip_dangerous_control_chars("echo\x07 hi\nworld\t!"),
+        "echo hi\nworld\t!"
+    );
+    // ESC 单字符被移除；其后的序列字面不属于控制字符，由远端程序自行处理。
+    assert_eq!(strip_dangerous_control_chars("echo\x1b[A hi"), "echo[A hi");
+    assert_eq!(strip_dangerous_control_chars("plain text"), "plain text");
+}
+
+#[test]
+fn terminal_paste_bytes_filters_control_chars_when_unbracketed() {
+    let bytes = terminal_paste_bytes("echo\x07 bell\r\nline", TermMode::empty());
+    assert_eq!(b"echo bell\nline".to_vec(), bytes);
+}
+
+#[test]
+fn terminal_paste_bytes_keeps_bracketed_wrap_untouched() {
+    let bytes = terminal_paste_bytes("echo hi", TermMode::BRACKETED_PASTE);
+    assert_eq!(b"\x1b[200~echo hi\x1b[201~".to_vec(), bytes);
+}
+
+/// 供 resolve_live_term_mode 测试使用的最小终端尺寸。
+struct PasteModeTestDimensions {
+    columns: usize,
+    screen_lines: usize,
+}
+
+impl alacritty_terminal::grid::Dimensions for PasteModeTestDimensions {
+    fn total_lines(&self) -> usize {
+        self.screen_lines
+    }
+    fn screen_lines(&self) -> usize {
+        self.screen_lines
+    }
+    fn columns(&self) -> usize {
+        self.columns
+    }
+}
+
+/// 构造一个不带 2004 模式的最小 Term，供模式解析测试使用。
+fn paste_mode_test_term() -> (
+    alacritty_terminal::sync::FairMutex<
+        alacritty_terminal::term::Term<terminal::pty_backend::GpuiEventProxy>,
+    >,
+    alacritty_terminal::vte::ansi::Processor<alacritty_terminal::vte::ansi::StdSyncHandler>,
+) {
+    use alacritty_terminal::sync::FairMutex;
+    use alacritty_terminal::term::{Config as TermConfig, Term};
+    use alacritty_terminal::vte::ansi::Processor;
+    use terminal::pty_backend::GpuiEventProxy;
+    use tokio::sync::mpsc::unbounded_channel;
+
+    let (event_tx, _event_rx) = unbounded_channel();
+    let dimensions = PasteModeTestDimensions {
+        columns: 16,
+        screen_lines: 4,
+    };
+    let term = Term::new(
+        TermConfig::default(),
+        &dimensions,
+        GpuiEventProxy::new(event_tx),
+    );
+    (FairMutex::new(term), Processor::new())
+}
+
+#[test]
+fn resolve_live_term_mode_prefers_realtime_term_mode_over_stale_snapshot() {
+    let (locked, mut processor) = paste_mode_test_term();
+
+    // 远端开启 2004：实时读取应看到 ON，即便快照仍是过期的 OFF。
+    {
+        let mut term = locked.lock_unfair();
+        processor.advance(&mut *term, b"\x1b[?2004h");
+        assert!(term.mode().contains(TermMode::BRACKETED_PASTE));
+    }
+    let resolved = resolve_live_term_mode(&locked, TermMode::empty());
+    assert!(resolved.contains(TermMode::BRACKETED_PASTE));
+
+    // 回归场景（issue #198）：快照停留在命令执行前的 ON，而远端 bash 已发
+    // 2004l 关闭。实时读取必须报告 OFF，粘贴才不会带 \x1b[200~ 字面泄漏。
+    {
+        let mut term = locked.lock_unfair();
+        processor.advance(&mut *term, b"\x1b[?2004l");
+        assert!(!term.mode().contains(TermMode::BRACKETED_PASTE));
+    }
+    let stale_snapshot = TermMode::BRACKETED_PASTE;
+    let resolved = resolve_live_term_mode(&locked, stale_snapshot);
+    assert!(!resolved.contains(TermMode::BRACKETED_PASTE));
+}
+
+#[test]
+fn resolve_live_term_mode_falls_back_to_snapshot_when_term_locked() {
+    let (locked, _processor) = paste_mode_test_term();
+    // 模拟解析线程持锁：try_lock 失败时必须回退快照而不是 panic/阻塞。
+    let guard = locked.lock_unfair();
+    let fallback = TermMode::BRACKETED_PASTE;
+    let resolved = resolve_live_term_mode(&locked, fallback);
+    drop(guard);
+    assert!(resolved.contains(TermMode::BRACKETED_PASTE));
+}
+
+#[test]
+fn join_paste_as_single_line_collapses_blank_lines() {
+    assert_eq!(
+        join_paste_as_single_line("  echo 1 \n\n  echo 2  \n"),
+        "echo 1 echo 2"
+    );
+    assert_eq!(join_paste_as_single_line("single"), "single");
+}
+
+#[test]
+fn paste_confirm_kind_maps_disable_setting() {
+    use super::super::paste_confirm_dialog::{PasteConfirmKind, PasteSafetySetting};
+
+    assert_eq!(
+        PasteConfirmKind::MultilineUnbracketed.disable_setting(),
+        Some(PasteSafetySetting::MultilinePaste)
+    );
+    assert_eq!(
+        PasteConfirmKind::HighRiskCommand.disable_setting(),
+        Some(PasteSafetySetting::HighRiskCommand)
+    );
+    // 大段粘贴是硬阈值，没有对应开关，因此不提供「不再提示」。
+    assert_eq!(PasteConfirmKind::LargePaste.disable_setting(), None);
+}
+
+#[test]
+fn paste_confirm_kind_keeps_locale_keys() {
+    // 弹窗文案仍然由这三组 key 提供，避免迁移时改错标题/正文对应关系。
+    let source = include_str!("../paste_confirm_dialog.rs");
+    for expected in [
+        "TerminalView.multiline_paste_title",
+        "TerminalView.multiline_paste_message",
+        "TerminalView.high_risk_paste_title",
+        "TerminalView.high_risk_paste_message",
+        "TerminalView.large_paste_title",
+        "TerminalView.large_paste_message",
+    ] {
+        assert!(source.contains(expected), "缺少 {expected}");
+    }
+}
+
+#[test]
+fn paste_confirm_dialog_exposes_settings_escape_hatches() {
+    let source = include_str!("../paste_confirm_dialog.rs");
+
+    for expected in [
+        "paste-open-settings",
+        "paste-dont-ask-again",
+        "TerminalView.paste_open_settings",
+        "TerminalView.paste_dont_ask_again",
+    ] {
+        assert!(source.contains(expected), "缺少 {expected}");
+    }
+    // 「不再提示」与设置面板开关写同一份持久化状态。
+    assert!(source.contains("settings.confirm_multiline_paste = false"));
+    assert!(source.contains("settings.confirm_high_risk_command = false"));
+}

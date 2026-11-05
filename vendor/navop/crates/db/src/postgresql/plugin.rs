@@ -1,0 +1,6599 @@
+use std::collections::HashMap;
+
+use std::sync::LazyLock;
+
+use crate::types::ObjectViewColumn as Column;
+use anyhow::Result;
+use async_trait::async_trait;
+use one_core::storage::{DatabaseType, DbConnectionConfig};
+use rust_i18n::t;
+
+use crate::connection::{DbConnection, DbError};
+use crate::executor::SqlResult;
+use crate::import_export::{
+    ExportConfig, ExportProgressSender, ExportResult, ImportConfig, ImportProgressSender,
+    ImportResult,
+};
+use crate::manifest_helpers::{
+    DatabaseActionDescriptorExt, action, action_with_scope, field, option,
+    schema_preference_fields, ssh_auth_options, ssh_auth_rules, ssh_enabled_rules, ssh_field,
+    ssh_number_field, ssh_password_field, tab, yes_no_options,
+};
+use crate::plugin::{DatabasePlugin, DatabaseUserOperationRequest, SqlCompletionInfo};
+use crate::plugin_manifest::{
+    DatabaseActionId, DatabaseActionManifest, DatabaseActionPlacement, DatabaseActionToolbarScope,
+    DatabaseCapabilities, DatabaseFormFieldType, DatabaseFormKind, DatabaseFormManifest,
+    DatabaseUiCapabilities, DatabaseUiManifest,
+};
+use crate::postgresql::connection::PostgresDbConnection;
+use crate::schema_preferences::{SchemaFilterProfile, filter_schemas};
+use crate::types::*;
+
+/// PostgreSQL data types (name, description)
+pub const POSTGRESQL_DATA_TYPES: &[(&str, &str)] = &[
+    ("SMALLINT", "Small integer (-32768 to 32767)"),
+    ("INTEGER", "Standard integer"),
+    ("BIGINT", "Large integer"),
+    ("SERIAL", "Auto-incrementing integer"),
+    ("BIGSERIAL", "Auto-incrementing bigint"),
+    ("SMALLSERIAL", "Auto-incrementing smallint"),
+    ("DECIMAL", "Exact numeric with precision"),
+    ("NUMERIC", "Exact numeric with precision"),
+    ("REAL", "Single-precision floating-point"),
+    ("DOUBLE PRECISION", "Double-precision floating-point"),
+    ("MONEY", "Currency amount"),
+    ("CHAR", "Fixed-length string"),
+    ("VARCHAR", "Variable-length string"),
+    ("TEXT", "Unlimited text"),
+    ("BYTEA", "Binary data"),
+    ("DATE", "Date (no time)"),
+    ("TIME", "Time without timezone"),
+    ("TIMETZ", "Time with timezone"),
+    ("TIMESTAMP", "Date and time without timezone"),
+    ("TIMESTAMPTZ", "Date and time with timezone"),
+    ("INTERVAL", "Time interval"),
+    ("BOOLEAN", "True/False"),
+    ("UUID", "Universally unique identifier"),
+    ("JSON", "JSON document"),
+    ("JSONB", "Binary JSON (indexed)"),
+    ("XML", "XML document"),
+    ("ARRAY", "Array type"),
+    ("BIT", "Fixed-length bit string"),
+    ("BIT VARYING", "Variable-length bit string"),
+    ("INT4RANGE", "Range of integer"),
+    ("INT8RANGE", "Range of bigint"),
+    ("NUMRANGE", "Range of numeric"),
+    ("TSRANGE", "Range of timestamp"),
+    ("TSTZRANGE", "Range of timestamptz"),
+    ("DATERANGE", "Range of date"),
+    ("INET", "IPv4/IPv6 host address"),
+    ("CIDR", "IPv4/IPv6 network address"),
+    ("MACADDR", "MAC address"),
+    ("POINT", "Geometric point"),
+    ("LINE", "Infinite line"),
+    ("LSEG", "Line segment"),
+    ("BOX", "Rectangular box"),
+    ("PATH", "Geometric path"),
+    ("POLYGON", "Closed geometric path"),
+    ("CIRCLE", "Circle"),
+    ("TSVECTOR", "Text search document"),
+    ("TSQUERY", "Text search query"),
+];
+
+/// PostgreSQL database plugin implementation (stateless)
+pub struct PostgresPlugin;
+
+static POSTGRESQL_UI_MANIFEST: LazyLock<DatabaseUiManifest> =
+    LazyLock::new(build_postgresql_ui_manifest);
+
+impl PostgresPlugin {
+    pub fn new() -> Self {
+        Self
+    }
+
+    /// `schema.table` 引用；无 schema 时仅限定表名。
+    ///
+    /// 固有方法（非 trait 方法），供本插件构造外部表等 SQL 时复用。
+    fn qualify_table_reference(&self, schema: Option<&str>, table: &str) -> String {
+        match schema {
+            Some(schema) => format!(
+                "{}.{}",
+                self.quote_identifier(schema),
+                self.quote_identifier(table)
+            ),
+            None => self.quote_identifier(table),
+        }
+    }
+
+    fn comment_literal(comment: &str) -> String {
+        if comment.is_empty() {
+            "NULL".to_string()
+        } else {
+            format!("'{}'", comment.replace('\'', "''"))
+        }
+    }
+
+    /// 序列对象面板的列定义与行；数据源固定为 `list_sequences`。
+    fn sequences_object_view(sequences: Vec<SequenceInfo>) -> ObjectView {
+        let columns = vec![
+            Column::localized("name", "ObjectView.columns.name").width(180.0),
+            Column::localized("start", "ObjectView.columns.start")
+                .width(100.0)
+                .text_right(),
+            Column::localized("increment", "ObjectView.columns.increment")
+                .width(100.0)
+                .text_right(),
+            Column::localized("min", "ObjectView.columns.minimum")
+                .width(120.0)
+                .text_right(),
+            Column::localized("max", "ObjectView.columns.maximum")
+                .width(120.0)
+                .text_right(),
+        ];
+        let rows: Vec<Vec<String>> = sequences
+            .iter()
+            .map(|seq| {
+                let number = |value: Option<i64>| {
+                    value
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "-".to_string())
+                };
+                vec![
+                    seq.name.clone(),
+                    number(seq.start_value),
+                    number(seq.increment),
+                    number(seq.min_value),
+                    number(seq.max_value),
+                ]
+            })
+            .collect();
+
+        ObjectView {
+            db_node_type: DbNodeType::Sequence,
+            title: t!("ObjectView.counts.sequences", count = sequences.len()).to_string(),
+            columns,
+            rows,
+        }
+    }
+
+    fn table_comment_sql(&self, table_name: &str, comment: &str) -> String {
+        format!(
+            "COMMENT ON TABLE {} IS {};",
+            self.quote_identifier(table_name),
+            Self::comment_literal(comment)
+        )
+    }
+
+    fn column_comment_sql(&self, table_name: &str, column_name: &str, comment: &str) -> String {
+        format!(
+            "COMMENT ON COLUMN {}.{} IS {};",
+            self.quote_identifier(table_name),
+            self.quote_identifier(column_name),
+            Self::comment_literal(comment)
+        )
+    }
+
+    fn design_comment_sql(&self, design: &TableDesign) -> Vec<String> {
+        let mut statements = Vec::new();
+        if !design.options.comment.is_empty() {
+            statements.push(self.table_comment_sql(&design.table_name, &design.options.comment));
+        }
+        statements.extend(
+            design
+                .columns
+                .iter()
+                .filter(|column| !column.comment.is_empty())
+                .map(|column| {
+                    self.column_comment_sql(&design.table_name, &column.name, &column.comment)
+                }),
+        );
+        statements
+    }
+
+    fn primary_key_columns(design: &TableDesign) -> Vec<&str> {
+        let columns = design.primary_key_columns();
+        if !columns.is_empty() {
+            return columns;
+        }
+
+        design
+            .indexes
+            .iter()
+            .find(|index| index.is_primary)
+            .map(|index| index.columns.iter().map(String::as_str).collect())
+            .unwrap_or_default()
+    }
+
+    fn database_node(node: &DbNode, database: String) -> DbNode {
+        DbNode::new(
+            format!("{}:{}", node.id, database),
+            database,
+            DbNodeType::Database,
+            node.connection_id.clone(),
+            node.database_type.clone(),
+        )
+        .with_parent_context(&node.id)
+    }
+
+    fn database_tree_from_list_result(
+        node: &DbNode,
+        configured_database: Option<&str>,
+        result: Result<Vec<String>>,
+    ) -> Result<Vec<DbNode>> {
+        match result {
+            Ok(databases) => Ok(databases
+                .into_iter()
+                .map(|database| Self::database_node(node, database))
+                .collect()),
+            Err(error) => {
+                let Some(database) = configured_database
+                    .map(str::trim)
+                    .filter(|db| !db.is_empty())
+                else {
+                    return Err(error);
+                };
+                Ok(vec![Self::database_node(node, database.to_string())])
+            }
+        }
+    }
+
+    fn normalize_type_name(type_name: &str) -> String {
+        let type_lower = type_name.to_lowercase();
+
+        let (base_type, suffix) = if let Some(paren_pos) = type_lower.find('(') {
+            (&type_lower[..paren_pos], &type_name[paren_pos..])
+        } else if let Some(bracket_pos) = type_lower.find('[') {
+            (&type_lower[..bracket_pos], &type_name[bracket_pos..])
+        } else {
+            (type_lower.as_str(), "")
+        };
+
+        let short_name = match base_type.trim() {
+            "character varying" => "varchar",
+            "character" => "char",
+            "double precision" => "float8",
+            "timestamp without time zone" => "timestamp",
+            "timestamp with time zone" => "timestamptz",
+            "time without time zone" => "time",
+            "time with time zone" => "timetz",
+            "bit varying" => "varbit",
+            other => other,
+        };
+
+        let suffix = match short_name {
+            "varchar" | "char" => Self::normalize_character_length_suffix(suffix),
+            _ => suffix.to_string(),
+        };
+
+        format!("{}{}", short_name, suffix)
+    }
+
+    fn normalize_character_length_suffix(suffix: &str) -> String {
+        let Some(close_paren) = suffix.find(')') else {
+            return suffix.to_string();
+        };
+        let Some(modifier) = suffix.get(1..close_paren) else {
+            return suffix.to_string();
+        };
+        let mut parts = modifier.split_whitespace();
+        let Some(length) = parts.next() else {
+            return suffix.to_string();
+        };
+        let Some(length_semantics) = parts.next() else {
+            return suffix.to_string();
+        };
+
+        if parts.next().is_some()
+            || !length.chars().all(|character| character.is_ascii_digit())
+            || !length_semantics.eq_ignore_ascii_case("char")
+        {
+            return suffix.to_string();
+        }
+
+        format!("({length}){}", &suffix[close_paren + 1..])
+    }
+
+    /// 字符型列的默认值必须写成字符串字面量。
+    ///
+    /// 跨库结构同步和表设计器可能把 `0`、`CDSS` 这类裸字面量直接交给
+    /// PostgreSQL，而 PostgreSQL 只接受与列类型匹配的默认表达式：
+    /// `varchar(1) DEFAULT 1` 会以 `default expression is of type integer`
+    /// 拒绝整条建表语句，随后针对该表的注释语句也会因为表不存在而全部失败。
+    /// 这里按列类型给裸字面量补上引号；已是合法表达式（引号字面量、函数调用、
+    /// 类型转换、`CURRENT_*` 关键字）的默认值原样保留。
+    fn executable_default_for_type(data_type: &str, default: &str) -> String {
+        let trimmed = default.trim();
+        if trimmed.is_empty() || !Self::is_bare_default_literal(trimmed) {
+            return default.to_string();
+        }
+        if !Self::requires_quoted_default(data_type, trimmed) {
+            return default.to_string();
+        }
+        format!("'{}'", trimmed.replace('\'', "''"))
+    }
+
+    /// 判断默认值是否为需要补引号的裸字面量（裸数值或裸标识符）。
+    fn is_bare_default_literal(default: &str) -> bool {
+        if Self::is_quoted_default_literal(default)
+            || default.contains('(')
+            || default.contains("::")
+        {
+            return false;
+        }
+        let upper = default.to_ascii_uppercase();
+        !matches!(
+            upper.as_str(),
+            "NULL"
+                | "TRUE"
+                | "FALSE"
+                | "CURRENT_TIMESTAMP"
+                | "CURRENT_DATE"
+                | "CURRENT_TIME"
+                | "LOCALTIMESTAMP"
+                | "LOCALTIME"
+                | "CURRENT_USER"
+                | "SESSION_USER"
+                | "USER"
+                | "CURRENT_ROLE"
+                | "CURRENT_SCHEMA"
+                | "CURRENT_CATALOG"
+        )
+    }
+
+    fn is_quoted_default_literal(default: &str) -> bool {
+        (default.starts_with('\'') && default.ends_with('\''))
+            || (default.starts_with('"') && default.ends_with('"'))
+            || default.starts_with("$$")
+            || ["b'", "B'", "x'", "X'", "e'", "E'", "u&'", "U&'"]
+                .iter()
+                .any(|prefix| default.starts_with(prefix))
+    }
+
+    /// 该列类型的裸默认值是否需要改写成字符串字面量。
+    fn requires_quoted_default(data_type: &str, default: &str) -> bool {
+        let base_type = Self::canonical_base_type_name(data_type);
+        if matches!(
+            base_type.as_str(),
+            "varchar"
+                | "char"
+                | "bpchar"
+                | "text"
+                | "name"
+                | "citext"
+                | "uuid"
+                | "json"
+                | "jsonb"
+                | "xml"
+        ) {
+            return true;
+        }
+        // MySQL 的 `tinyint(1)` / `bit(1)` 会映射成 `BOOLEAN`，
+        // 源库默认值是 `1`/`0`；PostgreSQL 的 `DEFAULT 1` 是 integer 表达式，
+        // 同样会被拒绝（`TRUE`/`FALSE` 已在裸字面量判定里放行）。
+        matches!(base_type.as_str(), "bool" | "boolean")
+            && (default.eq_ignore_ascii_case("1") || default.eq_ignore_ascii_case("0"))
+    }
+
+    /// 去掉长度/精度/数组后缀后的基础类型名（小写）。
+    fn canonical_base_type_name(data_type: &str) -> String {
+        let normalized = Self::normalize_type_name(data_type);
+        normalized
+            .split(['(', '[', ' '])
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase()
+    }
+
+    async fn get_routine_definition(
+        &self,
+        connection: &dyn DbConnection,
+        routine: &RoutineIdentity,
+        routine_kind: &str,
+        prokind_predicate: &str,
+    ) -> Result<String> {
+        let schema = routine.schema.as_deref().unwrap_or("public");
+        let identity_arguments = routine.identity_arguments.as_deref().unwrap_or("");
+        let object_id_predicate = routine
+            .object_id
+            .as_deref()
+            .filter(|oid| !oid.is_empty() && oid.bytes().all(|byte| byte.is_ascii_digit()))
+            .map(|oid| format!("AND p.oid = {oid}::oid "))
+            .unwrap_or_default();
+        let sql = format!(
+            "SELECT pg_get_functiondef(p.oid) \
+             FROM pg_proc p \
+             JOIN pg_namespace n ON n.oid = p.pronamespace \
+             WHERE n.nspname = {} \
+               AND p.proname = {} \
+               AND pg_get_function_identity_arguments(p.oid) = {} \
+               AND {} \
+               {}\
+             ORDER BY p.oid \
+             LIMIT 1",
+            postgres_routine_string_literal(schema),
+            postgres_routine_string_literal(&routine.name),
+            postgres_routine_string_literal(identity_arguments),
+            prokind_predicate,
+            object_id_predicate,
+        );
+
+        let result = connection.query(&sql).await.map_err(|error| {
+            anyhow::anyhow!("Failed to load {} definition: {}", routine_kind, error)
+        })?;
+
+        match result {
+            SqlResult::Query(query_result) => {
+                crate::metadata_read::metadata_text(&query_result, 0, 0, "utf8mb4")?
+                    .filter(|definition| !definition.trim().is_empty())
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "PostgreSQL returned no CREATE statement for {} {}",
+                            routine_kind,
+                            routine.name
+                        )
+                    })
+            }
+            SqlResult::Error(error) => Err(anyhow::anyhow!(
+                "Failed to load {} definition: {}",
+                routine_kind,
+                error.message
+            )),
+            SqlResult::Exec(_) => Err(anyhow::anyhow!(
+                "Loading {} definition returned an unexpected result type",
+                routine_kind
+            )),
+        }
+    }
+}
+
+fn build_postgresql_ui_manifest() -> DatabaseUiManifest {
+    let mut forms = vec![
+        postgresql_connection_form(),
+        postgresql_database_form(false),
+        postgresql_database_form(true),
+        postgresql_schema_form(),
+    ];
+    forms.extend(postgres_user_forms());
+
+    DatabaseUiManifest {
+        capabilities: DatabaseUiCapabilities {
+            supports_schema: true,
+            supports_users: true,
+            supports_user_create: true,
+            supports_user_edit: true,
+            supports_user_delete: true,
+            supports_user_privileges: true,
+            supports_sequences: true,
+            supports_functions: true,
+            supports_procedures: true,
+            supports_triggers: true,
+            supports_table_charset: true,
+            supports_table_collation: true,
+            supports_tablespace: true,
+            supports_materialized_views: true,
+            ..DatabaseUiCapabilities::default()
+        },
+        forms,
+        actions: postgresql_action_manifest(),
+        ..DatabaseUiManifest::default()
+    }
+}
+
+fn postgres_string_literal(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}
+
+fn postgres_routine_string_literal(value: &str) -> String {
+    format!("E'{}'", value.replace('\\', "\\\\").replace('\'', "''"))
+}
+
+fn postgres_metadata_row_value(row: &[Option<String>], index: usize) -> String {
+    row.get(index)
+        .and_then(|value| value.clone())
+        .unwrap_or_default()
+}
+
+/// 「表」目录覆盖的 `pg_class.relkind`：普通表 / 分区表 / 外部表。
+const POSTGRES_TABLE_RELKINDS: &str = "'r', 'p', 'f'";
+
+/// 把 `pg_class.relkind` 映射为表对象类型。
+///
+/// 分区表按普通表处理（`DROP/ALTER TABLE` 均适用）；外部表必须单独区分，
+/// 否则会生成适配普通表的 `DROP/ALTER TABLE` DDL 并报错。
+fn postgres_table_object_type(relkind: Option<&str>) -> TableObjectType {
+    match relkind {
+        Some("f") => TableObjectType::ForeignTable,
+        _ => TableObjectType::Table,
+    }
+}
+
+/// 对象列表「类型」列的展示文案。
+fn postgres_relation_type_label(relkind: Option<&str>) -> &'static str {
+    match relkind {
+        Some("v") => "View",
+        Some("m") => "Materialized View",
+        Some("p") => "Partitioned Table",
+        Some("f") => "Foreign Table",
+        _ => "Table",
+    }
+}
+
+fn parse_postgres_foreign_keys(rows: Vec<Vec<Option<String>>>) -> Vec<ForeignKeyDefinition> {
+    let mut foreign_keys = Vec::new();
+    let mut positions = HashMap::new();
+
+    for row in rows {
+        let name = postgres_metadata_row_value(&row, 0);
+        if name.is_empty() {
+            continue;
+        }
+
+        let index = *positions.entry(name.clone()).or_insert_with(|| {
+            foreign_keys.push(ForeignKeyDefinition {
+                name: name.clone(),
+                columns: Vec::new(),
+                ref_table: postgres_metadata_row_value(&row, 3),
+                ref_schema: Some(postgres_metadata_row_value(&row, 2))
+                    .filter(|value| !value.is_empty()),
+                ref_columns: Vec::new(),
+                on_delete: postgres_metadata_row_value(&row, 5),
+                on_update: postgres_metadata_row_value(&row, 6),
+            });
+            foreign_keys.len() - 1
+        });
+
+        foreign_keys[index]
+            .columns
+            .push(postgres_metadata_row_value(&row, 1));
+        foreign_keys[index]
+            .ref_columns
+            .push(postgres_metadata_row_value(&row, 4));
+    }
+
+    foreign_keys
+}
+
+fn qualify_postgres_foreign_key_reference(definition: &str, referenced_table: &str) -> String {
+    const REFERENCES: &str = " REFERENCES ";
+
+    let Some(references_offset) = find_unquoted_postgres_token(definition, REFERENCES) else {
+        return definition.to_string();
+    };
+    let relation_start = references_offset + REFERENCES.len();
+    let relation_name_start = if definition[relation_start..].starts_with("ONLY ") {
+        relation_start + "ONLY ".len()
+    } else {
+        relation_start
+    };
+
+    let mut quoted = false;
+    let mut chars = definition[relation_name_start..].char_indices().peekable();
+    let mut relation_end = None;
+    while let Some((offset, ch)) = chars.next() {
+        match ch {
+            '"' if quoted && chars.peek().is_some_and(|(_, next)| *next == '"') => {
+                chars.next();
+            }
+            '"' => quoted = !quoted,
+            '(' if !quoted => {
+                relation_end = Some(relation_name_start + offset);
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    let Some(relation_end) = relation_end else {
+        return definition.to_string();
+    };
+    format!(
+        "{}{}{}",
+        &definition[..relation_name_start],
+        referenced_table,
+        &definition[relation_end..]
+    )
+}
+
+fn find_unquoted_postgres_token(value: &str, token: &str) -> Option<usize> {
+    let bytes = value.as_bytes();
+    let token = token.as_bytes();
+    let mut quoted = false;
+    let mut index = 0;
+
+    while index < bytes.len() {
+        if bytes[index] == b'"' {
+            if quoted && bytes.get(index + 1) == Some(&b'"') {
+                index += 2;
+                continue;
+            }
+            quoted = !quoted;
+        } else if !quoted && bytes[index..].starts_with(token) {
+            return Some(index);
+        }
+        index += 1;
+    }
+
+    None
+}
+
+fn qualify_postgres_index_table_reference(definition: &str, table: &str) -> String {
+    const ON: &str = " ON ";
+
+    let Some(on_offset) = find_unquoted_postgres_token(definition, ON) else {
+        return definition.to_string();
+    };
+    let relation_start = on_offset + ON.len();
+    let relation_name_start = if definition[relation_start..].starts_with("ONLY ") {
+        relation_start + "ONLY ".len()
+    } else {
+        relation_start
+    };
+
+    let mut quoted = false;
+    let mut chars = definition[relation_name_start..].char_indices().peekable();
+    let mut relation_end = None;
+    while let Some((offset, ch)) = chars.next() {
+        match ch {
+            '"' if quoted && chars.peek().is_some_and(|(_, next)| *next == '"') => {
+                chars.next();
+            }
+            '"' => quoted = !quoted,
+            '(' | ' ' | '\t' | '\n' if !quoted => {
+                relation_end = Some(relation_name_start + offset);
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    let relation_end = relation_end.unwrap_or(definition.len());
+    format!(
+        "{}{}{}",
+        &definition[..relation_name_start],
+        table,
+        &definition[relation_end..]
+    )
+}
+
+fn postgres_user_password(request: &DatabaseUserOperationRequest) -> &str {
+    request
+        .field_values
+        .get("password")
+        .map(String::as_str)
+        .filter(|password| !password.is_empty())
+        .unwrap_or("change_me")
+}
+
+fn postgres_user_privileges(request: &DatabaseUserOperationRequest) -> &str {
+    match request.field_values.get("privileges").map(String::as_str) {
+        Some("CONNECT") => "CONNECT",
+        Some("CREATE") => "CREATE",
+        Some("TEMPORARY") => "TEMPORARY",
+        Some("ALL PRIVILEGES") => "ALL PRIVILEGES",
+        _ => "CONNECT",
+    }
+}
+
+fn postgres_user_forms() -> Vec<DatabaseFormManifest> {
+    vec![
+        postgres_user_form(DatabaseFormKind::CreateUser, true, false),
+        postgres_user_form(DatabaseFormKind::EditUser, true, false),
+        postgres_user_form(DatabaseFormKind::DeleteUser, false, false),
+        postgres_user_form(DatabaseFormKind::UserPrivileges, false, true),
+    ]
+}
+
+fn postgres_user_form(
+    kind: DatabaseFormKind,
+    include_password: bool,
+    include_privileges: bool,
+) -> DatabaseFormManifest {
+    let mut fields = vec![field(
+        "name",
+        "DatabaseUser.name",
+        DatabaseFormFieldType::Text,
+    )];
+    if include_password {
+        fields.push(field(
+            "password",
+            "DatabaseUser.password",
+            DatabaseFormFieldType::Password,
+        ));
+    }
+    if include_privileges {
+        fields.push(field(
+            "database",
+            "DatabaseUser.database",
+            DatabaseFormFieldType::Text,
+        ));
+        fields.push(
+            field(
+                "privileges",
+                "DatabaseUser.privileges",
+                DatabaseFormFieldType::Select,
+            )
+            .with_default("CONNECT")
+            .with_options(vec![
+                option("CONNECT", "DatabaseUser.privilege_connect"),
+                option("CREATE", "DatabaseUser.privilege_create"),
+                option("TEMPORARY", "DatabaseUser.privilege_temporary"),
+                option("ALL PRIVILEGES", "DatabaseUser.privilege_all"),
+            ]),
+        );
+    }
+    DatabaseFormManifest {
+        kind,
+        title_i18n_key: user_form_title_key(kind).into(),
+        submit_i18n_key: "Common.save".into(),
+        tabs: vec![tab("user", "DatabaseUser.user_tab", fields)],
+    }
+}
+
+fn user_form_title_key(kind: DatabaseFormKind) -> &'static str {
+    match kind {
+        DatabaseFormKind::CreateUser => "DatabaseUser.create_title",
+        DatabaseFormKind::EditUser => "DatabaseUser.edit_title",
+        DatabaseFormKind::DeleteUser => "DatabaseUser.delete_title",
+        DatabaseFormKind::UserPrivileges => "DatabaseUser.privileges_title",
+        _ => "DatabaseUser.user_title",
+    }
+}
+
+fn postgresql_connection_form() -> DatabaseFormManifest {
+    DatabaseFormManifest {
+        kind: DatabaseFormKind::Connection,
+        title_i18n_key: "Common.new".into(),
+        submit_i18n_key: "Common.save".into(),
+        tabs: vec![
+            tab(
+                "general",
+                "ConnectionForm.general",
+                vec![
+                    field(
+                        "name",
+                        "ConnectionForm.connection_name",
+                        DatabaseFormFieldType::Text,
+                    )
+                    .with_placeholder("My PostgreSQL Database")
+                    .with_default("Local PostgreSQL"),
+                    field("host", "ConnectionForm.host", DatabaseFormFieldType::Text)
+                        .with_placeholder("localhost")
+                        .with_default("localhost"),
+                    field("port", "ConnectionForm.port", DatabaseFormFieldType::Number)
+                        .with_placeholder("5432")
+                        .with_default("5432"),
+                    field(
+                        "username",
+                        "ConnectionForm.username",
+                        DatabaseFormFieldType::Text,
+                    )
+                    .with_placeholder("postgres")
+                    .with_default("postgres"),
+                    field(
+                        "password",
+                        "ConnectionForm.password",
+                        DatabaseFormFieldType::Password,
+                    )
+                    .with_placeholder("Enter password"),
+                    field(
+                        "database",
+                        "ConnectionForm.database",
+                        DatabaseFormFieldType::Text,
+                    )
+                    .optional()
+                    .with_placeholder("database name (optional)"),
+                ],
+            ),
+            {
+                let mut fields = vec![
+                    field(
+                        "connect_timeout",
+                        "ConnectionForm.connect_timeout",
+                        DatabaseFormFieldType::Number,
+                    )
+                    .optional()
+                    .with_placeholder("30")
+                    .with_default("30"),
+                    field(
+                        "application_name",
+                        "ConnectionForm.application_name",
+                        DatabaseFormFieldType::Text,
+                    )
+                    .optional()
+                    .with_placeholder("Application Name"),
+                ];
+                fields.extend(schema_preference_fields());
+                tab("advanced", "ConnectionForm.advanced", fields)
+            },
+            tab(
+                "ssl",
+                "ConnectionForm.ssl",
+                vec![
+                    field(
+                        "ssl_mode",
+                        "ConnectionForm.ssl_mode",
+                        DatabaseFormFieldType::Select,
+                    )
+                    .optional()
+                    .with_default("prefer")
+                    .with_options(vec![
+                        option("disable", "ConnectionForm.ssl_mode_disable"),
+                        option("prefer", "ConnectionForm.ssl_mode_prefer"),
+                        option("require", "ConnectionForm.ssl_mode_require"),
+                    ]),
+                    field(
+                        "ssl_root_cert_path",
+                        "ConnectionForm.ssl_root_cert_path",
+                        DatabaseFormFieldType::Text,
+                    )
+                    .optional()
+                    .with_placeholder("ConnectionForm.ssl_root_cert_path_placeholder"),
+                    field(
+                        "ssl_accept_invalid_certs",
+                        "ConnectionForm.ssl_accept_invalid_certs",
+                        DatabaseFormFieldType::Select,
+                    )
+                    .optional()
+                    .with_default("false")
+                    .with_options(yes_no_options()),
+                    field(
+                        "ssl_accept_invalid_hostnames",
+                        "ConnectionForm.ssl_accept_invalid_hostnames",
+                        DatabaseFormFieldType::Select,
+                    )
+                    .optional()
+                    .with_default("false")
+                    .with_options(yes_no_options()),
+                ],
+            ),
+            tab(
+                "ssh",
+                "ConnectionForm.ssh",
+                vec![
+                    field(
+                        "ssh_tunnel_enabled",
+                        "ConnectionForm.ssh_tunnel_enabled",
+                        DatabaseFormFieldType::Select,
+                    )
+                    .optional()
+                    .with_default("false")
+                    .with_options(yes_no_options()),
+                    ssh_field("ssh_host", "ConnectionForm.ssh_host")
+                        .with_placeholder("jump.example.com"),
+                    ssh_number_field("ssh_port", "ConnectionForm.ssh_port")
+                        .with_default("22")
+                        .with_placeholder("22"),
+                    ssh_field("ssh_username", "ConnectionForm.ssh_username")
+                        .with_placeholder("root"),
+                    field(
+                        "ssh_auth_type",
+                        "ConnectionForm.ssh_auth_type",
+                        DatabaseFormFieldType::Select,
+                    )
+                    .optional()
+                    .with_default("password")
+                    .with_options(ssh_auth_options())
+                    .with_visibility(ssh_enabled_rules()),
+                    ssh_password_field(
+                        "ssh_password",
+                        "ConnectionForm.ssh_password",
+                        "Enter SSH password",
+                    )
+                    .with_visibility(ssh_auth_rules("password")),
+                    ssh_field(
+                        "ssh_private_key_path",
+                        "ConnectionForm.ssh_private_key_path",
+                    )
+                    .with_placeholder("~/.ssh/id_rsa")
+                    .with_visibility(ssh_auth_rules("private_key")),
+                    ssh_password_field(
+                        "ssh_private_key_passphrase",
+                        "ConnectionForm.ssh_private_key_passphrase",
+                        "Enter key passphrase",
+                    )
+                    .with_visibility(ssh_auth_rules("private_key")),
+                    ssh_field("ssh_target_host", "ConnectionForm.ssh_target_host")
+                        .with_placeholder("127.0.0.1"),
+                    ssh_number_field("ssh_target_port", "ConnectionForm.ssh_target_port")
+                        .with_placeholder("5432"),
+                ],
+            ),
+            tab(
+                "notes",
+                "ConnectionForm.notes",
+                vec![
+                    field(
+                        "remark",
+                        "ConnectionForm.remark",
+                        DatabaseFormFieldType::TextArea,
+                    )
+                    .optional()
+                    .with_rows(14)
+                    .with_placeholder("ConnectionForm.enter_remark")
+                    .with_default(""),
+                ],
+            ),
+        ],
+    }
+}
+
+fn postgresql_database_form(is_edit_mode: bool) -> DatabaseFormManifest {
+    DatabaseFormManifest {
+        kind: if is_edit_mode {
+            DatabaseFormKind::EditDatabase
+        } else {
+            DatabaseFormKind::CreateDatabase
+        },
+        title_i18n_key: if is_edit_mode {
+            "Database.edit_database".into()
+        } else {
+            "Database.new_database".into()
+        },
+        submit_i18n_key: if is_edit_mode {
+            "Common.save".into()
+        } else {
+            "Common.create".into()
+        },
+        tabs: vec![tab(
+            "general",
+            "ConnectionForm.general",
+            vec![
+                field(
+                    "name",
+                    "Database.database_name",
+                    DatabaseFormFieldType::Text,
+                )
+                .with_placeholder("Database.enter_database_name")
+                .disabled_when_editing(is_edit_mode),
+                field(
+                    "encoding",
+                    "Database.encoding",
+                    DatabaseFormFieldType::Select,
+                )
+                .optional()
+                .with_default("UTF8")
+                .with_options(postgresql_encoding_options()),
+            ],
+        )],
+    }
+}
+
+fn postgresql_schema_form() -> DatabaseFormManifest {
+    DatabaseFormManifest {
+        kind: DatabaseFormKind::CreateSchema,
+        title_i18n_key: "Database.new_schema".into(),
+        submit_i18n_key: "Common.create".into(),
+        tabs: vec![tab(
+            "general",
+            "ConnectionForm.general",
+            vec![
+                field("name", "Database.schema_name", DatabaseFormFieldType::Text)
+                    .with_placeholder("Database.enter_schema_name"),
+                field(
+                    "comment",
+                    "Database.remark",
+                    DatabaseFormFieldType::TextArea,
+                )
+                .optional()
+                .with_rows(3)
+                .with_placeholder("Database.enter_remark"),
+            ],
+        )],
+    }
+}
+
+fn postgresql_encoding_options() -> Vec<crate::plugin_manifest::FormSelectOption> {
+    vec![
+        option("UTF8", "UTF8 - UTF-8 Unicode"),
+        option("SQL_ASCII", "SQL_ASCII - ASCII"),
+        option("LATIN1", "LATIN1 - ISO 8859-1 Western European"),
+        option("LATIN2", "LATIN2 - ISO 8859-2 Central European"),
+        option("LATIN3", "LATIN3 - ISO 8859-3 South European"),
+        option("LATIN4", "LATIN4 - ISO 8859-4 North European"),
+        option("LATIN5", "LATIN5 - ISO 8859-9 Turkish"),
+        option("LATIN6", "LATIN6 - ISO 8859-10 Nordic"),
+        option("LATIN7", "LATIN7 - ISO 8859-13 Baltic"),
+        option("LATIN8", "LATIN8 - ISO 8859-14 Celtic"),
+        option("LATIN9", "LATIN9 - ISO 8859-15 LATIN1 with Euro"),
+        option("ISO_8859_5", "ISO_8859_5 - ISO 8859-5 Cyrillic"),
+        option("ISO_8859_6", "ISO_8859_6 - ISO 8859-6 Arabic"),
+        option("ISO_8859_7", "ISO_8859_7 - ISO 8859-7 Greek"),
+        option("ISO_8859_8", "ISO_8859_8 - ISO 8859-8 Hebrew"),
+        option("EUC_JP", "EUC_JP - EUC Japanese"),
+        option("EUC_CN", "EUC_CN - EUC Simplified Chinese"),
+        option("EUC_KR", "EUC_KR - EUC Korean"),
+        option("EUC_TW", "EUC_TW - EUC Traditional Chinese"),
+        option("WIN1250", "WIN1250 - Windows CP1250 Central European"),
+        option("WIN1251", "WIN1251 - Windows CP1251 Cyrillic"),
+        option("WIN1252", "WIN1252 - Windows CP1252 Western European"),
+        option("WIN1253", "WIN1253 - Windows CP1253 Greek"),
+        option("WIN1254", "WIN1254 - Windows CP1254 Turkish"),
+        option("WIN1255", "WIN1255 - Windows CP1255 Hebrew"),
+        option("WIN1256", "WIN1256 - Windows CP1256 Arabic"),
+        option("WIN1257", "WIN1257 - Windows CP1257 Baltic"),
+        option("WIN1258", "WIN1258 - Windows CP1258 Vietnamese"),
+        option("WIN866", "WIN866 - Windows CP866 Russian"),
+        option("KOI8R", "KOI8R - KOI8-R Russian"),
+        option("KOI8U", "KOI8U - KOI8-U Ukrainian"),
+    ]
+}
+
+fn postgresql_action_manifest() -> DatabaseActionManifest {
+    DatabaseActionManifest {
+        actions: vec![
+            action(
+                DatabaseActionId::RunSqlFile,
+                "ImportExport.run_sql_file",
+                vec![
+                    DbNodeType::Connection,
+                    DbNodeType::Database,
+                    DbNodeType::Schema,
+                ],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action_with_scope(
+                DatabaseActionId::CloseConnection,
+                "Connection.close_connection",
+                vec![DbNodeType::Connection],
+                DatabaseActionPlacement::Both,
+                false,
+                Some(DatabaseActionToolbarScope::SelectedRow),
+            ),
+            action_with_scope(
+                DatabaseActionId::DeleteConnection,
+                "Connection.delete_connection",
+                vec![DbNodeType::Connection],
+                DatabaseActionPlacement::Both,
+                false,
+                Some(DatabaseActionToolbarScope::SelectedRow),
+            ),
+            action_with_scope(
+                DatabaseActionId::CreateDatabase,
+                "Database.new_database",
+                vec![DbNodeType::Connection],
+                DatabaseActionPlacement::Both,
+                true,
+                Some(DatabaseActionToolbarScope::CurrentNode),
+            ),
+            action_with_scope(
+                DatabaseActionId::EditDatabase,
+                "Database.edit_database",
+                vec![DbNodeType::Database],
+                DatabaseActionPlacement::Both,
+                true,
+                Some(DatabaseActionToolbarScope::SelectedRow),
+            ),
+            action(
+                DatabaseActionId::CloseDatabase,
+                "Database.close_database",
+                vec![DbNodeType::Database],
+                DatabaseActionPlacement::ContextMenu,
+            )
+            .always_enabled(),
+            action_with_scope(
+                DatabaseActionId::DeleteDatabase,
+                "Database.delete_database",
+                vec![DbNodeType::Database],
+                DatabaseActionPlacement::Both,
+                false,
+                Some(DatabaseActionToolbarScope::SelectedRow),
+            ),
+            action_with_scope(
+                DatabaseActionId::CreateSchema,
+                "Database.new_schema",
+                vec![DbNodeType::Database],
+                DatabaseActionPlacement::Both,
+                true,
+                Some(DatabaseActionToolbarScope::CurrentNode),
+            ),
+            action_with_scope(
+                DatabaseActionId::DeleteSchema,
+                "Database.delete_schema",
+                vec![DbNodeType::Schema],
+                DatabaseActionPlacement::Both,
+                true,
+                Some(DatabaseActionToolbarScope::SelectedRow),
+            ),
+            action(
+                DatabaseActionId::DesignTable,
+                "Table.new_table",
+                vec![
+                    DbNodeType::Database,
+                    DbNodeType::Schema,
+                    DbNodeType::TablesFolder,
+                ],
+                DatabaseActionPlacement::Both,
+            )
+            .with_toolbar_scope(DatabaseActionToolbarScope::CurrentNode),
+            action(
+                DatabaseActionId::DesignTable,
+                "Table.design_table",
+                vec![DbNodeType::Table],
+                DatabaseActionPlacement::Both,
+            )
+            .with_toolbar_scope(DatabaseActionToolbarScope::CurrentNode),
+            action_with_scope(
+                DatabaseActionId::OpenTableData,
+                "Table.view_data",
+                vec![DbNodeType::Table],
+                DatabaseActionPlacement::Both,
+                true,
+                Some(DatabaseActionToolbarScope::SelectedRow),
+            ),
+            action_with_scope(
+                DatabaseActionId::OpenTableData,
+                "Table.view_data",
+                vec![DbNodeType::Table],
+                DatabaseActionPlacement::Toolbar,
+                true,
+                Some(DatabaseActionToolbarScope::CurrentNode),
+            ),
+            action(
+                DatabaseActionId::RenameTable,
+                "Table.rename_table",
+                vec![DbNodeType::Table],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action(
+                DatabaseActionId::CopyTable,
+                "Table.copy_table",
+                vec![DbNodeType::Table],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action(
+                DatabaseActionId::TruncateTable,
+                "Table.truncate_table",
+                vec![DbNodeType::Table],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action_with_scope(
+                DatabaseActionId::DeleteTable,
+                "Table.delete_table",
+                vec![DbNodeType::Table],
+                DatabaseActionPlacement::Both,
+                true,
+                Some(DatabaseActionToolbarScope::SelectedRow),
+            ),
+            action_with_scope(
+                DatabaseActionId::DeleteTable,
+                "Table.delete_table",
+                vec![DbNodeType::Table],
+                DatabaseActionPlacement::Toolbar,
+                true,
+                Some(DatabaseActionToolbarScope::CurrentNode),
+            ),
+            action(
+                DatabaseActionId::DumpSqlStructure,
+                "ImportExport.export_structure",
+                vec![DbNodeType::Database, DbNodeType::Schema, DbNodeType::Table],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action(
+                DatabaseActionId::DumpSqlData,
+                "ImportExport.export_data",
+                vec![DbNodeType::Database, DbNodeType::Schema, DbNodeType::Table],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action(
+                DatabaseActionId::DumpSqlStructureAndData,
+                "ImportExport.export_structure_and_data",
+                vec![DbNodeType::Database, DbNodeType::Schema, DbNodeType::Table],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action(
+                DatabaseActionId::ImportData,
+                "ImportExport.import_data",
+                vec![DbNodeType::Table],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action(
+                DatabaseActionId::ExportData,
+                "ImportExport.export_table",
+                vec![DbNodeType::Table],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            // === 外部表 ===
+            // 外部表与普通表并列在「表」目录，动作 id 复用 Table/View 系列，
+            // 由 db_tree_event 按节点类型改走 DROP/ALTER FOREIGN TABLE；
+            // 设计表、复制表、结构转储对 PostgreSQL 外部表均不适用。
+            action_with_scope(
+                DatabaseActionId::OpenTableData,
+                "Table.view_data",
+                vec![DbNodeType::ForeignTable],
+                DatabaseActionPlacement::Both,
+                true,
+                Some(DatabaseActionToolbarScope::SelectedRow),
+            ),
+            action_with_scope(
+                DatabaseActionId::OpenTableData,
+                "Table.view_data",
+                vec![DbNodeType::ForeignTable],
+                DatabaseActionPlacement::Toolbar,
+                true,
+                Some(DatabaseActionToolbarScope::CurrentNode),
+            ),
+            action(
+                DatabaseActionId::RenameTable,
+                "Table.rename_table",
+                vec![DbNodeType::ForeignTable],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action(
+                DatabaseActionId::TruncateTable,
+                "Table.truncate_table",
+                vec![DbNodeType::ForeignTable],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action_with_scope(
+                DatabaseActionId::DeleteTable,
+                "Table.delete_table",
+                vec![DbNodeType::ForeignTable],
+                DatabaseActionPlacement::Both,
+                true,
+                Some(DatabaseActionToolbarScope::SelectedRow),
+            ),
+            action_with_scope(
+                DatabaseActionId::DeleteTable,
+                "Table.delete_table",
+                vec![DbNodeType::ForeignTable],
+                DatabaseActionPlacement::Toolbar,
+                true,
+                Some(DatabaseActionToolbarScope::CurrentNode),
+            ),
+            action(
+                DatabaseActionId::DumpSqlData,
+                "ImportExport.export_data",
+                vec![DbNodeType::ForeignTable],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action(
+                DatabaseActionId::ImportData,
+                "ImportExport.import_data",
+                vec![DbNodeType::ForeignTable],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action(
+                DatabaseActionId::ExportData,
+                "ImportExport.export_table",
+                vec![DbNodeType::ForeignTable],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            // === 物化视图 ===
+            action_with_scope(
+                DatabaseActionId::OpenViewData,
+                "View.view_data",
+                vec![DbNodeType::MaterializedView],
+                DatabaseActionPlacement::Both,
+                true,
+                Some(DatabaseActionToolbarScope::SelectedRow),
+            ),
+            action_with_scope(
+                DatabaseActionId::OpenViewData,
+                "View.view_data",
+                vec![DbNodeType::MaterializedView],
+                DatabaseActionPlacement::Toolbar,
+                true,
+                Some(DatabaseActionToolbarScope::CurrentNode),
+            ),
+            action_with_scope(
+                DatabaseActionId::DeleteView,
+                "View.delete_view",
+                vec![DbNodeType::MaterializedView],
+                DatabaseActionPlacement::Both,
+                true,
+                Some(DatabaseActionToolbarScope::SelectedRow),
+            ),
+            action_with_scope(
+                DatabaseActionId::DeleteView,
+                "View.delete_view",
+                vec![DbNodeType::MaterializedView],
+                DatabaseActionPlacement::Toolbar,
+                true,
+                Some(DatabaseActionToolbarScope::CurrentNode),
+            ),
+            action(
+                DatabaseActionId::DumpSqlData,
+                "ImportExport.export_data",
+                vec![DbNodeType::MaterializedView],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action_with_scope(
+                DatabaseActionId::OpenViewData,
+                "View.view_data",
+                vec![DbNodeType::View],
+                DatabaseActionPlacement::Both,
+                true,
+                Some(DatabaseActionToolbarScope::SelectedRow),
+            ),
+            action_with_scope(
+                DatabaseActionId::OpenViewData,
+                "View.view_data",
+                vec![DbNodeType::View],
+                DatabaseActionPlacement::Toolbar,
+                true,
+                Some(DatabaseActionToolbarScope::CurrentNode),
+            ),
+            action_with_scope(
+                DatabaseActionId::DeleteView,
+                "View.delete_view",
+                vec![DbNodeType::View],
+                DatabaseActionPlacement::Both,
+                true,
+                Some(DatabaseActionToolbarScope::SelectedRow),
+            ),
+            action_with_scope(
+                DatabaseActionId::DeleteView,
+                "View.delete_view",
+                vec![DbNodeType::View],
+                DatabaseActionPlacement::Toolbar,
+                true,
+                Some(DatabaseActionToolbarScope::CurrentNode),
+            ),
+            action(
+                DatabaseActionId::OpenFunction,
+                "Function.edit_function",
+                vec![DbNodeType::Function],
+                DatabaseActionPlacement::Both,
+            )
+            .with_toolbar_scope(DatabaseActionToolbarScope::SelectedRow),
+            action(
+                DatabaseActionId::OpenProcedure,
+                "Procedure.edit_procedure",
+                vec![DbNodeType::Procedure],
+                DatabaseActionPlacement::Both,
+            )
+            .with_toolbar_scope(DatabaseActionToolbarScope::SelectedRow),
+            action(
+                DatabaseActionId::CreateNewQuery,
+                "Query.new_query",
+                vec![
+                    DbNodeType::Database,
+                    DbNodeType::Schema,
+                    DbNodeType::QueriesFolder,
+                ],
+                DatabaseActionPlacement::ContextMenu,
+            ),
+            action_with_scope(
+                DatabaseActionId::CreateNewQuery,
+                "Query.new_query",
+                vec![DbNodeType::QueriesFolder, DbNodeType::NamedQuery],
+                DatabaseActionPlacement::Toolbar,
+                true,
+                Some(DatabaseActionToolbarScope::CurrentNode),
+            ),
+            action(
+                DatabaseActionId::OpenNamedQuery,
+                "Query.open_query",
+                vec![DbNodeType::NamedQuery],
+                DatabaseActionPlacement::Both,
+            )
+            .with_toolbar_scope(DatabaseActionToolbarScope::SelectedRow),
+            action(
+                DatabaseActionId::RenameQuery,
+                "Query.rename_query",
+                vec![DbNodeType::NamedQuery],
+                DatabaseActionPlacement::Both,
+            )
+            .with_toolbar_scope(DatabaseActionToolbarScope::SelectedRow),
+            action(
+                DatabaseActionId::DeleteQuery,
+                "Query.delete_query",
+                vec![DbNodeType::NamedQuery],
+                DatabaseActionPlacement::Both,
+            )
+            .with_toolbar_scope(DatabaseActionToolbarScope::SelectedRow),
+            action(
+                DatabaseActionId::RevealQueryInFileManager,
+                "Query.reveal_in_file_manager",
+                vec![DbNodeType::NamedQuery],
+                DatabaseActionPlacement::Both,
+            )
+            .with_toolbar_scope(DatabaseActionToolbarScope::SelectedRow),
+        ],
+    }
+}
+
+#[async_trait]
+impl DatabasePlugin for PostgresPlugin {
+    fn name(&self) -> DatabaseType {
+        DatabaseType::PostgreSQL
+    }
+
+    fn quote_identifier(&self, identifier: &str) -> String {
+        format!("\"{}\"", identifier.replace("\"", "\"\""))
+    }
+
+    fn capabilities(&self) -> DatabaseCapabilities {
+        DatabaseUiCapabilities {
+            supports_schema: true,
+            supports_sequences: true,
+            supports_functions: true,
+            supports_procedures: true,
+            supports_triggers: true,
+            supports_users: true,
+            supports_user_create: true,
+            supports_user_edit: true,
+            supports_user_delete: true,
+            supports_user_privileges: true,
+            supports_table_charset: true,
+            supports_table_collation: true,
+            supports_tablespace: true,
+            supports_materialized_views: true,
+            ..DatabaseUiCapabilities::default()
+        }
+    }
+
+    fn ui_manifest(&self) -> DatabaseUiManifest {
+        POSTGRESQL_UI_MANIFEST.clone()
+    }
+
+    fn get_completion_info(&self) -> SqlCompletionInfo {
+        SqlCompletionInfo {
+            keywords: vec![
+                // PostgreSQL-specific keywords only
+                ("RETURNING", "Return inserted/updated rows"),
+                ("SERIAL", "Auto-incrementing integer"),
+                ("BIGSERIAL", "Auto-incrementing bigint"),
+                ("CASCADE", "Cascade to dependent objects"),
+                ("RESTRICT", "Restrict if dependencies exist"),
+                ("CONCURRENTLY", "Non-blocking index creation"),
+                ("ONLY", "Exclude inherited tables"),
+                ("LATERAL", "Lateral subquery"),
+                ("FETCH FIRST", "Limit rows (SQL standard)"),
+                ("FOR UPDATE", "Lock rows for update"),
+                ("FOR SHARE", "Lock rows for share"),
+                ("SKIP LOCKED", "Skip locked rows"),
+                ("NOWAIT", "Don't wait for locks"),
+                ("NULLS FIRST", "Sort NULLs first"),
+                ("NULLS LAST", "Sort NULLs last"),
+                ("ILIKE", "Case-insensitive LIKE"),
+                ("SIMILAR TO", "SQL regex pattern match"),
+                ("OVER", "Window function clause"),
+                ("PARTITION BY", "Window partition"),
+                ("ROWS BETWEEN", "Window frame"),
+                ("RANGE BETWEEN", "Window frame range"),
+                ("WITH RECURSIVE", "Recursive CTE"),
+                ("MATERIALIZED", "Materialized CTE"),
+                ("NOT MATERIALIZED", "Non-materialized CTE"),
+                ("TABLESAMPLE", "Sample table rows"),
+                ("BERNOULLI", "Bernoulli sampling"),
+                ("SYSTEM", "System sampling"),
+            ],
+            functions: vec![
+                // PostgreSQL-specific functions only (standard SQL functions are added via with_standard_sql())
+                (
+                    "CONCAT_WS(sep, str1, str2, ...)",
+                    "Concatenate with separator",
+                ),
+                (
+                    "SUBSTRING(str FROM pos FOR len)",
+                    "Extract substring (PostgreSQL syntax)",
+                ),
+                ("CHAR_LENGTH(str)", "Character length"),
+                ("LPAD(str, len, fill)", "Left pad string"),
+                ("RPAD(str, len, fill)", "Right pad string"),
+                ("POSITION(sub IN str)", "Find substring position"),
+                ("STRPOS(str, sub)", "Find substring position"),
+                ("REPEAT(str, n)", "Repeat string"),
+                ("SPLIT_PART(str, delim, n)", "Split and get part"),
+                ("STRING_AGG(expr, delim)", "Aggregate strings"),
+                ("INITCAP(str)", "Capitalize words"),
+                ("REGEXP_REPLACE(str, pat, rep)", "Regex replace"),
+                ("REGEXP_MATCHES(str, pat)", "Regex matches"),
+                ("REGEXP_SPLIT_TO_ARRAY(str, pat)", "Split by regex"),
+                ("TRANSLATE(str, from, to)", "Character translation"),
+                ("TRUNC(x, s)", "Truncate to scale"),
+                ("RANDOM()", "Random 0-1"),
+                ("DIV(x, y)", "Integer division"),
+                ("LOG(x)", "Natural logarithm"),
+                ("LOG10(x)", "Base-10 logarithm"),
+                ("EXP(x)", "Exponential"),
+                ("GREATEST(a, b, ...)", "Maximum value"),
+                ("LEAST(a, b, ...)", "Minimum value"),
+                ("LOCALTIME", "Local time"),
+                ("LOCALTIMESTAMP", "Local timestamp"),
+                ("DATE_TRUNC(field, source)", "Truncate to precision"),
+                ("DATE_PART(field, source)", "Extract field"),
+                ("EXTRACT(field FROM source)", "Extract field"),
+                ("AGE(ts1, ts2)", "Interval between timestamps"),
+                ("AGE(ts)", "Age from current date"),
+                ("MAKE_DATE(y, m, d)", "Create date"),
+                ("MAKE_TIME(h, m, s)", "Create time"),
+                ("MAKE_TIMESTAMP(y,m,d,h,mi,s)", "Create timestamp"),
+                ("MAKE_INTERVAL(...)", "Create interval"),
+                ("TO_CHAR(val, fmt)", "Format to string"),
+                ("TO_DATE(str, fmt)", "Parse date"),
+                ("TO_TIMESTAMP(str, fmt)", "Parse timestamp"),
+                ("TO_NUMBER(str, fmt)", "Parse number"),
+                ("CLOCK_TIMESTAMP()", "Actual current time"),
+                ("STATEMENT_TIMESTAMP()", "Statement start time"),
+                ("TRANSACTION_TIMESTAMP()", "Transaction start time"),
+                ("ARRAY_AGG(col)", "Aggregate to array"),
+                ("JSON_AGG(col)", "Aggregate to JSON array"),
+                ("JSONB_AGG(col)", "Aggregate to JSONB array"),
+                ("JSON_OBJECT_AGG(k, v)", "Aggregate to JSON object"),
+                ("BOOL_AND(col)", "Logical AND"),
+                ("BOOL_OR(col)", "Logical OR"),
+                ("BIT_AND(col)", "Bitwise AND"),
+                ("BIT_OR(col)", "Bitwise OR"),
+                ("ROW_NUMBER()", "Row number in partition"),
+                ("RANK()", "Rank with gaps"),
+                ("DENSE_RANK()", "Rank without gaps"),
+                ("NTILE(n)", "Divide into n buckets"),
+                ("LAG(col, n)", "Previous row value"),
+                ("LEAD(col, n)", "Next row value"),
+                ("FIRST_VALUE(col)", "First value in frame"),
+                ("LAST_VALUE(col)", "Last value in frame"),
+                ("NTH_VALUE(col, n)", "Nth value in frame"),
+                ("PERCENT_RANK()", "Relative rank"),
+                ("CUME_DIST()", "Cumulative distribution"),
+                ("JSON_BUILD_OBJECT(k, v, ...)", "Build JSON object"),
+                ("JSON_BUILD_ARRAY(v, ...)", "Build JSON array"),
+                ("JSONB_BUILD_OBJECT(k, v, ...)", "Build JSONB object"),
+                ("JSONB_BUILD_ARRAY(v, ...)", "Build JSONB array"),
+                ("JSON_EXTRACT_PATH(json, ...)", "Extract JSON path"),
+                ("JSONB_EXTRACT_PATH(json, ...)", "Extract JSONB path"),
+                ("JSON_EXTRACT_PATH_TEXT(json, ...)", "Extract as text"),
+                ("JSONB_SET(target, path, val)", "Set JSONB value"),
+                ("JSONB_INSERT(target, path, val)", "Insert JSONB value"),
+                ("JSONB_PRETTY(jsonb)", "Pretty print JSONB"),
+                ("JSONB_TYPEOF(jsonb)", "JSONB type"),
+                ("JSONB_ARRAY_LENGTH(jsonb)", "JSONB array length"),
+                ("JSONB_EACH(jsonb)", "Expand JSONB object"),
+                ("JSONB_ARRAY_ELEMENTS(jsonb)", "Expand JSONB array"),
+                ("JSONB_STRIP_NULLS(jsonb)", "Remove null values"),
+                ("JSONB_PATH_QUERY(target, path)", "JSONPath query"),
+                ("ARRAY_LENGTH(arr, dim)", "Array length"),
+                ("ARRAY_DIMS(arr)", "Array dimensions"),
+                ("ARRAY_UPPER(arr, dim)", "Upper bound"),
+                ("ARRAY_LOWER(arr, dim)", "Lower bound"),
+                ("ARRAY_POSITION(arr, elem)", "Element position"),
+                ("ARRAY_POSITIONS(arr, elem)", "All positions"),
+                ("ARRAY_REMOVE(arr, elem)", "Remove element"),
+                ("ARRAY_REPLACE(arr, from, to)", "Replace element"),
+                ("ARRAY_CAT(arr1, arr2)", "Concatenate arrays"),
+                ("ARRAY_APPEND(arr, elem)", "Append element"),
+                ("ARRAY_PREPEND(elem, arr)", "Prepend element"),
+                ("UNNEST(arr)", "Expand array to rows"),
+                ("GEN_RANDOM_UUID()", "Generate UUID"),
+                ("MD5(str)", "MD5 hash"),
+                ("ENCODE(data, fmt)", "Encode binary"),
+                ("DECODE(str, fmt)", "Decode to binary"),
+                ("PG_TYPEOF(val)", "Value type"),
+                ("CURRENT_USER", "Current user"),
+                ("CURRENT_DATABASE()", "Current database"),
+                ("CURRENT_SCHEMA()", "Current schema"),
+                ("VERSION()", "PostgreSQL version"),
+            ],
+            operators: vec![
+                ("~", "Regex match (case-sensitive)"),
+                ("~*", "Regex match (case-insensitive)"),
+                ("!~", "Regex not match (case-sensitive)"),
+                ("!~*", "Regex not match (case-insensitive)"),
+                ("||", "String/Array concatenation"),
+                ("->", "JSON object field"),
+                ("->>", "JSON object field as text"),
+                ("#>", "JSON path"),
+                ("#>>", "JSON path as text"),
+                ("@>", "Contains"),
+                ("<@", "Contained by"),
+                ("?", "Key exists"),
+                ("?|", "Any key exists"),
+                ("?&", "All keys exist"),
+                ("@?", "JSONPath exists"),
+                ("@@", "JSONPath match"),
+                ("-", "Delete key/element"),
+                ("#-", "Delete path"),
+                ("&&", "Array overlap"),
+                ("<<", "Range strictly left"),
+                (">>", "Range strictly right"),
+                ("&<", "Range not extend right"),
+                ("&>", "Range not extend left"),
+                ("-|-", "Range adjacent"),
+            ],
+            data_types: POSTGRESQL_DATA_TYPES.to_vec(),
+            snippets: vec![
+                (
+                    "crt",
+                    "CREATE TABLE $1 (\n  id SERIAL PRIMARY KEY,\n  $2\n)",
+                    "Create table",
+                ),
+                ("idx", "CREATE INDEX $1 ON $2 ($3)", "Create index"),
+                (
+                    "cidx",
+                    "CREATE INDEX CONCURRENTLY $1 ON $2 ($3)",
+                    "Create index concurrently",
+                ),
+                (
+                    "cte",
+                    "WITH $1 AS (\n  $2\n)\nSELECT * FROM $1",
+                    "Common table expression",
+                ),
+                (
+                    "rcte",
+                    "WITH RECURSIVE $1 AS (\n  $2\n  UNION ALL\n  $3\n)\nSELECT * FROM $1",
+                    "Recursive CTE",
+                ),
+                (
+                    "wf",
+                    "SELECT $1,\n  ROW_NUMBER() OVER (PARTITION BY $2 ORDER BY $3) AS rn\nFROM $4",
+                    "Window function",
+                ),
+            ],
+        }
+        .with_standard_sql()
+    }
+
+    async fn create_connection(
+        &self,
+        config: DbConnectionConfig,
+    ) -> Result<Box<dyn DbConnection + Send + Sync>, DbError> {
+        let mut conn = PostgresDbConnection::new(config);
+        conn.connect().await?;
+        Ok(Box::new(conn))
+    }
+
+    async fn list_databases(&self, connection: &dyn DbConnection) -> Result<Vec<String>> {
+        let result = connection
+            .query("SELECT datname FROM pg_database WHERE datistemplate = false ORDER BY datname")
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list databases: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut databases = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                if let Some(name) =
+                    crate::metadata_read::metadata_text(&query_result, row_index, 0, "utf8mb4")?
+                {
+                    databases.push(name);
+                }
+            }
+            Ok(databases)
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    async fn build_database_tree(
+        &self,
+        connection: &dyn DbConnection,
+        node: &DbNode,
+    ) -> Result<Vec<DbNode>> {
+        let result = self.list_databases(connection).await;
+        Self::database_tree_from_list_result(node, connection.config().database.as_deref(), result)
+    }
+
+    async fn list_databases_view(&self, connection: &dyn DbConnection) -> Result<ObjectView> {
+        let databases = self.list_databases_detailed(connection).await?;
+
+        let columns = vec![
+            Column::localized("name", "ObjectView.columns.name").width(180.0),
+            Column::localized("charset", "ObjectView.columns.encoding").width(120.0),
+            Column::localized("collation", "ObjectView.columns.collation").width(180.0),
+            Column::localized("size", "ObjectView.columns.size")
+                .width(100.0)
+                .text_right(),
+            Column::localized("tables", "ObjectView.columns.tables")
+                .width(80.0)
+                .text_right(),
+            Column::localized("comment", "ObjectView.columns.comment").width(250.0),
+        ];
+
+        let rows: Vec<Vec<String>> = databases
+            .iter()
+            .map(|db| {
+                vec![
+                    db.name.clone(),
+                    db.charset.as_deref().unwrap_or("-").to_string(),
+                    db.collation.as_deref().unwrap_or("-").to_string(),
+                    db.size.as_deref().unwrap_or("-").to_string(),
+                    db.table_count
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "-".to_string()),
+                    db.comment.as_deref().unwrap_or("").to_string(),
+                ]
+            })
+            .collect();
+
+        Ok(ObjectView {
+            db_node_type: DbNodeType::Database,
+            title: t!("ObjectView.counts.databases", count = databases.len()).to_string(),
+            columns,
+            rows,
+        })
+    }
+
+    async fn list_databases_detailed(
+        &self,
+        connection: &dyn DbConnection,
+    ) -> Result<Vec<DatabaseInfo>> {
+        let result = connection
+            .query(
+                "SELECT 
+                d.datname as name,
+                pg_encoding_to_char(d.encoding) as charset,
+                d.datcollate as collation,
+                pg_size_pretty(pg_database_size(d.datname)) as size,
+                (SELECT COUNT(*) FROM pg_tables WHERE schemaname = 'public') as table_count,
+                shobj_description(d.oid, 'pg_database') as comment
+            FROM pg_database d
+            WHERE d.datistemplate = false 
+            ORDER BY d.datname",
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list databases: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut databases = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                let cell = |column_index| {
+                    crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        column_index,
+                        "utf8mb4",
+                    )
+                };
+                let Some(name) = cell(0)? else {
+                    continue;
+                };
+                databases.push(DatabaseInfo {
+                    name,
+                    charset: cell(1)?,
+                    collation: cell(2)?,
+                    size: cell(3)?,
+                    table_count: crate::metadata_read::metadata_integer(
+                        &query_result,
+                        row_index,
+                        4,
+                    )?,
+                    comment: cell(5)?,
+                });
+            }
+            Ok(databases)
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    fn sql_dialect(&self) -> Box<dyn sqlparser::dialect::Dialect> {
+        Box::new(sqlparser::dialect::PostgreSqlDialect {})
+    }
+
+    // === Database/Schema Level Operations ===
+
+    async fn list_schemas(
+        &self,
+        connection: &dyn DbConnection,
+        _database: &str,
+    ) -> Result<Vec<String>> {
+        let result = connection
+            .query(
+                "SELECT schema_name FROM information_schema.schemata \
+             ORDER BY schema_name",
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list schemas: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut schemas = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                if let Some(schema) =
+                    crate::metadata_read::metadata_text(&query_result, row_index, 0, "utf8mb4")?
+                {
+                    schemas.push(schema);
+                }
+            }
+            Ok(filter_schemas(
+                connection.config(),
+                SchemaFilterProfile::PostgreSql,
+                schemas,
+            ))
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    async fn list_schemas_view(
+        &self,
+        connection: &dyn DbConnection,
+        _database: &str,
+    ) -> Result<ObjectView> {
+        let sql = "SELECT
+                n.nspname AS schema_name,
+                pg_catalog.pg_get_userbyid(n.nspowner) AS owner,
+                (SELECT COUNT(*) FROM pg_tables t WHERE t.schemaname = n.nspname) AS table_count,
+                obj_description(n.oid, 'pg_namespace') AS description
+            FROM pg_catalog.pg_namespace n
+            WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+              AND n.nspname NOT LIKE 'pg_%'
+            ORDER BY n.nspname";
+
+        let result = connection
+            .query(sql)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list schemas: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let columns = vec![
+                Column::localized("name", "ObjectView.columns.name").width(180.0),
+                Column::localized("owner", "ObjectView.columns.owner").width(120.0),
+                Column::localized("tables", "ObjectView.columns.tables")
+                    .width(80.0)
+                    .text_right(),
+                Column::localized("description", "ObjectView.columns.description").width(300.0),
+            ];
+
+            let mut rows: Vec<Vec<String>> = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                let cell = |column_index| {
+                    crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        column_index,
+                        "utf8mb4",
+                    )
+                };
+                rows.push(vec![
+                    cell(0)?.unwrap_or_default(),
+                    cell(1)?.unwrap_or_default(),
+                    crate::metadata_read::metadata_integer(&query_result, row_index, 2)?
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "0".to_string()),
+                    cell(3)?.unwrap_or_default(),
+                ]);
+            }
+
+            Ok(ObjectView {
+                db_node_type: DbNodeType::Schema,
+                title: t!("ObjectView.counts.schemas", count = rows.len()).to_string(),
+                columns,
+                rows,
+            })
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    async fn list_tables(
+        &self,
+        connection: &dyn DbConnection,
+        _database: &str,
+        schema: Option<String>,
+    ) -> Result<Vec<TableInfo>> {
+        let schema_val = schema.unwrap_or_else(|| "public".to_string());
+        // 普通表 r / 分区表 p / 外部表 f 都属于「表」目录；视图与物化视图另有目录。
+        let sql = format!(
+            "SELECT
+                c.relname AS tablename,
+                n.nspname AS schemaname,
+                c.relkind AS relation_kind,
+                obj_description(c.oid, 'pg_class') AS table_comment
+             FROM pg_class c
+             JOIN pg_namespace n ON c.relnamespace = n.oid
+             WHERE n.nspname = '{}' AND c.relkind IN ({})
+             ORDER BY c.relname",
+            schema_val.replace("'", "''"),
+            POSTGRES_TABLE_RELKINDS
+        );
+
+        let result = connection
+            .query(&sql)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list tables: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut tables = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                tables.push(TableInfo {
+                    name: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        0,
+                        "utf8mb4",
+                    )?
+                    .unwrap_or_default(),
+                    object_type: postgres_table_object_type(
+                        crate::metadata_read::metadata_text(
+                            &query_result,
+                            row_index,
+                            2,
+                            "utf8mb4",
+                        )?
+                        .as_deref(),
+                    ),
+                    schema: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        1,
+                        "utf8mb4",
+                    )?,
+                    comment: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        3,
+                        "utf8mb4",
+                    )?
+                    .filter(|s| !s.is_empty()),
+                    engine: None,
+                    create_time: None,
+                    charset: None,
+                    collation: None,
+                });
+            }
+
+            Ok(tables)
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    // === Table Operations ===
+
+    async fn list_tables_view(
+        &self,
+        connection: &dyn DbConnection,
+        _database: &str,
+        schema: Option<String>,
+    ) -> Result<ObjectView> {
+        // 保留了 UI 中的 8 个列
+        let columns = vec![
+            Column::localized("name", "ObjectView.columns.name").width(200.0),
+            Column::localized("owner", "ObjectView.columns.owner").width(100.0),
+            Column::localized("type", "ObjectView.columns.type").width(80.0),
+            Column::localized("rows", "ObjectView.columns.rows")
+                .width(100.0)
+                .text_right(),
+            Column::localized("size", "ObjectView.columns.size")
+                .width(100.0)
+                .text_right(),
+            Column::localized("indexes", "ObjectView.columns.indexes")
+                .width(80.0)
+                .text_right(),
+            Column::localized("tablespace", "ObjectView.columns.tablespace").width(100.0),
+            Column::localized("comment", "ObjectView.columns.comment").width(200.0),
+        ];
+
+        let schema_val = schema.unwrap_or_else(|| "public".to_string());
+        let safe_schema = schema_val.replace("'", "''");
+
+        // 精简了 SQL，只查询实际需要的字段，移除了 pg_stat_user_tables 的 JOIN
+        let sql = format!(
+            "SELECT
+                c.relname AS tablename,
+                pg_catalog.pg_get_userbyid(c.relowner) AS tableowner,
+                c.relkind AS relation_kind,
+                c.reltuples::bigint AS row_count,
+                pg_size_pretty(pg_total_relation_size(c.oid)) AS total_size,
+                CASE WHEN c.relhasindex THEN (SELECT count(*) FROM pg_index i WHERE i.indrelid = c.oid) ELSE 0 END AS index_count,
+                COALESCE(ts.spcname, 'pg_default') AS tablespace,
+                obj_description(c.oid, 'pg_class') AS table_comment
+             FROM pg_class c
+             JOIN pg_namespace n ON c.relnamespace = n.oid
+             LEFT JOIN pg_tablespace ts ON c.reltablespace = ts.oid
+             WHERE n.nspname = '{}'
+               AND c.relkind IN ({})
+             ORDER BY c.relname",
+            safe_schema, POSTGRES_TABLE_RELKINDS
+        );
+
+        let result = connection
+            .query(&sql)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list tables: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut object_view_rows: Vec<Vec<String>> = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                let cell = |column_index| {
+                    crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        column_index,
+                        "utf8mb4",
+                    )
+                };
+
+                // 新的索引映射 (0-based)，严格对应 SQL 查询顺序：
+                // 0: Name, 1: Owner, 2: Type, 3: Rows, 4: Size, 5: Indexes, 6: Tablespace, 7: Comment
+                let row_count =
+                    crate::metadata_read::metadata_integer(&query_result, row_index, 3)?
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "-".to_string());
+
+                // 类型转换
+                let object_type = postgres_relation_type_label(cell(2)?.as_deref());
+
+                object_view_rows.push(vec![
+                    cell(0)?.unwrap_or_default(),                // Name (index 0)
+                    cell(1)?.unwrap_or_default(),                // Owner (index 1)
+                    object_type.to_string(),                     // Type (index 2)
+                    row_count,                                   // Rows (index 3)
+                    cell(4)?.unwrap_or_else(|| "-".to_string()), // Size (index 4)
+                    crate::metadata_read::metadata_integer(&query_result, row_index, 5)?
+                        .map(|n| n.to_string())
+                        .unwrap_or_else(|| "0".to_string()), // Indexes (index 5)
+                    cell(6)?.unwrap_or_default(),                // Tablespace (index 6)
+                    cell(7)?.unwrap_or_default(),                // Comment (index 7)
+                ]);
+            }
+
+            Ok(ObjectView {
+                db_node_type: DbNodeType::Table,
+                title: t!("ObjectView.counts.tables", count = object_view_rows.len()).to_string(),
+                columns,
+                rows: object_view_rows,
+            })
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    async fn list_columns(
+        &self,
+        connection: &dyn DbConnection,
+        _database: &str,
+        schema: Option<String>,
+        table: &str,
+    ) -> Result<Vec<ColumnInfo>> {
+        let schema_val = schema.unwrap_or_else(|| "public".to_string());
+        let sql = format!(
+            "SELECT \
+                a.attname AS column_name, \
+                format_type(a.atttypid, a.atttypmod) AS data_type, \
+                CASE WHEN a.attnotnull THEN 'NO' ELSE 'YES' END AS is_nullable, \
+                pg_get_expr(d.adbin, d.adrelid) AS column_default, \
+                EXISTS ( \
+                    SELECT 1 FROM pg_constraint c \
+                    WHERE c.conrelid = a.attrelid \
+                    AND a.attnum = ANY(c.conkey) \
+                    AND c.contype = 'p' \
+                ) AS is_primary, \
+                col_description(a.attrelid, a.attnum) AS column_comment, \
+                pg_get_serial_sequence( \
+                    quote_ident(n.nspname) || '.' || quote_ident(t.relname), \
+                    a.attname \
+                ) IS NOT NULL AS is_auto_increment \
+            FROM pg_attribute a \
+            LEFT JOIN pg_attrdef d ON a.attrelid = d.adrelid AND a.attnum = d.adnum \
+            JOIN pg_class t ON a.attrelid = t.oid \
+            JOIN pg_namespace n ON t.relnamespace = n.oid \
+            WHERE n.nspname = '{}' \
+            AND t.relname = '{}' \
+            AND a.attnum > 0 \
+            AND NOT a.attisdropped \
+            ORDER BY a.attnum",
+            schema_val.replace("'", "''"),
+            table.replace("'", "''")
+        );
+
+        let result = connection
+            .query(&sql)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list columns: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut columns = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                let cell = |column_index| {
+                    crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        column_index,
+                        "utf8mb4",
+                    )
+                };
+                let raw_type = cell(1)?.unwrap_or_default();
+                columns.push(ColumnInfo {
+                    name: cell(0)?.unwrap_or_default(),
+                    data_type: Self::normalize_type_name(&raw_type),
+                    is_nullable: cell(2)?.map(|v| v == "YES").unwrap_or(true),
+                    is_primary_key: cell(4)?
+                        .map(|v| v == "t" || v == "true" || v == "1")
+                        .unwrap_or(false),
+                    default_value: cell(3)?,
+                    comment: cell(5)?,
+                    charset: None,
+                    collation: None,
+                    // serial 与 identity 列都会让 `pg_get_serial_sequence` 返回非空；
+                    // 比读 `attidentity` 安全，老版本 PostgreSQL 也能执行。
+                    is_auto_increment: cell(6)?
+                        .map(|v| v == "t" || v == "true" || v == "1")
+                        .unwrap_or(false),
+                });
+            }
+            Ok(columns)
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    async fn list_columns_view(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+        schema: Option<String>,
+        table: &str,
+    ) -> Result<ObjectView> {
+        let columns_data = self
+            .list_columns(connection, database, schema, table)
+            .await?;
+
+        let columns = vec![
+            Column::localized("name", "ObjectView.columns.name").width(180.0),
+            Column::localized("type", "ObjectView.columns.type").width(150.0),
+            Column::localized("nullable", "ObjectView.columns.nullable").width(80.0),
+            Column::localized("key", "ObjectView.columns.key").width(80.0),
+            Column::localized("default", "ObjectView.columns.default").width(200.0),
+            Column::localized("comment", "ObjectView.columns.comment").width(250.0),
+        ];
+
+        let rows: Vec<Vec<String>> = columns_data
+            .iter()
+            .map(|col| {
+                vec![
+                    col.name.clone(),
+                    col.data_type.clone(),
+                    if col.is_nullable { "YES" } else { "NO" }.to_string(),
+                    if col.is_primary_key { "PRI" } else { "" }.to_string(),
+                    col.default_value.as_deref().unwrap_or("").to_string(),
+                    col.comment.as_deref().unwrap_or("").to_string(),
+                ]
+            })
+            .collect();
+
+        Ok(ObjectView {
+            db_node_type: DbNodeType::Column,
+            title: t!("ObjectView.counts.columns", count = columns_data.len()).to_string(),
+            columns,
+            rows,
+        })
+    }
+
+    async fn list_indexes(
+        &self,
+        connection: &dyn DbConnection,
+        _database: &str,
+        schema: Option<String>,
+        table: &str,
+    ) -> Result<Vec<IndexInfo>> {
+        let schema_val = schema.unwrap_or_else(|| "public".to_string());
+        let sql = format!(
+            "SELECT i.relname AS index_name, \
+             a.attname AS column_name, \
+             ix.indisunique AS is_unique \
+             FROM pg_class t \
+             JOIN pg_index ix ON t.oid = ix.indrelid \
+             JOIN pg_class i ON i.oid = ix.indexrelid \
+             JOIN pg_namespace n ON t.relnamespace = n.oid \
+             JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey) \
+             WHERE t.relname = '{}' AND t.relkind = 'r' AND n.nspname = '{}' \
+             AND NOT ix.indisprimary \
+             ORDER BY i.relname, a.attnum",
+            table.replace("'", "''"),
+            schema_val.replace("'", "''")
+        );
+
+        let result = connection
+            .query(&sql)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list indexes: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut indexes: HashMap<String, IndexInfo> = HashMap::new();
+
+            for row_index in 0..query_result.rows.len() {
+                let index_name =
+                    crate::metadata_read::metadata_text(&query_result, row_index, 0, "utf8mb4")?
+                        .unwrap_or_default();
+                let column_name =
+                    crate::metadata_read::metadata_text(&query_result, row_index, 1, "utf8mb4")?
+                        .unwrap_or_default();
+                let is_unique =
+                    crate::metadata_read::metadata_text(&query_result, row_index, 2, "utf8mb4")?
+                        .map(|v| v == "t" || v == "true")
+                        .unwrap_or(false);
+
+                indexes
+                    .entry(index_name.clone())
+                    .or_insert_with(|| IndexInfo {
+                        name: index_name,
+                        columns: Vec::new(),
+                        is_unique,
+                        is_primary: false,
+                        index_type: Some("btree".to_string()),
+                    })
+                    .columns
+                    .push(column_name);
+            }
+
+            Ok(indexes.into_values().collect())
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    async fn list_indexes_view(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+    ) -> Result<ObjectView> {
+        let indexes = self
+            .list_indexes(connection, database, schema.map(|s| s.to_string()), table)
+            .await?;
+
+        let columns = vec![
+            Column::localized("name", "ObjectView.columns.name").width(180.0),
+            Column::localized("columns", "ObjectView.columns.columns").width(250.0),
+            Column::localized("unique", "ObjectView.columns.unique").width(80.0),
+            Column::localized("type", "ObjectView.columns.type").width(120.0),
+        ];
+
+        let rows: Vec<Vec<String>> = indexes
+            .iter()
+            .map(|idx| {
+                vec![
+                    idx.name.clone(),
+                    idx.columns.join(", "),
+                    if idx.is_unique { "YES" } else { "NO" }.to_string(),
+                    idx.index_type.as_deref().unwrap_or("-").to_string(),
+                ]
+            })
+            .collect();
+
+        Ok(ObjectView {
+            db_node_type: DbNodeType::Index,
+            title: t!("ObjectView.counts.indexes", count = indexes.len()).to_string(),
+            columns,
+            rows,
+        })
+    }
+
+    async fn list_foreign_keys(
+        &self,
+        connection: &dyn DbConnection,
+        _database: &str,
+        schema: Option<String>,
+        table: &str,
+    ) -> Result<Vec<ForeignKeyDefinition>> {
+        let schema_val = schema.unwrap_or_else(|| "public".to_string());
+        let sql = format!(
+            "SELECT \
+                c.conname AS constraint_name, \
+                source_att.attname AS column_name, \
+                target_ns.nspname AS referenced_schema, \
+                target.relname AS referenced_table, \
+                target_att.attname AS referenced_column, \
+                CASE c.confdeltype \
+                    WHEN 'a' THEN 'NO ACTION' \
+                    WHEN 'r' THEN 'RESTRICT' \
+                    WHEN 'c' THEN 'CASCADE' \
+                    WHEN 'n' THEN 'SET NULL' \
+                    WHEN 'd' THEN 'SET DEFAULT' \
+                    ELSE '' \
+                END AS on_delete, \
+                CASE c.confupdtype \
+                    WHEN 'a' THEN 'NO ACTION' \
+                    WHEN 'r' THEN 'RESTRICT' \
+                    WHEN 'c' THEN 'CASCADE' \
+                    WHEN 'n' THEN 'SET NULL' \
+                    WHEN 'd' THEN 'SET DEFAULT' \
+                    ELSE '' \
+                END AS on_update, \
+                keys.ordinality \
+             FROM pg_catalog.pg_constraint c \
+             JOIN pg_catalog.pg_class source ON source.oid = c.conrelid \
+             JOIN pg_catalog.pg_namespace source_ns ON source_ns.oid = source.relnamespace \
+             JOIN pg_catalog.pg_class target ON target.oid = c.confrelid \
+             JOIN pg_catalog.pg_namespace target_ns ON target_ns.oid = target.relnamespace \
+             JOIN LATERAL unnest(c.conkey, c.confkey) WITH ORDINALITY \
+                AS keys(source_attnum, target_attnum, ordinality) ON TRUE \
+             JOIN pg_catalog.pg_attribute source_att \
+                ON source_att.attrelid = source.oid \
+               AND source_att.attnum = keys.source_attnum \
+               AND source_att.attnum > 0 \
+               AND NOT source_att.attisdropped \
+             JOIN pg_catalog.pg_attribute target_att \
+                ON target_att.attrelid = target.oid \
+               AND target_att.attnum = keys.target_attnum \
+               AND target_att.attnum > 0 \
+               AND NOT target_att.attisdropped \
+             WHERE c.contype = 'f' \
+               AND source_ns.nspname = '{}' \
+               AND source.relname = '{}' \
+               AND source.relkind IN ('r', 'p') \
+             ORDER BY c.conname, keys.ordinality",
+            schema_val.replace('\'', "''"),
+            table.replace('\'', "''")
+        );
+
+        let result = connection
+            .query(&sql)
+            .await
+            .map_err(|error| anyhow::anyhow!("Failed to list foreign keys: {}", error))?;
+
+        match result {
+            // 保留 legacy：外键行整体交给 parse_postgres_foreign_keys（复杂解析器），
+            // 迁移到 metadata_read 需重构解析器边界，暂不改动。
+            SqlResult::Query(query_result) => Ok(parse_postgres_foreign_keys(query_result.rows)),
+            _ => Err(anyhow::anyhow!("Unexpected result type")),
+        }
+    }
+
+    async fn list_table_checks(
+        &self,
+        _connection: &dyn DbConnection,
+        _database: &str,
+        _schema: Option<String>,
+        _table: &str,
+    ) -> Result<Vec<CheckInfo>> {
+        let schema_val = _schema.unwrap_or_else(|| "public".to_string());
+        let sql = format!(
+            "SELECT c.conname AS constraint_name, \
+                    t.relname AS table_name, \
+                    pg_get_constraintdef(c.oid) AS definition \
+             FROM pg_constraint c \
+             JOIN pg_class t ON c.conrelid = t.oid \
+             JOIN pg_namespace n ON t.relnamespace = n.oid \
+             WHERE c.contype = 'c' \
+               AND n.nspname = '{}' \
+               AND t.relname = '{}' \
+             ORDER BY c.conname",
+            schema_val.replace("'", "''"),
+            _table.replace("'", "''")
+        );
+
+        let result = _connection
+            .query(&sql)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list check constraints: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut checks = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                checks.push(CheckInfo {
+                    name: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        0,
+                        "utf8mb4",
+                    )?
+                    .unwrap_or_default(),
+                    table_name: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        1,
+                        "utf8mb4",
+                    )?
+                    .unwrap_or_default(),
+                    definition: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        2,
+                        "utf8mb4",
+                    )?,
+                });
+            }
+            Ok(checks)
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    // === View Operations ===
+
+    async fn list_views(
+        &self,
+        connection: &dyn DbConnection,
+        _database: &str,
+        schema: Option<String>,
+    ) -> Result<Vec<ViewInfo>> {
+        let schema_val = schema.unwrap_or_else(|| "public".to_string());
+        let sql = format!(
+            "SELECT table_name, table_schema, view_definition FROM information_schema.views \
+             WHERE table_schema = '{}' \
+             ORDER BY table_name",
+            schema_val.replace("'", "''")
+        );
+
+        let result = connection
+            .query(&sql)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list views: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut views = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                views.push(ViewInfo {
+                    name: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        0,
+                        "utf8mb4",
+                    )?
+                    .unwrap_or_default(),
+                    schema: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        1,
+                        "utf8mb4",
+                    )?,
+                    definition: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        2,
+                        "utf8mb4",
+                    )?,
+                    comment: None,
+                });
+            }
+            Ok(views)
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    async fn list_views_view(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+    ) -> Result<ObjectView> {
+        let views = self.list_views(connection, database, None).await?;
+
+        let columns = vec![
+            Column::localized("name", "ObjectView.columns.name").width(200.0),
+            Column::localized("definition", "ObjectView.columns.definition").width(400.0),
+        ];
+
+        let rows: Vec<Vec<String>> = views
+            .iter()
+            .map(|view| {
+                vec![
+                    view.name.clone(),
+                    view.definition.as_deref().unwrap_or("").to_string(),
+                ]
+            })
+            .collect();
+
+        Ok(ObjectView {
+            db_node_type: DbNodeType::View,
+            title: t!("ObjectView.counts.views", count = views.len()).to_string(),
+            columns,
+            rows,
+        })
+    }
+
+    async fn list_materialized_views(
+        &self,
+        connection: &dyn DbConnection,
+        _database: &str,
+        schema: Option<String>,
+    ) -> Result<Vec<ViewInfo>> {
+        let schema_val = schema.unwrap_or_else(|| "public".to_string());
+        // information_schema 不包含物化视图，必须回退到 pg_class（relkind = 'm'）。
+        let sql = format!(
+            "SELECT c.relname AS matview_name, \
+                n.nspname AS schemaname, \
+                pg_get_viewdef(c.oid, true) AS view_definition, \
+                obj_description(c.oid, 'pg_class') AS view_comment \
+             FROM pg_class c \
+             JOIN pg_namespace n ON c.relnamespace = n.oid \
+             WHERE n.nspname = '{}' AND c.relkind = 'm' \
+             ORDER BY c.relname",
+            schema_val.replace("'", "''")
+        );
+
+        let result = connection
+            .query(&sql)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list materialized views: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut views = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                let cell = |column_index| {
+                    crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        column_index,
+                        "utf8mb4",
+                    )
+                };
+                views.push(ViewInfo {
+                    name: cell(0)?.unwrap_or_default(),
+                    schema: cell(1)?,
+                    definition: cell(2)?,
+                    comment: cell(3)?.filter(|comment| !comment.is_empty()),
+                });
+            }
+            Ok(views)
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    async fn list_materialized_views_view(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+        schema: Option<String>,
+    ) -> Result<ObjectView> {
+        let views = self
+            .list_materialized_views(connection, database, schema)
+            .await?;
+
+        let columns = vec![
+            Column::localized("name", "ObjectView.columns.name").width(200.0),
+            Column::localized("definition", "ObjectView.columns.definition").width(400.0),
+        ];
+
+        let rows: Vec<Vec<String>> = views
+            .iter()
+            .map(|view| {
+                vec![
+                    view.name.clone(),
+                    view.definition.as_deref().unwrap_or("").to_string(),
+                ]
+            })
+            .collect();
+
+        Ok(ObjectView {
+            db_node_type: DbNodeType::MaterializedView,
+            title: t!("ObjectView.counts.materialized_views", count = views.len()).to_string(),
+            columns,
+            rows,
+        })
+    }
+
+    // === Function Operations ===
+
+    async fn list_functions(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+    ) -> Result<Vec<FunctionInfo>> {
+        self.list_functions_in_schema(connection, database, Some("public".to_string()))
+            .await
+    }
+
+    async fn list_functions_in_schema(
+        &self,
+        connection: &dyn DbConnection,
+        _database: &str,
+        schema: Option<String>,
+    ) -> Result<Vec<FunctionInfo>> {
+        let schema = schema.unwrap_or_else(|| "public".to_string());
+        let sql = format!(
+            "SELECT \
+                p.proname, \
+                pg_get_function_result(p.oid), \
+                pg_get_function_identity_arguments(p.oid), \
+                p.oid::text, \
+                n.nspname, \
+                pg_get_functiondef(p.oid) \
+             FROM pg_proc p \
+             JOIN pg_namespace n ON n.oid = p.pronamespace \
+             WHERE n.nspname = {} \
+               AND p.prokind IN ('f', 'w') \
+             ORDER BY p.proname, pg_get_function_identity_arguments(p.oid)",
+            postgres_routine_string_literal(&schema),
+        );
+        let result = connection
+            .query(&sql)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list functions: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut functions = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                let cell = |column_index| {
+                    crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        column_index,
+                        "utf8mb4",
+                    )
+                };
+                let identity_arguments = cell(2)?;
+                functions.push(FunctionInfo {
+                    name: cell(0)?.unwrap_or_default(),
+                    schema: cell(4)?,
+                    return_type: cell(1)?,
+                    parameters: identity_arguments
+                        .as_deref()
+                        .unwrap_or_default()
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string)
+                        .collect(),
+                    identity_arguments,
+                    object_id: cell(3)?,
+                    definition: cell(5)?,
+                    comment: None,
+                });
+            }
+            Ok(functions)
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    async fn list_functions_view(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+    ) -> Result<ObjectView> {
+        self.list_functions_view_in_schema(connection, database, Some("public".to_string()))
+            .await
+    }
+
+    async fn list_functions_view_in_schema(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+        schema: Option<String>,
+    ) -> Result<ObjectView> {
+        let functions = self
+            .list_functions_in_schema(connection, database, schema)
+            .await?;
+        let columns = vec![
+            Column::localized("name", "ObjectView.columns.name").width(200.0),
+            Column::new("identity_arguments", "Parameters").width(240.0),
+            Column::localized("return_type", "ObjectView.columns.return_type").width(150.0),
+        ];
+
+        let rows: Vec<Vec<String>> = functions
+            .iter()
+            .map(|func| {
+                vec![
+                    func.name.clone(),
+                    func.identity_arguments.clone().unwrap_or_default(),
+                    func.return_type.as_deref().unwrap_or("-").to_string(),
+                ]
+            })
+            .collect();
+
+        Ok(ObjectView {
+            db_node_type: DbNodeType::Function,
+            title: t!("ObjectView.counts.functions", count = functions.len()).to_string(),
+            columns,
+            rows,
+        })
+    }
+
+    async fn get_function_definition_for_routine(
+        &self,
+        connection: &dyn DbConnection,
+        routine: &RoutineIdentity,
+    ) -> Result<String> {
+        self.get_routine_definition(connection, routine, "function", "p.prokind IN ('f', 'w')")
+            .await
+    }
+
+    // === Procedure Operations ===
+
+    async fn list_procedures(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+    ) -> Result<Vec<FunctionInfo>> {
+        self.list_procedures_in_schema(connection, database, Some("public".to_string()))
+            .await
+    }
+
+    async fn list_procedures_in_schema(
+        &self,
+        connection: &dyn DbConnection,
+        _database: &str,
+        schema: Option<String>,
+    ) -> Result<Vec<FunctionInfo>> {
+        let schema = schema.unwrap_or_else(|| "public".to_string());
+        let sql = format!(
+            "SELECT \
+                p.proname, \
+                pg_get_function_identity_arguments(p.oid), \
+                p.oid::text, \
+                n.nspname, \
+                pg_get_functiondef(p.oid) \
+             FROM pg_proc p \
+             JOIN pg_namespace n ON n.oid = p.pronamespace \
+             WHERE n.nspname = {} \
+               AND p.prokind = 'p' \
+             ORDER BY p.proname, pg_get_function_identity_arguments(p.oid)",
+            postgres_routine_string_literal(&schema),
+        );
+        let result = connection
+            .query(&sql)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list procedures: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut procedures = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                let cell = |column_index| {
+                    crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        column_index,
+                        "utf8mb4",
+                    )
+                };
+                let identity_arguments = cell(1)?;
+                procedures.push(FunctionInfo {
+                    name: cell(0)?.unwrap_or_default(),
+                    schema: cell(3)?,
+                    return_type: None,
+                    parameters: identity_arguments
+                        .as_deref()
+                        .unwrap_or_default()
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|value| !value.is_empty())
+                        .map(str::to_string)
+                        .collect(),
+                    identity_arguments,
+                    object_id: cell(2)?,
+                    definition: cell(4)?,
+                    comment: None,
+                });
+            }
+            Ok(procedures)
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    async fn list_procedures_view(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+    ) -> Result<ObjectView> {
+        self.list_procedures_view_in_schema(connection, database, Some("public".to_string()))
+            .await
+    }
+
+    async fn list_procedures_view_in_schema(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+        schema: Option<String>,
+    ) -> Result<ObjectView> {
+        let procedures = self
+            .list_procedures_in_schema(connection, database, schema)
+            .await?;
+        let columns = vec![
+            Column::localized("name", "ObjectView.columns.name").width(200.0),
+            Column::new("identity_arguments", "Parameters").width(240.0),
+        ];
+
+        let rows: Vec<Vec<String>> = procedures
+            .iter()
+            .map(|proc| {
+                vec![
+                    proc.name.clone(),
+                    proc.identity_arguments.clone().unwrap_or_default(),
+                ]
+            })
+            .collect();
+
+        Ok(ObjectView {
+            db_node_type: DbNodeType::Procedure,
+            title: t!("ObjectView.counts.procedures", count = procedures.len()).to_string(),
+            columns,
+            rows,
+        })
+    }
+
+    async fn get_procedure_definition_for_routine(
+        &self,
+        connection: &dyn DbConnection,
+        routine: &RoutineIdentity,
+    ) -> Result<String> {
+        self.get_routine_definition(connection, routine, "procedure", "p.prokind = 'p'")
+            .await
+    }
+
+    // === Trigger Operations ===
+
+    async fn list_triggers(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+    ) -> Result<Vec<TriggerInfo>> {
+        self.list_triggers_in_schema(connection, database, Some("public".to_string()))
+            .await
+    }
+
+    async fn list_triggers_in_schema(
+        &self,
+        connection: &dyn DbConnection,
+        _database: &str,
+        schema: Option<String>,
+    ) -> Result<Vec<TriggerInfo>> {
+        let schema = schema.unwrap_or_else(|| "public".to_string());
+        let sql = format!(
+            "SELECT \
+                t.tgname, \
+                c.relname, \
+                concat_ws(' OR ', \
+                    CASE WHEN (t.tgtype::int & 4) <> 0 THEN 'INSERT' END, \
+                    CASE WHEN (t.tgtype::int & 16) <> 0 THEN 'UPDATE' END, \
+                    CASE WHEN (t.tgtype::int & 8) <> 0 THEN 'DELETE' END, \
+                    CASE WHEN (t.tgtype::int & 32) <> 0 THEN 'TRUNCATE' END \
+                ), \
+                CASE \
+                    WHEN (t.tgtype::int & 64) <> 0 THEN 'INSTEAD OF' \
+                    WHEN (t.tgtype::int & 2) <> 0 THEN 'BEFORE' \
+                    ELSE 'AFTER' \
+                END, \
+                pg_get_triggerdef(t.oid, true) \
+             FROM pg_trigger t \
+             JOIN pg_class c ON c.oid = t.tgrelid \
+             JOIN pg_namespace n ON n.oid = c.relnamespace \
+             WHERE n.nspname = {} \
+               AND NOT t.tgisinternal \
+             ORDER BY c.relname, t.tgname",
+            postgres_routine_string_literal(&schema),
+        );
+
+        let result = connection
+            .query(&sql)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list triggers: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut triggers = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                triggers.push(TriggerInfo {
+                    name: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        0,
+                        "utf8mb4",
+                    )?
+                    .unwrap_or_default(),
+                    table_name: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        1,
+                        "utf8mb4",
+                    )?
+                    .unwrap_or_default(),
+                    event: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        2,
+                        "utf8mb4",
+                    )?
+                    .unwrap_or_default(),
+                    timing: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        3,
+                        "utf8mb4",
+                    )?
+                    .unwrap_or_default(),
+                    definition: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        4,
+                        "utf8mb4",
+                    )?,
+                });
+            }
+            Ok(triggers)
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    async fn list_triggers_view(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+    ) -> Result<ObjectView> {
+        let triggers = self.list_triggers(connection, database).await?;
+
+        let columns = vec![
+            Column::localized("name", "ObjectView.columns.name").width(180.0),
+            Column::localized("table", "ObjectView.columns.table").width(150.0),
+            Column::localized("event", "ObjectView.columns.event").width(100.0),
+            Column::localized("timing", "ObjectView.columns.timing").width(100.0),
+        ];
+
+        let rows: Vec<Vec<String>> = triggers
+            .iter()
+            .map(|trigger| {
+                vec![
+                    trigger.name.clone(),
+                    trigger.table_name.clone(),
+                    trigger.event.clone(),
+                    trigger.timing.clone(),
+                ]
+            })
+            .collect();
+
+        Ok(ObjectView {
+            db_node_type: DbNodeType::Trigger,
+            title: t!("ObjectView.counts.triggers", count = triggers.len()).to_string(),
+            columns,
+            rows,
+        })
+    }
+
+    async fn list_sequences(
+        &self,
+        connection: &dyn DbConnection,
+        _database: &str,
+        schema: Option<String>,
+    ) -> Result<Vec<SequenceInfo>> {
+        let schema_val = schema.unwrap_or_else(|| "public".to_string());
+        // information_schema.sequences 的列名是 minimum_value / maximum_value，
+        // 不是 min_value / max_value；写错会直接报列不存在，调用侧会把错误吞成空列表。
+        let sql = format!(
+            "SELECT sequence_name, start_value::bigint, increment::bigint, minimum_value::bigint, maximum_value::bigint \
+             FROM information_schema.sequences \
+             WHERE sequence_schema = '{}' \
+             ORDER BY sequence_name",
+            schema_val.replace("'", "''")
+        );
+
+        let result = connection
+            .query(&sql)
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to list sequences: {}", e))?;
+
+        if let SqlResult::Query(query_result) = result {
+            let mut sequences = Vec::new();
+            for row_index in 0..query_result.rows.len() {
+                sequences.push(SequenceInfo {
+                    name: crate::metadata_read::metadata_text(
+                        &query_result,
+                        row_index,
+                        0,
+                        "utf8mb4",
+                    )?
+                    .unwrap_or_default(),
+                    start_value: crate::metadata_read::metadata_integer(
+                        &query_result,
+                        row_index,
+                        1,
+                    )?,
+                    increment: crate::metadata_read::metadata_integer(&query_result, row_index, 2)?,
+                    min_value: crate::metadata_read::metadata_integer(&query_result, row_index, 3)?,
+                    max_value: crate::metadata_read::metadata_integer(&query_result, row_index, 4)?,
+                });
+            }
+            Ok(sequences)
+        } else {
+            Err(anyhow::anyhow!("Unexpected result type"))
+        }
+    }
+
+    // === Sequence Operations ===
+
+    async fn list_sequences_view(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+    ) -> Result<ObjectView> {
+        self.list_sequences_view_in_schema(connection, database, None)
+            .await
+    }
+
+    async fn list_sequences_view_in_schema(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+        schema: Option<String>,
+    ) -> Result<ObjectView> {
+        let sequences = self.list_sequences(connection, database, schema).await?;
+        Ok(Self::sequences_object_view(sequences))
+    }
+
+    fn build_column_definition(&self, column: &ColumnInfo, include_name: bool) -> String {
+        let mut def = String::new();
+
+        if include_name {
+            def.push_str(&self.quote_identifier(&column.name));
+            def.push(' ');
+        }
+
+        def.push_str(&column.data_type);
+
+        if !column.is_nullable {
+            def.push_str(" NOT NULL");
+        }
+
+        if let Some(default) = &column.default_value {
+            def.push_str(&format!(
+                " DEFAULT {}",
+                Self::executable_default_for_type(&column.data_type, default)
+            ));
+        }
+
+        if column.is_primary_key {
+            def.push_str(" PRIMARY KEY");
+        }
+
+        def
+    }
+
+    async fn export_table_create_sql(
+        &self,
+        connection: &dyn DbConnection,
+        database: &str,
+        schema: Option<&str>,
+        table: &str,
+    ) -> Result<String> {
+        let schema_name = schema.unwrap_or("public");
+        let escaped_schema = schema_name.replace('\'', "''");
+        let escaped_table = table.replace('\'', "''");
+        let columns = self
+            .list_columns(connection, database, Some(schema_name.to_string()), table)
+            .await?;
+        if columns.is_empty() {
+            return Ok(String::new());
+        }
+
+        let constraint_sql = format!(
+            "SELECT \
+                c.conname AS constraint_name, \
+                c.contype AS constraint_type, \
+                pg_get_constraintdef(c.oid, true) AS definition, \
+                referenced_ns.nspname AS referenced_schema, \
+                referenced.relname AS referenced_table \
+             FROM pg_catalog.pg_constraint c \
+             JOIN pg_catalog.pg_class t ON t.oid = c.conrelid \
+             JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace \
+             LEFT JOIN pg_catalog.pg_class referenced ON referenced.oid = c.confrelid \
+             LEFT JOIN pg_catalog.pg_namespace referenced_ns \
+                ON referenced_ns.oid = referenced.relnamespace \
+             WHERE n.nspname = '{}' \
+               AND t.relname = '{}' \
+               AND t.relkind IN ('r', 'p') \
+               AND c.contype IN ('p', 'u', 'c', 'f', 'x') \
+             ORDER BY \
+                CASE c.contype \
+                    WHEN 'p' THEN 0 \
+                    WHEN 'u' THEN 1 \
+                    WHEN 'c' THEN 2 \
+                    WHEN 'x' THEN 3 \
+                    WHEN 'f' THEN 4 \
+                    ELSE 5 \
+                END, \
+                c.conname",
+            escaped_schema, escaped_table
+        );
+        let constraints = match connection
+            .query(&constraint_sql)
+            .await
+            .map_err(|error| anyhow::anyhow!("Failed to export table constraints: {}", error))?
+        {
+            // 保留 legacy：SHOW CREATE 约束行整体交给外键/约束限定解析，暂不改动。
+            SqlResult::Query(result) => result
+                .rows
+                .into_iter()
+                .filter_map(|row| {
+                    let name = postgres_metadata_row_value(&row, 0);
+                    let constraint_type = postgres_metadata_row_value(&row, 1);
+                    let mut definition = postgres_metadata_row_value(&row, 2);
+                    if constraint_type == "f" {
+                        let referenced_schema = postgres_metadata_row_value(&row, 3);
+                        let referenced_table = postgres_metadata_row_value(&row, 4);
+                        if !referenced_schema.is_empty() && !referenced_table.is_empty() {
+                            let referenced_table = format!(
+                                "{}.{}",
+                                self.quote_identifier(&referenced_schema),
+                                self.quote_identifier(&referenced_table)
+                            );
+                            definition = qualify_postgres_foreign_key_reference(
+                                &definition,
+                                &referenced_table,
+                            );
+                        }
+                    }
+                    (!name.is_empty() && !definition.is_empty()).then_some((name, definition))
+                })
+                .collect::<Vec<_>>(),
+            _ => return Err(anyhow::anyhow!("Unexpected constraint result type")),
+        };
+
+        let table_comment_sql = format!(
+            "SELECT obj_description(t.oid, 'pg_class') AS export_table_comment \
+             FROM pg_catalog.pg_class t \
+             JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace \
+             WHERE n.nspname = '{}' \
+               AND t.relname = '{}'",
+            escaped_schema, escaped_table
+        );
+        let table_comment = match connection
+            .query(&table_comment_sql)
+            .await
+            .map_err(|error| anyhow::anyhow!("Failed to export table comment: {}", error))?
+        {
+            SqlResult::Query(result) => {
+                crate::metadata_read::metadata_text(&result, 0, 0, "utf8mb4")?
+            }
+            _ => return Err(anyhow::anyhow!("Unexpected table comment result type")),
+        };
+
+        let index_sql = format!(
+            "SELECT pg_get_indexdef(i.indexrelid, 0, true) AS index_definition \
+             FROM pg_catalog.pg_index i \
+             JOIN pg_catalog.pg_class t ON t.oid = i.indrelid \
+             JOIN pg_catalog.pg_class index_class ON index_class.oid = i.indexrelid \
+             JOIN pg_catalog.pg_namespace n ON n.oid = t.relnamespace \
+             WHERE n.nspname = '{}' \
+               AND t.relname = '{}' \
+               AND t.relkind IN ('r', 'p') \
+               AND i.indisvalid \
+               AND i.indisready \
+               AND i.indislive \
+               AND NOT EXISTS ( \
+                    SELECT 1 \
+                    FROM pg_catalog.pg_constraint c \
+                    WHERE c.conindid = i.indexrelid \
+               ) \
+             ORDER BY index_class.relname",
+            escaped_schema, escaped_table
+        );
+        let indexes = match connection
+            .query(&index_sql)
+            .await
+            .map_err(|error| anyhow::anyhow!("Failed to export table indexes: {}", error))?
+        {
+            // 保留 legacy：SHOW CREATE 索引定义行整体交给表引用限定解析，暂不改动。
+            SqlResult::Query(result) => result
+                .rows
+                .into_iter()
+                .filter_map(|row| {
+                    row.first()
+                        .and_then(|value| value.clone())
+                        .map(|definition| {
+                            qualify_postgres_index_table_reference(
+                                definition.trim_end_matches(';'),
+                                &self.format_export_table_reference(
+                                    database,
+                                    Some(schema_name),
+                                    table,
+                                ),
+                            )
+                        })
+                        .filter(|definition| !definition.is_empty())
+                })
+                .collect::<Vec<_>>(),
+            _ => return Err(anyhow::anyhow!("Unexpected index result type")),
+        };
+
+        let table_ref = self.format_export_table_reference(database, Some(schema_name), table);
+        let mut definitions = columns
+            .iter()
+            .map(|column| {
+                let mut column_without_primary_key = column.clone();
+                column_without_primary_key.is_primary_key = false;
+                format!(
+                    "    {}",
+                    self.build_column_definition(&column_without_primary_key, true)
+                )
+            })
+            .collect::<Vec<_>>();
+        definitions.extend(constraints.into_iter().map(|(name, definition)| {
+            format!(
+                "    CONSTRAINT {} {}",
+                self.quote_identifier(&name),
+                definition
+            )
+        }));
+
+        let mut statements = vec![format!(
+            "CREATE TABLE {} (\n{}\n)",
+            table_ref,
+            definitions.join(",\n")
+        )];
+        if let Some(comment) = table_comment {
+            statements.push(format!(
+                "COMMENT ON TABLE {} IS {}",
+                table_ref,
+                Self::comment_literal(&comment)
+            ));
+        }
+        statements.extend(columns.iter().filter_map(|column| {
+            column.comment.as_ref().map(|comment| {
+                format!(
+                    "COMMENT ON COLUMN {}.{} IS {}",
+                    table_ref,
+                    self.quote_identifier(&column.name),
+                    Self::comment_literal(comment)
+                )
+            })
+        }));
+        statements.extend(indexes);
+
+        Ok(statements.join(";\n"))
+    }
+
+    fn build_list_users_sql(&self, _database: Option<&str>) -> Option<String> {
+        Some(
+            r#"SELECT
+  rolname,
+  rolcanlogin,
+  rolsuper,
+  rolcreatedb,
+  rolcreaterole,
+  rolreplication,
+  rolbypassrls,
+  rolvaliduntil
+FROM pg_catalog.pg_roles
+ORDER BY rolname;"#
+                .to_string(),
+        )
+    }
+
+    fn user_list_columns(&self) -> Vec<Column> {
+        vec![
+            Column::localized("rolname", "DatabaseUser.columns.role_name").width(180.0),
+            Column::localized("rolcanlogin", "DatabaseUser.columns.can_login").width(120.0),
+            Column::localized("rolsuper", "DatabaseUser.columns.superuser").width(120.0),
+            Column::localized("rolcreatedb", "DatabaseUser.columns.create_database").width(140.0),
+            Column::localized("rolcreaterole", "DatabaseUser.columns.create_role").width(130.0),
+            Column::localized("rolreplication", "DatabaseUser.columns.replication").width(130.0),
+            Column::localized("rolbypassrls", "DatabaseUser.columns.bypass_rls").width(130.0),
+            Column::localized("rolvaliduntil", "DatabaseUser.columns.valid_until").width(180.0),
+        ]
+    }
+
+    fn build_create_user_sql(&self, request: &DatabaseUserOperationRequest) -> Option<String> {
+        Some(format!(
+            "CREATE ROLE {} LOGIN PASSWORD {};",
+            self.quote_identifier(&request.user_name),
+            postgres_string_literal(postgres_user_password(request))
+        ))
+    }
+
+    fn build_modify_user_sql(&self, request: &DatabaseUserOperationRequest) -> Option<String> {
+        Some(format!(
+            "ALTER ROLE {} WITH PASSWORD {};",
+            self.quote_identifier(&request.user_name),
+            postgres_string_literal(postgres_user_password(request))
+        ))
+    }
+
+    fn build_drop_user_sql(&self, request: &DatabaseUserOperationRequest) -> Option<String> {
+        Some(format!(
+            "DROP ROLE {};",
+            self.quote_identifier(&request.user_name)
+        ))
+    }
+
+    fn build_user_privileges_sql(&self, request: &DatabaseUserOperationRequest) -> Option<String> {
+        let database = request
+            .field_values
+            .get("database")
+            .map(String::as_str)
+            .or(request.database.as_deref())
+            .filter(|database| !database.trim().is_empty())?;
+        Some(format!(
+            "GRANT {} ON DATABASE {} TO {};",
+            postgres_user_privileges(request),
+            self.quote_identifier(database),
+            self.quote_identifier(&request.user_name)
+        ))
+    }
+
+    fn build_create_database_sql(
+        &self,
+        request: &crate::plugin::DatabaseOperationRequest,
+    ) -> String {
+        let db_name = self.quote_identifier(&request.database_name);
+        let encoding = request
+            .field_values
+            .get("encoding")
+            .map(|s| s.as_str())
+            .unwrap_or("UTF8")
+            .replace('\'', "''");
+
+        format!("CREATE DATABASE {} ENCODING '{}';", db_name, encoding)
+    }
+
+    fn build_modify_database_sql(
+        &self,
+        request: &crate::plugin::DatabaseOperationRequest,
+    ) -> String {
+        let db_name = self.quote_identifier(&request.database_name);
+        format!("ALTER DATABASE {} SET search_path = public;", db_name)
+    }
+
+    fn build_drop_database_sql(&self, database_name: &str) -> String {
+        format!("DROP DATABASE {};", self.quote_identifier(database_name))
+    }
+
+    fn build_create_schema_sql(&self, schema_name: &str) -> String {
+        format!("CREATE SCHEMA {};", self.quote_identifier(schema_name))
+    }
+
+    fn build_drop_schema_sql(&self, schema_name: &str) -> String {
+        format!(
+            "DROP SCHEMA {} CASCADE;",
+            self.quote_identifier(schema_name)
+        )
+    }
+
+    fn build_comment_schema_sql(&self, schema_name: &str, comment: &str) -> Option<String> {
+        Some(format!(
+            "COMMENT ON SCHEMA {} IS '{}';",
+            self.quote_identifier(schema_name),
+            comment.replace("'", "''")
+        ))
+    }
+
+    fn format_table_reference(&self, _database: &str, schema: Option<&str>, table: &str) -> String {
+        let schema_name = schema.unwrap_or("public");
+        format!(
+            "{}.{}",
+            self.quote_identifier(schema_name),
+            self.quote_identifier(table)
+        )
+    }
+
+    fn build_limit_clause(&self) -> String {
+        String::new()
+    }
+
+    fn build_where_and_limit_clause(
+        &self,
+        request: &TableSaveRequest,
+        original_data: &[TableCellValue],
+    ) -> (String, String) {
+        let where_clause = self.build_table_change_where_clause(request, original_data);
+        (where_clause, self.build_limit_clause())
+    }
+
+    fn get_data_types(&self) -> &[(&'static str, &'static str)] {
+        POSTGRESQL_DATA_TYPES
+    }
+
+    fn drop_table(&self, _database: &str, schema: Option<&str>, table: &str) -> String {
+        // PostgreSQL uses schema.table format, database is ignored
+        // because you can only operate on the current database
+        if let Some(schema) = schema {
+            format!(
+                "DROP TABLE IF EXISTS {}.{}",
+                self.quote_identifier(schema),
+                self.quote_identifier(table)
+            )
+        } else {
+            format!("DROP TABLE IF EXISTS {}", self.quote_identifier(table))
+        }
+    }
+
+    fn truncate_table_with_schema(
+        &self,
+        _database: &str,
+        schema: Option<&str>,
+        table: &str,
+    ) -> String {
+        if let Some(schema) = schema {
+            return format!(
+                "TRUNCATE TABLE {}.{}",
+                self.quote_identifier(schema),
+                self.quote_identifier(table)
+            );
+        }
+        format!("TRUNCATE TABLE {}", self.quote_identifier(table))
+    }
+
+    fn rename_table(&self, _database: &str, old_name: &str, new_name: &str) -> String {
+        format!(
+            "ALTER TABLE {} RENAME TO {}",
+            self.quote_identifier(old_name),
+            self.quote_identifier(new_name)
+        )
+    }
+
+    fn drop_foreign_table(&self, _database: &str, schema: Option<&str>, table: &str) -> String {
+        format!(
+            "DROP FOREIGN TABLE IF EXISTS {}",
+            self.qualify_table_reference(schema, table)
+        )
+    }
+
+    fn rename_foreign_table(
+        &self,
+        _database: &str,
+        schema: Option<&str>,
+        old_name: &str,
+        new_name: &str,
+    ) -> String {
+        // `ALTER ... RENAME TO` 只能命名一个对象，旧名必须限定 schema。
+        format!(
+            "ALTER FOREIGN TABLE {} RENAME TO {}",
+            self.qualify_table_reference(schema, old_name),
+            self.quote_identifier(new_name)
+        )
+    }
+
+    fn drop_materialized_view(&self, _database: &str, schema: Option<&str>, view: &str) -> String {
+        // 与外部表同理，限定 schema 才能不依赖会话 search_path。
+        format!(
+            "DROP MATERIALIZED VIEW IF EXISTS {}",
+            self.qualify_table_reference(schema, view)
+        )
+    }
+
+    fn build_backup_table_sql(
+        &self,
+        _database: &str,
+        schema: Option<&str>,
+        source_table: &str,
+        target_table: &str,
+    ) -> String {
+        let qualify = |table: &str| match schema {
+            Some(schema) => format!(
+                "{}.{}",
+                self.quote_identifier(schema),
+                self.quote_identifier(table)
+            ),
+            None => self.quote_identifier(table),
+        };
+        let source = qualify(source_table);
+        let target = qualify(target_table);
+        format!(
+            "CREATE TABLE {} (LIKE {} INCLUDING ALL);\nINSERT INTO {} SELECT * FROM {};",
+            target, source, target, source
+        )
+    }
+
+    fn build_column_def(&self, col: &ColumnDefinition) -> String {
+        let mut def = String::new();
+        def.push_str(&self.quote_identifier(&col.name));
+        def.push(' ');
+
+        if col.is_auto_increment {
+            let upper_type = col.data_type.to_uppercase();
+            if upper_type == "BIGINT" || upper_type == "INT8" {
+                def.push_str("BIGSERIAL");
+            } else if upper_type == "SMALLINT" || upper_type == "INT2" {
+                def.push_str("SMALLSERIAL");
+            } else {
+                def.push_str("SERIAL");
+            }
+        } else {
+            let type_str = self.build_type_string(col);
+            def.push_str(&type_str);
+        }
+
+        if !col.is_nullable {
+            def.push_str(" NOT NULL");
+        }
+
+        if let Some(default) = &col.default_value {
+            if !default.is_empty() {
+                def.push_str(&format!(
+                    " DEFAULT {}",
+                    Self::executable_default_for_type(&col.data_type, default)
+                ));
+            }
+        }
+
+        def
+    }
+
+    fn build_create_table_sql(&self, design: &TableDesign) -> String {
+        let mut sql = String::new();
+        sql.push_str("CREATE TABLE ");
+        sql.push_str(&self.quote_identifier(&design.table_name));
+        sql.push_str(" (\n");
+
+        let mut definitions: Vec<String> = Vec::new();
+
+        for col in &design.columns {
+            definitions.push(format!("  {}", self.build_column_def(col)));
+        }
+
+        let pk_columns: Vec<&str> = design
+            .columns
+            .iter()
+            .filter(|c| c.is_primary_key)
+            .map(|c| c.name.as_str())
+            .collect();
+        if !pk_columns.is_empty() {
+            let pk_cols: Vec<String> = pk_columns
+                .iter()
+                .map(|c| self.quote_identifier(c))
+                .collect();
+            definitions.push(format!("  PRIMARY KEY ({})", pk_cols.join(", ")));
+        }
+
+        for foreign_key in &design.foreign_keys {
+            definitions.push(format!("  {}", self.build_foreign_key_def(foreign_key)));
+        }
+
+        sql.push_str(&definitions.join(",\n"));
+        sql.push_str("\n);");
+
+        for comment_sql in self.design_comment_sql(design) {
+            sql.push('\n');
+            sql.push_str(&comment_sql);
+        }
+
+        for idx in &design.indexes {
+            if idx.is_primary {
+                continue;
+            }
+            let idx_cols: Vec<String> = idx
+                .columns
+                .iter()
+                .map(|c| self.quote_identifier(c))
+                .collect();
+            let unique_str = if idx.is_unique { "UNIQUE " } else { "" };
+            sql.push_str(&format!(
+                "\nCREATE {}INDEX {} ON {} ({});",
+                unique_str,
+                self.quote_identifier(&idx.name),
+                self.quote_identifier(&design.table_name),
+                idx_cols.join(", ")
+            ));
+        }
+
+        sql
+    }
+
+    fn build_alter_table_sql(&self, original: &TableDesign, new: &TableDesign) -> String {
+        let mut statements: Vec<String> = Vec::new();
+        let table_name = self.quote_identifier(&new.table_name);
+
+        let original_cols: std::collections::HashMap<&str, &ColumnDefinition> = original
+            .columns
+            .iter()
+            .map(|c| (c.name.as_str(), c))
+            .collect();
+        let new_cols: std::collections::HashMap<&str, &ColumnDefinition> =
+            new.columns.iter().map(|c| (c.name.as_str(), c)).collect();
+        let original_primary_key_columns = Self::primary_key_columns(original);
+        let new_primary_key_columns = Self::primary_key_columns(new);
+        let primary_key_changed = original_primary_key_columns != new_primary_key_columns;
+        let original_foreign_keys: std::collections::HashMap<&str, &ForeignKeyDefinition> =
+            original
+                .foreign_keys
+                .iter()
+                .map(|foreign_key| (foreign_key.name.as_str(), foreign_key))
+                .collect();
+        let new_foreign_keys: std::collections::HashMap<&str, &ForeignKeyDefinition> = new
+            .foreign_keys
+            .iter()
+            .map(|foreign_key| (foreign_key.name.as_str(), foreign_key))
+            .collect();
+
+        for (name, original_foreign_key) in &original_foreign_keys {
+            match new_foreign_keys.get(name) {
+                Some(new_foreign_key)
+                    if !self.foreign_key_changed(original_foreign_key, new_foreign_key) => {}
+                _ => statements.push(self.build_drop_foreign_key_sql(&new.table_name, name)),
+            }
+        }
+
+        if primary_key_changed && !original_primary_key_columns.is_empty() {
+            statements.push(format!(
+                "ALTER TABLE {} DROP CONSTRAINT {};",
+                table_name,
+                self.quote_identifier(&format!("{}_pkey", original.table_name))
+            ));
+        }
+
+        for name in original_cols.keys() {
+            if !new_cols.contains_key(name) {
+                statements.push(format!(
+                    "ALTER TABLE {} DROP COLUMN {};",
+                    table_name,
+                    self.quote_identifier(name)
+                ));
+            }
+        }
+
+        for col in new.columns.iter() {
+            if let Some(orig_col) = original_cols.get(col.name.as_str()) {
+                if self.column_changed(orig_col, col) {
+                    let col_name = self.quote_identifier(&col.name);
+
+                    if orig_col.data_type != col.data_type
+                        || orig_col.length != col.length
+                        || orig_col.precision != col.precision
+                        || orig_col.scale != col.scale
+                    {
+                        let type_str = self.build_type_string(col);
+                        statements.push(format!(
+                            "ALTER TABLE {} ALTER COLUMN {} TYPE {};",
+                            table_name, col_name, type_str
+                        ));
+                    }
+
+                    if orig_col.is_nullable != col.is_nullable {
+                        if col.is_nullable {
+                            statements.push(format!(
+                                "ALTER TABLE {} ALTER COLUMN {} DROP NOT NULL;",
+                                table_name, col_name
+                            ));
+                        } else {
+                            statements.push(format!(
+                                "ALTER TABLE {} ALTER COLUMN {} SET NOT NULL;",
+                                table_name, col_name
+                            ));
+                        }
+                    }
+
+                    if orig_col.default_value != col.default_value {
+                        if let Some(default) = &col.default_value {
+                            statements.push(format!(
+                                "ALTER TABLE {} ALTER COLUMN {} SET DEFAULT {};",
+                                table_name,
+                                col_name,
+                                Self::executable_default_for_type(&col.data_type, default)
+                            ));
+                        } else {
+                            statements.push(format!(
+                                "ALTER TABLE {} ALTER COLUMN {} DROP DEFAULT;",
+                                table_name, col_name
+                            ));
+                        }
+                    }
+                }
+                if orig_col.comment != col.comment {
+                    statements.push(self.column_comment_sql(
+                        &new.table_name,
+                        &col.name,
+                        &col.comment,
+                    ));
+                }
+            } else {
+                let col_def = self.build_column_def(col);
+                statements.push(format!(
+                    "ALTER TABLE {} ADD COLUMN {};",
+                    table_name, col_def
+                ));
+                if !col.comment.is_empty() {
+                    statements.push(self.column_comment_sql(
+                        &new.table_name,
+                        &col.name,
+                        &col.comment,
+                    ));
+                }
+            }
+        }
+
+        if primary_key_changed && !new_primary_key_columns.is_empty() {
+            let primary_key_columns = new_primary_key_columns
+                .iter()
+                .map(|column| self.quote_identifier(column))
+                .collect::<Vec<_>>()
+                .join(", ");
+            statements.push(format!(
+                "ALTER TABLE {} ADD PRIMARY KEY ({});",
+                table_name, primary_key_columns
+            ));
+        }
+
+        let original_indexes: std::collections::HashMap<&str, &IndexDefinition> = original
+            .indexes
+            .iter()
+            .filter(|index| !index.is_primary)
+            .map(|i| (i.name.as_str(), i))
+            .collect();
+        let new_indexes: std::collections::HashMap<&str, &IndexDefinition> = new
+            .indexes
+            .iter()
+            .filter(|index| !index.is_primary)
+            .map(|i| (i.name.as_str(), i))
+            .collect();
+
+        for name in original_indexes.keys() {
+            if !new_indexes.contains_key(name) {
+                statements.push(format!("DROP INDEX {};", self.quote_identifier(name)));
+            }
+        }
+
+        for (name, idx) in &new_indexes {
+            if !original_indexes.contains_key(name) {
+                let idx_cols: Vec<String> = idx
+                    .columns
+                    .iter()
+                    .map(|c| self.quote_identifier(c))
+                    .collect();
+
+                let unique_str = if idx.is_unique { "UNIQUE " } else { "" };
+                statements.push(format!(
+                    "CREATE {}INDEX {} ON {} ({});",
+                    unique_str,
+                    self.quote_identifier(name),
+                    table_name,
+                    idx_cols.join(", ")
+                ));
+            }
+        }
+
+        for (name, new_foreign_key) in &new_foreign_keys {
+            match original_foreign_keys.get(name) {
+                Some(original_foreign_key)
+                    if !self.foreign_key_changed(original_foreign_key, new_foreign_key) => {}
+                _ => statements
+                    .push(self.build_add_foreign_key_sql(&new.table_name, new_foreign_key)),
+            }
+        }
+
+        if original.options.comment != new.options.comment {
+            statements.push(self.table_comment_sql(&new.table_name, &new.options.comment));
+        }
+
+        if statements.is_empty() {
+            "-- No changes detected".to_string()
+        } else {
+            statements.join("\n")
+        }
+    }
+
+    async fn import_data_with_progress(
+        &self,
+        connection: &dyn DbConnection,
+        config: &ImportConfig,
+        data: &str,
+        file_name: &str,
+        progress_tx: Option<ImportProgressSender>,
+    ) -> Result<ImportResult> {
+        crate::plugin::default_import_data_with_progress(
+            self,
+            connection,
+            config,
+            data,
+            file_name,
+            progress_tx,
+        )
+        .await
+    }
+
+    async fn export_data_with_progress(
+        &self,
+        connection: &dyn DbConnection,
+        config: &ExportConfig,
+        progress_tx: Option<ExportProgressSender>,
+    ) -> Result<ExportResult> {
+        crate::plugin::default_export_data_with_progress(self, connection, &config, progress_tx)
+            .await
+    }
+}
+
+impl Default for PostgresPlugin {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::QueryResult;
+    use crate::connection::StreamingProgress;
+    use crate::executor::{ExecOptions, SqlSource};
+    use crate::plugin::DatabasePlugin;
+    use crate::plugin_manifest::{DatabaseActionId, DatabaseFormKind};
+    use crate::types::{
+        ColumnDefinition, ColumnInfo, ForeignKeyDefinition, IndexDefinition, TableCellChange,
+        TableDesign, TableOptions, TableRowChange, TableSaveRequest,
+    };
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+    use tokio::sync::mpsc;
+
+    fn create_plugin() -> PostgresPlugin {
+        PostgresPlugin::new()
+    }
+
+    #[test]
+    fn postgres_type_normalization_removes_character_length_semantics() {
+        assert_eq!(
+            PostgresPlugin::normalize_type_name("character varying(500 char)"),
+            "varchar(500)"
+        );
+        assert_eq!(
+            PostgresPlugin::normalize_type_name("varchar(20 CHAR)"),
+            "varchar(20)"
+        );
+        assert_eq!(
+            PostgresPlugin::normalize_type_name("character(10 char)"),
+            "char(10)"
+        );
+    }
+
+    #[test]
+    fn postgres_type_normalization_preserves_other_modifiers() {
+        assert_eq!(
+            PostgresPlugin::normalize_type_name("numeric(10, 2)"),
+            "numeric(10, 2)"
+        );
+        assert_eq!(
+            PostgresPlugin::normalize_type_name("varchar(20 byte)"),
+            "varchar(20 byte)"
+        );
+    }
+
+    fn numeric_column(scale: u32) -> ColumnDefinition {
+        let mut column = ColumnDefinition::new("amount").data_type("NUMERIC");
+        column.length = Some(32);
+        column.scale = Some(scale);
+        column
+    }
+
+    #[test]
+    fn numeric_type_string_preserves_scale() {
+        let plugin = create_plugin();
+
+        assert_eq!(
+            plugin.build_type_string(&numeric_column(11)),
+            "NUMERIC(32,11)"
+        );
+    }
+
+    #[test]
+    fn alter_numeric_scale_emits_type_change() {
+        let plugin = create_plugin();
+        let original = TableDesign {
+            database_name: "postgres".to_string(),
+            table_name: "orders".to_string(),
+            columns: vec![numeric_column(11)],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+        let mut changed = original.clone();
+        changed.columns[0].scale = Some(12);
+
+        let sql = plugin.build_alter_table_sql(&original, &changed);
+
+        assert!(sql.contains(r#"ALTER COLUMN "amount" TYPE NUMERIC(32,12)"#));
+    }
+
+    fn user_request(
+        user_name: &str,
+        database: Option<&str>,
+        values: &[(&str, &str)],
+    ) -> crate::plugin::DatabaseUserOperationRequest {
+        crate::plugin::DatabaseUserOperationRequest {
+            user_name: user_name.to_string(),
+            host: None,
+            database: database.map(str::to_string),
+            field_values: values
+                .iter()
+                .map(|(key, value)| ((*key).to_string(), (*value).to_string()))
+                .collect(),
+        }
+    }
+
+    fn connection_root_node() -> DbNode {
+        DbNode::new(
+            "conn-1",
+            "Local PostgreSQL",
+            DbNodeType::Connection,
+            "conn-1".to_string(),
+            DatabaseType::PostgreSQL,
+        )
+    }
+
+    /// Legacy metadata result whose column width matches the returned rows.
+    ///
+    /// Real drivers always populate column metadata, so the checked readers can
+    /// validate shape; these fakes must do the same instead of returning rows
+    /// with an empty column list.
+    fn legacy_metadata_result(sql: &str, rows: Vec<Vec<Option<String>>>) -> QueryResult {
+        let column_count = rows.first().map(Vec::len).unwrap_or(0);
+        QueryResult {
+            sql: sql.to_string(),
+            columns: vec![String::new(); column_count],
+            column_meta: vec![],
+            rows,
+            binary_cells: vec![],
+            elapsed_ms: 0,
+            ..Default::default()
+        }
+    }
+
+    struct CommentMetadataConnection {
+        config: DbConnectionConfig,
+        queries: Mutex<Vec<String>>,
+    }
+
+    struct RoutineMetadataConnection {
+        config: DbConnectionConfig,
+        queries: Mutex<Vec<String>>,
+    }
+
+    struct ExportDdlMetadataConnection {
+        config: DbConnectionConfig,
+        queries: Mutex<Vec<String>>,
+    }
+
+    impl ExportDdlMetadataConnection {
+        fn new() -> Self {
+            Self {
+                config: DbConnectionConfig {
+                    id: "export-ddl-metadata".to_string(),
+                    name: "Export DDL metadata".to_string(),
+                    database_type: DatabaseType::PostgreSQL,
+                    host: "localhost".to_string(),
+                    port: 5432,
+                    username: "postgres".to_string(),
+                    password: String::new(),
+                    database: Some("app".to_string()),
+                    service_name: None,
+                    sid: None,
+                    workspace_id: None,
+                    proxy: None,
+                    credential_reference: None,
+                    extra_params: Default::default(),
+                },
+                queries: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn queries(&self) -> Vec<String> {
+            self.queries.lock().expect("queries mutex poisoned").clone()
+        }
+    }
+
+    impl RoutineMetadataConnection {
+        fn new() -> Self {
+            Self {
+                config: DbConnectionConfig {
+                    id: "routine-metadata".to_string(),
+                    name: "Routine metadata".to_string(),
+                    database_type: DatabaseType::PostgreSQL,
+                    host: "localhost".to_string(),
+                    port: 5432,
+                    username: "postgres".to_string(),
+                    password: String::new(),
+                    database: Some("app".to_string()),
+                    service_name: None,
+                    sid: None,
+                    workspace_id: None,
+                    proxy: None,
+                    credential_reference: None,
+                    extra_params: Default::default(),
+                },
+                queries: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn queries(&self) -> Vec<String> {
+            self.queries.lock().expect("queries mutex poisoned").clone()
+        }
+    }
+
+    impl CommentMetadataConnection {
+        fn new() -> Self {
+            Self {
+                config: DbConnectionConfig {
+                    id: "comment-metadata".to_string(),
+                    name: "Comment metadata".to_string(),
+                    database_type: DatabaseType::PostgreSQL,
+                    host: "localhost".to_string(),
+                    port: 5432,
+                    username: "postgres".to_string(),
+                    password: String::new(),
+                    database: Some("app".to_string()),
+                    service_name: None,
+                    sid: None,
+                    workspace_id: None,
+                    proxy: None,
+                    credential_reference: None,
+                    extra_params: Default::default(),
+                },
+                queries: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn queries(&self) -> Vec<String> {
+            self.queries.lock().expect("queries mutex poisoned").clone()
+        }
+    }
+
+    #[async_trait]
+    impl DbConnection for CommentMetadataConnection {
+        fn config(&self) -> &DbConnectionConfig {
+            &self.config
+        }
+
+        fn set_config_database(&mut self, database: Option<String>) {
+            self.config.database = database;
+        }
+
+        async fn connect(&mut self) -> Result<(), DbError> {
+            Ok(())
+        }
+
+        async fn disconnect(&mut self) -> Result<(), DbError> {
+            Ok(())
+        }
+
+        async fn execute(
+            &self,
+            _plugin: &dyn DatabasePlugin,
+            _script: &str,
+            _options: ExecOptions,
+        ) -> Result<Vec<SqlResult>, DbError> {
+            Err(DbError::query(
+                "execute should not be used by metadata tests",
+            ))
+        }
+
+        async fn query(&self, query: &str) -> Result<SqlResult, DbError> {
+            self.queries
+                .lock()
+                .expect("queries mutex poisoned")
+                .push(query.to_string());
+
+            let rows = if query.contains("table_comment") {
+                vec![
+                    vec![
+                        Some("users".to_string()),
+                        Some("public".to_string()),
+                        Some("r".to_string()),
+                        Some("Application users".to_string()),
+                    ],
+                    vec![
+                        Some("remote_orders".to_string()),
+                        Some("public".to_string()),
+                        Some("f".to_string()),
+                        Some("Orders on the remote server".to_string()),
+                    ],
+                ]
+            } else if query.contains("matview_name") {
+                vec![vec![
+                    Some("mv_orders".to_string()),
+                    Some("public".to_string()),
+                    Some("SELECT order_id FROM orders".to_string()),
+                    Some("Orders rollup".to_string()),
+                ]]
+            } else if query.contains("information_schema.sequences") {
+                vec![
+                    vec![
+                        Some("big".to_string()),
+                        Some("5".to_string()),
+                        Some("3".to_string()),
+                        Some("2".to_string()),
+                        Some("999".to_string()),
+                    ],
+                    // 空值单元：解析不出数字时必须退化显示 "-" 而不是报错。
+                    vec![
+                        Some("plain".to_string()),
+                        Some("1".to_string()),
+                        Some(String::new()),
+                        Some("1".to_string()),
+                        Some(i64::MAX.to_string()),
+                    ],
+                ]
+            } else if query.contains("column_name") {
+                vec![vec![
+                    Some("id".to_string()),
+                    Some("integer".to_string()),
+                    Some("NO".to_string()),
+                    Some("nextval('users_id_seq'::regclass)".to_string()),
+                    Some("t".to_string()),
+                    Some("User identifier".to_string()),
+                ]]
+            } else {
+                vec![]
+            };
+
+            Ok(SqlResult::Query(legacy_metadata_result(query, rows)))
+        }
+
+        async fn current_database(&self) -> Result<Option<String>, DbError> {
+            Ok(self.config.database.clone())
+        }
+
+        async fn switch_database(&self, _database: &str) -> Result<(), DbError> {
+            Ok(())
+        }
+
+        async fn execute_streaming(
+            &self,
+            _plugin: &dyn DatabasePlugin,
+            _source: SqlSource,
+            _options: ExecOptions,
+            _sender: mpsc::Sender<StreamingProgress>,
+        ) -> Result<(), DbError> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl DbConnection for ExportDdlMetadataConnection {
+        fn config(&self) -> &DbConnectionConfig {
+            &self.config
+        }
+
+        fn set_config_database(&mut self, database: Option<String>) {
+            self.config.database = database;
+        }
+
+        async fn connect(&mut self) -> Result<(), DbError> {
+            Ok(())
+        }
+
+        async fn disconnect(&mut self) -> Result<(), DbError> {
+            Ok(())
+        }
+
+        async fn execute(
+            &self,
+            _plugin: &dyn DatabasePlugin,
+            _script: &str,
+            _options: ExecOptions,
+        ) -> Result<Vec<SqlResult>, DbError> {
+            Err(DbError::query(
+                "execute should not be used by export DDL metadata tests",
+            ))
+        }
+
+        async fn query(&self, query: &str) -> Result<SqlResult, DbError> {
+            self.queries
+                .lock()
+                .expect("queries mutex poisoned")
+                .push(query.to_string());
+
+            let rows = if query.contains("WITH ORDINALITY") && query.contains("c.contype = 'f'") {
+                vec![
+                    vec![
+                        Some("fk_order_items_order".to_string()),
+                        Some("tenant_id".to_string()),
+                        Some("audit".to_string()),
+                        Some("orders".to_string()),
+                        Some("tenant_id".to_string()),
+                        Some("CASCADE".to_string()),
+                        Some("RESTRICT".to_string()),
+                        Some("1".to_string()),
+                    ],
+                    vec![
+                        Some("fk_order_items_order".to_string()),
+                        Some("order_id".to_string()),
+                        Some("audit".to_string()),
+                        Some("orders".to_string()),
+                        Some("id".to_string()),
+                        Some("CASCADE".to_string()),
+                        Some("RESTRICT".to_string()),
+                        Some("2".to_string()),
+                    ],
+                ]
+            } else if query.contains("col_description(a.attrelid, a.attnum)") {
+                vec![
+                    vec![
+                        Some("order_id".to_string()),
+                        Some("integer".to_string()),
+                        Some("NO".to_string()),
+                        Some("nextval('orders_order_id_seq'::regclass)".to_string()),
+                        Some("t".to_string()),
+                        Some("Order identifier".to_string()),
+                    ],
+                    vec![
+                        Some("part_id".to_string()),
+                        Some("integer".to_string()),
+                        Some("NO".to_string()),
+                        None,
+                        Some("t".to_string()),
+                        Some("Part identifier".to_string()),
+                    ],
+                    vec![
+                        Some("customer_id".to_string()),
+                        Some("integer".to_string()),
+                        Some("NO".to_string()),
+                        None,
+                        Some("f".to_string()),
+                        Some("Customer's reference".to_string()),
+                    ],
+                    vec![
+                        Some("email".to_string()),
+                        Some("text".to_string()),
+                        Some("YES".to_string()),
+                        None,
+                        Some("f".to_string()),
+                        Some("Email address".to_string()),
+                    ],
+                    vec![
+                        Some("amount".to_string()),
+                        Some("numeric".to_string()),
+                        Some("NO".to_string()),
+                        Some("0".to_string()),
+                        Some("f".to_string()),
+                        Some("Order amount".to_string()),
+                    ],
+                ]
+            } else if query.contains("pg_get_constraintdef(c.oid, true)") {
+                vec![
+                    vec![
+                        Some("orders_pkey".to_string()),
+                        Some("p".to_string()),
+                        Some("PRIMARY KEY (order_id, part_id)".to_string()),
+                        None,
+                        None,
+                    ],
+                    vec![
+                        Some("orders_email_key".to_string()),
+                        Some("u".to_string()),
+                        Some("UNIQUE (email)".to_string()),
+                        None,
+                        None,
+                    ],
+                    vec![
+                        Some("orders_amount_check".to_string()),
+                        Some("c".to_string()),
+                        Some("CHECK (amount > 0::numeric)".to_string()),
+                        None,
+                        None,
+                    ],
+                    vec![
+                        Some("orders_email_exclude".to_string()),
+                        Some("x".to_string()),
+                        Some(
+                            "EXCLUDE USING gist (email WITH =) WHERE (email IS NOT NULL)"
+                                .to_string(),
+                        ),
+                        None,
+                        None,
+                    ],
+                    vec![
+                        Some("fk_orders_customer".to_string()),
+                        Some("f".to_string()),
+                        Some(
+                            "FOREIGN KEY (customer_id, part_id) REFERENCES customers(id, part_id) ON UPDATE RESTRICT ON DELETE CASCADE"
+                                .to_string(),
+                        ),
+                        Some("public".to_string()),
+                        Some("customers".to_string()),
+                    ],
+                ]
+            } else if query.contains("pg_get_indexdef") {
+                vec![
+                    vec![Some(
+                        "CREATE INDEX idx_orders_customer ON orders USING btree (customer_id)"
+                            .to_string(),
+                    )],
+                    vec![Some(
+                        "CREATE UNIQUE INDEX idx_orders_lower_email ON orders USING btree (lower(email)) WHERE (email IS NOT NULL)"
+                            .to_string(),
+                    )],
+                ]
+            } else if query.contains("export_table_comment") {
+                vec![vec![Some("Customer's orders".to_string())]]
+            } else {
+                return Err(DbError::query(format!(
+                    "unexpected export DDL metadata query: {query}"
+                )));
+            };
+
+            Ok(SqlResult::Query(legacy_metadata_result(query, rows)))
+        }
+
+        async fn current_database(&self) -> Result<Option<String>, DbError> {
+            Ok(self.config.database.clone())
+        }
+
+        async fn switch_database(&self, _database: &str) -> Result<(), DbError> {
+            Ok(())
+        }
+
+        async fn execute_streaming(
+            &self,
+            _plugin: &dyn DatabasePlugin,
+            _source: SqlSource,
+            _options: ExecOptions,
+            _sender: mpsc::Sender<StreamingProgress>,
+        ) -> Result<(), DbError> {
+            Ok(())
+        }
+    }
+
+    #[async_trait]
+    impl DbConnection for RoutineMetadataConnection {
+        fn config(&self) -> &DbConnectionConfig {
+            &self.config
+        }
+
+        fn set_config_database(&mut self, database: Option<String>) {
+            self.config.database = database;
+        }
+
+        async fn connect(&mut self) -> Result<(), DbError> {
+            Ok(())
+        }
+
+        async fn disconnect(&mut self) -> Result<(), DbError> {
+            Ok(())
+        }
+
+        async fn execute(
+            &self,
+            _plugin: &dyn DatabasePlugin,
+            _script: &str,
+            _options: ExecOptions,
+        ) -> Result<Vec<SqlResult>, DbError> {
+            Err(DbError::query(
+                "execute should not be used by routine metadata tests",
+            ))
+        }
+
+        async fn query(&self, query: &str) -> Result<SqlResult, DbError> {
+            self.queries
+                .lock()
+                .expect("queries mutex poisoned")
+                .push(query.to_string());
+
+            let rows = if query.contains("pg_get_functiondef") && query.contains("missing_routine")
+            {
+                vec![]
+            } else if query.contains("SELECT pg_get_functiondef") {
+                vec![vec![Some(
+                    "CREATE OR REPLACE FUNCTION public.calculate_total(integer)\nRETURNS integer\nLANGUAGE sql\nAS $$ SELECT $1 + 1 $$;"
+                        .to_string(),
+                )]]
+            } else if query.contains("p.prokind IN ('f', 'w')") {
+                vec![
+                    vec![
+                        Some("calculate_total".to_string()),
+                        Some("integer".to_string()),
+                        Some("integer".to_string()),
+                        Some("101".to_string()),
+                        Some("team's".to_string()),
+                        Some(
+                            "CREATE FUNCTION \"team's\".calculate_total(integer) RETURNS integer"
+                                .to_string(),
+                        ),
+                    ],
+                    vec![
+                        Some("calculate_total".to_string()),
+                        Some("text".to_string()),
+                        Some("text".to_string()),
+                        Some("102".to_string()),
+                        Some("team's".to_string()),
+                        Some(
+                            "CREATE FUNCTION \"team's\".calculate_total(text) RETURNS text"
+                                .to_string(),
+                        ),
+                    ],
+                ]
+            } else if query.contains("p.prokind = 'p'") {
+                vec![vec![
+                    Some("sync_orders".to_string()),
+                    Some("integer, text".to_string()),
+                    Some("201".to_string()),
+                    Some("operations".to_string()),
+                    Some("CREATE PROCEDURE operations.sync_orders(integer, text)".to_string()),
+                ]]
+            } else if query.contains("pg_get_triggerdef") {
+                vec![vec![
+                    Some("audit_orders".to_string()),
+                    Some("orders".to_string()),
+                    Some("INSERT OR UPDATE".to_string()),
+                    Some("AFTER".to_string()),
+                    Some(
+                        "CREATE TRIGGER audit_orders AFTER INSERT OR UPDATE ON orders".to_string(),
+                    ),
+                ]]
+            } else {
+                vec![]
+            };
+
+            Ok(SqlResult::Query(legacy_metadata_result(query, rows)))
+        }
+
+        async fn current_database(&self) -> Result<Option<String>, DbError> {
+            Ok(self.config.database.clone())
+        }
+
+        async fn switch_database(&self, _database: &str) -> Result<(), DbError> {
+            Ok(())
+        }
+
+        async fn execute_streaming(
+            &self,
+            _plugin: &dyn DatabasePlugin,
+            _source: SqlSource,
+            _options: ExecOptions,
+            _sender: mpsc::Sender<StreamingProgress>,
+        ) -> Result<(), DbError> {
+            Ok(())
+        }
+    }
+
+    // ==================== Basic Plugin Info Tests ====================
+
+    #[test]
+    fn test_plugin_name() {
+        let plugin = create_plugin();
+        assert_eq!(plugin.name(), DatabaseType::PostgreSQL);
+    }
+
+    #[test]
+    fn test_quote_identifier() {
+        let plugin = create_plugin();
+        assert_eq!(plugin.quote_identifier("table_name"), "\"table_name\"");
+        assert_eq!(plugin.quote_identifier("column"), "\"column\"");
+        assert_eq!(plugin.quote_identifier("col\"umn"), "\"col\"\"umn\"");
+    }
+
+    #[test]
+    fn test_format_table_reference() {
+        let plugin = create_plugin();
+        assert_eq!(
+            plugin.format_table_reference("public", None, "users"),
+            "\"public\".\"users\""
+        );
+    }
+
+    #[test]
+    fn test_capabilities_support_schema() {
+        let plugin = create_plugin();
+        assert!(plugin.capabilities().supports_schema);
+    }
+
+    #[test]
+    fn test_capabilities_support_sequences() {
+        let plugin = create_plugin();
+        assert!(plugin.capabilities().supports_sequences);
+    }
+
+    #[tokio::test]
+    async fn test_postgres_table_metadata_reads_comments_from_pg_class() {
+        let plugin = create_plugin();
+        let connection = CommentMetadataConnection::new();
+
+        let tables = plugin
+            .list_tables(&connection, "app", Some("public".to_string()))
+            .await
+            .expect("list tables");
+
+        assert_eq!(2, tables.len());
+        assert_eq!(crate::TableObjectType::Table, tables[0].object_type);
+        assert_eq!(Some("Application users"), tables[0].comment.as_deref());
+        // 外部表（relkind = 'f'）列入「表」目录，但必须带独立的对象类型。
+        assert_eq!("remote_orders", tables[1].name);
+        assert_eq!(crate::TableObjectType::ForeignTable, tables[1].object_type);
+        assert_eq!(
+            Some("Orders on the remote server"),
+            tables[1].comment.as_deref()
+        );
+
+        let queries = connection.queries();
+        let table_query = queries
+            .iter()
+            .find(|query| query.contains("table_comment"))
+            .expect("table metadata query");
+        assert!(table_query.contains("obj_description(c.oid, 'pg_class')"));
+        assert!(table_query.contains("c.relkind IN ('r', 'p', 'f')"));
+    }
+
+    #[tokio::test]
+    async fn test_postgres_materialized_views_use_pg_class() {
+        let plugin = create_plugin();
+        let connection = CommentMetadataConnection::new();
+
+        // 测试用伪连接只识别部分 SQL，这里同时验证能力位与查询文本。
+        let views = plugin
+            .list_materialized_views(&connection, "app", Some("public".to_string()))
+            .await
+            .expect("list materialized views");
+        assert_eq!(1, views.len());
+        assert_eq!("mv_orders", views[0].name);
+        assert_eq!(Some("public"), views[0].schema.as_deref());
+        assert_eq!(
+            Some("SELECT order_id FROM orders"),
+            views[0].definition.as_deref()
+        );
+        assert_eq!(Some("Orders rollup"), views[0].comment.as_deref());
+        assert!(plugin.capabilities().supports_materialized_views);
+
+        let queries = connection.queries();
+        let matview_query = queries
+            .iter()
+            .find(|query| query.contains("matview_name"))
+            .expect("materialized view query");
+        assert!(matview_query.contains("c.relkind = 'm'"));
+        assert!(matview_query.contains("pg_get_viewdef"));
+    }
+
+    #[tokio::test]
+    async fn test_postgres_sequences_use_information_schema_minimum_columns() {
+        let plugin = create_plugin();
+        let connection = CommentMetadataConnection::new();
+
+        let sequences = plugin
+            .list_sequences(&connection, "app", Some("app_schema".to_string()))
+            .await
+            .expect("list sequences");
+        assert_eq!(2, sequences.len());
+        assert_eq!("big", sequences[0].name);
+        assert_eq!(Some(5), sequences[0].start_value);
+        assert_eq!(Some(3), sequences[0].increment);
+        assert_eq!(Some(2), sequences[0].min_value);
+        assert_eq!(Some(999), sequences[0].max_value);
+        // 取不到数字时只丢这一个值，不能让整张列表失败。
+        assert_eq!(Some(1), sequences[1].start_value);
+        assert_eq!(None, sequences[1].increment);
+
+        let sequence_query = connection
+            .queries()
+            .into_iter()
+            .find(|query| query.contains("information_schema.sequences"))
+            .expect("sequence query");
+        // information_schema.sequences 没有 min_value / max_value 这两列，
+        // 写错会直接报列不存在，调用方又把错误吞成空列表——序列目录就是这么空的。
+        assert!(sequence_query.contains("minimum_value::bigint"));
+        assert!(sequence_query.contains("maximum_value::bigint"));
+        assert!(!sequence_query.contains("min_value::bigint"));
+        assert!(!sequence_query.contains("max_value::bigint"));
+        assert!(sequence_query.contains("sequence_schema = 'app_schema'"));
+
+        let view = plugin
+            .list_sequences_view_in_schema(&connection, "app", Some("app_schema".to_string()))
+            .await
+            .expect("sequence object view");
+        assert_eq!(DbNodeType::Sequence, view.db_node_type);
+        assert_eq!(vec!["big", "5", "3", "2", "999"], view.rows[0]);
+        assert_eq!(
+            vec!["plain", "1", "-", "1", &i64::MAX.to_string()],
+            view.rows[1]
+        );
+
+        // 不带 schema 的对象面板必须仍然落在 public 上，别把 schema 丢了。
+        let public_view = plugin
+            .list_sequences_view(&connection, "app")
+            .await
+            .expect("sequence object view without schema");
+        assert_eq!(2, public_view.rows.len());
+        let queries = connection.queries();
+        let public_query = queries
+            .iter()
+            .rev()
+            .find(|query| query.contains("information_schema.sequences"))
+            .expect("sequence query");
+        assert!(public_query.contains("sequence_schema = 'public'"));
+    }
+
+    #[test]
+    fn test_postgres_foreign_table_ddl_uses_foreign_table_statements() {
+        let plugin = create_plugin();
+
+        assert_eq!(
+            "DROP FOREIGN TABLE IF EXISTS \"public\".\"remote_orders\"",
+            plugin.drop_foreign_table("app", Some("public"), "remote_orders")
+        );
+        assert_eq!(
+            "ALTER FOREIGN TABLE \"public\".\"remote_orders\" RENAME TO \"orders_2024\"",
+            plugin.rename_foreign_table("app", Some("public"), "remote_orders", "orders_2024")
+        );
+        assert_eq!(
+            "DROP MATERIALIZED VIEW IF EXISTS \"public\".\"mv_orders\"",
+            plugin.drop_materialized_view("app", Some("public"), "mv_orders")
+        );
+        // 没有 schema 时退化为仅限定对象名（与其它 DDL 生成方法一致）。
+        assert_eq!(
+            "ALTER FOREIGN TABLE \"remote_orders\" RENAME TO \"orders_2024\"",
+            plugin.rename_foreign_table("app", None, "remote_orders", "orders_2024")
+        );
+    }
+
+    #[test]
+    fn test_postgres_manifest_scopes_table_actions_per_node_type() {
+        let manifest = create_plugin().ui_manifest();
+        let supports = |node_type: DbNodeType, action_id: DatabaseActionId| {
+            manifest.actions.actions.iter().any(|action| {
+                action.id == action_id
+                    && action
+                        .targets
+                        .iter()
+                        .any(|target| target.node_type == node_type)
+            })
+        };
+
+        // 外部表：只能查看数据 / 重命名 / 删除 / 数据转储 / 导入导出；
+        // 不能当作普通表设计、复制或做结构转储。
+        assert!(supports(
+            DbNodeType::ForeignTable,
+            DatabaseActionId::OpenTableData
+        ));
+        assert!(supports(
+            DbNodeType::ForeignTable,
+            DatabaseActionId::RenameTable
+        ));
+        assert!(supports(
+            DbNodeType::ForeignTable,
+            DatabaseActionId::DeleteTable
+        ));
+        assert!(supports(
+            DbNodeType::ForeignTable,
+            DatabaseActionId::DumpSqlData
+        ));
+        assert!(supports(
+            DbNodeType::ForeignTable,
+            DatabaseActionId::ExportData
+        ));
+        assert!(!supports(
+            DbNodeType::ForeignTable,
+            DatabaseActionId::DesignTable
+        ));
+        assert!(!supports(
+            DbNodeType::ForeignTable,
+            DatabaseActionId::CopyTable
+        ));
+        assert!(!supports(
+            DbNodeType::ForeignTable,
+            DatabaseActionId::DumpSqlStructure
+        ));
+        assert!(!supports(
+            DbNodeType::ForeignTable,
+            DatabaseActionId::DumpSqlStructureAndData
+        ));
+
+        // 物化视图：查看数据 / 删除 / 数据转储。
+        assert!(supports(
+            DbNodeType::MaterializedView,
+            DatabaseActionId::OpenViewData
+        ));
+        assert!(supports(
+            DbNodeType::MaterializedView,
+            DatabaseActionId::DeleteView
+        ));
+        assert!(supports(
+            DbNodeType::MaterializedView,
+            DatabaseActionId::DumpSqlData
+        ));
+        assert!(!supports(
+            DbNodeType::MaterializedView,
+            DatabaseActionId::DesignTable
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_postgres_schema_tree_separates_foreign_tables_and_materialized_views() {
+        let plugin = create_plugin();
+        let connection = CommentMetadataConnection::new();
+        let schema_node = DbNode::new(
+            "conn:app:public",
+            "public",
+            DbNodeType::Schema,
+            "conn".to_string(),
+            DatabaseType::PostgreSQL,
+        )
+        .with_metadata(HashMap::from([("database".to_string(), "app".to_string())]));
+
+        let children = plugin
+            .build_database_or_schema_children(
+                &connection,
+                &schema_node,
+                Some("public".to_string()),
+            )
+            .await
+            .expect("build schema children");
+
+        let tables = children
+            .iter()
+            .find(|node| node.node_type == DbNodeType::TablesFolder)
+            .expect("tables folder");
+        let table_nodes: Vec<(&str, DbNodeType)> = tables
+            .children
+            .iter()
+            .map(|node| (node.name.as_str(), node.node_type))
+            .collect();
+        assert_eq!(
+            // `DbNode::Ord` 先按节点类型再按名称排序：普通表在前，外部表紧随其后。
+            vec![
+                ("users", DbNodeType::Table),
+                ("remote_orders", DbNodeType::ForeignTable),
+            ],
+            table_nodes
+        );
+
+        let matviews = children
+            .iter()
+            .find(|node| node.node_type == DbNodeType::MaterializedViewsFolder)
+            .expect("materialized views folder");
+        assert_eq!("DbTree.MaterializedViews", matviews.name);
+        assert_eq!(
+            vec![("mv_orders", DbNodeType::MaterializedView)],
+            matviews
+                .children
+                .iter()
+                .map(|node| (node.name.as_str(), node.node_type))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_postgres_column_metadata_and_view_include_comments() {
+        let plugin = create_plugin();
+        let connection = CommentMetadataConnection::new();
+
+        let columns = plugin
+            .list_columns(&connection, "app", Some("public".to_string()), "users")
+            .await
+            .expect("list columns");
+
+        assert_eq!(Some("User identifier"), columns[0].comment.as_deref());
+        let view = plugin
+            .list_columns_view(&connection, "app", Some("public".to_string()), "users")
+            .await
+            .expect("list columns view");
+        assert_eq!(
+            Some("comment"),
+            view.columns.last().map(|column| column.key.as_str())
+        );
+        assert_eq!("User identifier", view.rows[0][5]);
+
+        let queries = connection.queries();
+        assert!(
+            queries
+                .iter()
+                .any(|query| query.contains("col_description(a.attrelid, a.attnum)"))
+        );
+    }
+
+    #[tokio::test]
+    async fn postgres_export_table_create_sql_preserves_comments_constraints_and_indexes() {
+        let plugin = create_plugin();
+        let connection = ExportDdlMetadataConnection::new();
+
+        let sql = plugin
+            .export_table_create_sql(&connection, "app", None, "orders")
+            .await
+            .expect("export PostgreSQL table DDL");
+
+        assert!(sql.contains(r#"CREATE TABLE "public"."orders" ("#));
+        assert!(sql.contains(r#""order_id" integer NOT NULL DEFAULT nextval("#));
+        assert!(!sql.contains(r#""order_id" integer NOT NULL DEFAULT nextval('orders_order_id_seq'::regclass) PRIMARY KEY"#));
+        assert!(!sql.contains(r#""part_id" integer NOT NULL PRIMARY KEY"#));
+        assert!(sql.contains(r#"CONSTRAINT "orders_pkey" PRIMARY KEY (order_id, part_id)"#));
+        assert!(sql.contains(r#"CONSTRAINT "orders_email_key" UNIQUE (email)"#));
+        assert!(sql.contains(r#"CONSTRAINT "orders_amount_check" CHECK (amount > 0::numeric)"#));
+        assert!(sql.contains(
+            r#"CONSTRAINT "orders_email_exclude" EXCLUDE USING gist (email WITH =) WHERE (email IS NOT NULL)"#
+        ));
+        assert!(sql.contains(
+            r#"CONSTRAINT "fk_orders_customer" FOREIGN KEY (customer_id, part_id) REFERENCES "public"."customers"(id, part_id) ON UPDATE RESTRICT ON DELETE CASCADE"#
+        ));
+        assert!(sql.contains(r#"COMMENT ON TABLE "public"."orders" IS 'Customer''s orders'"#));
+        assert!(sql.contains(
+            r#"COMMENT ON COLUMN "public"."orders"."customer_id" IS 'Customer''s reference'"#
+        ));
+        assert!(sql.contains(
+            r#"CREATE INDEX idx_orders_customer ON "public"."orders" USING btree (customer_id)"#
+        ));
+        assert!(sql.contains(
+            r#"CREATE UNIQUE INDEX idx_orders_lower_email ON "public"."orders" USING btree (lower(email)) WHERE (email IS NOT NULL)"#
+        ));
+        assert_eq!(1, sql.matches(r#"CONSTRAINT "orders_pkey""#).count());
+        assert_eq!(1, sql.matches(r#"CONSTRAINT "orders_email_key""#).count());
+        assert!(!sql.ends_with(';'));
+
+        let queries = connection.queries();
+        assert!(
+            queries
+                .iter()
+                .any(|query| query.contains("pg_get_constraintdef(c.oid, true)"))
+        );
+        assert!(
+            queries
+                .iter()
+                .any(|query| query.contains("pg_get_indexdef"))
+        );
+        assert!(
+            queries
+                .iter()
+                .any(|query| query.contains("obj_description"))
+        );
+        assert!(
+            queries
+                .iter()
+                .any(|query| query.contains("col_description"))
+        );
+    }
+
+    #[test]
+    fn postgres_foreign_key_export_qualifies_referenced_schema() {
+        assert_eq!(
+            r#"FOREIGN KEY (customer_id) REFERENCES "audit"."customers"(id) ON DELETE CASCADE"#,
+            qualify_postgres_foreign_key_reference(
+                "FOREIGN KEY (customer_id) REFERENCES customers(id) ON DELETE CASCADE",
+                r#""audit"."customers""#,
+            )
+        );
+        assert_eq!(
+            r#"FOREIGN KEY (customer_id) REFERENCES ONLY "audit"."odd(table)"(id)"#,
+            qualify_postgres_foreign_key_reference(
+                r#"FOREIGN KEY (customer_id) REFERENCES ONLY "odd(table)"(id)"#,
+                r#""audit"."odd(table)""#,
+            )
+        );
+    }
+
+    #[test]
+    fn postgres_index_export_qualifies_table_schema() {
+        assert_eq!(
+            r#"CREATE INDEX "idx ON customer" ON "audit"."customers" USING btree (id)"#,
+            qualify_postgres_index_table_reference(
+                r#"CREATE INDEX "idx ON customer" ON customers USING btree (id)"#,
+                r#""audit"."customers""#,
+            )
+        );
+        assert_eq!(
+            r#"CREATE UNIQUE INDEX idx_customer ON ONLY "audit"."odd table"(id)"#,
+            qualify_postgres_index_table_reference(
+                r#"CREATE UNIQUE INDEX idx_customer ON ONLY "odd table"(id)"#,
+                r#""audit"."odd table""#,
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn postgres_list_foreign_keys_preserves_composite_column_order_and_actions() {
+        let plugin = create_plugin();
+        let connection = ExportDdlMetadataConnection::new();
+
+        let foreign_keys = plugin
+            .list_foreign_keys(
+                &connection,
+                "app",
+                Some("public".to_string()),
+                "order_items",
+            )
+            .await
+            .expect("list PostgreSQL foreign keys");
+
+        assert_eq!(1, foreign_keys.len());
+        assert_eq!("fk_order_items_order", foreign_keys[0].name);
+        assert_eq!(
+            vec!["tenant_id".to_string(), "order_id".to_string()],
+            foreign_keys[0].columns
+        );
+        assert_eq!(Some("audit".to_string()), foreign_keys[0].ref_schema);
+        assert_eq!("orders", foreign_keys[0].ref_table);
+        assert_eq!(
+            vec!["tenant_id".to_string(), "id".to_string()],
+            foreign_keys[0].ref_columns
+        );
+        assert_eq!("CASCADE", foreign_keys[0].on_delete);
+        assert_eq!("RESTRICT", foreign_keys[0].on_update);
+
+        let query = connection
+            .queries()
+            .into_iter()
+            .find(|query| query.contains("c.contype = 'f'"))
+            .expect("foreign key metadata query");
+        assert!(query.contains("WITH ORDINALITY"));
+        assert!(query.contains("ORDER BY c.conname, keys.ordinality"));
+    }
+
+    #[tokio::test]
+    async fn postgres_functions_are_schema_aware_and_preserve_overload_identity() {
+        let plugin = create_plugin();
+        let connection = RoutineMetadataConnection::new();
+
+        let functions = plugin
+            .list_functions_in_schema(&connection, "app", Some("team's".to_string()))
+            .await
+            .expect("list functions");
+
+        assert_eq!(2, functions.len());
+        assert_eq!("calculate_total", functions[0].name);
+        assert_eq!(Some("team's"), functions[0].schema.as_deref());
+        assert_eq!(Some("integer"), functions[0].identity_arguments.as_deref());
+        assert_eq!(Some("101"), functions[0].object_id.as_deref());
+        assert_eq!(vec!["integer"], functions[0].parameters);
+        assert_eq!(
+            Some("CREATE FUNCTION \"team's\".calculate_total(integer) RETURNS integer"),
+            functions[0].definition.as_deref()
+        );
+        assert_eq!("calculate_total", functions[1].name);
+        assert_eq!(Some("text"), functions[1].identity_arguments.as_deref());
+        assert_eq!(Some("102"), functions[1].object_id.as_deref());
+        assert_eq!(vec!["text"], functions[1].parameters);
+        assert_eq!(
+            Some("CREATE FUNCTION \"team's\".calculate_total(text) RETURNS text"),
+            functions[1].definition.as_deref()
+        );
+
+        let query = connection
+            .queries()
+            .into_iter()
+            .find(|query| query.contains("p.prokind IN ('f', 'w')"))
+            .expect("function metadata query");
+        assert!(query.contains("n.nspname = E'team''s'"));
+        assert!(query.contains("pg_get_function_identity_arguments"));
+        assert!(query.contains("pg_get_functiondef(p.oid)"));
+    }
+
+    #[tokio::test]
+    async fn postgres_procedures_preserve_schema_and_identity() {
+        let plugin = create_plugin();
+        let connection = RoutineMetadataConnection::new();
+
+        let procedures = plugin
+            .list_procedures_in_schema(&connection, "app", Some("operations".to_string()))
+            .await
+            .expect("list procedures");
+
+        assert_eq!(1, procedures.len());
+        assert_eq!("sync_orders", procedures[0].name);
+        assert_eq!(Some("operations"), procedures[0].schema.as_deref());
+        assert_eq!(
+            Some("integer, text"),
+            procedures[0].identity_arguments.as_deref()
+        );
+        assert_eq!(Some("201"), procedures[0].object_id.as_deref());
+        assert_eq!(vec!["integer", "text"], procedures[0].parameters);
+        assert_eq!(
+            Some("CREATE PROCEDURE operations.sync_orders(integer, text)"),
+            procedures[0].definition.as_deref()
+        );
+
+        let query = connection
+            .queries()
+            .into_iter()
+            .find(|query| query.contains("p.prokind = 'p'"))
+            .expect("procedure metadata query");
+        assert!(query.contains("n.nspname = E'operations'"));
+        assert!(query.contains("pg_get_functiondef(p.oid)"));
+    }
+
+    #[tokio::test]
+    async fn postgres_triggers_are_schema_aware_and_include_definition() {
+        let plugin = create_plugin();
+        let connection = RoutineMetadataConnection::new();
+
+        let triggers = plugin
+            .list_triggers_in_schema(&connection, "app", Some("audit's".to_string()))
+            .await
+            .expect("list triggers");
+
+        assert_eq!(1, triggers.len());
+        assert_eq!("audit_orders", triggers[0].name);
+        assert_eq!("orders", triggers[0].table_name);
+        assert_eq!("INSERT OR UPDATE", triggers[0].event);
+        assert_eq!("AFTER", triggers[0].timing);
+        assert_eq!(
+            Some("CREATE TRIGGER audit_orders AFTER INSERT OR UPDATE ON orders"),
+            triggers[0].definition.as_deref()
+        );
+
+        let query = connection
+            .queries()
+            .into_iter()
+            .find(|query| query.contains("pg_get_triggerdef"))
+            .expect("trigger metadata query");
+        assert!(query.contains("n.nspname = E'audit''s'"));
+        assert!(query.contains("pg_get_triggerdef(t.oid, true)"));
+        assert!(query.contains("AND NOT t.tgisinternal"));
+        assert!(!query.contains("trigger_schema = 'public'"));
+    }
+
+    #[tokio::test]
+    async fn postgres_function_view_exposes_overload_identity() {
+        let plugin = create_plugin();
+        let connection = RoutineMetadataConnection::new();
+
+        let view = plugin
+            .list_functions_view_in_schema(&connection, "app", Some("team's".to_string()))
+            .await
+            .expect("list function view");
+
+        assert_eq!(
+            vec!["name", "identity_arguments", "return_type"],
+            view.columns
+                .iter()
+                .map(|column| column.key.as_str())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(vec!["calculate_total", "integer", "integer"], view.rows[0]);
+        assert_eq!(vec!["calculate_total", "text", "text"], view.rows[1]);
+    }
+
+    #[tokio::test]
+    async fn postgres_function_definition_validates_numeric_oid_identity() {
+        let plugin = create_plugin();
+        let connection = RoutineMetadataConnection::new();
+        let routine = RoutineIdentity {
+            database: "app".to_string(),
+            schema: Some("public".to_string()),
+            name: "calculate_total".to_string(),
+            identity_arguments: Some("integer".to_string()),
+            object_id: Some("101".to_string()),
+        };
+
+        let definition = plugin
+            .get_function_definition_for_routine(&connection, &routine)
+            .await
+            .expect("get function definition");
+
+        assert!(definition.contains("CREATE OR REPLACE FUNCTION"));
+        let queries = connection.queries();
+        assert_eq!(1, queries.len());
+        assert!(queries[0].contains("p.oid = 101::oid"));
+        assert!(queries[0].contains("n.nspname = E'public'"));
+        assert!(queries[0].contains("p.proname = E'calculate_total'"));
+        assert!(queries[0].contains("pg_get_function_identity_arguments(p.oid) = E'integer'"));
+        assert!(queries[0].contains("p.prokind IN ('f', 'w')"));
+    }
+
+    #[tokio::test]
+    async fn postgres_function_definition_fallback_escapes_identity() {
+        let plugin = create_plugin();
+        let connection = RoutineMetadataConnection::new();
+        let routine = RoutineIdentity {
+            database: "app".to_string(),
+            schema: Some("team's".to_string()),
+            name: "calculate'total".to_string(),
+            identity_arguments: Some("integer, text".to_string()),
+            object_id: Some("101; DROP TABLE users".to_string()),
+        };
+
+        plugin
+            .get_function_definition_for_routine(&connection, &routine)
+            .await
+            .expect("get function definition");
+
+        let query = connection
+            .queries()
+            .into_iter()
+            .next()
+            .expect("definition query");
+        assert!(!query.contains("101; DROP TABLE users"));
+        assert!(query.contains("n.nspname = E'team''s'"));
+        assert!(query.contains("p.proname = E'calculate''total'"));
+        assert!(query.contains("pg_get_function_identity_arguments(p.oid) = E'integer, text'"));
+        assert!(query.contains("p.prokind IN ('f', 'w')"));
+    }
+
+    #[tokio::test]
+    async fn postgres_procedure_definition_uses_procedure_identity() {
+        let plugin = create_plugin();
+        let connection = RoutineMetadataConnection::new();
+        let routine = RoutineIdentity {
+            database: "app".to_string(),
+            schema: Some("operations".to_string()),
+            name: "sync_orders".to_string(),
+            identity_arguments: Some("integer, text".to_string()),
+            object_id: None,
+        };
+
+        plugin
+            .get_procedure_definition_for_routine(&connection, &routine)
+            .await
+            .expect("get procedure definition");
+
+        let query = connection
+            .queries()
+            .into_iter()
+            .next()
+            .expect("definition query");
+        assert!(query.contains("n.nspname = E'operations'"));
+        assert!(query.contains("p.proname = E'sync_orders'"));
+        assert!(query.contains("pg_get_function_identity_arguments(p.oid) = E'integer, text'"));
+        assert!(query.contains("p.prokind = 'p'"));
+    }
+
+    #[test]
+    fn postgres_routine_string_literal_escapes_quotes_and_backslashes() {
+        assert_eq!(
+            "E'team''s\\\\archive'",
+            postgres_routine_string_literal("team's\\archive")
+        );
+    }
+
+    #[tokio::test]
+    async fn postgres_missing_function_definition_returns_clear_error() {
+        let plugin = create_plugin();
+        let connection = RoutineMetadataConnection::new();
+        let routine = RoutineIdentity {
+            database: "app".to_string(),
+            schema: Some("public".to_string()),
+            name: "missing_routine".to_string(),
+            identity_arguments: Some(String::new()),
+            object_id: None,
+        };
+
+        let error = plugin
+            .get_function_definition_for_routine(&connection, &routine)
+            .await
+            .expect_err("missing definition should fail");
+
+        assert!(error.to_string().contains("no CREATE statement"));
+    }
+
+    #[test]
+    fn postgres_function_edit_script_keeps_create_or_replace() {
+        let plugin = create_plugin();
+        let routine = RoutineIdentity {
+            database: "app".to_string(),
+            schema: Some("public".to_string()),
+            name: "calculate_total".to_string(),
+            identity_arguments: Some("integer".to_string()),
+            object_id: Some("101".to_string()),
+        };
+
+        let script = plugin
+            .build_function_edit_script(
+                &routine,
+                "  CREATE OR REPLACE FUNCTION public.calculate_total(integer)\nRETURNS integer\nLANGUAGE sql\nAS $$ SELECT $1 + 1 $$;  ",
+            )
+            .expect("build function edit script");
+
+        assert!(script.starts_with("CREATE OR REPLACE FUNCTION"));
+        assert!(!script.contains("DROP FUNCTION"));
+        assert!(!script.contains("DELIMITER"));
+        assert!(script.ends_with('\n'));
+    }
+
+    #[test]
+    fn test_capabilities_support_users() {
+        let capabilities = create_plugin().capabilities();
+
+        assert!(capabilities.supports_users);
+        assert!(capabilities.supports_user_create);
+        assert!(capabilities.supports_user_edit);
+        assert!(capabilities.supports_user_delete);
+        assert!(capabilities.supports_user_privileges);
+    }
+
+    #[test]
+    fn test_ui_manifest_smoke() {
+        let manifest = create_plugin().ui_manifest();
+        let form_kinds: Vec<_> = manifest.forms.iter().map(|form| form.kind).collect();
+
+        assert_eq!(manifest.schema_version, 1);
+        assert_eq!(
+            form_kinds,
+            vec![
+                DatabaseFormKind::Connection,
+                DatabaseFormKind::CreateDatabase,
+                DatabaseFormKind::EditDatabase,
+                DatabaseFormKind::CreateSchema,
+                DatabaseFormKind::CreateUser,
+                DatabaseFormKind::EditUser,
+                DatabaseFormKind::DeleteUser,
+                DatabaseFormKind::UserPrivileges,
+            ]
+        );
+        assert!(
+            manifest
+                .actions
+                .actions
+                .iter()
+                .any(|action| action.id == DatabaseActionId::CreateSchema)
+        );
+        assert!(
+            manifest
+                .actions
+                .actions
+                .iter()
+                .any(|action| action.id == DatabaseActionId::OpenFunction)
+        );
+        assert!(
+            manifest
+                .actions
+                .actions
+                .iter()
+                .any(|action| action.id == DatabaseActionId::OpenProcedure)
+        );
+    }
+
+    #[test]
+    fn test_build_database_tree_uses_configured_database_when_listing_fails() {
+        let node = connection_root_node();
+
+        let children = PostgresPlugin::database_tree_from_list_result(
+            &node,
+            Some("app_db"),
+            Err(anyhow::anyhow!("permission denied for table pg_database")),
+        )
+        .unwrap();
+
+        assert_eq!(1, children.len());
+        assert_eq!("conn-1:app_db", children[0].id);
+        assert_eq!("app_db", children[0].name);
+        assert_eq!(DbNodeType::Database, children[0].node_type);
+        assert_eq!("conn-1", children[0].connection_id);
+        assert_eq!(Some("conn-1"), children[0].parent_context.as_deref());
+    }
+
+    #[test]
+    fn test_build_database_tree_keeps_listing_error_without_configured_database() {
+        let node = connection_root_node();
+
+        let error = PostgresPlugin::database_tree_from_list_result(
+            &node,
+            None,
+            Err(anyhow::anyhow!("permission denied for table pg_database")),
+        )
+        .unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("permission denied for table pg_database")
+        );
+    }
+
+    // ==================== DDL SQL Generation Tests ====================
+
+    #[test]
+    fn test_drop_database() {
+        let plugin = create_plugin();
+        let sql = plugin.drop_database("test_db");
+        assert!(sql.contains("DROP DATABASE"));
+        assert!(sql.contains("\"test_db\""));
+    }
+
+    #[test]
+    fn test_drop_table() {
+        let plugin = create_plugin();
+
+        // Test without schema
+        let sql = plugin.drop_table("test_db", None, "users");
+        assert!(sql.contains("DROP TABLE IF EXISTS"));
+        assert!(sql.contains("\"users\""));
+        assert!(!sql.contains("test_db")); // database should not be in the SQL
+
+        // Test with schema
+        let sql_with_schema = plugin.drop_table("test_db", Some("public"), "users");
+        assert!(sql_with_schema.contains("DROP TABLE IF EXISTS"));
+        assert!(sql_with_schema.contains("\"public\""));
+        assert!(sql_with_schema.contains("\"users\""));
+        assert!(!sql_with_schema.contains("test_db")); // database should not be in the SQL
+    }
+
+    #[test]
+    fn test_truncate_table() {
+        let plugin = create_plugin();
+        let sql = plugin.truncate_table("test_db", "users");
+        assert!(sql.contains("TRUNCATE TABLE"));
+        assert!(sql.contains("\"users\""));
+    }
+
+    #[test]
+    fn test_truncate_table_with_schema() {
+        let plugin = create_plugin();
+        let sql = plugin.truncate_table_with_schema("test_db", Some("app"), "users");
+        assert_eq!(sql, "TRUNCATE TABLE \"app\".\"users\"");
+        assert!(!sql.contains("test_db"));
+    }
+
+    #[test]
+    fn test_rename_table() {
+        let plugin = create_plugin();
+        let sql = plugin.rename_table("test_db", "old_name", "new_name");
+        assert!(sql.contains("ALTER TABLE"));
+        assert!(sql.contains("RENAME TO"));
+        assert!(sql.contains("\"old_name\""));
+        assert!(sql.contains("\"new_name\""));
+    }
+
+    #[test]
+    fn test_build_backup_table_sql() {
+        let plugin = create_plugin();
+        let sql = plugin.build_backup_table_sql("test_db", Some("public"), "orders", "orders_bak");
+        assert!(sql.contains(
+            "CREATE TABLE \"public\".\"orders_bak\" (LIKE \"public\".\"orders\" INCLUDING ALL);"
+        ));
+        assert!(sql.contains(
+            "INSERT INTO \"public\".\"orders_bak\" SELECT * FROM \"public\".\"orders\";"
+        ));
+    }
+
+    #[test]
+    fn test_drop_view() {
+        let plugin = create_plugin();
+        let sql = plugin.drop_view("test_db", "my_view");
+        assert!(sql.contains("DROP VIEW"));
+        assert!(sql.contains("\"my_view\""));
+    }
+
+    #[test]
+    fn test_build_list_users_sql() {
+        let plugin = create_plugin();
+        let sql = plugin
+            .build_list_users_sql(Some("appdb"))
+            .expect("PostgreSQL supports user listing");
+
+        assert!(sql.contains("FROM pg_catalog.pg_roles"));
+        assert!(sql.contains("rolname"));
+        assert!(sql.contains("rolcanlogin"));
+    }
+
+    #[test]
+    fn test_build_postgres_user_operation_sql_escapes_role_and_password() {
+        let plugin = create_plugin();
+        let request = user_request(
+            "app\"user",
+            Some("app\"db"),
+            &[("password", "pa'ss"), ("privileges", "CONNECT")],
+        );
+
+        assert_eq!(
+            Some("CREATE ROLE \"app\"\"user\" LOGIN PASSWORD 'pa''ss';".to_string()),
+            plugin.build_create_user_sql(&request)
+        );
+        assert_eq!(
+            Some("ALTER ROLE \"app\"\"user\" WITH PASSWORD 'pa''ss';".to_string()),
+            plugin.build_modify_user_sql(&request)
+        );
+        assert_eq!(
+            Some("DROP ROLE \"app\"\"user\";".to_string()),
+            plugin.build_drop_user_sql(&request)
+        );
+        assert_eq!(
+            Some("GRANT CONNECT ON DATABASE \"app\"\"db\" TO \"app\"\"user\";".to_string()),
+            plugin.build_user_privileges_sql(&request)
+        );
+    }
+
+    // ==================== Database Operations Tests ====================
+
+    #[test]
+    fn test_build_create_database_sql() {
+        let plugin = create_plugin();
+        let mut field_values = HashMap::new();
+        field_values.insert("encoding".to_string(), "UTF8".to_string());
+
+        let request = crate::plugin::DatabaseOperationRequest {
+            database_name: "new_db".to_string(),
+            field_values,
+        };
+
+        let sql = plugin.build_create_database_sql(&request);
+        assert!(sql.contains("CREATE DATABASE"));
+        assert!(sql.contains("\"new_db\""));
+        assert!(sql.contains("UTF8"));
+    }
+
+    #[test]
+    fn test_build_create_database_sql_escapes_identifier() {
+        let plugin = create_plugin();
+        let mut field_values = HashMap::new();
+        field_values.insert("encoding".to_string(), "UTF8".to_string());
+
+        let request = crate::plugin::DatabaseOperationRequest {
+            database_name: "new\"db".to_string(),
+            field_values,
+        };
+
+        let sql = plugin.build_create_database_sql(&request);
+        assert!(sql.contains("CREATE DATABASE"));
+        assert!(sql.contains("\"new\"\"db\""));
+    }
+
+    #[test]
+    fn test_build_modify_database_sql() {
+        let plugin = create_plugin();
+        let field_values = HashMap::new();
+
+        let request = crate::plugin::DatabaseOperationRequest {
+            database_name: "my_db".to_string(),
+            field_values,
+        };
+
+        let sql = plugin.build_modify_database_sql(&request);
+        assert!(sql.contains("ALTER DATABASE"));
+        assert!(sql.contains("\"my_db\""));
+    }
+
+    #[test]
+    fn test_build_drop_database_sql() {
+        let plugin = create_plugin();
+        let sql = plugin.build_drop_database_sql("old_db");
+        assert_eq!(sql, "DROP DATABASE \"old_db\";");
+    }
+
+    #[test]
+    fn test_build_drop_database_sql_escapes_identifier() {
+        let plugin = create_plugin();
+        let sql = plugin.build_drop_database_sql("old\"db");
+        assert_eq!(sql, "DROP DATABASE \"old\"\"db\";");
+    }
+
+    // ==================== Schema Operations Tests ====================
+
+    #[test]
+    fn test_build_create_schema_sql() {
+        let plugin = create_plugin();
+        let sql = plugin.build_create_schema_sql("my_schema");
+        assert!(sql.contains("CREATE SCHEMA"));
+        assert!(sql.contains("\"my_schema\""));
+    }
+
+    #[test]
+    fn test_build_drop_schema_sql() {
+        let plugin = create_plugin();
+        let sql = plugin.build_drop_schema_sql("my_schema");
+        assert!(sql.contains("DROP SCHEMA"));
+        assert!(sql.contains("\"my_schema\""));
+        assert!(sql.contains("CASCADE"));
+    }
+
+    #[test]
+    fn test_build_comment_schema_sql() {
+        let plugin = create_plugin();
+        let sql = plugin.build_comment_schema_sql("my_schema", "Test schema");
+        assert!(sql.is_some());
+        let sql = sql.unwrap();
+        assert!(sql.contains("COMMENT ON SCHEMA"));
+        assert!(sql.contains("\"my_schema\""));
+        assert!(sql.contains("Test schema"));
+    }
+
+    // ==================== Column Definition Tests ====================
+
+    #[test]
+    fn test_build_column_def_simple() {
+        let plugin = create_plugin();
+        let col = ColumnDefinition::new("id")
+            .data_type("INTEGER")
+            .nullable(false)
+            .primary_key(true);
+
+        let def = plugin.build_column_def(&col);
+        assert!(def.contains("\"id\""));
+        assert!(def.contains("INTEGER"));
+        assert!(def.contains("NOT NULL"));
+    }
+
+    #[test]
+    fn test_build_column_def_with_length() {
+        let plugin = create_plugin();
+        let col = ColumnDefinition::new("name")
+            .data_type("VARCHAR")
+            .length(255)
+            .nullable(true);
+
+        let def = plugin.build_column_def(&col);
+        assert!(def.contains("\"name\""));
+        assert!(def.contains("VARCHAR(255)"));
+        assert!(!def.contains("NOT NULL"));
+    }
+
+    #[test]
+    fn test_build_column_def_with_default() {
+        let plugin = create_plugin();
+        let mut col = ColumnDefinition::new("status")
+            .data_type("INTEGER")
+            .default_value("0");
+        col.is_nullable = false;
+
+        let def = plugin.build_column_def(&col);
+        assert!(def.contains("DEFAULT 0"));
+        assert!(def.contains("NOT NULL"));
+    }
+
+    #[test]
+    fn test_build_column_def_quotes_numeric_default_for_text_column() {
+        // MySQL 侧 varchar 列的默认值是裸数值（information_schema 返回 `1`），
+        // PostgreSQL 不接受 `varchar(1) DEFAULT 1`，必须补引号。
+        let plugin = create_plugin();
+        let mut col = ColumnDefinition::new("status")
+            .data_type("varchar")
+            .length(1)
+            .default_value("1");
+
+        let def = plugin.build_column_def(&col);
+        assert!(def.contains("DEFAULT '1'"), "unexpected column def: {def}");
+
+        col.default_value = Some("0".to_string());
+        let def = plugin.build_column_def(&col);
+        assert!(def.contains("DEFAULT '0'"), "unexpected column def: {def}");
+    }
+
+    #[test]
+    fn test_build_column_def_quotes_bare_identifier_default_for_text_column() {
+        let plugin = create_plugin();
+        let col = ColumnDefinition::new("source_platform")
+            .data_type("varchar")
+            .length(64)
+            .default_value("CDSS");
+
+        let def = plugin.build_column_def(&col);
+        assert!(
+            def.contains("DEFAULT 'CDSS'"),
+            "unexpected column def: {def}"
+        );
+    }
+
+    #[test]
+    fn test_build_column_def_keeps_expression_defaults_for_text_column() {
+        let plugin = create_plugin();
+        for default in [
+            "'guest'",
+            "''",
+            "now()",
+            "CURRENT_TIMESTAMP",
+            "'{}'::jsonb",
+            "E'\\n'",
+        ] {
+            let col = ColumnDefinition::new("name")
+                .data_type("text")
+                .default_value(default);
+            let def = plugin.build_column_def(&col);
+            assert!(
+                def.contains(&format!("DEFAULT {default}")),
+                "default `{default}` should stay untouched, got: {def}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_build_column_def_keeps_numeric_default_for_numeric_column() {
+        let plugin = create_plugin();
+        let col = ColumnDefinition::new("amount")
+            .data_type("numeric")
+            .default_value("0");
+
+        let def = plugin.build_column_def(&col);
+        assert!(def.contains("DEFAULT 0"), "unexpected column def: {def}");
+        assert!(!def.contains("DEFAULT '0'"));
+    }
+
+    #[test]
+    fn test_build_column_def_quotes_numeric_default_for_boolean_column() {
+        // MySQL 的 tinyint(1)/bit(1) 会映射成 BOOLEAN，源库默认值是裸数值；
+        // PostgreSQL 同样拒绝 `DEFAULT 1`（integer 表达式）。
+        let plugin = create_plugin();
+        let col = ColumnDefinition::new("enabled")
+            .data_type("BOOLEAN")
+            .default_value("1");
+        let def = plugin.build_column_def(&col);
+        assert!(def.contains("DEFAULT '1'"), "unexpected column def: {def}");
+
+        let col = ColumnDefinition::new("enabled")
+            .data_type("BOOLEAN")
+            .default_value("FALSE");
+        let def = plugin.build_column_def(&col);
+        assert!(
+            def.contains("DEFAULT FALSE"),
+            "unexpected column def: {def}"
+        );
+    }
+
+    #[test]
+    fn test_build_column_def_serial() {
+        let plugin = create_plugin();
+        let col = ColumnDefinition::new("id")
+            .data_type("SERIAL")
+            .nullable(false)
+            .primary_key(true)
+            .auto_increment(true);
+
+        let def = plugin.build_column_def(&col);
+        assert!(def.contains("\"id\""));
+        assert!(def.contains("SERIAL"));
+    }
+
+    // ==================== CREATE TABLE Tests ====================
+
+    #[test]
+    fn test_build_create_table_sql_simple() {
+        let plugin = create_plugin();
+        let design = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id")
+                    .data_type("SERIAL")
+                    .nullable(false)
+                    .primary_key(true),
+                ColumnDefinition::new("name")
+                    .data_type("VARCHAR")
+                    .length(100),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let sql = plugin.build_create_table_sql(&design);
+        assert!(sql.contains("CREATE TABLE \"users\""));
+        assert!(sql.contains("\"id\""));
+        assert!(sql.contains("SERIAL"));
+        assert!(sql.contains("\"name\""));
+        assert!(sql.contains("VARCHAR(100)"));
+        assert!(sql.contains("PRIMARY KEY"));
+    }
+
+    #[test]
+    fn test_build_create_table_sql_with_comments() {
+        let plugin = create_plugin();
+        let design = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("name")
+                    .data_type("VARCHAR")
+                    .length(100)
+                    .comment("Display name"),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions {
+                comment: "User table".to_string(),
+                ..TableOptions::default()
+            },
+        };
+
+        let sql = plugin.build_create_table_sql(&design);
+        assert!(sql.contains("COMMENT ON TABLE \"users\" IS 'User table';"));
+        assert!(sql.contains("COMMENT ON COLUMN \"users\".\"name\" IS 'Display name';"));
+    }
+
+    #[test]
+    fn test_build_create_table_sql_with_indexes() {
+        let plugin = create_plugin();
+        let design = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "orders".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id")
+                    .data_type("SERIAL")
+                    .nullable(false)
+                    .primary_key(true),
+                ColumnDefinition::new("user_id")
+                    .data_type("INTEGER")
+                    .nullable(false),
+                ColumnDefinition::new("email")
+                    .data_type("VARCHAR")
+                    .length(100),
+            ],
+            indexes: vec![
+                IndexDefinition::new("idx_user_id")
+                    .columns(vec!["user_id".to_string()])
+                    .unique(false),
+                IndexDefinition::new("idx_email")
+                    .columns(vec!["email".to_string()])
+                    .unique(true),
+            ],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let sql = plugin.build_create_table_sql(&design);
+        assert!(sql.contains("INDEX \"idx_user_id\""));
+        assert!(sql.contains("UNIQUE INDEX \"idx_email\""));
+    }
+
+    #[test]
+    fn test_build_create_table_sql_with_foreign_keys() {
+        let plugin = create_plugin();
+        let design = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "order_items".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id")
+                    .data_type("INTEGER")
+                    .nullable(false),
+                ColumnDefinition::new("order_id")
+                    .data_type("INTEGER")
+                    .nullable(false),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![ForeignKeyDefinition {
+                name: "fk_order_items_order".to_string(),
+                columns: vec!["order_id".to_string()],
+                ref_table: "orders".to_string(),
+                ref_schema: None,
+                ref_columns: vec!["id".to_string()],
+                on_delete: "CASCADE".to_string(),
+                on_update: "RESTRICT".to_string(),
+            }],
+            options: TableOptions::default(),
+        };
+
+        let sql = plugin.build_create_table_sql(&design);
+
+        assert!(sql.contains(
+            "CONSTRAINT \"fk_order_items_order\" FOREIGN KEY (\"order_id\") REFERENCES \"orders\" (\"id\") ON DELETE CASCADE ON UPDATE RESTRICT"
+        ));
+    }
+
+    // ==================== ALTER TABLE Tests ====================
+
+    #[test]
+    fn test_build_alter_table_sql_add_column() {
+        let plugin = create_plugin();
+
+        let original = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![ColumnDefinition::new("id").data_type("INTEGER")],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let new = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id").data_type("INTEGER"),
+                ColumnDefinition::new("email")
+                    .data_type("VARCHAR")
+                    .length(100),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let sql = plugin.build_alter_table_sql(&original, &new);
+        assert!(sql.contains("ADD COLUMN"));
+        assert!(sql.contains("\"email\""));
+    }
+
+    #[test]
+    fn test_build_alter_table_sql_add_primary_key_to_existing_column() {
+        let plugin = create_plugin();
+
+        let original = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![ColumnDefinition::new("id").data_type("INTEGER")],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+        let new = TableDesign {
+            columns: vec![
+                ColumnDefinition::new("id")
+                    .data_type("INTEGER")
+                    .primary_key(true),
+            ],
+            ..original.clone()
+        };
+
+        let sql = plugin.build_alter_table_sql(&original, &new);
+
+        assert_eq!(r#"ALTER TABLE "users" ADD PRIMARY KEY ("id");"#, sql);
+    }
+
+    #[test]
+    fn test_build_alter_table_sql_add_primary_key_with_new_column() {
+        let plugin = create_plugin();
+
+        let original = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![ColumnDefinition::new("name").data_type("TEXT")],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+        let new = TableDesign {
+            columns: vec![
+                ColumnDefinition::new("name").data_type("TEXT"),
+                ColumnDefinition::new("id")
+                    .data_type("INTEGER")
+                    .primary_key(true),
+            ],
+            ..original.clone()
+        };
+
+        let sql = plugin.build_alter_table_sql(&original, &new);
+
+        assert_eq!(
+            concat!(
+                "ALTER TABLE \"users\" ADD COLUMN \"id\" INTEGER;\n",
+                "ALTER TABLE \"users\" ADD PRIMARY KEY (\"id\");"
+            ),
+            sql
+        );
+    }
+
+    #[test]
+    fn test_build_alter_table_sql_replace_primary_key() {
+        let plugin = create_plugin();
+
+        let original = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id")
+                    .data_type("INTEGER")
+                    .primary_key(true),
+                ColumnDefinition::new("email").data_type("TEXT"),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+        let new = TableDesign {
+            columns: vec![
+                ColumnDefinition::new("id").data_type("INTEGER"),
+                ColumnDefinition::new("email")
+                    .data_type("TEXT")
+                    .primary_key(true),
+            ],
+            ..original.clone()
+        };
+
+        let sql = plugin.build_alter_table_sql(&original, &new);
+
+        assert_eq!(
+            concat!(
+                "ALTER TABLE \"users\" DROP CONSTRAINT \"users_pkey\";\n",
+                "ALTER TABLE \"users\" ADD PRIMARY KEY (\"email\");"
+            ),
+            sql
+        );
+    }
+
+    #[test]
+    fn test_build_alter_table_sql_supports_legacy_primary_index() {
+        let plugin = create_plugin();
+
+        let original = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![ColumnDefinition::new("id").data_type("INTEGER")],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+        let new = TableDesign {
+            indexes: vec![
+                IndexDefinition::new("users_pkey")
+                    .columns(vec!["id".to_string()])
+                    .primary(true),
+            ],
+            ..original.clone()
+        };
+
+        let sql = plugin.build_alter_table_sql(&original, &new);
+
+        assert_eq!(r#"ALTER TABLE "users" ADD PRIMARY KEY ("id");"#, sql);
+    }
+
+    #[test]
+    fn test_build_alter_table_sql_does_not_duplicate_canonical_primary_key() {
+        let plugin = create_plugin();
+
+        let original = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id")
+                    .data_type("INTEGER")
+                    .primary_key(true),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+        let new = TableDesign {
+            indexes: vec![
+                IndexDefinition::new("users_pkey")
+                    .columns(vec!["id".to_string()])
+                    .primary(true),
+            ],
+            ..original.clone()
+        };
+
+        let sql = plugin.build_alter_table_sql(&original, &new);
+
+        assert_eq!("-- No changes detected", sql);
+    }
+
+    #[test]
+    fn test_build_alter_table_sql_drop_column() {
+        let plugin = create_plugin();
+
+        let original = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id").data_type("INTEGER"),
+                ColumnDefinition::new("old_column")
+                    .data_type("VARCHAR")
+                    .length(50),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let new = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![ColumnDefinition::new("id").data_type("INTEGER")],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let sql = plugin.build_alter_table_sql(&original, &new);
+        assert!(sql.contains("DROP COLUMN"));
+        assert!(sql.contains("\"old_column\""));
+    }
+
+    #[test]
+    fn test_build_alter_table_sql_modify_column_type() {
+        let plugin = create_plugin();
+
+        let original = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("name")
+                    .data_type("VARCHAR")
+                    .length(50),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let new = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("name")
+                    .data_type("VARCHAR")
+                    .length(100),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let sql = plugin.build_alter_table_sql(&original, &new);
+        assert!(sql.contains("ALTER COLUMN"));
+        assert!(sql.contains("TYPE"));
+        assert!(sql.contains("VARCHAR(100)"));
+    }
+
+    #[test]
+    fn test_build_alter_table_sql_updates_comments_only() {
+        let plugin = create_plugin();
+
+        let original = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("name")
+                    .data_type("VARCHAR")
+                    .length(50),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+        let new = TableDesign {
+            columns: vec![
+                ColumnDefinition::new("name")
+                    .data_type("VARCHAR")
+                    .length(50)
+                    .comment("Display name"),
+            ],
+            options: TableOptions {
+                comment: "User table".to_string(),
+                ..TableOptions::default()
+            },
+            ..original.clone()
+        };
+
+        let sql = plugin.build_alter_table_sql(&original, &new);
+        assert!(sql.contains("COMMENT ON TABLE \"users\" IS 'User table';"));
+        assert!(sql.contains("COMMENT ON COLUMN \"users\".\"name\" IS 'Display name';"));
+    }
+
+    #[test]
+    fn test_build_alter_table_sql_reorder_columns_no_changes() {
+        let plugin = create_plugin();
+
+        let original = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id").data_type("INTEGER"),
+                ColumnDefinition::new("name")
+                    .data_type("VARCHAR")
+                    .length(50),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let new = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("name")
+                    .data_type("VARCHAR")
+                    .length(50),
+                ColumnDefinition::new("id").data_type("INTEGER"),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let sql = plugin.build_alter_table_sql(&original, &new);
+        assert_eq!(sql, "-- No changes detected");
+    }
+
+    #[test]
+    fn test_build_alter_table_sql_set_default_and_not_null() {
+        let plugin = create_plugin();
+
+        let original = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("name")
+                    .data_type("VARCHAR")
+                    .length(50),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let new = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("name")
+                    .data_type("VARCHAR")
+                    .length(50)
+                    .nullable(false)
+                    .default_value("'guest'"),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let sql = plugin.build_alter_table_sql(&original, &new);
+        assert!(sql.contains("SET NOT NULL"));
+        assert!(sql.contains("SET DEFAULT 'guest'"));
+    }
+
+    #[test]
+    fn test_build_alter_table_sql_quotes_bare_default_for_text_column() {
+        let plugin = create_plugin();
+
+        let original = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("status")
+                    .data_type("VARCHAR")
+                    .length(1),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let new = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "users".to_string(),
+            columns: vec![
+                ColumnDefinition::new("status")
+                    .data_type("VARCHAR")
+                    .length(1)
+                    .default_value("0"),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![],
+            options: TableOptions::default(),
+        };
+
+        let sql = plugin.build_alter_table_sql(&original, &new);
+        assert!(
+            sql.contains("SET DEFAULT '0';"),
+            "unexpected alter sql: {sql}"
+        );
+    }
+
+    #[test]
+    fn test_build_alter_table_sql_add_and_drop_foreign_keys() {
+        let plugin = create_plugin();
+
+        let original = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "order_items".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id").data_type("INTEGER"),
+                ColumnDefinition::new("order_id").data_type("INTEGER"),
+                ColumnDefinition::new("legacy_order_id").data_type("INTEGER"),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![ForeignKeyDefinition {
+                name: "fk_order_items_legacy".to_string(),
+                columns: vec!["legacy_order_id".to_string()],
+                ref_table: "orders".to_string(),
+                ref_schema: None,
+                ref_columns: vec!["id".to_string()],
+                on_delete: String::new(),
+                on_update: String::new(),
+            }],
+            options: TableOptions::default(),
+        };
+        let new = TableDesign {
+            database_name: "test_db".to_string(),
+            table_name: "order_items".to_string(),
+            columns: vec![
+                ColumnDefinition::new("id").data_type("INTEGER"),
+                ColumnDefinition::new("order_id").data_type("INTEGER"),
+            ],
+            indexes: vec![],
+            foreign_keys: vec![ForeignKeyDefinition {
+                name: "fk_order_items_order".to_string(),
+                columns: vec!["order_id".to_string()],
+                ref_table: "orders".to_string(),
+                ref_schema: None,
+                ref_columns: vec!["id".to_string()],
+                on_delete: "CASCADE".to_string(),
+                on_update: "RESTRICT".to_string(),
+            }],
+            options: TableOptions::default(),
+        };
+
+        let sql = plugin.build_alter_table_sql(&original, &new);
+
+        assert!(
+            sql.contains("ALTER TABLE \"order_items\" DROP CONSTRAINT \"fk_order_items_legacy\";")
+        );
+        assert!(
+            sql.find("DROP CONSTRAINT \"fk_order_items_legacy\"")
+                .unwrap()
+                < sql.find("DROP COLUMN \"legacy_order_id\"").unwrap()
+        );
+        assert!(sql.contains(
+            "ALTER TABLE \"order_items\" ADD CONSTRAINT \"fk_order_items_order\" FOREIGN KEY (\"order_id\") REFERENCES \"orders\" (\"id\") ON DELETE CASCADE ON UPDATE RESTRICT;"
+        ));
+    }
+
+    #[test]
+    fn test_generate_delete_row_sql_without_limit() {
+        let plugin = create_plugin();
+        let request = TableSaveRequest {
+            database: "app".to_string(),
+            schema: Some("public".to_string()),
+            table: "users".to_string(),
+            columns: vec![
+                ColumnInfo {
+                    name: "id".to_string(),
+                    data_type: "INTEGER".to_string(),
+                    is_nullable: false,
+                    is_primary_key: true,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+                ColumnInfo {
+                    name: "name".to_string(),
+                    data_type: "TEXT".to_string(),
+                    is_nullable: true,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+            ],
+            index_infos: vec![],
+            changes: vec![TableRowChange::Deleted {
+                original_data: vec!["42".into(), "Ada".into()],
+                rowid: None,
+            }],
+        };
+
+        let sql = plugin.generate_table_changes_sql(&request);
+
+        assert_eq!("DELETE FROM \"public\".\"users\" WHERE \"id\" = 42;", sql);
+    }
+
+    #[test]
+    fn test_generate_update_row_sql_sets_nullable_value_to_null() {
+        let plugin = create_plugin();
+        let request = TableSaveRequest {
+            database: "app".to_string(),
+            schema: Some("public".to_string()),
+            table: "users".to_string(),
+            columns: vec![
+                ColumnInfo {
+                    name: "id".to_string(),
+                    data_type: "INTEGER".to_string(),
+                    is_nullable: false,
+                    is_primary_key: true,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+                ColumnInfo {
+                    name: "score".to_string(),
+                    data_type: "INTEGER".to_string(),
+                    is_nullable: true,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+            ],
+            index_infos: vec![],
+            changes: vec![TableRowChange::Updated {
+                original_data: vec!["42".into(), "7".into()],
+                changes: vec![TableCellChange {
+                    column_index: 1,
+                    column_name: "score".to_string(),
+                    old_value: "7".into(),
+                    new_value: TableCellValue::Null,
+                }],
+                rowid: None,
+            }],
+        };
+
+        let sql = plugin.generate_table_changes_sql(&request);
+
+        assert_eq!(
+            "UPDATE \"public\".\"users\" SET \"score\" = NULL WHERE \"id\" = 42;",
+            sql
+        );
+    }
+
+    #[test]
+    fn test_generate_update_row_sql_matches_original_null_with_is_null() {
+        let plugin = create_plugin();
+        let request = TableSaveRequest {
+            database: "app".to_string(),
+            schema: Some("public".to_string()),
+            table: "metrics".to_string(),
+            columns: vec![
+                ColumnInfo {
+                    name: "label".to_string(),
+                    data_type: "TEXT".to_string(),
+                    is_nullable: false,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+                ColumnInfo {
+                    name: "score".to_string(),
+                    data_type: "INTEGER".to_string(),
+                    is_nullable: true,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+            ],
+            index_infos: vec![],
+            changes: vec![TableRowChange::Updated {
+                original_data: vec!["daily".into(), TableCellValue::Null],
+                changes: vec![TableCellChange {
+                    column_index: 0,
+                    column_name: "label".to_string(),
+                    old_value: "daily".into(),
+                    new_value: "weekly".into(),
+                }],
+                rowid: None,
+            }],
+        };
+
+        let sql = plugin.generate_table_changes_sql(&request);
+
+        assert_eq!(
+            "UPDATE \"public\".\"metrics\" SET \"label\" = 'weekly' WHERE \"label\" = 'daily' AND \"score\" IS NULL;",
+            sql
+        );
+    }
+
+    #[test]
+    fn test_generate_update_row_sql_preserves_empty_and_literal_null_text() {
+        let plugin = create_plugin();
+        let request = TableSaveRequest {
+            database: "app".to_string(),
+            schema: Some("public".to_string()),
+            table: "messages".to_string(),
+            columns: vec![
+                ColumnInfo {
+                    name: "id".to_string(),
+                    data_type: "INTEGER".to_string(),
+                    is_nullable: false,
+                    is_primary_key: true,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+                ColumnInfo {
+                    name: "body".to_string(),
+                    data_type: "TEXT".to_string(),
+                    is_nullable: true,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+                ColumnInfo {
+                    name: "note".to_string(),
+                    data_type: "TEXT".to_string(),
+                    is_nullable: true,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+            ],
+            index_infos: vec![],
+            changes: vec![TableRowChange::Updated {
+                original_data: vec!["42".into(), "old body".into(), "old note".into()],
+                changes: vec![
+                    TableCellChange {
+                        column_index: 1,
+                        column_name: "body".to_string(),
+                        old_value: "old body".into(),
+                        new_value: "".into(),
+                    },
+                    TableCellChange {
+                        column_index: 2,
+                        column_name: "note".to_string(),
+                        old_value: "old note".into(),
+                        new_value: "NULL".into(),
+                    },
+                ],
+                rowid: None,
+            }],
+        };
+
+        let sql = plugin.generate_table_changes_sql(&request);
+
+        assert_eq!(
+            "UPDATE \"public\".\"messages\" SET \"body\" = '', \"note\" = 'NULL' WHERE \"id\" = 42;",
+            sql
+        );
+    }
+
+    #[test]
+    fn test_generate_insert_row_sql_distinguishes_null_empty_and_literal_null() {
+        let plugin = create_plugin();
+        let request = TableSaveRequest {
+            database: "app".to_string(),
+            schema: Some("public".to_string()),
+            table: "messages".to_string(),
+            columns: vec![
+                ColumnInfo {
+                    name: "nullable_value".to_string(),
+                    data_type: "TEXT".to_string(),
+                    is_nullable: true,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+                ColumnInfo {
+                    name: "empty_value".to_string(),
+                    data_type: "TEXT".to_string(),
+                    is_nullable: true,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+                ColumnInfo {
+                    name: "literal_null".to_string(),
+                    data_type: "TEXT".to_string(),
+                    is_nullable: true,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+            ],
+            index_infos: vec![],
+            changes: vec![TableRowChange::Added {
+                data: vec![TableCellValue::Null, "".into(), "NULL".into()],
+            }],
+        };
+
+        let sql = plugin.generate_table_changes_sql(&request);
+
+        assert_eq!(
+            "INSERT INTO \"public\".\"messages\" (\"nullable_value\", \"empty_value\", \"literal_null\") VALUES (NULL, '', 'NULL');",
+            sql
+        );
+    }
+
+    #[test]
+    fn test_generate_delete_row_sql_distinguishes_null_empty_and_literal_null() {
+        let plugin = create_plugin();
+        let request = TableSaveRequest {
+            database: "app".to_string(),
+            schema: Some("public".to_string()),
+            table: "messages".to_string(),
+            columns: vec![
+                ColumnInfo {
+                    name: "nullable_value".to_string(),
+                    data_type: "TEXT".to_string(),
+                    is_nullable: true,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+                ColumnInfo {
+                    name: "empty_value".to_string(),
+                    data_type: "TEXT".to_string(),
+                    is_nullable: true,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+                ColumnInfo {
+                    name: "literal_null".to_string(),
+                    data_type: "TEXT".to_string(),
+                    is_nullable: true,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+            ],
+            index_infos: vec![],
+            changes: vec![TableRowChange::Deleted {
+                original_data: vec![TableCellValue::Null, "".into(), "NULL".into()],
+                rowid: None,
+            }],
+        };
+
+        let sql = plugin.generate_table_changes_sql(&request);
+
+        assert_eq!(
+            "DELETE FROM \"public\".\"messages\" WHERE \"nullable_value\" IS NULL AND \"empty_value\" = '' AND \"literal_null\" = 'NULL';",
+            sql
+        );
+    }
+
+    #[test]
+    fn test_generate_table_changes_sql_formats_postgres_typed_literals() {
+        let plugin = create_plugin();
+        let request = TableSaveRequest {
+            database: "app".to_string(),
+            schema: Some("public".to_string()),
+            table: "typed_values".to_string(),
+            columns: vec![
+                ColumnInfo {
+                    name: "flag".to_string(),
+                    data_type: "BOOLEAN".to_string(),
+                    is_nullable: false,
+                    is_primary_key: true,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+                ColumnInfo {
+                    name: "bits".to_string(),
+                    data_type: "BIT(4)".to_string(),
+                    is_nullable: false,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+                ColumnInfo {
+                    name: "payload".to_string(),
+                    data_type: "BYTEA".to_string(),
+                    is_nullable: true,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+            ],
+            index_infos: vec![],
+            changes: vec![TableRowChange::Updated {
+                original_data: vec!["true".into(), "0011".into(), "AQI=".into()],
+                changes: vec![
+                    TableCellChange {
+                        column_index: 1,
+                        column_name: "bits".to_string(),
+                        old_value: "0011".into(),
+                        new_value: "1010".into(),
+                    },
+                    TableCellChange {
+                        column_index: 2,
+                        column_name: "payload".to_string(),
+                        old_value: "AQI=".into(),
+                        new_value: TableCellValue::Binary(vec![0xde, 0xad, 0xbe, 0xef]),
+                    },
+                ],
+                rowid: None,
+            }],
+        };
+
+        assert_eq!(
+            "UPDATE \"public\".\"typed_values\" SET \"bits\" = B'1010', \"payload\" = decode('deadbeef', 'hex') WHERE \"flag\" = TRUE;",
+            plugin.generate_table_changes_sql(&request)
+        );
+    }
+
+    // ==================== Data Types Tests ====================
+
+    #[test]
+    fn test_get_data_types() {
+        let plugin = create_plugin();
+        let types = plugin.get_data_types();
+
+        assert!(!types.is_empty());
+        assert!(types.iter().any(|t| t.0 == "INTEGER"));
+        assert!(types.iter().any(|t| t.0 == "VARCHAR"));
+        assert!(types.iter().any(|t| t.0 == "TEXT"));
+        assert!(types.iter().any(|t| t.0 == "TIMESTAMP"));
+        assert!(types.iter().any(|t| t.0 == "JSONB"));
+        assert!(types.iter().any(|t| t.0 == "UUID"));
+        assert!(types.iter().any(|t| t.0 == "SERIAL"));
+    }
+
+    // ==================== Completion Info Tests ====================
+
+    #[test]
+    fn test_get_completion_info() {
+        let plugin = create_plugin();
+        let info = plugin.get_completion_info();
+
+        assert!(!info.keywords.is_empty());
+        assert!(!info.functions.is_empty());
+        assert!(!info.operators.is_empty());
+        assert!(!info.data_types.is_empty());
+        assert!(!info.snippets.is_empty());
+
+        assert!(info.keywords.iter().any(|(k, _)| *k == "RETURNING"));
+        assert!(
+            info.functions
+                .iter()
+                .any(|(f, _)| f.starts_with("ARRAY_AGG"))
+        );
+    }
+}

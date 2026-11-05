@@ -1,0 +1,879 @@
+_version: 2
+
+# 错误消息
+Error:
+  query_type_error:
+    en: Query type error
+    zh-CN: 查询类型异常
+    zh-HK: 查詢類型異常
+  no_changes:
+    en: "-- No data changes"
+    zh-CN: -- 没有变更数据
+    zh-HK: -- 沒有變更資料
+
+Common:
+  new:
+    en: New
+    zh-CN: 新建
+    zh-HK: 新建
+  create:
+    en: Create
+    zh-CN: 新建
+    zh-HK: 新建
+  save:
+    en: Save
+    zh-CN: 保存
+    zh-HK: 保存
+  none:
+    en: None
+    zh-CN: 无
+    zh-HK: 無
+  yes:
+    en: "Yes"
+    zh-CN: 是
+    zh-HK: 是
+  no:
+    en: "No"
+    zh-CN: 否
+    zh-HK: 否
+
+DatabaseUser:
+  user_title:
+    en: User
+    zh-CN: 用户
+    zh-HK: 使用者
+  create_title:
+    en: Create User
+    zh-CN: 新增用户
+    zh-HK: 新增使用者
+  edit_title:
+    en: Edit User
+    zh-CN: 编辑用户
+    zh-HK: 編輯使用者
+  delete_title:
+    en: Delete User
+    zh-CN: 删除用户
+    zh-HK: 刪除使用者
+  privileges_title:
+    en: User Privileges
+    zh-CN: 用户权限
+    zh-HK: 使用者權限
+  user_tab:
+    en: User
+    zh-CN: 用户
+    zh-HK: 使用者
+  name:
+    en: Name
+    zh-CN: 名称
+    zh-HK: 名稱
+  host:
+    en: Host
+    zh-CN: 主机
+    zh-HK: 主機
+  password:
+    en: Password
+    zh-CN: 密码
+    zh-HK: 密碼
+  database:
+    en: Database
+    zh-CN: 数据库
+    zh-HK: 資料庫
+  privileges:
+    en: Privileges
+    zh-CN: 权限
+    zh-HK: 權限
+  role:
+    en: Role
+    zh-CN: 角色
+    zh-HK: 角色
+  columns:
+    user:
+      en: User
+      zh-CN: 用户
+      zh-HK: 使用者
+    host:
+      en: Host
+      zh-CN: 主机
+      zh-HK: 主機
+    name:
+      en: Name
+      zh-CN: 名称
+      zh-HK: 名稱
+    username:
+      en: Username
+      zh-CN: 用户名
+      zh-HK: 使用者名稱
+    user_id:
+      en: User ID
+      zh-CN: 用户 ID
+      zh-HK: 使用者 ID
+    authentication_plugin:
+      en: Authentication Plugin
+      zh-CN: 认证插件
+      zh-HK: 認證外掛
+    account_locked:
+      en: Account Locked
+      zh-CN: 账号锁定
+      zh-HK: 帳號鎖定
+    password_expired:
+      en: Password Expired
+      zh-CN: 密码过期
+      zh-HK: 密碼過期
+    password_last_changed:
+      en: Password Last Changed
+      zh-CN: 密码最后修改
+      zh-HK: 密碼最後修改
+    password_lifetime:
+      en: Password Expiration Policy
+      zh-CN: 密码过期策略
+      zh-HK: 密碼過期策略
+    max_questions:
+      en: Max Queries
+      zh-CN: 最大查询
+      zh-HK: 最大查詢
+    max_updates:
+      en: Max Updates
+      zh-CN: 最大更新
+      zh-HK: 最大更新
+    max_connections:
+      en: Max Connections
+      zh-CN: 最大连接数
+      zh-HK: 最大連線數
+    max_user_connections:
+      en: Max User Connections
+      zh-CN: 最大用户连接数
+      zh-HK: 最大使用者連線數
+    ssl_type:
+      en: SSL Type
+      zh-CN: SSL 类型
+      zh-HK: SSL 類型
+    ssl_cipher:
+      en: SSL Cipher
+      zh-CN: SSL 密码套件
+      zh-HK: SSL 密碼套件
+    x509_issuer:
+      en: X509 Issuer
+      zh-CN: 发行者
+      zh-HK: 發行者
+    x509_subject:
+      en: X509 Subject
+      zh-CN: 主题
+      zh-HK: 主體
+    select_priv:
+      en: SELECT Privilege
+      zh-CN: SELECT 权限
+      zh-HK: SELECT 權限
+    insert_priv:
+      en: INSERT Privilege
+      zh-CN: INSERT 权限
+      zh-HK: INSERT 權限
+    update_priv:
+      en: UPDATE Privilege
+      zh-CN: UPDATE 权限
+      zh-HK: UPDATE 權限
+    delete_priv:
+      en: DELETE Privilege
+      zh-CN: DELETE 权限
+      zh-HK: DELETE 權限
+    create_priv:
+      en: CREATE Privilege
+      zh-CN: CREATE 权限
+      zh-HK: CREATE 權限
+    drop_priv:
+      en: DROP Privilege
+      zh-CN: DROP 权限
+      zh-HK: DROP 權限
+    grant_priv:
+      en: GRANT Privilege
+      zh-CN: GRANT 权限
+      zh-HK: GRANT 權限
+    role_name:
+      en: Role Name
+      zh-CN: 角色名
+      zh-HK: 角色名
+    can_login:
+      en: Can Login
+      zh-CN: 可登录
+      zh-HK: 可登入
+    superuser:
+      en: Superuser
+      zh-CN: 超级用户
+      zh-HK: 超級使用者
+    create_database:
+      en: Create Database
+      zh-CN: 创建数据库
+      zh-HK: 建立資料庫
+    create_role:
+      en: Create Role
+      zh-CN: 创建角色
+      zh-HK: 建立角色
+    replication:
+      en: Replication
+      zh-CN: 复制
+      zh-HK: 複寫
+    bypass_rls:
+      en: Bypass RLS
+      zh-CN: 绕过行级安全
+      zh-HK: 略過列級安全
+    valid_until:
+      en: Valid Until
+      zh-CN: 有效期至
+      zh-HK: 有效期至
+    principal_type:
+      en: Principal Type
+      zh-CN: 主体类型
+      zh-HK: 主體類型
+    authentication_type:
+      en: Authentication Type
+      zh-CN: 认证类型
+      zh-HK: 認證類型
+    default_schema:
+      en: Default Schema
+      zh-CN: 默认 Schema
+      zh-HK: 預設 Schema
+    created_at:
+      en: Created At
+      zh-CN: 创建时间
+      zh-HK: 建立時間
+    updated_at:
+      en: Updated At
+      zh-CN: 更新时间
+      zh-HK: 更新時間
+    storage:
+      en: Storage
+      zh-CN: 存储
+      zh-HK: 儲存
+    auth_type:
+      en: Auth Type
+      zh-CN: 认证类型
+      zh-HK: 認證類型
+  privilege_select:
+    en: SELECT
+    zh-CN: SELECT
+    zh-HK: SELECT
+  privilege_insert:
+    en: INSERT
+    zh-CN: INSERT
+    zh-HK: INSERT
+  privilege_update:
+    en: UPDATE
+    zh-CN: UPDATE
+    zh-HK: UPDATE
+  privilege_delete:
+    en: DELETE
+    zh-CN: DELETE
+    zh-HK: DELETE
+  privilege_connect:
+    en: CONNECT
+    zh-CN: CONNECT
+    zh-HK: CONNECT
+  privilege_create:
+    en: CREATE
+    zh-CN: CREATE
+    zh-HK: CREATE
+  privilege_temporary:
+    en: TEMPORARY
+    zh-CN: TEMPORARY
+    zh-HK: TEMPORARY
+  privilege_alter:
+    en: ALTER
+    zh-CN: ALTER
+    zh-HK: ALTER
+  privilege_all:
+    en: All Privileges
+    zh-CN: 全部权限
+    zh-HK: 全部權限
+  role_datareader:
+    en: Data Reader
+    zh-CN: 数据读取
+    zh-HK: 資料讀取
+  role_datawriter:
+    en: Data Writer
+    zh-CN: 数据写入
+    zh-HK: 資料寫入
+  role_owner:
+    en: Owner
+    zh-CN: 所有者
+    zh-HK: 擁有者
+  role_connect:
+    en: CONNECT
+    zh-CN: CONNECT
+    zh-HK: CONNECT
+  role_resource:
+    en: RESOURCE
+    zh-CN: RESOURCE
+    zh-HK: RESOURCE
+  role_dba:
+    en: DBA
+    zh-CN: DBA
+    zh-HK: DBA
+
+Connection:
+  new:
+    en: "New %{db_type} Connection"
+    zh-CN: "新建 %{db_type} 连接"
+    zh-HK: "新建 %{db_type} 連線"
+  edit:
+    en: "Edit %{db_type} Connection"
+    zh-CN: "编辑 %{db_type} 连接"
+    zh-HK: "編輯 %{db_type} 連線"
+
+ConnectionForm:
+  general:
+    en: General
+    zh-CN: 常规
+    zh-HK: 常規
+  advanced:
+    en: Advanced
+    zh-CN: 高级
+    zh-HK: 高級
+  ssl:
+    en: SSL
+    zh-CN: SSL
+    zh-HK: SSL
+  ssh:
+    en: SSH
+    zh-CN: SSH
+    zh-HK: SSH
+  notes:
+    en: Notes
+    zh-CN: 备注
+    zh-HK: 備註
+  connection_name:
+    en: Connection Name
+    zh-CN: 连接名称
+    zh-HK: 連線名稱
+  host:
+    en: Host
+    zh-CN: 主机
+    zh-HK: 主機
+  port:
+    en: Port
+    zh-CN: 端口
+    zh-HK: 端口
+  username:
+    en: Username
+    zh-CN: 用户名
+    zh-HK: 使用者名稱
+  password:
+    en: Password
+    zh-CN: 密码
+    zh-HK: 密碼
+  database:
+    en: Database
+    zh-CN: 数据库
+    zh-HK: 資料庫
+  default_schema:
+    en: Default Schema
+    zh-CN: 默认 Schema
+    zh-HK: 預設 Schema
+  default_schema_placeholder:
+    en: Leave empty to use the database default
+    zh-CN: 留空则使用数据库默认值
+    zh-HK: 留空則使用資料庫預設值
+  schema_filter_mode:
+    en: Schema Filter
+    zh-CN: Schema 过滤
+    zh-HK: Schema 過濾
+  schema_filter_mode_auto:
+    en: Auto hide system schemas
+    zh-CN: 自动隐藏系统 Schema
+    zh-HK: 自動隱藏系統 Schema
+  schema_filter_mode_include:
+    en: Show only listed schemas
+    zh-CN: 仅显示指定 Schema
+    zh-HK: 僅顯示指定 Schema
+  schema_filter_mode_exclude:
+    en: Hide listed schemas
+    zh-CN: 隐藏指定 Schema
+    zh-HK: 隱藏指定 Schema
+  schema_filter_mode_all:
+    en: Show all schemas
+    zh-CN: 显示全部 Schema
+    zh-HK: 顯示全部 Schema
+  schema_filter_include:
+    en: Include Schemas
+    zh-CN: 包含 Schema
+    zh-HK: 包含 Schema
+  schema_filter_include_placeholder:
+    en: app, audit_*
+    zh-CN: app, audit_*
+    zh-HK: app, audit_*
+  schema_filter_exclude:
+    en: Exclude Schemas
+    zh-CN: 排除 Schema
+    zh-HK: 排除 Schema
+  schema_filter_exclude_placeholder:
+    en: tmp_*, scratch
+    zh-CN: tmp_*, scratch
+    zh-HK: tmp_*, scratch
+  schema:
+    en: Scheme
+    zh-CN: 协议
+    zh-HK: 協議
+  database_file_path:
+    en: Database File Path
+    zh-CN: 数据库文件路径
+    zh-HK: 資料庫檔案路徑
+  remark:
+    en: Remark
+    zh-CN: 备注
+    zh-HK: 備註
+  connect_timeout:
+    en: Connect Timeout (seconds)
+    zh-CN: 连接超时(秒)
+    zh-HK: 連線逾時(秒)
+  charset:
+    en: Character Set
+    zh-CN: 字符集
+    zh-HK: 字元集
+  collation:
+    en: Collation
+    zh-CN: 排序规则
+    zh-HK: 排序規則
+  read_timeout:
+    en: Idle Timeout (seconds)
+    zh-CN: 空闲超时(秒)
+    zh-HK: 閒置逾時(秒)
+  application_name:
+    en: Application Name
+    zh-CN: 应用名称
+    zh-HK: 應用名稱
+  ssh_tunnel_enabled:
+    en: Enable SSH Tunnel
+    zh-CN: 启用 SSH 隧道
+    zh-HK: 啟用 SSH 通道
+  ssh_host:
+    en: SSH Host
+    zh-CN: SSH 主机
+    zh-HK: SSH 主機
+  ssh_port:
+    en: SSH Port
+    zh-CN: SSH 端口
+    zh-HK: SSH 端口
+  ssh_username:
+    en: SSH Username
+    zh-CN: SSH 用户名
+    zh-HK: SSH 使用者名稱
+  ssh_password:
+    en: SSH Password
+    zh-CN: SSH 密码
+    zh-HK: SSH 密碼
+  ssh_auth_type:
+    en: SSH Auth Type
+    zh-CN: SSH 认证类型
+    zh-HK: SSH 驗證類型
+  ssh_auth_password:
+    en: Password
+    zh-CN: 密码
+    zh-HK: 密碼
+  ssh_auth_private_key:
+    en: Private Key
+    zh-CN: 私钥
+    zh-HK: 私鑰
+  ssh_auth_private_key_content:
+    en: Private Key Content
+    zh-CN: 私钥内容
+    zh-HK: 私鑰內容
+  ssh_auth_agent:
+    en: SSH Agent
+    zh-CN: SSH Agent
+    zh-HK: SSH Agent
+  ssh_auth_pageant:
+    en: Pageant (Windows)
+    zh-CN: Pageant（Windows）
+    zh-HK: Pageant（Windows）
+  ssh_auth_auto_public_key:
+    en: Auto Public Key
+    zh-CN: 自动公钥
+    zh-HK: 自動公鑰
+  ssh_private_key_path:
+    en: Private Key Path
+    zh-CN: 私钥路径
+    zh-HK: 私鑰路徑
+  ssh_private_key_content:
+    en: Private Key Content
+    zh-CN: 私钥内容
+    zh-HK: 私鑰內容
+  ssh_private_key_content_placeholder:
+    en: Paste OpenSSH or PuTTY private key content
+    zh-CN: 粘贴 OpenSSH 或 PuTTY 私钥内容
+    zh-HK: 貼上 OpenSSH 或 PuTTY 私鑰內容
+  ssh_private_key_passphrase:
+    en: Key Passphrase
+    zh-CN: 私钥口令
+    zh-HK: 私鑰口令
+  ssh_target_host:
+    en: Tunnel Target Host
+    zh-CN: 隧道目标主机
+    zh-HK: 通道目標主機
+  ssh_target_port:
+    en: Tunnel Target Port
+    zh-CN: 隧道目标端口
+    zh-HK: 通道目標端口
+  enter_remark:
+    en: "Enter remark information..."
+    zh-CN: 输入连接备注信息...
+    zh-HK: 輸入連線備註資訊...
+  encrypt:
+    en: Encrypt
+    zh-CN: 加密
+    zh-HK: 加密
+  encrypt_off:
+    en: "Off"
+    zh-CN: 关闭
+    zh-HK: 關閉
+  encrypt_on:
+    en: "On"
+    zh-CN: 开启
+    zh-HK: 開啟
+  encrypt_strict:
+    en: Strict
+    zh-CN: 强制
+    zh-HK: 強制
+  trust_certificate:
+    en: Trust Certificate
+    zh-CN: 信任证书
+    zh-HK: 信任憑證
+  require_ssl:
+    en: Require SSL
+    zh-CN: 启用 SSL
+    zh-HK: 啟用 SSL
+  verify_ca:
+    en: Verify CA
+    zh-CN: 校验证书链
+    zh-HK: 校驗憑證鏈
+  verify_identity:
+    en: Verify Hostname
+    zh-CN: 校验主机名
+    zh-HK: 校驗主機名稱
+  ssl_root_cert_path:
+    en: Root Certificate
+    zh-CN: 根证书路径
+    zh-HK: 根憑證路徑
+  ssl_root_cert_path_placeholder:
+    en: /path/to/ca.pem
+    zh-CN: /path/to/ca.pem
+    zh-HK: /path/to/ca.pem
+  tls_hostname_override:
+    en: TLS Hostname Override
+    zh-CN: TLS 主机名覆盖
+    zh-HK: TLS 主機名稱覆寫
+  tls_hostname_override_placeholder:
+    en: db.internal.example.com
+    zh-CN: db.internal.example.com
+    zh-HK: db.internal.example.com
+  ssl_mode:
+    en: SSL Mode
+    zh-CN: SSL 模式
+    zh-HK: SSL 模式
+  ssl_mode_disable:
+    en: Disable
+    zh-CN: 禁用
+    zh-HK: 停用
+  ssl_mode_prefer:
+    en: Prefer
+    zh-CN: 优先
+    zh-HK: 優先
+  ssl_mode_require:
+    en: Require
+    zh-CN: 强制
+    zh-HK: 強制
+  ssl_accept_invalid_certs:
+    en: Accept Invalid Certificates
+    zh-CN: 接受无效证书
+    zh-HK: 接受無效憑證
+  ssl_accept_invalid_hostnames:
+    en: Accept Invalid Hostnames
+    zh-CN: 接受主机名不匹配
+    zh-HK: 接受主機名稱不匹配
+  compression:
+    en: Compression
+    zh-CN: 压缩
+    zh-HK: 壓縮
+  schema_http:
+    en: HTTP
+    zh-CN: HTTP
+    zh-HK: HTTP
+  schema_https:
+    en: HTTPS
+    zh-CN: HTTPS
+    zh-HK: HTTPS
+  schema_ws:
+    en: WebSocket
+    zh-CN: WebSocket
+    zh-HK: WebSocket
+  schema_wss:
+    en: WebSocket (TLS)
+    zh-CN: WebSocket (TLS)
+    zh-HK: WebSocket (TLS)
+
+ObjectView:
+  titles:
+    databases:
+      en: Databases
+      zh-CN: 数据库
+      zh-HK: 資料庫
+    schemas:
+      en: Schemas
+      zh-CN: 模式
+      zh-HK: 結構描述
+    tables:
+      en: Tables
+      zh-CN: 表
+      zh-HK: 資料表
+    columns:
+      en: Columns
+      zh-CN: 列
+      zh-HK: 欄位
+    data_skipping_indexes:
+      en: Data Skipping Indexes
+      zh-CN: 数据跳过索引
+      zh-HK: 資料略過索引
+    views:
+      en: Views
+      zh-CN: 视图
+      zh-HK: 檢視
+    user_defined_functions:
+      en: User Defined Functions
+      zh-CN: 用户自定义函数
+      zh-HK: 使用者自訂函式
+    functions:
+      en: Functions
+      zh-CN: 函数
+      zh-HK: 函式
+    stored_procedures:
+      en: Stored Procedures
+      zh-CN: 存储过程
+      zh-HK: 預存程序
+    procedures:
+      en: Procedures
+      zh-CN: 过程
+      zh-HK: 程序
+    triggers:
+      en: Triggers
+      zh-CN: 触发器
+      zh-HK: 觸發程序
+    sequences:
+      en: Sequences
+      zh-CN: 序列
+      zh-HK: 序列
+  counts:
+    databases:
+      en: "%{count} database(s)"
+      zh-CN: "%{count} 个数据库"
+      zh-HK: "%{count} 個資料庫"
+    schemas:
+      en: "%{count} schema(s)"
+      zh-CN: "%{count} 个模式"
+      zh-HK: "%{count} 個結構描述"
+    tables:
+      en: "%{count} table(s)"
+      zh-CN: "%{count} 张表"
+      zh-HK: "%{count} 張資料表"
+    columns:
+      en: "%{count} column(s)"
+      zh-CN: "%{count} 列"
+      zh-HK: "%{count} 個欄位"
+    indexes:
+      en: "%{count} index(es)"
+      zh-CN: "%{count} 个索引"
+      zh-HK: "%{count} 個索引"
+    views:
+      en: "%{count} view(s)"
+      zh-CN: "%{count} 个视图"
+      zh-HK: "%{count} 個檢視"
+    materialized_views:
+      en: "%{count} materialized view(s)"
+      zh-CN: "%{count} 个物化视图"
+      zh-HK: "%{count} 個實體化檢視"
+    functions:
+      en: "%{count} function(s)"
+      zh-CN: "%{count} 个函数"
+      zh-HK: "%{count} 個函式"
+    procedures:
+      en: "%{count} procedure(s)"
+      zh-CN: "%{count} 个过程"
+      zh-HK: "%{count} 個程序"
+    triggers:
+      en: "%{count} trigger(s)"
+      zh-CN: "%{count} 个触发器"
+      zh-HK: "%{count} 個觸發程序"
+    sequences:
+      en: "%{count} sequence(s)"
+      zh-CN: "%{count} 个序列"
+      zh-HK: "%{count} 個序列"
+  named:
+    columns:
+      en: "Columns - %{table}"
+      zh-CN: "列 - %{table}"
+      zh-HK: "欄位 - %{table}"
+    indexes:
+      en: "Indexes - %{table}"
+      zh-CN: "索引 - %{table}"
+      zh-HK: "索引 - %{table}"
+  columns:
+    cache:
+      en: Cache
+      zh-CN: 缓存
+      zh-HK: 快取
+    charset:
+      en: Charset
+      zh-CN: 字符集
+      zh-HK: 字元集
+    collation:
+      en: Collation
+      zh-CN: 排序规则
+      zh-HK: 定序
+    columns:
+      en: Columns
+      zh-CN: 列
+      zh-HK: 欄位
+    comment:
+      en: Comment
+      zh-CN: 注释
+      zh-HK: 註解
+    compatibility_level:
+      en: Compat Level
+      zh-CN: 兼容级别
+      zh-HK: 相容性層級
+    created:
+      en: Created
+      zh-CN: 创建时间
+      zh-HK: 建立時間
+    current:
+      en: Current
+      zh-CN: 当前值
+      zh-HK: 目前值
+    cycle:
+      en: Cycle
+      zh-CN: 循环
+      zh-HK: 循環
+    default:
+      en: Default
+      zh-CN: 默认值
+      zh-HK: 預設值
+    definition:
+      en: Definition
+      zh-CN: 定义
+      zh-HK: 定義
+    description:
+      en: Description
+      zh-CN: 描述
+      zh-HK: 描述
+    encoding:
+      en: Encoding
+      zh-CN: 编码
+      zh-HK: 編碼
+    engine:
+      en: Engine
+      zh-CN: 引擎
+      zh-HK: 引擎
+    event:
+      en: Event
+      zh-CN: 事件
+      zh-HK: 事件
+    expression:
+      en: Expression
+      zh-CN: 表达式
+      zh-HK: 運算式
+    increment:
+      en: Increment
+      zh-CN: 增量
+      zh-HK: 增量
+    key:
+      en: Key
+      zh-CN: 键
+      zh-HK: 鍵
+    last_analyzed:
+      en: Last Analyzed
+      zh-CN: 上次分析
+      zh-HK: 上次分析
+    last_value:
+      en: Last Value
+      zh-CN: 上一个值
+      zh-HK: 上一個值
+    maximum:
+      en: Max
+      zh-CN: 最大值
+      zh-HK: 最大值
+    minimum:
+      en: Min
+      zh-CN: 最小值
+      zh-HK: 最小值
+    modified:
+      en: Modified
+      zh-CN: 修改时间
+      zh-HK: 修改時間
+    name:
+      en: Name
+      zh-CN: 名称
+      zh-HK: 名稱
+    nullable:
+      en: Nullable
+      zh-CN: 可为空
+      zh-HK: 可為空
+    indexes:
+      en: Indexes
+      zh-CN: 索引数
+      zh-HK: 索引數
+    owner:
+      en: Owner
+      zh-CN: 所有者
+      zh-HK: 擁有者
+    primary_key:
+      en: Primary Key
+      zh-CN: 主键
+      zh-HK: 主鍵
+    return_type:
+      en: Return Type
+      zh-CN: 返回类型
+      zh-HK: 傳回類型
+    rows:
+      en: Rows
+      zh-CN: 行数
+      zh-HK: 資料列數
+    schema:
+      en: Schema
+      zh-CN: 模式
+      zh-HK: 結構描述
+    size:
+      en: Size
+      zh-CN: 大小
+      zh-HK: 大小
+    start:
+      en: Start
+      zh-CN: 起始值
+      zh-HK: 起始值
+    status:
+      en: Status
+      zh-CN: 状态
+      zh-HK: 狀態
+    table:
+      en: Table
+      zh-CN: 表
+      zh-HK: 資料表
+    tables:
+      en: Tables
+      zh-CN: 表数量
+      zh-HK: 資料表數量
+    tablespace:
+      en: Tablespace
+      zh-CN: 表空间
+      zh-HK: 資料表空間
+    temporary_tablespace:
+      en: Temp Tablespace
+      zh-CN: 临时表空间
+      zh-HK: 暫存資料表空間
+    timing:
+      en: Timing
+      zh-CN: 时机
+      zh-HK: 時機
+    type:
+      en: Type
+      zh-CN: 类型
+      zh-HK: 類型
+    unique:
+      en: Unique
+      zh-CN: 唯一
+      zh-HK: 唯一

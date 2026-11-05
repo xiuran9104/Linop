@@ -1,0 +1,46 @@
+name: Bug 报告 / Bug Report
+description: 告诉我们哪里出了问题 / Tell us what went wrong
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！直接描述问题即可，信息不全也没关系，我们可以继续追问。
+
+        Thanks for reporting. A brief description is enough; we can ask for more details later.
+
+        > 请勿提交密码、私钥、Token、完整连接串或业务数据。Do not include credentials, full connection strings, or business data.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 发生了什么？/ What happened?
+      description: 请描述实际结果；如果方便，也可以写下你原本期望的结果。Describe what happened and, if convenient, what you expected.
+      placeholder: 我在……时遇到了…… / When I ..., I encountered ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 如何复现？/ How can we reproduce it?
+      description: 如果能稳定复现，请写下简单步骤；不能复现也可以留空。Add brief steps if the problem is reproducible; otherwise leave this blank.
+      placeholder: |
+        1. 打开…… / Open ...
+        2. 点击…… / Click ...
+        3. 出现…… / See ...
+
+  - type: input
+    id: environment
+    attributes:
+      label: 版本与系统 / Version and system
+      description: 如果方便，请填写 Navop 版本和操作系统。If convenient, include the Navop version and operating system.
+      placeholder: "例如 / e.g. Navop 0.10.3, Windows 11"
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 截图、日志或其他信息 / Screenshots, logs, or anything else
+      description: 可直接拖入附件，请先移除敏感信息。Attach anything useful after removing sensitive information.

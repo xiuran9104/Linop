@@ -1,0 +1,1279 @@
+//! MongoDB 连接表单窗口
+
+use connection_form::team::{
+    TeamSelectItem, connection_sync_controls_visible_in, create_team_select, refresh_team_options,
+    refresh_teams_tooltip, resolve_team_assignment, selected_team_id, team_label,
+    team_management_enabled,
+};
+use connection_form::{
+    SshTunnelForm, SshTunnelFormConfig, SshTunnelFormValue,
+    credential::{
+        CredentialCapabilities, CredentialPickerConfig, CredentialPickerEvent,
+        CredentialReferencePicker, create_credential_picker, resolve_connection_for_runtime,
+    },
+};
+use gpui::prelude::FluentBuilder;
+use gpui::{
+    App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
+    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Subscription, Window,
+    div, px,
+};
+use gpui_component::{
+    ActiveTheme, Disableable, IndexPath, Sizable, Size, WindowExt,
+    button::{Button, ButtonVariants as _},
+    checkbox::Checkbox,
+    h_flex,
+    input::{Input, InputState},
+    notification::Notification,
+    scroll::ScrollableElement,
+    select::{Select, SelectItem, SelectState},
+    tab::{Tab, TabBar},
+    v_flex,
+};
+use one_assets::IconName;
+use one_core::cloud_sync::TeamOption;
+use one_core::connection_notifier::{ConnectionDataEvent, get_notifier};
+use one_core::gpui_tokio::Tokio;
+use one_core::storage::traits::Repository;
+use one_core::storage::{
+    MongoDBParams, MongoDriverVariant, MongoSshTunnelConfig, StoredConnection, Workspace,
+};
+use rust_i18n::t;
+use tool_runtime::AiAccessLevel;
+use tracing::error;
+
+use crate::GlobalMongoState;
+
+/// MongoDB 表单窗口配置。`Clone` 见 `one_core::popup_window::open_reusable_popup_window`。
+#[derive(Clone)]
+pub struct MongoFormWindowConfig {
+    pub editing_connection: Option<StoredConnection>,
+    pub initial_connection: Option<StoredConnection>,
+    /// 新建连接向导打开时指定的目标分组：仅新建（非编辑、非复制）时预选，用户仍可修改。
+    pub initial_workspace_id: Option<i64>,
+    pub on_saved: Option<MongoFormSavedCallback>,
+    pub workspaces: Vec<Workspace>,
+    pub teams: Vec<TeamOption>,
+    pub ssh_connections: Vec<StoredConnection>,
+}
+
+pub type MongoFormSavedCallback =
+    std::sync::Arc<dyn Fn(StoredConnection, &mut App) + Send + Sync + 'static>;
+
+impl MongoFormWindowConfig {
+    fn is_editing(&self) -> bool {
+        self.editing_connection.is_some()
+    }
+
+    fn connection_to_load(&self) -> Option<&StoredConnection> {
+        self.editing_connection
+            .as_ref()
+            .or(self.initial_connection.as_ref())
+    }
+}
+
+#[derive(Clone, Default, PartialEq)]
+struct WorkspaceSelectItem {
+    id: Option<i64>,
+    name: String,
+}
+
+impl WorkspaceSelectItem {
+    fn none() -> Self {
+        Self {
+            id: None,
+            name: t!("Common.none").to_string(),
+        }
+    }
+
+    fn from_workspace(workspace: &Workspace) -> Self {
+        Self {
+            id: workspace.id,
+            name: workspace.name.clone(),
+        }
+    }
+}
+
+impl SelectItem for WorkspaceSelectItem {
+    type Value = Option<i64>;
+
+    fn title(&self) -> SharedString {
+        self.name.clone().into()
+    }
+
+    fn value(&self) -> &Self::Value {
+        &self.id
+    }
+}
+
+#[derive(Clone, PartialEq)]
+struct DriverVariantSelectItem {
+    variant: MongoDriverVariant,
+    label: String,
+}
+
+impl DriverVariantSelectItem {
+    fn all() -> Vec<Self> {
+        vec![
+            Self {
+                variant: MongoDriverVariant::Modern,
+                label: t!("MongoForm.driver_variant_modern").to_string(),
+            },
+            Self {
+                variant: MongoDriverVariant::Legacy,
+                label: t!("MongoForm.driver_variant_legacy").to_string(),
+            },
+            Self {
+                variant: MongoDriverVariant::Legacy32,
+                label: t!("MongoForm.driver_variant_legacy_3_2").to_string(),
+            },
+        ]
+    }
+}
+
+impl SelectItem for DriverVariantSelectItem {
+    type Value = MongoDriverVariant;
+
+    fn title(&self) -> SharedString {
+        self.label.clone().into()
+    }
+
+    fn value(&self) -> &Self::Value {
+        &self.variant
+    }
+}
+
+/// MongoDB 连接表单窗口
+pub struct MongoFormWindow {
+    focus_handle: FocusHandle,
+    is_editing: bool,
+    editing_id: Option<i64>,
+    editing_cloud_id: Option<String>,
+    editing_last_synced_at: Option<i64>,
+    editing_owner_id: Option<String>,
+
+    active_tab: usize,
+
+    name_input: Entity<InputState>,
+    host_input: Entity<InputState>,
+    port_input: Entity<InputState>,
+    database_input: Entity<InputState>,
+    username_input: Entity<InputState>,
+    password_input: Entity<InputState>,
+    credential_picker: Entity<CredentialReferencePicker>,
+    authentication_source_input: Entity<InputState>,
+    replica_set_input: Entity<InputState>,
+    read_preference_input: Entity<InputState>,
+    connect_timeout_seconds_input: Entity<InputState>,
+    application_name_input: Entity<InputState>,
+    driver_variant_select: Entity<SelectState<Vec<DriverVariantSelectItem>>>,
+
+    use_srv_record: bool,
+    direct_connection: bool,
+    use_tls: bool,
+    ssh_tunnel_form: Entity<SshTunnelForm>,
+
+    workspace_select: Entity<SelectState<Vec<WorkspaceSelectItem>>>,
+    team_select: Entity<SelectState<Vec<TeamSelectItem>>>,
+    remark_input: Entity<InputState>,
+    sync_enabled: bool,
+
+    /// 连接级 AI 访问策略（issue #437）：允许 / 只读 / 禁止。
+    ///
+    /// 级别保存在 `StoredConnection::ai_access_level` 上，随连接一起保存与同步；
+    /// 选项布局由 `connection_form::ai_access` 的通用组件统一渲染。
+    ai_access_level: Entity<AiAccessLevel>,
+
+    is_testing: bool,
+    test_result: Option<Result<(), String>>,
+    on_saved: Option<MongoFormSavedCallback>,
+    _subscriptions: Vec<Subscription>,
+}
+
+impl MongoFormWindow {
+    pub fn new(config: MongoFormWindowConfig, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let is_editing = config.is_editing();
+        let connection_to_load = config.connection_to_load().cloned();
+        let editing_id = config.editing_connection.as_ref().and_then(|c| c.id);
+        let editing_cloud_id = config
+            .editing_connection
+            .as_ref()
+            .and_then(|c| c.cloud_id.clone());
+        let editing_last_synced_at = config
+            .editing_connection
+            .as_ref()
+            .and_then(|c| c.last_synced_at);
+        let editing_owner_id = config
+            .editing_connection
+            .as_ref()
+            .and_then(|c| c.owner_id.clone());
+
+        let existing_parameters = connection_to_load
+            .as_ref()
+            .and_then(|connection| connection.to_mongodb_params().ok());
+
+        let name_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("MongoForm.name_placeholder").to_string());
+            if let Some(connection) = &connection_to_load {
+                state.set_value(connection.name.clone(), window, cx);
+            }
+            state
+        });
+
+        let host_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("MongoForm.host_placeholder").to_string());
+            if let Some(parameters) = &existing_parameters {
+                if !parameters.host.is_empty() {
+                    state.set_value(parameters.host.clone(), window, cx);
+                }
+            }
+            state
+        });
+
+        let port_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("MongoForm.port_placeholder").to_string());
+            if let Some(parameters) = &existing_parameters {
+                if let Some(port_value) = parameters.port {
+                    state.set_value(port_value.to_string(), window, cx);
+                } else {
+                    state.set_value("27017", window, cx);
+                }
+            } else {
+                state.set_value("27017", window, cx);
+            }
+            state
+        });
+
+        let database_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("MongoForm.database_placeholder").to_string());
+            if let Some(parameters) = &existing_parameters {
+                if let Some(database) = &parameters.database {
+                    if !database.is_empty() {
+                        state.set_value(database.clone(), window, cx);
+                    }
+                }
+            }
+            state
+        });
+
+        let username_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("MongoForm.username_placeholder").to_string());
+            if let Some(parameters) = &existing_parameters {
+                if let Some(username) = &parameters.username {
+                    if !username.is_empty() {
+                        state.set_value(username.clone(), window, cx);
+                    }
+                }
+            }
+            state
+        });
+
+        let password_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("MongoForm.password_placeholder").to_string())
+                .masked(true);
+            if let Some(parameters) = &existing_parameters {
+                if let Some(password) = &parameters.password {
+                    if !password.is_empty() {
+                        state.set_value(password.clone(), window, cx);
+                    }
+                }
+            }
+            state
+        });
+
+        let authentication_source_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("MongoForm.auth_source_placeholder").to_string());
+            if let Some(parameters) = &existing_parameters {
+                if let Some(auth_source) = &parameters.auth_source {
+                    if !auth_source.is_empty() {
+                        state.set_value(auth_source.clone(), window, cx);
+                    }
+                }
+            }
+            state
+        });
+
+        let replica_set_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("MongoForm.replica_set_placeholder").to_string());
+            if let Some(parameters) = &existing_parameters {
+                if let Some(replica_set) = &parameters.replica_set {
+                    if !replica_set.is_empty() {
+                        state.set_value(replica_set.clone(), window, cx);
+                    }
+                }
+            }
+            state
+        });
+
+        let read_preference_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("MongoForm.read_preference_placeholder").to_string());
+            if let Some(parameters) = &existing_parameters {
+                if let Some(read_preference) = &parameters.read_preference {
+                    if !read_preference.is_empty() {
+                        state.set_value(read_preference.clone(), window, cx);
+                    }
+                }
+            }
+            state
+        });
+
+        let connect_timeout_seconds_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("MongoForm.connect_timeout_placeholder").to_string());
+            if let Some(parameters) = &existing_parameters {
+                if let Some(timeout_seconds) = parameters.connect_timeout_seconds {
+                    state.set_value(timeout_seconds.to_string(), window, cx);
+                }
+            }
+            state
+        });
+
+        let application_name_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("MongoForm.app_name_placeholder").to_string());
+            if let Some(parameters) = &existing_parameters {
+                if let Some(application_name) = &parameters.application_name {
+                    if !application_name.is_empty() {
+                        state.set_value(application_name.clone(), window, cx);
+                    }
+                }
+            }
+            state
+        });
+
+        let remark_input = cx.new(|cx| {
+            let mut state = InputState::new(window, cx)
+                .placeholder(t!("MongoForm.remark_placeholder").to_string());
+            if let Some(connection) = &connection_to_load {
+                if let Some(remark) = &connection.remark {
+                    state.set_value(remark.clone(), window, cx);
+                }
+            }
+            state
+        });
+
+        let workspace_items = {
+            let mut items = vec![WorkspaceSelectItem::none()];
+            items.extend(
+                config
+                    .workspaces
+                    .iter()
+                    .map(WorkspaceSelectItem::from_workspace),
+            );
+            items
+        };
+
+        // 编辑 / 复制连接回填原分组；纯新建时用新建向导传入的目标分组预选（用户仍可改）。
+        let selected_workspace_id = if connection_to_load.is_some() {
+            connection_to_load
+                .as_ref()
+                .and_then(|connection| connection.workspace_id)
+        } else {
+            config.initial_workspace_id
+        };
+
+        let workspace_select = cx.new(|cx| {
+            let mut state = SelectState::new(workspace_items, None, window, cx);
+            if let Some(selected) = selected_workspace_id {
+                state.set_selected_value(&Some(selected), window, cx);
+            }
+            state
+        });
+
+        let selected_team_id = connection_to_load
+            .as_ref()
+            .and_then(|c| c.team_id.as_deref());
+        let team_select = create_team_select(&config.teams, selected_team_id, window, cx);
+
+        let sync_enabled = connection_to_load
+            .as_ref()
+            .map(|connection| connection.sync_enabled)
+            .unwrap_or(true);
+
+        // 新建连接默认「允许」；编辑已有连接时从连接字段回填。
+        let mut ai_access_level = AiAccessLevel::Allowed;
+        if let Some(connection) = connection_to_load.as_ref() {
+            ai_access_level = connection_form::ai_access::stored_level(connection.id, cx);
+        }
+
+        let use_srv_record = existing_parameters
+            .as_ref()
+            .map(|parameters| parameters.use_srv_record)
+            .unwrap_or(false);
+        let driver_variant = existing_parameters
+            .as_ref()
+            .map(|parameters| parameters.driver_variant)
+            .unwrap_or_default();
+        let driver_variant_items = DriverVariantSelectItem::all();
+        let driver_variant_index = driver_variant_items
+            .iter()
+            .position(|item| item.variant == driver_variant)
+            .map(IndexPath::new);
+        let driver_variant_select =
+            cx.new(|cx| SelectState::new(driver_variant_items, driver_variant_index, window, cx));
+        let direct_connection = existing_parameters
+            .as_ref()
+            .map(|parameters| parameters.direct_connection)
+            .unwrap_or(false);
+        let use_tls = existing_parameters
+            .as_ref()
+            .map(|parameters| parameters.use_tls)
+            .unwrap_or(false);
+        let existing_ssh = existing_parameters
+            .as_ref()
+            .and_then(|p| p.ssh_tunnel.as_ref());
+        let ssh_tunnel_form = cx.new(|cx| {
+            SshTunnelForm::new(
+                SshTunnelFormConfig::new(
+                    "mongo-ssh",
+                    t!("ConnectionForm.target_host_placeholder"),
+                    "27017",
+                    t!("MongoForm.ssh_timeout_label"),
+                    "30",
+                ),
+                config.ssh_connections.clone(),
+                existing_ssh.map(|ssh| SshTunnelFormValue {
+                    enabled: ssh.enabled,
+                    connection_id: ssh.connection_id,
+                    host: ssh.host.clone(),
+                    port: ssh.port,
+                    username: ssh.username.clone(),
+                    auth_type: ssh.auth_type.clone(),
+                    password: ssh.password.clone(),
+                    private_key_path: ssh.private_key_path.clone(),
+                    private_key_content: ssh.private_key_content.clone(),
+                    private_key_passphrase: ssh.private_key_passphrase.clone(),
+                    target_host: ssh.target_host.clone(),
+                    target_port: ssh.target_port,
+                    timeout: ssh.timeout,
+                }),
+                window,
+                cx,
+            )
+        });
+
+        let credential_picker = create_credential_picker(
+            CredentialPickerConfig::new("mongo-credential", CredentialCapabilities::login())
+                .reference(
+                    existing_parameters
+                        .as_ref()
+                        .and_then(|parameters| parameters.credential_reference.clone()),
+                ),
+            window,
+            cx,
+        );
+        let subscriptions = vec![
+            cx.subscribe(&credential_picker, |_, _, _: &CredentialPickerEvent, cx| {
+                cx.notify()
+            }),
+        ];
+        Self {
+            focus_handle: cx.focus_handle(),
+            is_editing,
+            editing_id,
+            editing_cloud_id,
+            editing_last_synced_at,
+            editing_owner_id,
+            active_tab: 0,
+            name_input,
+            host_input,
+            port_input,
+            database_input,
+            username_input,
+            password_input,
+            credential_picker,
+            authentication_source_input,
+            replica_set_input,
+            read_preference_input,
+            connect_timeout_seconds_input,
+            application_name_input,
+            driver_variant_select,
+            use_srv_record,
+            direct_connection,
+            use_tls,
+            ssh_tunnel_form,
+            workspace_select,
+            team_select,
+            remark_input,
+            sync_enabled,
+            ai_access_level: cx.new(|_| ai_access_level),
+            is_testing: false,
+            test_result: None,
+            on_saved: config.on_saved,
+            _subscriptions: subscriptions,
+        }
+    }
+
+    fn get_workspace_id(&self, cx: &App) -> Option<i64> {
+        self.workspace_select
+            .read(cx)
+            .selected_value()
+            .cloned()
+            .flatten()
+    }
+
+    fn get_team_id(&self, cx: &App) -> Option<String> {
+        selected_team_id(&self.team_select, cx)
+    }
+
+    fn request_team_sync(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        refresh_team_options(&self.team_select, window, cx);
+    }
+
+    fn build_ssh_tunnel_config(&self, cx: &App) -> Option<MongoSshTunnelConfig> {
+        let value = self.ssh_tunnel_form.read(cx).value(cx);
+        if !value.enabled {
+            return None;
+        }
+
+        Some(MongoSshTunnelConfig {
+            enabled: true,
+            connection_id: value.connection_id,
+            host: value.host,
+            port: value.port,
+            username: value.username,
+            auth_type: value.auth_type,
+            password: value.password,
+            private_key_path: value.private_key_path,
+            private_key_content: value.private_key_content,
+            private_key_passphrase: value.private_key_passphrase,
+            target_host: value.target_host,
+            target_port: value.target_port,
+            timeout: value.timeout,
+        })
+    }
+
+    fn build_parameters(&self, cx: &App) -> Result<MongoDBParams, String> {
+        let host_value = self.host_input.read(cx).text().to_string();
+        let host_value = host_value.trim().to_string();
+        if host_value.is_empty() {
+            return Err(t!("MongoForm.host_required").to_string());
+        }
+
+        let port_text = self.port_input.read(cx).text().to_string();
+        let port_text = port_text.trim().to_string();
+        let port_value = if port_text.is_empty() {
+            None
+        } else {
+            Some(
+                port_text
+                    .parse::<u16>()
+                    .map_err(|_| t!("MongoForm.port_must_be_number").to_string())?,
+            )
+        };
+
+        let database_value = self.database_input.read(cx).text().to_string();
+        let database_value = database_value.trim().to_string();
+        let database = if database_value.is_empty() {
+            None
+        } else {
+            Some(database_value)
+        };
+
+        let username_value = self.username_input.read(cx).text().to_string();
+        let username_value = username_value.trim().to_string();
+        let username = if username_value.is_empty() {
+            None
+        } else {
+            Some(username_value)
+        };
+
+        let password_value = self.password_input.read(cx).text().to_string();
+        let password = if password_value.is_empty() {
+            None
+        } else {
+            Some(password_value)
+        };
+
+        let auth_source_value = self.authentication_source_input.read(cx).text().to_string();
+        let auth_source_value = auth_source_value.trim().to_string();
+        let auth_source = if auth_source_value.is_empty() {
+            None
+        } else {
+            Some(auth_source_value)
+        };
+
+        let replica_set_value = self.replica_set_input.read(cx).text().to_string();
+        let replica_set_value = replica_set_value.trim().to_string();
+        let replica_set = if replica_set_value.is_empty() {
+            None
+        } else {
+            Some(replica_set_value)
+        };
+
+        let read_preference_value = self.read_preference_input.read(cx).text().to_string();
+        let read_preference_value = read_preference_value.trim().to_string();
+        let read_preference = if read_preference_value.is_empty() {
+            None
+        } else {
+            Some(read_preference_value)
+        };
+
+        let connect_timeout_text = self
+            .connect_timeout_seconds_input
+            .read(cx)
+            .text()
+            .to_string();
+        let connect_timeout_text = connect_timeout_text.trim().to_string();
+        let connect_timeout_seconds = if connect_timeout_text.is_empty() {
+            None
+        } else {
+            Some(
+                connect_timeout_text
+                    .parse::<u64>()
+                    .map_err(|_| t!("MongoForm.timeout_must_be_number").to_string())?,
+            )
+        };
+
+        let application_name_value = self.application_name_input.read(cx).text().to_string();
+        let application_name_value = application_name_value.trim().to_string();
+        let application_name = if application_name_value.is_empty() {
+            None
+        } else {
+            Some(application_name_value)
+        };
+
+        let mut params = MongoDBParams {
+            driver_variant: self
+                .driver_variant_select
+                .read(cx)
+                .selected_value()
+                .copied()
+                .unwrap_or_default(),
+            connection_string: String::new(),
+            host: host_value,
+            port: port_value,
+            database,
+            username,
+            password,
+            credential_reference: self.credential_picker.read(cx).selected_reference(),
+            auth_source,
+            replica_set,
+            read_preference,
+            use_srv_record: self.use_srv_record,
+            direct_connection: self.direct_connection,
+            use_tls: self.use_tls,
+            connect_timeout_seconds,
+            application_name,
+            ssh_tunnel: None,
+        };
+        params.ssh_tunnel = self.build_ssh_tunnel_config(cx);
+
+        Ok(params)
+    }
+
+    fn on_test(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let name = self.name_input.read(cx).text().to_string();
+        let parameters = match self.build_parameters(cx) {
+            Ok(parameters) => parameters,
+            Err(error) => {
+                self.is_testing = false;
+                self.test_result = Some(Err(error));
+                cx.notify();
+                return;
+            }
+        };
+
+        let test_name = if name.is_empty() {
+            t!("MongoForm.default_name").to_string()
+        } else {
+            name
+        };
+        let parameters = match resolve_connection_for_runtime(
+            StoredConnection::new_mongodb(test_name.clone(), parameters, None),
+            cx,
+        )
+        .and_then(|connection| {
+            connection
+                .to_mongodb_params()
+                .map_err(|error| error.to_string())
+        }) {
+            Ok(parameters) => parameters,
+            Err(error) => {
+                self.is_testing = false;
+                self.test_result = Some(Err(error));
+                cx.notify();
+                return;
+            }
+        };
+
+        self.is_testing = true;
+        self.test_result = None;
+        cx.notify();
+        let global_state = cx.global::<GlobalMongoState>().clone();
+
+        cx.spawn(async move |this, cx| {
+            let test_result: Result<(), String> = Tokio::spawn_result(cx, async move {
+                global_state
+                    .test_parameters(test_name, &parameters)
+                    .await
+                    .map_err(anyhow::Error::new)
+            })
+            .await
+            .map_err(|error| {
+                let detailed = format!("{:#}", error);
+                error!("MongoDB 连接测试失败: {}", detailed);
+                detailed
+            });
+
+            let _ = this.update(cx, |this, cx| {
+                this.is_testing = false;
+                this.test_result = Some(test_result);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn on_save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let parameters = match self.build_parameters(cx) {
+            Ok(parameters) => parameters,
+            Err(error) => {
+                self.test_result = Some(Err(error));
+                cx.notify();
+                return;
+            }
+        };
+        let name = self.name_input.read(cx).text().to_string();
+
+        let workspace_id = self.get_workspace_id(cx);
+        let team_id = self.get_team_id(cx);
+        let assignment = match resolve_team_assignment(
+            team_id,
+            self.is_editing,
+            self.editing_owner_id.clone(),
+            cx,
+        ) {
+            Ok(assignment) => assignment,
+            Err(error) => {
+                self.test_result = Some(Err(error.to_string()));
+                cx.notify();
+                return;
+            }
+        };
+        let remark = {
+            let value = self.remark_input.read(cx).text().to_string();
+            if value.is_empty() { None } else { Some(value) }
+        };
+        let sync_enabled = self.sync_enabled;
+        let ai_access_level = *self.ai_access_level.read(cx);
+        let is_editing = self.is_editing;
+        let editing_id = self.editing_id;
+        let editing_cloud_id = self.editing_cloud_id.clone();
+        let editing_last_synced_at = self.editing_last_synced_at;
+        let on_saved = self.on_saved.clone();
+
+        let storage = cx
+            .global::<one_core::storage::GlobalStorageState>()
+            .storage
+            .clone();
+        // 保存落地之后还要回到这个窗口：切「已保存」状态、并重试一次关窗（见下面）。
+        let window_handle = window.window_handle();
+
+        cx.spawn(async move |this, cx| {
+            let result = Tokio::spawn_result(cx, async move {
+                let repo = storage
+                    .get::<one_core::storage::ConnectionRepository>()
+                    .ok_or_else(|| anyhow::anyhow!("ConnectionRepository not found"))?;
+
+                let mut connection = StoredConnection::new_mongodb(name, parameters, workspace_id);
+                connection.sync_enabled = sync_enabled;
+                connection.remark = remark;
+                connection.team_id = assignment.team_id;
+                connection.owner_id = assignment.owner_id;
+
+                if is_editing {
+                    connection.id = editing_id;
+                    connection.cloud_id = editing_cloud_id;
+                    connection.last_synced_at = editing_last_synced_at;
+                    repo.update(&mut connection)?;
+                } else {
+                    repo.insert(&mut connection)?;
+                }
+
+                // 「AI 访问」级别已经在 `connection.ai_access_level` 上，随连接一起落库；
+                // 这里再显式写一次，兼容升级前把策略存在独立表里的旧数据迁移场景。
+                // 策略写失败不算连接保存失败（连接已经写进去了），把错误带出去交给表单显示，
+                // 不能让「限制没生效」被静默吞掉。
+                let connection_id = connection
+                    .id
+                    .ok_or_else(|| anyhow::anyhow!("connection id missing after save"))?;
+                let ai_access_error =
+                    connection_form::ai_access::write_level(&repo, connection_id, ai_access_level)
+                        .err();
+
+                Ok::<(StoredConnection, Option<String>), anyhow::Error>((
+                    connection,
+                    ai_access_error,
+                ))
+            })
+            .await;
+
+            match result {
+                Ok((saved_conn, ai_access_error)) => {
+                    // 保存已经落地：把表单切到「已保存」，并**再关一次窗**。
+                    // 前面那次关窗是同步发生的，窗口正常已经消失；只有隐藏失败时它会留在屏幕上
+                    // （关闭漏斗返回 `Retained`）—— 那一次拿不到保存结果，所以提示要从这里发：
+                    // 到这个点才知道「已保存」，也只有到这里下一次保存才会变成更新而不是新建。
+                    //
+                    // 「AI 访问」策略写失败时不关窗：把窗口留下来，让用户在表单里看到错误行。
+                    _ = cx.update_window(window_handle, |_, window, cx| {
+                        let _ = this.update(cx, |form, cx| form.mark_saved(&saved_conn, cx));
+                        if ai_access_error.is_none() {
+                            let _ = one_core::window_close::close_window_after_save(window, cx);
+                        }
+                    });
+                    let _ = cx.update(|cx| {
+                        if let Some(notifier) = get_notifier(cx) {
+                            let event = if is_editing {
+                                ConnectionDataEvent::ConnectionUpdated {
+                                    connection: saved_conn.clone(),
+                                }
+                            } else {
+                                ConnectionDataEvent::ConnectionCreated {
+                                    connection: saved_conn.clone(),
+                                }
+                            };
+                            notifier.update(cx, |_, cx| {
+                                cx.emit(event);
+                            });
+                        }
+                        if let Some(on_saved) = &on_saved {
+                            on_saved(saved_conn, cx);
+                        }
+                    });
+
+                    if let Some(ai_access_error) = ai_access_error {
+                        // 连接本身已经保存成功，只有「AI 访问」策略没写进去。这条失败必须可见：
+                        // 保存发生在窗口关闭之后，表单里的错误行只有窗口被保留时才看得到，
+                        // 所以除了错误行还要在活动窗口上弹一条通知，并把原文记进日志。
+                        let message =
+                            connection_form::ai_access::ai_access_save_failed(&ai_access_error);
+                        error!("{message}");
+                        let _ = this.update(cx, |form, cx| {
+                            form.test_result = Some(Err(message.clone()));
+                            cx.notify();
+                        });
+                        let _ = cx.update(|cx| notify_error_on_active_window(message, cx));
+                    }
+                }
+                Err(error) => {
+                    error!(
+                        "{}",
+                        t!("MongoForm.save_connection_failed", error = error).to_string()
+                    );
+                }
+            }
+        })
+        .detach();
+
+        // 同步先关一次：保存还没落地，这里没什么可告诉用户的（提示和「已保存」状态都在保存
+        // 完成后补上）。保留这一步是为了不让窗口在保存期间一直开着 —— 那样连点两次「保存」
+        // 会并发插两条。
+        let _ = one_core::window_close::close_window_for_reuse(window, cx);
+    }
+
+    /// 保存已经落地：把表单切到「已保存」（编辑）状态。
+    ///
+    /// 不能依赖「窗口反正会消失」来结束这轮操作：关闭漏斗返回 `Retained` 时窗口会留在
+    /// 屏幕上（隐藏失败），没有这一步用户再点一次「保存」会按「新建」再插一条连接。
+    pub(super) fn mark_saved(&mut self, saved: &StoredConnection, cx: &mut Context<Self>) {
+        self.is_editing = true;
+        self.editing_id = saved.id;
+        self.editing_cloud_id = saved.cloud_id.clone();
+        self.editing_last_synced_at = saved.last_synced_at;
+        self.editing_owner_id = saved.owner_id.clone();
+        cx.notify();
+    }
+
+    fn render_form_row(&self, label: &str, child: impl IntoElement) -> impl IntoElement {
+        h_flex()
+            .gap_3()
+            .items_center()
+            .child(
+                div()
+                    .w(px(120.0))
+                    .text_sm()
+                    .text_right()
+                    .child(label.to_string()),
+            )
+            .child(div().flex_1().child(child))
+    }
+
+    fn render_basic_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let credential_is_manual = self
+            .credential_picker
+            .read(cx)
+            .selected_reference()
+            .is_none();
+
+        v_flex()
+            .gap_2()
+            .child(self.render_form_row(
+                t!("MongoForm.driver_variant_label").as_ref(),
+                Select::new(&self.driver_variant_select).w_full(),
+            ))
+            .child(self.render_form_row(
+                t!("MongoForm.name_label").as_ref(),
+                Input::new(&self.name_input),
+            ))
+            .child(self.render_form_row(
+                t!("MongoForm.host_label").as_ref(),
+                Input::new(&self.host_input),
+            ))
+            .child(self.render_form_row(
+                t!("MongoForm.port_label").as_ref(),
+                Input::new(&self.port_input),
+            ))
+            .child(self.render_form_row(
+                t!("MongoForm.database_label").as_ref(),
+                Input::new(&self.database_input),
+            ))
+            .child(self.render_form_row("钥匙串", self.credential_picker.clone()))
+            .when(credential_is_manual, |form| {
+                form.child(self.render_form_row(
+                    t!("MongoForm.username_label").as_ref(),
+                    Input::new(&self.username_input),
+                ))
+                .child(self.render_form_row(
+                    t!("MongoForm.password_label").as_ref(),
+                    Input::new(&self.password_input).mask_toggle(),
+                ))
+            })
+            .child(self.render_form_row(
+                t!("MongoForm.auth_source_label").as_ref(),
+                Input::new(&self.authentication_source_input),
+            ))
+            .child(self.render_form_row(
+                t!("MongoForm.workspace_label").as_ref(),
+                Select::new(&self.workspace_select).w_full(),
+            ))
+            .when(
+                connection_sync_controls_visible_in(cx) && team_management_enabled(cx),
+                |form| {
+                    form.child(
+                        self.render_form_row(
+                            &team_label(),
+                            h_flex()
+                                .gap_2()
+                                .child(Select::new(&self.team_select).w_full())
+                                .child(
+                                    Button::new("sync-mongo-teams")
+                                        .icon(IconName::Refresh)
+                                        .ghost()
+                                        .tooltip(refresh_teams_tooltip())
+                                        .on_click(cx.listener(|this, _, window, cx| {
+                                            this.request_team_sync(window, cx);
+                                        })),
+                                ),
+                        ),
+                    )
+                },
+            )
+            .when(connection_sync_controls_visible_in(cx), |form| {
+                form.child(
+                    self.render_form_row(
+                        t!("MongoForm.cloud_sync_label").as_ref(),
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Checkbox::new("mongo-sync-enabled")
+                                    .checked(self.sync_enabled)
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.sync_enabled = !this.sync_enabled;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child(t!("MongoForm.cloud_sync_enabled").to_string()),
+                            ),
+                    ),
+                )
+            })
+            // 连接级 AI 访问策略（issue #437）：布局与选项由通用组件统一渲染。
+            // 云同步被隐藏时这一项也照样显示 —— 它管的是 AI 能不能操作这个连接，与云端无关。
+            .child(self.render_form_row(
+                &connection_form::ai_access::ai_access_label(),
+                connection_form::ai_access::ai_access_selector(&self.ai_access_level, cx),
+            ))
+    }
+
+    fn render_cluster_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .gap_2()
+            .child(
+                self.render_form_row(
+                    t!("MongoForm.use_srv").as_ref(),
+                    Checkbox::new("mongo-use-srv")
+                        .checked(self.use_srv_record)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.use_srv_record = !this.use_srv_record;
+                            cx.notify();
+                        })),
+                ),
+            )
+            .child(
+                self.render_form_row(
+                    t!("MongoForm.direct_connection").as_ref(),
+                    Checkbox::new("mongo-direct-connection")
+                        .checked(self.direct_connection)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.direct_connection = !this.direct_connection;
+                            cx.notify();
+                        })),
+                ),
+            )
+            .child(self.render_form_row(
+                t!("MongoForm.replica_set_label").as_ref(),
+                Input::new(&self.replica_set_input),
+            ))
+            .child(self.render_form_row(
+                t!("MongoForm.read_preference_label").as_ref(),
+                Input::new(&self.read_preference_input),
+            ))
+    }
+
+    fn render_advanced_tab(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        v_flex()
+            .gap_2()
+            .child(
+                self.render_form_row(
+                    t!("MongoForm.tls_label").as_ref(),
+                    Checkbox::new("mongo-use-tls")
+                        .checked(self.use_tls)
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.use_tls = !this.use_tls;
+                            cx.notify();
+                        })),
+                ),
+            )
+            .child(self.render_form_row(
+                t!("MongoForm.connect_timeout_label").as_ref(),
+                Input::new(&self.connect_timeout_seconds_input),
+            ))
+            .child(self.render_form_row(
+                t!("MongoForm.app_name_label").as_ref(),
+                Input::new(&self.application_name_input),
+            ))
+    }
+
+    fn render_remark_tab(&self) -> impl IntoElement {
+        v_flex().gap_2().child(self.render_form_row(
+            t!("MongoForm.remark_label").as_ref(),
+            Input::new(&self.remark_input),
+        ))
+    }
+}
+
+impl Focusable for MongoFormWindow {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+/// 在活动窗口上弹一条错误通知；没有活动窗口时静默忽略。
+///
+/// 保存是异步完成的，等知道结果时连接表单窗口已经关掉了 —— 表单里的错误行用户看不到，
+/// 所以「AI 访问」策略写失败必须用通知再报一次，不能只写日志。
+fn notify_error_on_active_window(message: String, cx: &mut App) {
+    if let Some(window_handle) = cx.active_window() {
+        let _ = cx.update_window(window_handle, |_, window, cx| {
+            window.push_notification(Notification::error(message), cx);
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn mongo_connection(name: &str) -> StoredConnection {
+        StoredConnection::new_mongodb(
+            name.to_string(),
+            MongoDBParams {
+                driver_variant: Default::default(),
+                connection_string: String::new(),
+                host: "127.0.0.1".to_string(),
+                port: Some(27017),
+                database: Some("app".to_string()),
+                username: None,
+                password: None,
+                credential_reference: None,
+                auth_source: None,
+                replica_set: None,
+                read_preference: None,
+                use_srv_record: false,
+                direct_connection: false,
+                use_tls: false,
+                connect_timeout_seconds: None,
+                application_name: None,
+                ssh_tunnel: None,
+            },
+            None,
+        )
+    }
+
+    #[test]
+    fn initial_connection_prefills_without_edit_mode() {
+        let config = MongoFormWindowConfig {
+            initial_workspace_id: None,
+            editing_connection: None,
+            initial_connection: Some(mongo_connection("imported mongo")),
+            on_saved: None,
+            workspaces: Vec::new(),
+            teams: Vec::new(),
+            ssh_connections: Vec::new(),
+        };
+
+        assert!(!config.is_editing());
+        assert_eq!(
+            Some("imported mongo"),
+            config
+                .connection_to_load()
+                .map(|connection| connection.name.as_str())
+        );
+    }
+
+    #[test]
+    fn editing_connection_takes_precedence_over_initial_connection() {
+        let config = MongoFormWindowConfig {
+            initial_workspace_id: None,
+            editing_connection: Some(mongo_connection("existing mongo")),
+            initial_connection: Some(mongo_connection("imported mongo")),
+            on_saved: None,
+            workspaces: Vec::new(),
+            teams: Vec::new(),
+            ssh_connections: Vec::new(),
+        };
+
+        assert!(config.is_editing());
+        assert_eq!(
+            Some("existing mongo"),
+            config
+                .connection_to_load()
+                .map(|connection| connection.name.as_str())
+        );
+    }
+}
+
+impl Render for MongoFormWindow {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_testing = self.is_testing;
+        let active_tab = self.active_tab;
+
+        let test_result_element = match &self.test_result {
+            Some(Ok(())) => Some(
+                div()
+                    .w_full()
+                    .px_6()
+                    .pb_2()
+                    .text_sm()
+                    .text_color(cx.theme().success)
+                    .child(t!("MongoForm.test_success").to_string()),
+            ),
+            Some(Err(error)) => Some(
+                div().w_full().px_6().pb_2().child(
+                    div()
+                        .w_full()
+                        .max_h(px(120.0))
+                        .overflow_y_scrollbar()
+                        .whitespace_normal()
+                        .text_sm()
+                        .text_color(cx.theme().danger)
+                        .child(error.clone()),
+                ),
+            ),
+            None => None,
+        };
+
+        v_flex()
+            .justify_center()
+            .size_full()
+            .child(
+                div().flex().justify_center().px_3().pt_2().child(
+                    TabBar::new("mongodb-form-tabs")
+                        .with_size(Size::Small)
+                        .underline()
+                        .selected_index(active_tab)
+                        .on_click(cx.listener(|this, ix: &usize, _, cx| {
+                            this.active_tab = *ix;
+                            cx.notify();
+                        }))
+                        .child(Tab::new().label(t!("MongoForm.tab_basic").to_string()))
+                        .child(Tab::new().label(t!("MongoForm.tab_cluster").to_string()))
+                        .child(Tab::new().label(t!("MongoForm.tab_advanced").to_string()))
+                        .child(Tab::new().label(t!("MongoForm.tab_ssh").to_string()))
+                        .child(Tab::new().label(t!("MongoForm.tab_remark").to_string())),
+                ),
+            )
+            .child(
+                div()
+                    .id("mongo-form-content")
+                    .flex_1()
+                    .p_4()
+                    .overflow_y_scroll()
+                    .child(match active_tab {
+                        0 => self.render_basic_tab(cx).into_any_element(),
+                        1 => self.render_cluster_tab(cx).into_any_element(),
+                        2 => self.render_advanced_tab(cx).into_any_element(),
+                        3 => self.ssh_tunnel_form.clone().into_any_element(),
+                        4 => self.render_remark_tab().into_any_element(),
+                        _ => div().into_any_element(),
+                    }),
+            )
+            .when_some(test_result_element, |this, elem| this.child(elem))
+            .child(
+                h_flex()
+                    .justify_end()
+                    .gap_2()
+                    .px_6()
+                    .py_4()
+                    .border_t_1()
+                    .border_color(cx.theme().border)
+                    .child(
+                        Button::new("cancel")
+                            .small()
+                            .label(t!("Common.cancel").to_string())
+                            .on_click(|_, window, cx| {
+                                let _ = one_core::window_close::close_window_for_reuse(window, cx);
+                            }),
+                    )
+                    .child(
+                        Button::new("test")
+                            .small()
+                            .outline()
+                            .icon(IconName::Refresh)
+                            .label(if is_testing {
+                                t!("MongoForm.testing").to_string()
+                            } else {
+                                t!("MongoForm.test").to_string()
+                            })
+                            .disabled(is_testing)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.on_test(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("ok")
+                            .small()
+                            .primary()
+                            .label(t!("Common.save").to_string())
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.on_save(window, cx);
+                            })),
+                    ),
+            )
+    }
+}

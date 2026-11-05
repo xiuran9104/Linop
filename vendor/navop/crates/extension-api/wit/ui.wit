@@ -1,0 +1,31 @@
+package onet:extension;
+
+interface ui {
+    record action-context {
+        extension-id: string,
+        command-id: string,
+        node-id: string,
+        node-name: string,
+        node-type: string,
+        database-type: string,
+        connection-id: string,
+    }
+
+    enum notification-level {
+        info,
+        success,
+        warning,
+        error,
+    }
+
+    resource progress {
+        set-message: func(message: string);
+        set-fraction: func(fraction: f32);
+        close: func();
+    }
+
+    notify: func(level: notification-level, title: string, message: string);
+    current-action-context: func() -> option<action-context>;
+    refresh-tree: func(connection-id: string);
+    start-progress: func(title: string) -> progress;
+}

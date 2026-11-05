@@ -1,0 +1,709 @@
+use std::collections::{HashSet, VecDeque};
+use std::time::Instant;
+
+pub const SESSION_HISTORY_LIMIT: usize = 1024;
+pub const PERSISTED_HISTORY_LIMIT: usize = 10_000;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ShellHistoryFormat {
+    Bash,
+    Zsh,
+}
+
+/// 富历史条目，包含命令元数据用于 frecency 排序
+#[derive(Clone, Debug)]
+pub struct HistoryEntry {
+    pub command: String,
+    pub timestamp: Instant,
+    pub use_count: u32,
+    pub cwd: Option<String>,
+    pub exit_code: Option<i32>,
+}
+
+impl HistoryEntry {
+    pub fn new(command: String) -> Self {
+        Self {
+            command,
+            timestamp: Instant::now(),
+            use_count: 1,
+            cwd: None,
+            exit_code: None,
+        }
+    }
+
+    pub fn with_cwd(mut self, cwd: Option<String>) -> Self {
+        self.cwd = cwd;
+        self
+    }
+
+    pub fn with_exit_code(mut self, exit_code: Option<i32>) -> Self {
+        self.exit_code = exit_code;
+        self
+    }
+
+    /// 计算 frecency 评分
+    ///
+    /// 综合考虑使用频率、时近度、目录匹配和执行成功率。
+    /// 评分越高越优先。
+    pub fn frecency_score(&self, current_cwd: Option<&str>) -> f64 {
+        let recency_weight = recency_weight(self.timestamp);
+        let dir_bonus = dir_bonus(&self.cwd, current_cwd);
+        let success_bonus = success_bonus(self.exit_code);
+
+        self.use_count as f64 * recency_weight * dir_bonus * success_bonus
+    }
+}
+
+/// 时近度权重（参考 Atuin/Firefox frecency）
+fn recency_weight(timestamp: Instant) -> f64 {
+    let elapsed = timestamp.elapsed();
+    if elapsed.as_secs() < 300 {
+        // 最近 5 分钟
+        100.0
+    } else if elapsed.as_secs() < 3600 {
+        // 最近 1 小时
+        70.0
+    } else if elapsed.as_secs() < 86400 {
+        // 最近 24 小时
+        50.0
+    } else {
+        30.0
+    }
+}
+
+/// 目录匹配加分
+fn dir_bonus(entry_cwd: &Option<String>, current_cwd: Option<&str>) -> f64 {
+    match (entry_cwd.as_deref(), current_cwd) {
+        (Some(entry), Some(current)) if entry == current => 1.5,
+        _ => 1.0,
+    }
+}
+
+/// 成功执行加分
+fn success_bonus(exit_code: Option<i32>) -> f64 {
+    match exit_code {
+        Some(code) if code != 0 => 0.5,
+        _ => 1.0, // None 或 0 都视为成功
+    }
+}
+
+pub fn normalize_history_command(command: &str) -> Option<String> {
+    let normalized = command.trim();
+    (!normalized.is_empty()).then(|| normalized.to_string())
+}
+
+pub fn normalize_recorded_command(command: &str, history_user: Option<&str>) -> Option<String> {
+    let command = normalize_history_command(command)?;
+    let command = strip_bash_history_timestamp_prefix(&command, history_user).unwrap_or(&command);
+    normalize_history_command(command)
+}
+
+fn strip_bash_history_timestamp_prefix<'a>(
+    command: &'a str,
+    history_user: Option<&str>,
+) -> Option<&'a str> {
+    if !has_bash_history_timestamp_prefix(command) {
+        return None;
+    }
+    let rest = command[20..].trim_start();
+    let Some(user) = history_user.map(str::trim).filter(|user| !user.is_empty()) else {
+        return Some(rest);
+    };
+    Some(strip_leading_user_token(rest, user).unwrap_or(rest))
+}
+
+fn has_bash_history_timestamp_prefix(command: &str) -> bool {
+    let bytes = command.as_bytes();
+    bytes.len() > 20
+        && bytes[0..4].iter().all(u8::is_ascii_digit)
+        && bytes[4] == b'-'
+        && bytes[5..7].iter().all(u8::is_ascii_digit)
+        && bytes[7] == b'-'
+        && bytes[8..10].iter().all(u8::is_ascii_digit)
+        && bytes[10].is_ascii_whitespace()
+        && bytes[11..13].iter().all(u8::is_ascii_digit)
+        && bytes[13] == b':'
+        && bytes[14..16].iter().all(u8::is_ascii_digit)
+        && bytes[16] == b':'
+        && bytes[17..19].iter().all(u8::is_ascii_digit)
+        && bytes[19].is_ascii_whitespace()
+}
+
+fn strip_leading_user_token<'a>(text: &'a str, user: &str) -> Option<&'a str> {
+    let after_user = text.strip_prefix(user)?;
+    after_user
+        .chars()
+        .next()
+        .filter(|ch| ch.is_whitespace())
+        .map(|_| after_user.trim_start())
+}
+
+pub fn parse_shell_history(contents: &str, format: ShellHistoryFormat) -> Vec<String> {
+    contents
+        .lines()
+        .filter_map(|line| match format {
+            ShellHistoryFormat::Bash => normalize_history_command(line),
+            ShellHistoryFormat::Zsh => {
+                if let Some((_, command)) = line.split_once(';') {
+                    normalize_history_command(command)
+                } else {
+                    normalize_history_command(line)
+                }
+            }
+        })
+        .collect()
+}
+
+/// 向历史记录中添加富条目（全局去重）
+///
+/// 如果已存在相同命令，更新其 timestamp 和 use_count，而非添加新条目。
+pub fn push_rich_history_entry(
+    entries: &mut VecDeque<HistoryEntry>,
+    mut entry: HistoryEntry,
+    limit: usize,
+) -> bool {
+    let Some(command) = normalize_history_command(&entry.command) else {
+        return false;
+    };
+    entry.command = command;
+
+    // 全局去重：查找已有条目并更新
+    if let Some(existing) = entries.iter_mut().find(|e| e.command == entry.command) {
+        existing.timestamp = entry.timestamp;
+        existing.use_count += 1;
+        if entry.cwd.is_some() {
+            existing.cwd = entry.cwd;
+        }
+        if entry.exit_code.is_some() {
+            existing.exit_code = entry.exit_code;
+        }
+        return true;
+    }
+
+    entries.push_back(entry);
+    while entries.len() > limit.max(1) {
+        entries.pop_front();
+    }
+    true
+}
+
+/// 兼容层：从字符串添加历史条目
+pub fn push_history_entry(
+    entries: &mut VecDeque<HistoryEntry>,
+    command: &str,
+    limit: usize,
+) -> bool {
+    let Some(command) = normalize_history_command(command) else {
+        return false;
+    };
+
+    // 相邻去重（快速路径）
+    if entries
+        .back()
+        .is_some_and(|existing| existing.command == command)
+    {
+        // 更新 timestamp
+        if let Some(last) = entries.back_mut() {
+            last.timestamp = Instant::now();
+            last.use_count += 1;
+        }
+        return false;
+    }
+
+    // 全局去重
+    push_rich_history_entry(entries, HistoryEntry::new(command), limit)
+}
+
+fn is_completable_history_suggestion(command: &str, input: &str) -> bool {
+    !input.trim().is_empty()
+        && command
+            .strip_prefix(input)
+            .is_some_and(|suffix| !suffix.is_empty())
+}
+
+/// 从 session (HistoryEntry) + persisted (String) 中收集唯一命令
+fn collect_unique_commands(session: &VecDeque<HistoryEntry>, persisted: &[String]) -> Vec<String> {
+    let mut seen = HashSet::new();
+    let mut commands = Vec::new();
+
+    for entry in session.iter().rev() {
+        if seen.insert(entry.command.clone()) {
+            commands.push(entry.command.clone());
+        }
+    }
+    for command in persisted.iter().rev() {
+        if seen.insert(command.clone()) {
+            commands.push(command.clone());
+        }
+    }
+
+    commands
+}
+
+pub fn collect_recent_history(
+    session: &VecDeque<HistoryEntry>,
+    persisted: &[String],
+    limit: usize,
+) -> Vec<String> {
+    let mut commands = collect_unique_commands(session, persisted);
+    commands.truncate(limit);
+    commands
+}
+
+/// 按 frecency 评分对 session 条目排序的辅助
+///
+/// 返回 (command, frecency_score) 映射
+fn build_frecency_map(
+    session: &VecDeque<HistoryEntry>,
+    current_cwd: Option<&str>,
+) -> std::collections::HashMap<String, f64> {
+    session
+        .iter()
+        .map(|entry| (entry.command.clone(), entry.frecency_score(current_cwd)))
+        .collect()
+}
+
+pub fn collect_history_suggestions(
+    session: &VecDeque<HistoryEntry>,
+    persisted: &[String],
+    prefix: &str,
+    limit: usize,
+) -> Vec<String> {
+    collect_history_suggestions_with_cwd(session, persisted, prefix, limit, None)
+}
+
+pub fn collect_history_suggestions_with_cwd(
+    session: &VecDeque<HistoryEntry>,
+    persisted: &[String],
+    prefix: &str,
+    limit: usize,
+    current_cwd: Option<&str>,
+) -> Vec<String> {
+    let limit = limit.max(1);
+    if prefix.trim().is_empty() {
+        return Vec::new();
+    }
+
+    let commands = collect_unique_commands(session, persisted);
+    let frecency_map = build_frecency_map(session, current_cwd);
+
+    let mut matches: Vec<(i64, String)> = commands
+        .into_iter()
+        .filter(|command| is_completable_history_suggestion(command, prefix))
+        .map(|command| {
+            // 使用 frecency 的负数作为排序键（越高越优先 → 负数越小排在前面）
+            let neg_frecency = frecency_map
+                .get(&command)
+                .map(|s| (-s * 1000.0) as i64)
+                .unwrap_or(0);
+            (neg_frecency, command)
+        })
+        .collect();
+
+    matches.sort_by_key(|(neg_frecency, _)| *neg_frecency);
+    matches.truncate(limit);
+    matches.into_iter().map(|(_, command)| command).collect()
+}
+
+fn has_token_prefix(command: &str, query: &str) -> bool {
+    command
+        .split_whitespace()
+        .any(|token| token.starts_with(query))
+}
+
+fn token_initialism(command: &str) -> String {
+    command
+        .split_whitespace()
+        .filter_map(|token| {
+            token
+                .chars()
+                .find(|ch| ch.is_ascii_alphanumeric())
+                .map(|ch| ch.to_ascii_lowercase())
+        })
+        .collect()
+}
+
+fn has_token_initialism_prefix(command: &str, query: &str) -> bool {
+    if query.len() < 2 {
+        return false;
+    }
+    token_initialism(command).starts_with(query)
+}
+
+fn is_subsequence(query: &str, command: &str) -> bool {
+    let mut query_chars = query.chars();
+    let mut current = query_chars.next();
+    if current.is_none() {
+        return true;
+    }
+
+    for ch in command.chars() {
+        if Some(ch) == current {
+            current = query_chars.next();
+            if current.is_none() {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn history_search_rank(command: &str, query: &str) -> Option<u8> {
+    if command.starts_with(query) {
+        Some(0)
+    } else if has_token_prefix(command, query) {
+        Some(1)
+    } else if has_token_initialism_prefix(command, query) {
+        Some(2)
+    } else if command.contains(query) {
+        Some(3)
+    } else if is_subsequence(query, command) {
+        Some(4)
+    } else {
+        None
+    }
+}
+
+pub fn collect_history_search_results(
+    session: &VecDeque<HistoryEntry>,
+    persisted: &[String],
+    query: &str,
+    limit: usize,
+) -> Vec<String> {
+    let limit = limit.max(1);
+    let query = query.trim();
+    let commands = collect_unique_commands(session, persisted);
+    if query.is_empty() {
+        return commands.into_iter().take(limit).collect();
+    }
+
+    let frecency_map = build_frecency_map(session, None);
+    let lowered_query = query.to_lowercase();
+    let mut matches = commands
+        .into_iter()
+        .enumerate()
+        .filter_map(|(recency, command)| {
+            let lowered_command = command.to_lowercase();
+            let rank = history_search_rank(&lowered_command, &lowered_query)?;
+            let neg_frecency = frecency_map
+                .get(&command)
+                .map(|s| (-s * 1000.0) as i64)
+                .unwrap_or(recency as i64);
+            Some((rank, neg_frecency, command))
+        })
+        .collect::<Vec<_>>();
+
+    matches.sort_by_key(|(rank, neg_frecency, _)| (*rank, *neg_frecency));
+    matches.truncate(limit);
+    matches.into_iter().map(|(_, _, command)| command).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::VecDeque;
+    use std::time::{Duration, Instant};
+
+    /// 创建带时间偏移的 HistoryEntry（用于测试 frecency）
+    fn entry_with_age(command: &str, age_secs: u64, use_count: u32) -> HistoryEntry {
+        HistoryEntry {
+            command: command.to_string(),
+            timestamp: Instant::now() - Duration::from_secs(age_secs),
+            use_count,
+            cwd: None,
+            exit_code: None,
+        }
+    }
+
+    fn entry(command: &str) -> HistoryEntry {
+        HistoryEntry::new(command.to_string())
+    }
+
+    fn session_from_strings(commands: &[&str]) -> VecDeque<HistoryEntry> {
+        commands.iter().map(|c| entry(c)).collect()
+    }
+
+    #[test]
+    fn normalize_history_command_trims_and_rejects_blank_input() {
+        assert_eq!(
+            normalize_history_command("  git status  "),
+            Some("git status".to_string())
+        );
+        assert_eq!(normalize_history_command("   "), None);
+        assert_eq!(normalize_history_command("\n\t"), None);
+    }
+
+    #[test]
+    fn normalize_recorded_command_strips_bash_history_timestamp_prefix() {
+        assert_eq!(
+            normalize_recorded_command("2026-07-05 08:07:16 cd /data/app", None),
+            Some("cd /data/app".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_recorded_command_strips_matching_user_after_timestamp() {
+        assert_eq!(
+            normalize_recorded_command("2026-07-05 08:07:16 root cd /data/app", Some("root")),
+            Some("cd /data/app".to_string())
+        );
+    }
+
+    #[test]
+    fn normalize_recorded_command_keeps_unmatched_user_token_after_timestamp() {
+        assert_eq!(
+            normalize_recorded_command("2026-07-05 08:07:16 root cd /data/app", Some("deploy")),
+            Some("root cd /data/app".to_string())
+        );
+    }
+
+    #[test]
+    fn parse_shell_history_supports_zsh_extended_format() {
+        let commands = parse_shell_history(
+            ": 1710000000:0;git status\n: 1710000001:0;cargo test\n",
+            ShellHistoryFormat::Zsh,
+        );
+
+        assert_eq!(commands, vec!["git status", "cargo test"]);
+    }
+
+    #[test]
+    fn push_history_entry_dedupes_adjacent_duplicates() {
+        let mut entries = VecDeque::new();
+        push_history_entry(&mut entries, "git status", 5);
+        push_history_entry(&mut entries, "git status", 5);
+        push_history_entry(&mut entries, "cargo test", 5);
+
+        let commands: Vec<_> = entries.iter().map(|e| e.command.as_str()).collect();
+        assert_eq!(commands, vec!["git status", "cargo test"]);
+    }
+
+    #[test]
+    fn push_history_entry_global_dedup_updates_existing() {
+        let mut entries = VecDeque::new();
+        push_history_entry(&mut entries, "git status", 10);
+        push_history_entry(&mut entries, "cargo test", 10);
+        push_history_entry(&mut entries, "git status", 10);
+
+        // 全局去重：git status 应更新 use_count 而非新增
+        assert_eq!(entries.len(), 2);
+        let git_entry = entries.iter().find(|e| e.command == "git status").unwrap();
+        assert!(git_entry.use_count >= 2);
+    }
+
+    #[test]
+    fn recent_history_is_newest_first_and_deduplicates_persisted_entries() {
+        let session = session_from_strings(&["git status", "cargo test"]);
+        let persisted = vec![
+            "pwd".to_string(),
+            "git status".to_string(),
+            "docker ps".to_string(),
+        ];
+
+        assert_eq!(
+            collect_recent_history(&session, &persisted, 4),
+            vec![
+                "cargo test".to_string(),
+                "git status".to_string(),
+                "docker ps".to_string(),
+                "pwd".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn collect_history_suggestions_prioritizes_session_history() {
+        let session = session_from_strings(&["git status", "git stash", "cargo test"]);
+        let persisted = vec![
+            "git status".to_string(),
+            "git switch main".to_string(),
+            "git commit".to_string(),
+        ];
+
+        let matches = collect_history_suggestions(&session, &persisted, "git s", 4);
+
+        // session 中的结果优先（frecency 更高），且去重
+        assert!(matches.contains(&"git stash".to_string()));
+        assert!(matches.contains(&"git status".to_string()));
+        assert!(matches.contains(&"git switch main".to_string()));
+    }
+
+    #[test]
+    fn collect_history_suggestions_skips_empty_prefix() {
+        let session = session_from_strings(&["git status"]);
+        let persisted = vec!["git switch".to_string()];
+
+        let matches = collect_history_suggestions(&session, &persisted, "   ", 5);
+
+        assert!(matches.is_empty());
+    }
+
+    #[test]
+    fn inline_suggest_only_returns_exact_prefix_completions() {
+        let session = session_from_strings(&[
+            "netstat -an",
+            "wget https://example.com/netsta/archive",
+            "find /var/lib -name netstat",
+            "NETSTAT -an",
+            "netsta",
+        ]);
+        let persisted = vec!["netstat -rn".to_string()];
+
+        let matches = collect_history_suggestions(&session, &persisted, "netsta", 10);
+
+        assert_eq!(matches.len(), 2);
+        assert!(matches.contains(&"netstat -an".to_string()));
+        assert!(matches.contains(&"netstat -rn".to_string()));
+    }
+
+    #[test]
+    fn inline_suggest_rejects_substring_token_and_subsequence_matches() {
+        let session =
+            session_from_strings(&["cargo test", "git status", "git stash", "npm run test"]);
+
+        assert!(collect_history_suggestions(&session, &[], "test", 10).is_empty());
+        assert!(collect_history_suggestions(&session, &[], "status", 10).is_empty());
+        assert!(collect_history_suggestions(&session, &[], "gst", 10).is_empty());
+    }
+
+    #[test]
+    fn inline_suggest_is_case_sensitive() {
+        let session = session_from_strings(&["Git Status", "GIT PUSH"]);
+
+        assert!(collect_history_suggestions(&session, &[], "git", 5).is_empty());
+        assert_eq!(
+            collect_history_suggestions(&session, &[], "Git", 5),
+            vec!["Git Status".to_string()]
+        );
+    }
+
+    #[test]
+    fn inline_suggest_excludes_command_equal_to_current_input() {
+        let session = session_from_strings(&["git status", "git status --short"]);
+
+        assert_eq!(
+            collect_history_suggestions(&session, &[], "git status", 5),
+            vec!["git status --short".to_string()]
+        );
+    }
+
+    #[test]
+    fn inline_suggest_preserves_real_input_whitespace() {
+        let session = session_from_strings(&["git status", " git status"]);
+
+        assert_eq!(
+            collect_history_suggestions(&session, &[], "git ", 5),
+            vec!["git status".to_string()]
+        );
+        assert_eq!(
+            collect_history_suggestions(&session, &[], " git", 5),
+            vec![" git status".to_string()]
+        );
+    }
+
+    #[test]
+    fn collect_history_search_results_prefers_prefix_then_token_then_subsequence() {
+        let session = session_from_strings(&["git log", "git status", "git stash", "cargo test"]);
+        let persisted = vec![
+            "status report".to_string(),
+            "cargo status".to_string(),
+            "gitstatus checkout".to_string(),
+        ];
+
+        let matches = collect_history_search_results(&session, &persisted, "status", 5);
+
+        // rank 0 (prefix): "status report"
+        // rank 1 (token prefix): "git status", "cargo status"
+        // rank 2 (substring): "gitstatus checkout"
+        assert_eq!(matches[0], "status report");
+        assert!(matches.contains(&"git status".to_string()));
+        assert!(matches.contains(&"cargo status".to_string()));
+        assert!(matches.contains(&"gitstatus checkout".to_string()));
+    }
+
+    #[test]
+    fn collect_history_search_results_breaks_ties_by_frecency() {
+        let session = session_from_strings(&["git status", "git stash", "go test ./..."]);
+        let persisted = vec![
+            "gh stack sync".to_string(),
+            "git switch main".to_string(),
+            "cargo test".to_string(),
+        ];
+
+        let matches = collect_history_search_results(&session, &persisted, "gsta", 3);
+
+        // 所有都是 subsequence match，session 中的 frecency 更高
+        assert!(matches.contains(&"git stash".to_string()));
+        assert!(matches.contains(&"git status".to_string()));
+    }
+
+    // ---- Frecency 评分测试 ----
+
+    #[test]
+    fn frecency_ranks_frequent_commands_higher() {
+        let mut session = VecDeque::new();
+        // "cargo test" 使用 5 次
+        for _ in 0..5 {
+            push_history_entry(&mut session, "cargo test", 100);
+            // 插入其他命令避免相邻去重
+            push_history_entry(&mut session, "git status", 100);
+        }
+
+        let cargo_entry = session.iter().find(|e| e.command == "cargo test").unwrap();
+        let git_entry = session.iter().find(|e| e.command == "git status").unwrap();
+
+        assert!(cargo_entry.frecency_score(None) >= git_entry.frecency_score(None));
+    }
+
+    #[test]
+    fn frecency_ranks_recent_commands_higher() {
+        let recent = entry_with_age("recent cmd", 60, 1); // 1 分钟前
+        let old = entry_with_age("old cmd", 100_000, 1); // ~28 小时前
+
+        assert!(recent.frecency_score(None) > old.frecency_score(None));
+    }
+
+    #[test]
+    fn frecency_deprioritizes_failed_commands() {
+        let success = HistoryEntry {
+            exit_code: Some(0),
+            ..entry("cmd")
+        };
+        let failure = HistoryEntry {
+            exit_code: Some(1),
+            ..entry("cmd")
+        };
+
+        assert!(success.frecency_score(None) > failure.frecency_score(None));
+    }
+
+    #[test]
+    fn frecency_boosts_same_directory_commands() {
+        let entry_in_dir = HistoryEntry {
+            cwd: Some("/home/user/project".to_string()),
+            ..entry("make build")
+        };
+
+        let score_same_dir = entry_in_dir.frecency_score(Some("/home/user/project"));
+        let score_diff_dir = entry_in_dir.frecency_score(Some("/tmp"));
+        let score_no_dir = entry_in_dir.frecency_score(None);
+
+        assert!(score_same_dir > score_diff_dir);
+        assert!(score_same_dir > score_no_dir);
+    }
+
+    #[test]
+    fn push_rich_history_entry_with_metadata() {
+        let mut entries = VecDeque::new();
+        let entry = HistoryEntry::new("cargo test".to_string())
+            .with_cwd(Some("/project".to_string()))
+            .with_exit_code(Some(0));
+
+        push_rich_history_entry(&mut entries, entry, 10);
+
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].cwd.as_deref(), Some("/project"));
+        assert_eq!(entries[0].exit_code, Some(0));
+    }
+}

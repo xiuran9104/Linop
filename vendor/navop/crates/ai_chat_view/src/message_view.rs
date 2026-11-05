@@ -1,0 +1,921 @@
+use crate::card::{CardMessage, CardRegistry};
+use crate::code_block::CodeBlockActionRegistry;
+use crate::message_code_actions::apply_code_block_features;
+use crate::message_image::MessageImage;
+use crate::message_tool_group::{MessageRenderItem, message_render_items, render_tool_call_group};
+use crate::message_turn_view::{MessageListAction, MessageListActionHandler};
+use crate::theme::{
+    AgentChatTheme, resolve_agent_chat_theme, themed_html, themed_markdown, with_agent_chat_theme,
+};
+use crate::{
+    ChatMessageUI, ChatMessageUIGeneric, ChatRole, MessageExtension, MessageVariant,
+    render_reasoning_block,
+};
+use std::time::Duration;
+
+use gpui::prelude::FluentBuilder;
+use gpui::{
+    Animation, AnimationExt, AnyElement, App, Div, InteractiveElement, IntoElement, ParentElement,
+    ScrollHandle, SharedString, StatefulInteractiveElement, Styled, StyledImage, Window, div,
+    ease_out_quint, img, px,
+};
+use gpui_component::{
+    ActiveTheme, Icon, Sizable, Size, clipboard::Clipboard, h_flex, spinner::Spinner, v_flex,
+};
+use one_assets::IconName;
+use rust_i18n::t;
+
+fn message_copy_id(message_id: &str) -> SharedString {
+    SharedString::from(format!("copy-message-{message_id}"))
+}
+
+fn trim_leading_blank_lines(content: &str) -> &str {
+    let mut content_start = 0;
+    for line in content.split_inclusive('\n') {
+        let line_content = line.trim_end_matches(['\r', '\n']);
+        if !line_content.trim().is_empty() {
+            break;
+        }
+        content_start += line.len();
+    }
+    &content[content_start..]
+}
+
+/// 单条消息该被复制的文本；不可复制的消息（工具卡片等）返回 `None`。
+///
+/// 对 crate 内公开：块级选中复制要复用同一口径，别让两种复制给出不同答案。
+pub(crate) fn message_copy_text(message: &ChatMessageUI) -> Option<SharedString> {
+    message_copy_value(message)
+}
+
+fn message_copy_value<E: MessageExtension>(
+    message: &ChatMessageUIGeneric<E>,
+) -> Option<SharedString> {
+    let copyable = matches!(
+        (&message.role, &message.variant),
+        (ChatRole::User, MessageVariant::Text) | (ChatRole::Assistant, MessageVariant::Text)
+    );
+    if !copyable {
+        return None;
+    }
+
+    let content = trim_leading_blank_lines(&message.content);
+    (!content.is_empty()).then(|| content.to_owned().into())
+}
+
+fn render_message_copy<E: MessageExtension>(
+    message: &ChatMessageUIGeneric<E>,
+) -> Option<AnyElement> {
+    let value = message_copy_value(message)?;
+    Some(
+        div()
+            .debug_selector(|| "ai-chat-message-copy".to_string())
+            .flex_shrink_0()
+            .child(
+                Clipboard::new(message_copy_id(&message.id))
+                    .value(value)
+                    .tooltip(t!("AgentUi.copy_message").to_string()),
+            )
+            .into_any_element(),
+    )
+}
+
+pub fn render_messages(
+    messages: &[ChatMessageUI],
+    scroll_handle: &ScrollHandle,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    render_messages_with_code_actions(messages, scroll_handle, None, None, window, cx)
+}
+
+pub fn render_messages_with_code_actions(
+    messages: &[ChatMessageUI],
+    scroll_handle: &ScrollHandle,
+    code_actions: Option<&CodeBlockActionRegistry>,
+    theme: Option<&AgentChatTheme>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    render_messages_with_layout(
+        messages,
+        scroll_handle,
+        code_actions,
+        theme,
+        MessageListExtras {
+            layout: MessageListLayout::Centered,
+            activity: None,
+        },
+        window,
+        cx,
+    )
+}
+
+pub fn render_sidebar_messages_with_code_actions(
+    messages: &[ChatMessageUI],
+    scroll_handle: &ScrollHandle,
+    code_actions: Option<&CodeBlockActionRegistry>,
+    theme: Option<&AgentChatTheme>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    render_messages_with_layout(
+        messages,
+        scroll_handle,
+        code_actions,
+        theme,
+        MessageListExtras {
+            layout: MessageListLayout::EdgeToEdge,
+            activity: None,
+        },
+        window,
+        cx,
+    )
+}
+
+/// 与 [`render_messages_with_code_actions`] 相同，但在消息列表末尾额外渲染一段
+/// 活动指示（例如"执行中…"），用于在 Agent 运行期间给出实时的进行中反馈。
+pub fn render_messages_with_code_actions_and_activity(
+    messages: &[ChatMessageUI],
+    scroll_handle: &ScrollHandle,
+    code_actions: Option<&CodeBlockActionRegistry>,
+    theme: Option<&AgentChatTheme>,
+    activity: Option<AnyElement>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    render_messages_with_layout(
+        messages,
+        scroll_handle,
+        code_actions,
+        theme,
+        MessageListExtras {
+            layout: MessageListLayout::Centered,
+            activity,
+        },
+        window,
+        cx,
+    )
+}
+
+/// 侧边栏版，带活动指示（见 [`render_messages_with_code_actions_and_activity`]）。
+pub fn render_sidebar_messages_with_code_actions_and_activity(
+    messages: &[ChatMessageUI],
+    scroll_handle: &ScrollHandle,
+    code_actions: Option<&CodeBlockActionRegistry>,
+    theme: Option<&AgentChatTheme>,
+    activity: Option<AnyElement>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    render_messages_with_layout(
+        messages,
+        scroll_handle,
+        code_actions,
+        theme,
+        MessageListExtras {
+            layout: MessageListLayout::EdgeToEdge,
+            activity,
+        },
+        window,
+        cx,
+    )
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MessageListLayout {
+    Centered,
+    EdgeToEdge,
+}
+
+/// 消息列表的外层滚动容器。
+///
+/// 三个 `debug_selector` 是布局测试的断言目标（`ai-chat-messages` /
+/// `ai-chat-messages-scroll` / `ai-chat-message-column`），**两条渲染路径共用**
+/// 这一份实现，避免轮次视图与扁平视图的宽度约束漂移。
+///
+/// # 为什么条目是滚动容器的**直接子元素**
+///
+/// GPUI 在滚动容器 prepaint 时会把**每个直接子元素**的布局边界填进
+/// `ScrollHandle` 的 `child_bounds`（`elements/div.rs` 里 `tracked_scroll_handle` 分支），
+/// `scroll_to_item` / `bounds_for_item` / `top_item` 全都以这个数组为索引。
+/// 早先这里只有一层「列」包装，直接子元素恒为 1 个 ⇒ 索引不到具体条目，
+/// 「跳到第 N 轮」只能自己抓几何再算偏移。让条目直接做子元素之后，
+/// 跳转复用 GPUI 自己的最小滚动策略（`ScrollStrategy::FirstVisible`），
+/// 不再维护第二套坐标换算。
+///
+/// 代价是两点必须显式写：
+/// - 容器得是 `v_flex()`（`div()` 默认 `display: block`，拿不到 `gap`）；
+/// - 每个条目要 `flex_shrink_0`，否则高条目在定高容器里会被压扁而不是撑出滚动区。
+pub(crate) fn message_scroll_container(
+    scroll_handle: &ScrollHandle,
+    layout: MessageListLayout,
+    items: Vec<AnyElement>,
+    overlays: Vec<AnyElement>,
+    empty_state: Option<AnyElement>,
+    cx: &App,
+) -> AnyElement {
+    // 一条消息都没有时的起手态：没有内容可滚，于是让这一列撑满高度、内容居中，
+    // 而不是像消息那样从上往下堆。
+    let items: Vec<AnyElement> = match empty_state {
+        Some(empty_state) => vec![
+            message_column(layout)
+                .flex_1()
+                .child(empty_state)
+                .into_any_element(),
+        ],
+        None => items
+            .into_iter()
+            .map(|item| {
+                message_column(layout)
+                    .flex_shrink_0()
+                    .child(item)
+                    .into_any_element()
+            })
+            .collect(),
+    };
+    div()
+        .id("ai-chat-messages")
+        .debug_selector(|| "ai-chat-messages".to_string())
+        .flex_1()
+        .min_h_0()
+        .min_w_0()
+        .w_full()
+        .relative()
+        .overflow_hidden()
+        .child(
+            v_flex()
+                .id("ai-chat-messages-scroll")
+                .debug_selector(|| "ai-chat-messages-scroll".to_string())
+                .size_full()
+                .min_w_0()
+                .overflow_y_scroll()
+                .track_scroll(scroll_handle)
+                .p_4()
+                .gap_3()
+                .children(items),
+        )
+        .child(
+            div()
+                .absolute()
+                .top_0()
+                .right_0()
+                .bottom_0()
+                .w(crate::scrollbar::track_extent())
+                .child(crate::scrollbar::overlay_scrollbar(scroll_handle, cx)),
+        )
+        .children(overlays)
+        .into_any_element()
+}
+
+struct MessageListExtras {
+    layout: MessageListLayout,
+    activity: Option<AnyElement>,
+}
+
+fn render_messages_with_layout(
+    messages: &[ChatMessageUI],
+    scroll_handle: &ScrollHandle,
+    code_actions: Option<&CodeBlockActionRegistry>,
+    theme: Option<&AgentChatTheme>,
+    extras: MessageListExtras,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let MessageListExtras { layout, activity } = extras;
+    let theme = resolve_agent_chat_theme(theme, cx);
+    let mut items: Vec<AnyElement> = message_render_items(messages)
+        .into_iter()
+        .map(|item| {
+            let id = item.element_id();
+            message_entrance(
+                div()
+                    .debug_selector(|| "ai-chat-message-slot".to_string())
+                    .min_w_0()
+                    .self_stretch()
+                    .flex_shrink_0()
+                    .child(render_item(item, code_actions, None, &theme, window, cx)),
+                id,
+            )
+        })
+        .collect();
+    if let Some(activity) = activity {
+        items.push(
+            div()
+                .debug_selector(|| "ai-chat-message-slot".to_string())
+                .min_w_0()
+                .self_stretch()
+                .flex_shrink_0()
+                .child(activity)
+                .into_any_element(),
+        );
+    }
+
+    message_scroll_container(scroll_handle, layout, items, Vec::new(), None, cx)
+}
+
+/// 新消息进场动效时长。
+///
+/// 180ms 与主题的 `duration_normal` 同量级:快到不挡事,又足够让眼睛
+/// 捕到「这条是新来的」。
+const MESSAGE_ENTRANCE_DURATION: Duration = Duration::from_millis(180);
+
+/// 给一条消息挂上「淡入」进场动画。
+///
+/// 动画状态按 `id` 记在窗口里(而 `id` 来自消息本身),所以一条消息只在
+/// 第一次出现时播一次;流式追加 token 时 id 不变,不会每帧重放。
+///
+/// 逐块(段落级)渐显要自研 markdown 渲染器,本项目用 `TextView` 整体
+/// 渲染,只能做到消息级——这也是 `App::reduce_motion` 时能整块跳过的
+/// 最小粒度。
+fn message_entrance(slot: Div, id: SharedString) -> AnyElement {
+    slot.with_animation(
+        SharedString::from(format!("ai-chat-message-enter:{id}")),
+        Animation::new(MESSAGE_ENTRANCE_DURATION).with_easing(ease_out_quint()),
+        |slot, delta| slot.opacity(delta),
+    )
+    .into_any_element()
+}
+
+pub(crate) fn message_column(layout: MessageListLayout) -> Div {
+    let column = v_flex()
+        .debug_selector(|| "ai-chat-message-column".to_string())
+        .w_full()
+        .min_w_0()
+        .items_stretch();
+    match layout {
+        MessageListLayout::Centered => column.max_w(px(920.0)).mx_auto(),
+        MessageListLayout::EdgeToEdge => column,
+    }
+}
+
+pub(crate) fn render_item(
+    item: MessageRenderItem<'_>,
+    code_actions: Option<&CodeBlockActionRegistry>,
+    on_action: Option<&MessageListActionHandler>,
+    theme: &AgentChatTheme,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    match item {
+        MessageRenderItem::Single(msg) => {
+            render_one(msg, code_actions, on_action, theme, window, cx)
+        }
+        MessageRenderItem::ToolCallGroup(group) => {
+            let children = group
+                .messages()
+                .iter()
+                .map(|msg| render_one(msg, code_actions, on_action, theme, window, cx))
+                .collect();
+            render_tool_call_group(group, children, theme, cx)
+        }
+    }
+}
+
+pub(crate) fn render_one(
+    msg: &ChatMessageUI,
+    code_actions: Option<&CodeBlockActionRegistry>,
+    on_action: Option<&MessageListActionHandler>,
+    theme: &AgentChatTheme,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    match msg.role {
+        ChatRole::User => render_user_message_themed(msg, theme, on_action),
+        ChatRole::System => render_system_message_themed(msg, theme),
+        ChatRole::Assistant => match &msg.variant {
+            MessageVariant::Status { title, is_done } => {
+                render_status_message_themed(msg, title, *is_done, theme, cx)
+            }
+            MessageVariant::Text => {
+                render_assistant_text_with_code_actions(msg, code_actions, Some(theme), window, cx)
+            }
+            MessageVariant::SqlResult => render_sql_result_placeholder(&theme),
+            MessageVariant::Card { kind } => render_card(msg, kind, theme, window, cx),
+        },
+    }
+}
+
+pub fn render_user_message<E: MessageExtension>(
+    msg: &ChatMessageUIGeneric<E>,
+    cx: &App,
+) -> AnyElement {
+    let theme = AgentChatTheme::from_app(cx);
+    // 独立入口（宿主自己塞消息的场景）没有动作通道，图片就只展示、不可放大。
+    render_user_message_themed(msg, &theme, None)
+}
+
+fn render_user_message_themed<E: MessageExtension>(
+    msg: &ChatMessageUIGeneric<E>,
+    theme: &AgentChatTheme,
+    on_action: Option<&MessageListActionHandler>,
+) -> AnyElement {
+    let bubble_width = user_message_bubble_width(&msg.content, msg.images.len());
+    let plain_text_html = user_plain_text_html(&msg.content);
+    let copy = render_message_copy(msg);
+    let images = msg.images.clone();
+
+    h_flex()
+        .debug_selector(|| "ai-chat-user-row".to_string())
+        .w_full()
+        .min_w_0()
+        .gap_1()
+        .justify_end()
+        .when_some(copy, |this, copy| this.child(copy))
+        .child(
+            div()
+                .debug_selector(|| "ai-chat-user-bubble".to_string())
+                .w(bubble_width)
+                .max_w(px(820.0))
+                .min_w_0()
+                .px_3()
+                .py_2()
+                .rounded_lg()
+                .border_1()
+                .border_color(theme.accent.opacity(0.28))
+                .bg(theme.accent.opacity(0.12))
+                .text_color(theme.foreground)
+                .child(
+                    div()
+                        .w_full()
+                        .min_w_0()
+                        // 图片放在正文上方：跟聊天软件里「图 + 一句话」的读法一致。
+                        .when(!images.is_empty(), |this| {
+                            this.child(render_user_images(&images, &msg.id, theme, on_action))
+                        })
+                        .when(!msg.content.trim().is_empty(), |this| {
+                            this.child(
+                                div()
+                                    .debug_selector(|| "ai-chat-user-plain-text".to_string())
+                                    .w_full()
+                                    .min_w_0()
+                                    .whitespace_normal()
+                                    .child(
+                                        themed_html(
+                                            SharedString::from(format!("user-msg-{}", msg.id)),
+                                            plain_text_html,
+                                            theme,
+                                        )
+                                        .selectable(true)
+                                        .w_full(),
+                                    ),
+                            )
+                        }),
+                ),
+        )
+        .into_any_element()
+}
+
+/// 用户消息里的图片：定高缩略图，多张横向排开、放不下就换行。
+///
+/// 尺寸写死而不是「按原图比例铺开」：一屏里几条带图消息如果各自撑到原尺寸，
+/// 转录就没法看了。点开放大留给后续（要给视图加一层预览状态），
+/// 这里先保证「看得见、看得清是什么」。
+fn render_user_images(
+    images: &[MessageImage],
+    message_id: &str,
+    theme: &AgentChatTheme,
+    on_action: Option<&MessageListActionHandler>,
+) -> AnyElement {
+    let mut row = h_flex()
+        .debug_selector(|| format!("ai-chat-user-images:{message_id}"))
+        .w_full()
+        .min_w_0()
+        .flex_wrap()
+        .gap_2();
+    for (index, item) in images.iter().enumerate() {
+        let mut tile = div()
+            .id(SharedString::from(format!(
+                "ai-chat-user-image-{message_id}-{index}"
+            )))
+            .debug_selector({
+                let message_id = message_id.to_string();
+                move || format!("ai-chat-user-image:{message_id}:{index}")
+            })
+            .flex_none()
+            .cursor_pointer()
+            .overflow_hidden()
+            .rounded_md()
+            .border_1()
+            .border_color(theme.border)
+            .bg(theme.inset)
+            .child(
+                img(item.image.clone())
+                    .w(USER_IMAGE_MAX_EDGE)
+                    .h(USER_IMAGE_MAX_EDGE)
+                    .object_fit(gpui::ObjectFit::ScaleDown),
+            );
+        // 点整块（图 + 文件名）都能放大：点文件名而没反应会显得像坏了。
+        if let Some(on_action) = on_action {
+            let on_action = on_action.clone();
+            let image = item.clone();
+            tile = tile.on_click(move |_, window, cx| {
+                on_action(
+                    MessageListAction::PreviewImage {
+                        image: image.clone(),
+                    },
+                    window,
+                    cx,
+                );
+            });
+        }
+        if let Some(name) = item.name.as_deref().filter(|name| !name.is_empty()) {
+            tile = tile.child(
+                div()
+                    .w(USER_IMAGE_MAX_EDGE)
+                    .min_w_0()
+                    .px_2()
+                    .py_1()
+                    .text_xs()
+                    .truncate()
+                    .text_color(theme.text_ghost)
+                    .child(name.to_string()),
+            );
+        }
+        row = row.child(tile);
+    }
+    row.into_any_element()
+}
+
+fn user_plain_text_html(text: &str) -> String {
+    let mut html = String::with_capacity(text.len());
+    let mut characters = text.chars().peekable();
+
+    while let Some(character) = characters.next() {
+        match character {
+            '&' => html.push_str("&amp;"),
+            '<' => html.push_str("&lt;"),
+            '>' => html.push_str("&gt;"),
+            '"' => html.push_str("&quot;"),
+            '\'' => html.push_str("&#39;"),
+            '\r' => {
+                if characters.peek() == Some(&'\n') {
+                    characters.next();
+                }
+                html.push_str("<br>");
+            }
+            '\n' => html.push_str("<br>"),
+            _ => html.push(character),
+        }
+    }
+
+    html
+}
+
+/// 用户消息图片槽的边长上限。
+///
+/// 240 是「一眼看得出是什么」与「不至于占掉半屏」之间的折中；配合
+/// `ObjectFit::ScaleDown`，小图不会被放大成马赛克，大图等比缩到框内。
+const USER_IMAGE_MAX_EDGE: gpui::Pixels = px(240.0);
+
+fn user_message_bubble_width(content: &str, image_count: usize) -> gpui::Pixels {
+    const MIN_WIDTH: f32 = 128.0;
+    const MAX_WIDTH: f32 = 820.0;
+    const HORIZONTAL_PADDING_AND_SLACK: f32 = 32.0;
+    const ASCII_CHAR_WIDTH: f32 = 8.0;
+    const WIDE_CHAR_WIDTH: f32 = 16.0;
+    const WIDTH_SAFETY_FACTOR: f32 = 1.08;
+    const IMAGE_SLOT_SLACK: f32 = 248.0;
+
+    let content_width = content
+        .lines()
+        .map(|line| {
+            line.chars()
+                .map(|character| {
+                    if character.is_ascii() {
+                        ASCII_CHAR_WIDTH
+                    } else {
+                        WIDE_CHAR_WIDTH
+                    }
+                })
+                .sum::<f32>()
+        })
+        .fold(0.0, f32::max);
+
+    // 带图的短句（「看下这个」）按字数算会很窄，图被挤成一条；
+    // 至少要放得下一个图槽。
+    let content_width = if image_count > 0 {
+        content_width.max(IMAGE_SLOT_SLACK)
+    } else {
+        content_width
+    };
+
+    px(
+        (content_width * WIDTH_SAFETY_FACTOR + HORIZONTAL_PADDING_AND_SLACK)
+            .clamp(MIN_WIDTH, MAX_WIDTH),
+    )
+}
+
+pub fn render_system_message<E: MessageExtension>(
+    msg: &ChatMessageUIGeneric<E>,
+    cx: &App,
+) -> AnyElement {
+    let theme = AgentChatTheme::from_app(cx);
+    render_system_message_themed(msg, &theme)
+}
+
+fn render_system_message_themed<E: MessageExtension>(
+    msg: &ChatMessageUIGeneric<E>,
+    theme: &AgentChatTheme,
+) -> AnyElement {
+    h_flex()
+        .w_full()
+        .justify_center()
+        .py_1()
+        .child(
+            div()
+                .w_full()
+                .max_w(px(760.0))
+                .min_w_0()
+                .px_2()
+                .py_1()
+                .rounded_md()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .bg(theme.muted.opacity(0.45))
+                .child(
+                    themed_markdown(
+                        SharedString::from(format!("system-msg-{}", msg.id)),
+                        msg.content.clone(),
+                        theme,
+                    )
+                    .text_xs()
+                    .selectable(true),
+                ),
+        )
+        .into_any_element()
+}
+
+pub fn render_status_message<E: MessageExtension>(
+    msg: &ChatMessageUIGeneric<E>,
+    title: &str,
+    is_done: bool,
+    cx: &App,
+) -> AnyElement {
+    let theme = AgentChatTheme::from_app(cx);
+    render_status_message_themed(msg, title, is_done, &theme, cx)
+}
+
+fn render_status_message_themed<E: MessageExtension>(
+    msg: &ChatMessageUIGeneric<E>,
+    title: &str,
+    is_done: bool,
+    theme: &AgentChatTheme,
+    cx: &App,
+) -> AnyElement {
+    let (icon, color) = if is_done {
+        (IconName::Check, cx.theme().success)
+    } else {
+        (IconName::Loader, theme.muted_foreground)
+    };
+
+    h_flex()
+        .id(SharedString::from(msg.id.clone()))
+        .w_full()
+        .min_w_0()
+        .items_center()
+        .gap_2()
+        .py_1()
+        .child(
+            Icon::new(icon)
+                .with_size(Size::Small)
+                .text_color(color)
+                .flex_shrink_0(),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .text_sm()
+                .text_color(theme.muted_foreground)
+                .truncate()
+                .child(title.to_string()),
+        )
+        .into_any_element()
+}
+
+pub fn render_assistant_text<E: MessageExtension>(
+    msg: &ChatMessageUIGeneric<E>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    render_assistant_text_with_code_actions(msg, None, None, window, cx)
+}
+
+fn render_assistant_text_with_code_actions<E: MessageExtension>(
+    msg: &ChatMessageUIGeneric<E>,
+    code_actions: Option<&CodeBlockActionRegistry>,
+    theme: Option<&AgentChatTheme>,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let theme = resolve_agent_chat_theme(theme, cx);
+    if msg.is_streaming && msg.content.is_empty() && msg.reasoning_content.is_empty() {
+        return render_thinking_themed(&theme);
+    }
+    let text = themed_markdown(
+        SharedString::from(format!("ai-msg-{}", msg.id)),
+        msg.content.clone(),
+        &theme,
+    )
+    .selectable(true);
+    let text = apply_code_block_features(text, code_actions, Some(&theme), msg.is_streaming);
+    let copy = render_message_copy(msg);
+
+    div()
+        .w_full()
+        .max_w(px(820.0))
+        .min_w_0()
+        .child(
+            v_flex()
+                .w_full()
+                .min_w_0()
+                .gap_2()
+                .when(!msg.reasoning_content.is_empty(), |this| {
+                    this.child(render_reasoning_block(msg, Some(&theme), window, cx))
+                })
+                .when(!msg.content.is_empty(), |this| {
+                    this.child(
+                        div()
+                            .w_full()
+                            .min_w_0()
+                            .px_1()
+                            .py_1()
+                            .text_color(theme.foreground)
+                            .child(text),
+                    )
+                })
+                .when_some(copy, |this, copy| {
+                    this.child(h_flex().w_full().justify_start().child(copy))
+                }),
+        )
+        .into_any_element()
+}
+
+pub fn render_thinking(cx: &App) -> AnyElement {
+    let theme = AgentChatTheme::from_app(cx);
+    render_thinking_themed(&theme)
+}
+
+/// 一段"执行中…"活动指示，渲染在消息列表末尾，作为 Agent 运行期间的实时进行中反馈。
+pub fn render_running_activity(theme: &AgentChatTheme) -> AnyElement {
+    let color = theme.muted_foreground;
+    h_flex()
+        .debug_selector(|| "ai-chat-activity".to_string())
+        .w_full()
+        .min_w_0()
+        .items_center()
+        .gap_2()
+        .py_1()
+        .text_xs()
+        .text_color(color)
+        .child(
+            Spinner::new()
+                .small()
+                .color(color)
+                .animation_id("ai-chat-activity-spinner"),
+        )
+        .child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .child(t!("AgentUi.running").to_string()),
+        )
+        .into_any_element()
+}
+
+fn render_thinking_themed(theme: &AgentChatTheme) -> AnyElement {
+    div()
+        .w_full()
+        .py_2()
+        .child(
+            div()
+                .text_sm()
+                .text_color(theme.muted_foreground)
+                .child(t!("AgentUi.thinking").to_string()),
+        )
+        .into_any_element()
+}
+
+fn render_card(
+    msg: &ChatMessageUI,
+    kind: &str,
+    theme: &AgentChatTheme,
+    window: &mut Window,
+    cx: &mut App,
+) -> AnyElement {
+    let card_msg = CardMessage {
+        id: &msg.id,
+        kind,
+        content: &msg.content,
+        is_streaming: msg.is_streaming,
+    };
+    if let Some(element) =
+        with_agent_chat_theme(theme, || CardRegistry::render_global(&card_msg, window, cx))
+    {
+        return v_flex()
+            .w_full()
+            .min_w_0()
+            .items_stretch()
+            .overflow_hidden()
+            .text_color(theme.foreground)
+            .child(element)
+            .into_any_element();
+    }
+    render_placeholder_themed(
+        t!("AgentUi.unregistered_card", kind = kind).to_string(),
+        theme,
+    )
+}
+
+fn render_sql_result_placeholder(theme: &AgentChatTheme) -> AnyElement {
+    render_placeholder_themed(t!("AgentUi.sql_card_renderer_required").to_string(), theme)
+}
+
+fn render_placeholder_themed(text: impl Into<String>, theme: &AgentChatTheme) -> AnyElement {
+    div()
+        .w_full()
+        .py_2()
+        .child(
+            div()
+                .text_sm()
+                .text_color(theme.muted_foreground)
+                .child(text.into()),
+        )
+        .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn user_plain_text_html_escapes_markup_and_preserves_lines() {
+        assert_eq!(
+            "**保持** &lt;tag&gt; &amp; &quot;quoted&quot; &#39;value&#39;<br>下一行",
+            user_plain_text_html("**保持** <tag> & \"quoted\" 'value'\n下一行")
+        );
+    }
+
+    #[test]
+    fn message_copy_uses_stable_id_and_raw_content() {
+        let message = ChatMessageUI::user("**raw** <tag>\nnext").with_id("message-id");
+
+        assert_eq!(message_copy_id(&message.id), "copy-message-message-id");
+        assert_eq!(
+            Some(SharedString::from("**raw** <tag>\nnext")),
+            message_copy_value(&message)
+        );
+    }
+
+    #[test]
+    fn message_copy_removes_leading_blank_lines_without_losing_indentation() {
+        let message = ChatMessageUI::assistant("\r\n\n  \n    indented\nnext");
+
+        assert_eq!(
+            Some(SharedString::from("    indented\nnext")),
+            message_copy_value(&message)
+        );
+    }
+
+    #[test]
+    fn message_copy_preserves_markdown_code_block_after_leading_blank_lines() {
+        let message = ChatMessageUI::assistant("\n \r\n```rust\n    let value = 1;\n```\n");
+
+        assert_eq!(
+            Some(SharedString::from("```rust\n    let value = 1;\n```\n")),
+            message_copy_value(&message)
+        );
+    }
+
+    #[test]
+    fn message_copy_ignores_content_that_only_contains_blank_lines() {
+        let message = ChatMessageUI::assistant("\r\n\n  ");
+
+        assert_eq!(None, message_copy_value(&message));
+    }
+
+    #[test]
+    fn only_user_and_assistant_text_bodies_are_copyable() {
+        let assistant = ChatMessageUI::assistant("answer");
+        let system = ChatMessageUI::system("system");
+        let status = ChatMessageUI::status("running", false);
+        let card = ChatMessageUI::card("kind", "payload");
+        let user_card = ChatMessageUI::user("payload").with_variant(MessageVariant::Card {
+            kind: "kind".into(),
+        });
+
+        assert_eq!(
+            Some(SharedString::from("answer")),
+            message_copy_value(&assistant)
+        );
+        assert_eq!(None, message_copy_value(&system));
+        assert_eq!(None, message_copy_value(&status));
+        assert_eq!(None, message_copy_value(&card));
+        assert_eq!(None, message_copy_value(&user_card));
+        assert_eq!(
+            None,
+            message_copy_value(&ChatMessageUI::assistant(String::new()))
+        );
+    }
+}

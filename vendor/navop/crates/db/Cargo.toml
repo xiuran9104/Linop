@@ -1,0 +1,61 @@
+[package]
+name = "db"
+version = "0.15.2"
+edition = "2021"
+
+[features]
+default = []
+builtin-duckdb = ["dep:duckdb"]
+
+[dependencies]
+db-value.workspace = true
+one-assets = { workspace = true }
+anyhow.workspace = true
+async-trait.workspace = true
+base64.workspace = true
+connection_tunnel.workspace = true
+connection-form.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+rusqlite.workspace = true
+duckdb = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["process", "io-util"] }
+tracing.workspace = true
+hex.workspace = true
+gpui.workspace = true
+gpui-component.workspace = true
+chrono.workspace = true
+mysql_async.workspace = true
+mysql_common.workspace = true
+tokio-postgres.workspace = true
+tokio-postgres-rustls.workspace = true
+rustls.workspace = true
+rustls-native-certs.workspace = true
+rustls-pemfile.workspace = true
+tiberius.workspace = true
+tokio-util = { workspace = true, features = ["compat"] }
+oracle.workspace = true
+one-core.workspace = true
+ssh.workspace = true
+sqlformat.workspace = true
+sqlparser.workspace = true
+uuid.workspace = true
+dashmap.workspace = true
+encoding_rs.workspace = true
+moka.workspace = true
+smol.workspace = true
+regex.workspace = true
+roxmltree.workspace = true
+semver.workspace = true
+thiserror.workspace = true
+extension-host.workspace = true
+extension-protocol.workspace = true
+rust-i18n.workspace = true
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+proptest = { workspace = true }
+tempfile = "3"
+# 图标资产路径必须复现 gpui `img()` 的 URI 判定（`url::Url::parse(..).is_ok()`），
+# 见 crates/db/src/ipc/registry/tests.rs 的 is_uri 回归断言。
+url = { workspace = true }

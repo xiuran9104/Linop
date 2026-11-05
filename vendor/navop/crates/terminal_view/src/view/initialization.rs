@@ -1,0 +1,363 @@
+use super::*;
+
+impl TerminalView {
+    pub(super) fn new_with_terminal(
+        init: TerminalViewInit,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let TerminalViewInit {
+            terminal,
+            connection_id,
+            stored_connection,
+            connection_icon,
+            sync_path_enabled,
+            local_working_dir,
+            workspace_source,
+            tab_index,
+            duplicate_source,
+            recording_playback_name,
+            session_log_name,
+        } = init;
+        let blink_manager = cx.new(|_| BlinkCursor::new());
+        let recording_playback_slider = cx.new(|_| {
+            SliderState::new()
+                .min(0.0)
+                .max(1.0)
+                .step(0.001)
+                .default_value(0.0)
+        });
+
+        // 获取初始颜色
+        let colors = terminal.read(cx).term().lock().colors().clone();
+        let connection_kind = terminal.read(cx).connection_kind();
+        let live_connection_kind = terminal.read(cx).live_connection_kind();
+        let is_local_terminal = live_connection_kind == Some(TerminalConnectionKind::Local);
+
+        // 终端主题需要在创建侧边栏之前解析，以便所有终端子面板使用一致配色。
+        let initial_settings = current_settings(cx);
+        let default_theme = TerminalTheme::resolve(&initial_settings.theme, cx.theme());
+        let default_font_size = px(TERMINAL_RESET_FONT_SIZE);
+        let default_font_family: SharedString = default_monospace_font().into();
+        let default_font_fallbacks = default_font_fallbacks();
+        let default_line_height_scale = DEFAULT_LINE_HEIGHT_SCALE;
+        let (ssh_config, ssh_session_manager) = if live_ssh_feature_supported(live_connection_kind)
+        {
+            let terminal = terminal.read(cx);
+            (
+                terminal.ssh_config().cloned(),
+                terminal.ssh_session_manager().cloned(),
+            )
+        } else {
+            (None, None)
+        };
+        let history_scope = terminal_history_scope(live_connection_kind, connection_id);
+        let public_mcp_registration = if live_connection_kind.is_some() {
+            let terminal = terminal.read(cx);
+            crate::public_mcp::register_terminal(terminal, cx)
+        } else {
+            None
+        };
+        let terminal_ai_resource = public_mcp_registration
+            .as_ref()
+            .and_then(TerminalPublicMcpRegistration::agent_resource);
+
+        let command_bar = cx.new(|cx| {
+            TerminalCommandBar::new(
+                TerminalCommandBarConfig {
+                    terminal: terminal.clone(),
+                    connection_id,
+                    colors: default_theme.colors(),
+                },
+                window,
+                cx,
+            )
+        });
+
+        // 文件树后端由会话来源决定:容器会话走 `docker exec`,其余走本机 std::fs。
+        let workspace_backend: Option<std::sync::Arc<dyn WorkspaceBackend>> =
+            workspace_source.as_ref().map(|source| match source {
+                LocalWorkspaceSource::Host { .. } => workspace_explorer::local_backend(),
+                LocalWorkspaceSource::Container { docker, container } => {
+                    workspace_explorer::container_backend(
+                        docker.program.clone(),
+                        docker.global_args.clone(),
+                        container.clone(),
+                        docker.env.clone(),
+                    )
+                }
+            });
+        let workspace_editor =
+            workspace_backend
+                .clone()
+                .filter(|_| is_local_terminal)
+                .map(|backend| {
+                    let theme = crate::sidebar::workspace_theme_from_terminal_colors(
+                        &default_theme.colors(),
+                        cx.theme(),
+                    );
+                    cx.new(move |_| WorkspaceEditor::with_backend(theme, backend))
+                });
+        let local_workspace = workspace_source
+            .clone()
+            .zip(workspace_editor.clone())
+            .zip(workspace_backend)
+            .map(|((source, editor), backend)| LocalWorkspaceSidebar {
+                root: source.root(),
+                editor,
+                backend,
+            });
+
+        // 连接设置里选的图标(SSH 自定义 / 扩展 Icon 字段)。`stored_connection`
+        // 随后会移交给侧边栏;扩展终端没有它,图标由调用方解析后传入。
+        let connection_icon =
+            connection_icon.or_else(|| stored_connection.as_ref().and_then(stored_connection_icon));
+
+        // 创建侧边栏（传递 StoredConnection 用于文件管理器）
+        let sidebar = cx.new(|cx| {
+            TerminalSidebar::new(
+                connection_id,
+                connection_kind,
+                stored_connection,
+                terminal_ai_resource.clone(),
+                ssh_config,
+                ssh_session_manager,
+                local_workspace,
+                &default_theme,
+                default_font_size,
+                default_font_family.clone(),
+                sync_path_enabled,
+                history_scope,
+                window,
+                cx,
+            )
+        });
+        // 侧边栏 AI 每轮重建资源上下文，才能看到终端的实时状态。SSH 终端带上
+        // 连接的资源 id，让刷新器把活动终端挂到连接旁边（默认目标不变）。
+        if let Some(resource) = terminal_ai_resource {
+            let current_connection = sidebar.read(cx).ai_connection_resource();
+            // 附件正文里要写明来源，资源被移交前先留一份标签。
+            let source_label = resource.label.clone();
+            let refresher = crate::sidebar::live_terminal_resource_refresher(
+                terminal.clone(),
+                resource,
+                current_connection,
+            );
+            sidebar.update(cx, |sidebar, cx| {
+                sidebar.set_ai_resource_context_refresher(refresher, cx);
+            });
+            // 用户选中的正文随下一轮消息一起发送，模型不用再猜「选了什么」。
+            let attachment = crate::sidebar::live_terminal_context_attachment_provider(
+                terminal.clone(),
+                source_label,
+            );
+            sidebar.update(cx, |sidebar, cx| {
+                sidebar.set_ai_context_attachment_provider(attachment, cx);
+            });
+        }
+        let sidebar_toolbar = cx.new(|_| TerminalSidebarToolbar::new(sidebar.clone()));
+        // 临时连接等需要运行时凭据的 SSH 会话此时还没有 SSH 工具面板，
+        // 等凭据提交后再补建（见 `TerminalView::ensure_ssh_tool_panels`）。
+        let ssh_tool_panels_pending = !sidebar.read(cx).ssh_tool_panels_ready();
+        let sidebar_tool_panels = SidebarPanel::all()
+            .iter()
+            .copied()
+            .map(|panel| {
+                let sidebar = sidebar.clone();
+                (
+                    panel,
+                    cx.new(move |_| TerminalSidebarToolPanel::new(sidebar.clone(), panel)),
+                )
+            })
+            .collect::<HashMap<_, _>>();
+
+        // 订阅侧边栏事件（需要 window 以便弹确认对话框）
+        let sidebar_subscription = cx.subscribe_in(&sidebar, window, Self::handle_sidebar_event);
+
+        // 订阅 Terminal 事件
+        let terminal_subscription = cx.subscribe_in(&terminal, window, Self::handle_terminal_event);
+        let command_bar_subscription =
+            cx.subscribe_in(&command_bar, window, Self::handle_command_bar_event);
+        let recording_playback_slider_subscription = cx.subscribe_in(
+            &recording_playback_slider,
+            window,
+            Self::handle_recording_playback_slider_event,
+        );
+        let workspace_editor_subscription = workspace_editor
+            .as_ref()
+            .map(|editor| cx.subscribe_in(editor, window, Self::handle_workspace_editor_event));
+
+        // 订阅 BlinkCursor 变化
+        let blink_subscription = cx.observe(&blink_manager, |this, _, cx| {
+            cx.notify();
+            let _ = this;
+        });
+
+        let focus_handle = cx.focus_handle();
+        let terminal_performance_metrics = terminal.read(cx).performance_metrics();
+        let performance_metrics = terminal_performance_metrics
+            .is_enabled()
+            .then_some(terminal_performance_metrics);
+
+        // 焦点获得/失去订阅
+        let focus_subscription = cx.on_focus(&focus_handle, window, |this, _window, cx| {
+            if this.cursor_blink_enabled {
+                this.blink_manager.update(cx, BlinkCursor::start);
+            }
+            cx.emit(TerminalPaneEvent::Focused);
+        });
+        let blur_subscription = cx.on_blur(&focus_handle, window, |this, _window, cx| {
+            if this.cursor_blink_enabled {
+                this.blink_manager.update(cx, BlinkCursor::stop);
+            }
+        });
+
+        let mut subscriptions = Vec::new();
+        subscriptions.push(sidebar_subscription);
+        subscriptions.push(terminal_subscription);
+        subscriptions.push(command_bar_subscription);
+        subscriptions.push(recording_playback_slider_subscription);
+        if let Some(subscription) = workspace_editor_subscription {
+            subscriptions.push(subscription);
+        }
+        subscriptions.push(blink_subscription);
+        subscriptions.push(focus_subscription);
+        subscriptions.push(blur_subscription);
+        if let Some(global_settings) = cx.try_global::<GlobalTerminalLocalSettings>().cloned() {
+            let settings_subscription = cx.subscribe_in(
+                &global_settings.0,
+                window,
+                Self::handle_terminal_settings_event,
+            );
+            subscriptions.push(settings_subscription);
+        }
+        if let Some(quick_command_sync) = crate::quick_command_sync::quick_command_sync_notifier(cx)
+        {
+            let quick_command_subscription = cx.subscribe_in(
+                &quick_command_sync,
+                window,
+                Self::handle_quick_command_sync_event,
+            );
+            subscriptions.push(quick_command_subscription);
+        }
+        subscriptions
+            .push(cx.observe_global_in::<AppSettings>(window, Self::handle_app_settings_changed));
+        subscriptions.push(
+            cx.observe_global_in::<gpui_component::Theme>(window, Self::handle_app_theme_changed),
+        );
+
+        let scrollbar_metrics = Rc::new(RefCell::new(TerminalScrollbarMetrics::default()));
+        let scrollbar_handle = TerminalScrollbarHandle::new(
+            terminal.read(cx).scroll_proxy(),
+            scrollbar_metrics.clone(),
+        );
+
+        let mut this = Self {
+            terminal,
+            connection_icon,
+            duplicate_source,
+            recording_playback_name,
+            session_log_name,
+            local_working_dir: if is_local_terminal {
+                local_working_dir
+            } else {
+                None
+            },
+            blink_manager,
+            sidebar,
+            ssh_tool_panels_pending,
+            workspace_editor,
+            command_bar,
+            sidebar_toolbar,
+            sidebar_tool_panels,
+            font_size: default_font_size,
+            line_height: default_font_size * default_line_height_scale,
+            font_family: default_font_family,
+            font_fallbacks: default_font_fallbacks,
+            line_height_scale: default_line_height_scale,
+            cell_width: DEFAULT_CELL_WIDTH,
+            font_metrics: None,
+            // 初始化为 None，确保首次渲染时会触发 resize，
+            // 将正确的终端尺寸发送给 PTY
+            last_size: None,
+            last_alt_screen: false,
+            scroll_lines_accumulated: 0.0,
+            pending_vi_scroll_lines: 0,
+            mouse_state: MouseState::default(),
+            pending_terminal_actions: VecDeque::new(),
+            pending_terminal_selection_actions: VecDeque::new(),
+            pending_terminal_searches: VecDeque::new(),
+            terminal_search_task: None,
+            terminal_search_generation: Arc::new(AtomicU64::new(0)),
+            pending_selection_auto_copy: false,
+            pending_render_cache_reset: false,
+            block_selection: None,
+            addon_manager: Self::create_addon_manager(),
+            _subscriptions: subscriptions,
+            mouse_position: None,
+            render_cache: RenderCache::new(DEFAULT_ROWS, DEFAULT_COLS, colors),
+            terminal_frame_snapshot: TerminalFrameSnapshot::default(),
+            terminal_render_retry: None,
+            selection_autoscroll_position: None,
+            selection_autoscroll_display_offset: None,
+            selection_autoscroll_task: None,
+            focus_handle,
+            performance_metrics,
+            terminal_bounds: Bounds::default(),
+            ime_state: None,
+            history_prompt: HistoryPromptState::default(),
+            history_prompt_scroll_handle: ScrollHandle::new(),
+            shell_prompt_input_active: false,
+            local_command_running: false,
+            last_connection_status: None,
+            suggestion_debounce: None,
+            recording_path_prompt_pending: false,
+            recording_control_error: None,
+            recording_ticker: None,
+            recording_playback_slider,
+            recording_playback_slider_dragging: false,
+            recording_playback_control_error: None,
+            recording_playback_ticker: None,
+            cd_completion_client: None,
+            cd_completion_session_manager: None,
+            cd_completion_cache: CdCompletionCache::default(),
+            cd_completion_loading_parent: None,
+            credential_capture: None,
+            zmodem_picker_request_id: None,
+            zmodem_background_tasks: HashMap::new(),
+            focus_terminal_after_connect: false,
+            current_theme: default_theme,
+            tab_index,
+            cursor_blink_enabled: false,
+            confirm_multiline_paste: true,
+            confirm_high_risk_command: true,
+            auto_copy_on_select: true,
+            autocomplete_enabled: true,
+            suggestion_popup_enabled: true,
+            suggestion_popup_opacity: initial_settings.suggestion_popup_opacity,
+            middle_click_paste: true,
+            right_click_paste: false,
+            paste_image_upload: true,
+            vim_scroll_to_arrow_keys: true,
+            show_line_timestamps: initial_settings.show_line_timestamps,
+            show_line_numbers: initial_settings.show_line_numbers,
+            line_number_digits: super::terminal_render::MIN_LINE_NUMBER_DIGITS,
+            line_margin: LineMargin::default(),
+            broadcast_client_id: None,
+            sidebar_panel_size: TERMINAL_TOOLS_SIDEBAR_DEFAULT_WIDTH,
+            resizing: None,
+            view_bounds: Bounds::default(),
+            scrollbar_metrics,
+            scrollbar_handle,
+            public_mcp_registration,
+            render_mode: TerminalRenderMode::Embedded,
+        };
+        this.apply_settings_snapshot(&initial_settings, window, cx);
+        this.sync_credential_capture(cx);
+        this.register_broadcast_input(cx);
+        this.start_performance_diagnostics(connection_id, connection_kind, cx);
+        this._subscriptions
+            .push(cx.on_release(|this, cx| this.cancel_zmodem_background_tasks(cx)));
+        this
+    }
+}

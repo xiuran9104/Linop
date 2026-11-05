@@ -1,0 +1,1322 @@
+use std::fs;
+
+use super::{
+    ManifestError, RemoteFileEditorLaunchMode, ResourceWorkbenchPrimitive, ShellHostModule,
+    ShellSurface, load_from_dir,
+};
+
+fn write_manifest(dir: &std::path::Path, body: &str) {
+    fs::write(dir.join("extension.json"), body).unwrap();
+}
+
+#[test]
+fn manifest_loads_composite_contributions() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_manifest(
+        tmp.path(),
+        r#"{
+            "schema_version": 1,
+            "id": "com.example.analytics",
+            "name": "Analytics Suite",
+            "version": "1.2.3",
+            "description": "SQL analytics helpers",
+            "engines": { "onetcli": ">=0.4.0" },
+            "runtime": {
+                "wasm": [{
+                    "id": "ui",
+                    "module": "./wasm/analytics.wasm",
+                    "kind": "component"
+                }]
+            },
+            "contributes": {
+                "languages": [{
+                    "id": "analytics.sql",
+                    "name": "Analytics SQL",
+                    "path": "./languages/sql",
+                    "file_extensions": ["asql"]
+                }],
+                "menus": {
+                    "db.tree.table": [{
+                        "command": "analytics.inspect_table",
+                        "label": "Inspect table"
+                    }]
+                }
+            }
+        }"#,
+    );
+
+    let manifest = load_from_dir(tmp.path()).unwrap();
+
+    assert_eq!("com.example.analytics", manifest.id);
+    assert_eq!(tmp.path(), manifest.manifest_dir);
+    assert_eq!("1.0", manifest.api.extension);
+    assert_eq!(1, manifest.runtime.wasm.len());
+    assert_eq!("ui", manifest.runtime.wasm[0].id);
+    assert_eq!(1, manifest.contributes.languages.len());
+    assert_eq!("analytics.sql", manifest.contributes.languages[0].id);
+    let menu = &manifest.contributes.menus["db.tree.table"][0];
+    assert_eq!("analytics.inspect_table", menu.command.id);
+    assert!(menu.requires_active);
+}
+
+#[test]
+fn manifest_parses_connection_importers() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_manifest(
+        tmp.path(),
+        r#"{
+            "schema_version": 1,
+            "id": "com.onetcli.importer.navicat",
+            "name": "Navicat Importer",
+            "version": "0.1.0",
+            "engines": { "onetcli": ">=0.7.0" },
+            "runtime": {
+                "wasm": [{
+                    "id": "navicat-importer",
+                    "module": "wasm/navicat_importer.wasm",
+                    "kind": "component",
+                    "timeout_ms": 5000,
+                    "max_memory_mb": 64
+                }]
+            },
+            "permissions": [
+                "fs:read:~/Library/Application Support/PremiumSoft CyberTech/Navicat CC/Common/conn.plist"
+            ],
+            "contributes": {
+                "connectionImporters": [{
+                    "id": "navicat",
+                    "runtimeId": "navicat-importer",
+                    "displayName": "Navicat",
+                    "description": "Import database connections from Navicat",
+                    "icon": "database",
+                    "outputKinds": ["database"],
+                    "platforms": ["macos"],
+                    "manualFilePick": {
+                        "prompt": "选择 Navicat 导出的 connection.ncx 文件"
+                    },
+                    "candidateFiles": [{
+                        "id": "navicat-macos-cc-conn",
+                        "platform": "macos",
+                        "path": "~/Library/Application Support/PremiumSoft CyberTech/Navicat CC/Common/conn.plist"
+                    }]
+                }]
+            }
+        }"#,
+    );
+
+    let manifest = load_from_dir(tmp.path()).unwrap();
+    let importer = &manifest.contributes.connection_importers[0];
+
+    assert_eq!("navicat", importer.id);
+    assert_eq!("navicat-importer", importer.runtime_id);
+    assert_eq!("Navicat", importer.display_name);
+    assert_eq!(Some("database"), importer.icon.as_deref());
+    assert_eq!(vec!["database"], importer.output_kinds);
+    assert_eq!(vec!["macos"], importer.platforms);
+    assert_eq!(
+        Some("选择 Navicat 导出的 connection.ncx 文件"),
+        importer.manual_file_pick.prompt.as_deref()
+    );
+    assert!(!importer.manual_file_pick.supports_directories);
+    assert!(importer.manual_file_pick.directory_prompt.is_none());
+    assert_eq!(1, importer.candidate_files.len());
+    assert_eq!("navicat-macos-cc-conn", importer.candidate_files[0].id);
+    assert_eq!("macos", importer.candidate_files[0].platform);
+    assert_eq!(
+        "~/Library/Application Support/PremiumSoft CyberTech/Navicat CC/Common/conn.plist",
+        importer.candidate_files[0].path
+    );
+}
+
+#[test]
+fn manifest_loads_resource_workbench_with_route_and_navigation() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_manifest(
+        tmp.path(),
+        r#"{
+            "schema_version": 1,
+            "id": "com.example.search",
+            "name": "Search",
+            "version": "1.0.0",
+            "engines": {
+                "onetcli": ">=0.1.0",
+                "gpui_shell": "0.6.4"
+            },
+            "permissions": ["shell:exec", "spawn:./bin/provider"],
+            "runtime": {
+                "ipc": [{
+                    "id": "main",
+                    "entry": { "command": "./bin/provider" },
+                    "transport": { "kind": "local_socket" }
+                }]
+            },
+            "contributes": {
+                "shellViews": [{
+                    "id": "search-editor",
+                    "title": "Search Editor",
+                    "entry": "ui/search-editor.js",
+                    "backends": {"search": "main"},
+                    "modules": ["context", "workbench"]
+                }],
+                "connections": [{
+                    "id": "search9",
+                    "label": "Search 9",
+                    "runtimeId": "main",
+                    "resourceType": "search"
+                }],
+                "resourceWorkbenches": [{
+                    "schemaVersion": 3,
+                    "id": "search",
+                    "title": "Search",
+                    "connectionIds": ["search9"],
+                    "runtimeId": "main",
+                    "resourceType": "search",
+                    "defaultPage": "overview",
+                    "operations": {
+                        "list": {
+                            "mode": "invoke",
+                            "method": "search/list",
+                            "requires": ["search/list"],
+                            "effect": "read"
+                        },
+                        "query": {
+                            "mode": "job",
+                            "method": "search/async",
+                            "requires": ["search/async"],
+                            "effect": "read",
+                            "params": {
+                                "q": {"source": "input", "path": "/q", "type": "string"}
+                            }
+                        }
+                    },
+                    "pages": [
+                        {
+                            "id": "overview",
+                            "title": "Overview",
+                            "renderer": {"kind": "native"},
+                            "load": {"operation": "list"},
+                            "stack": [{
+                                "kind": "table",
+                                "itemsPath": "/items",
+                                "keyPaths": ["/name"],
+                                "pagination": {"kind": "none"},
+                                "columns": [
+                                    {"id": "name", "title": "Name", "path": "/name", "type": "string"}
+                                ],
+                                "open": {
+                                    "pageId": "detail",
+                                    "route": {
+                                        "name": {"source": "selection", "path": "/name", "type": "string"}
+                                    }
+                                }
+                            }]
+                        },
+                        {
+                            "id": "detail",
+                            "title": "Detail",
+                            "renderer": {"kind": "native"},
+                            "route": {"name": {"type": "string", "required": true}},
+                            "load": {"operation": "list"},
+                            "links": [{
+                                "title": "Mapping",
+                                "pageId": "mapping",
+                                "route": {
+                                    "name": {"source": "route", "path": "/name", "type": "string"}
+                                }
+                            }],
+                            "stack": [{"kind": "viewer", "format": "json"}]
+                        },
+                        {
+                            "id": "mapping",
+                            "title": "Mapping",
+                            "renderer": {"kind": "native"},
+                            "route": {"name": {"type": "string", "required": true}},
+                            "load": {"operation": "list"},
+                            "stack": [{"kind": "viewer", "format": "json"}]
+                        },
+                        {
+                            "id": "search",
+                            "title": "Search",
+                            "renderer": {"kind": "shell", "viewId": "search-editor", "fallback": "native"},
+                            "stack": [{
+                                "kind": "form",
+                                "submit": {"operation": "query"},
+                                "inputs": [{"id": "q", "type": "string", "editor": "text", "default": "*", "required": true}]
+                            }]
+                        }
+                    ]
+                }]
+            }
+        }"#,
+    );
+    fs::create_dir_all(tmp.path().join("ui")).unwrap();
+    fs::write(
+        tmp.path().join("ui/search-editor.js"),
+        "export default class {}\n",
+    )
+    .unwrap();
+
+    let manifest = load_from_dir(tmp.path()).unwrap();
+    let workbench = &manifest.contributes.resource_workbenches[0];
+
+    assert_eq!("search", workbench.id);
+    assert_eq!(1, workbench.connection_ids.len());
+    // collection open 声明。
+    let overview = workbench.pages.iter().find(|p| p.id == "overview").unwrap();
+    let open = overview
+        .stack
+        .iter()
+        .find_map(|primitive| match primitive {
+            ResourceWorkbenchPrimitive::Table(table) => table.open.as_ref(),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!("detail", open.page_id);
+    assert!(open.route.contains_key("name"));
+    // detail route 参数与 links。
+    let detail = workbench.pages.iter().find(|p| p.id == "detail").unwrap();
+    assert!(detail.route.as_ref().unwrap().contains_key("name"));
+    assert_eq!(1, detail.links.len());
+    assert_eq!("mapping", detail.links[0].page_id);
+    // query 页面输入与 job 操作。
+    let search = workbench.pages.iter().find(|p| p.id == "search").unwrap();
+    assert_eq!(Some("search-editor"), search.renderer.view_id.as_deref());
+    let form = search
+        .stack
+        .iter()
+        .find_map(|primitive| match primitive {
+            ResourceWorkbenchPrimitive::Form(form) => Some(form),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(1, form.inputs.len());
+    assert_eq!("query", form.submit.operation);
+    let query_op = workbench.operations.get("query").unwrap();
+    assert!(matches!(
+        query_op.mode,
+        crate::extension::manifest::ResourceWorkbenchOperationMode::Job
+    ));
+}
+
+#[test]
+fn manifest_parses_v2_layout_tree_tabs_and_status_bar() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_manifest(
+        tmp.path(),
+        r#"{
+            "schema_version": 1,
+            "id": "com.example.docker",
+            "name": "Docker",
+            "version": "0.1.0",
+            "engines": { "onetcli": ">=0.1.0" },
+            "permissions": ["spawn:./bin/provider"],
+            "runtime": {
+                "ipc": [{
+                    "id": "main",
+                    "entry": { "command": "./bin/provider" },
+                    "transport": { "kind": "local_socket" }
+                }]
+            },
+            "contributes": {
+                "connections": [{
+                    "id": "docker-local",
+                    "label": "Docker",
+                    "runtimeId": "main",
+                    "resourceType": "docker"
+                }],
+                "resourceWorkbenches": [{
+                    "schemaVersion": 3,
+                    "id": "docker",
+                    "title": "Docker",
+                    "connectionIds": ["docker-local"],
+                    "runtimeId": "main",
+                    "resourceType": "docker",
+                    "defaultPage": "container-inspect",
+                    "layout": {
+                        "left": {
+                            "width": 260,
+                            "source": {
+                                "kind": "tree",
+                                "roots": [{
+                                    "id": "containers",
+                                    "title": "Containers",
+                                    "pageId": "container-inspect",
+                                    "children": {
+                                        "operation": "listContainers",
+                                        "itemsPath": "/containers",
+                                        "keyPaths": ["/id"],
+                                        "labelPath": "/name",
+                                        "open": {
+                                            "pageId": "container-inspect",
+                                            "route": {"id": {"source": "selection", "path": "/id", "type": "string"}}
+                                        },
+                                        "children": {
+                                            "operation": "listContainers",
+                                            "itemsPath": "/mounts",
+                                            "keyPaths": ["/path"],
+                                            "labelPath": "/path",
+                                            "open": {
+                                                "pageId": "container-inspect",
+                                                "route": {"id": {"source": "parent", "path": "/id", "type": "string"}}
+                                            }
+                                        }
+                                    }
+                                }]
+                            }
+                        },
+                        "center": {
+                            "source": {
+                                "kind": "pages",
+                                "tabGroups": [{
+                                    "id": "container",
+                                    "tabs": [
+                                        {
+                                            "id": "inspect",
+                                            "title": "Inspect",
+                                            "pageId": "container-inspect",
+                                            "route": {"id": {"source": "route", "path": "/id", "type": "string"}}
+                                        },
+                                        {
+                                            "id": "exec",
+                                            "title": "Exec",
+                                            "pageId": "container-exec",
+                                            "route": {"id": {"source": "route", "path": "/id", "type": "string"}}
+                                        }
+                                    ]
+                                }]
+                            }
+                        },
+                        "bottom": {
+                            "source": {
+                                "kind": "status",
+                                "operation": "systemUsage",
+                                "items": [
+                                    {"path": "/engine", "label": "Engine", "format": "boolean-up"},
+                                    {"path": "/containers_running", "label": "Containers", "format": "pair", "otherPath": "/containers_total"},
+                                    {"path": "/disk_used_bytes", "label": "Disk", "format": "bytes"}
+                                ]
+                            }
+                        }
+                    },
+                    "operations": {
+                        "systemUsage": {
+                            "mode": "invoke",
+                            "method": "docker/system/usage",
+                            "requires": ["docker/system/usage"],
+                            "effect": "read"
+                        },
+                        "inspectContainer": {
+                            "mode": "invoke",
+                            "method": "docker/container/inspect",
+                            "requires": ["docker/container/inspect"],
+                            "effect": "read",
+                            "params": {
+                                "id": {"source": "route", "path": "/id", "type": "string"}
+                            }
+                        },
+                        "listContainers": {
+                            "mode": "invoke",
+                            "method": "docker/container/list",
+                            "requires": ["docker/container/list"],
+                            "effect": "read"
+                        }
+                    },
+                    "pages": [
+                        {
+                            "id": "container-inspect",
+                            "title": "Inspect",
+                            "renderer": {"kind": "native"},
+                            "route": {"id": {"type": "string", "required": true}},
+                            "load": {"operation": "inspectContainer"},
+                            "tabGroupId": "container",
+                            "stack": [{"kind": "viewer", "format": "json"}]
+                        },
+                        {
+                            "id": "container-exec",
+                            "title": "Container Exec",
+                            "renderer": {"kind": "native"},
+                            "route": {"id": {"type": "string", "required": true}},
+                            "tabGroupId": "container",
+                            "stack": [{
+                                "kind": "terminal",
+                                "command": "docker",
+                                "args": ["exec", "-it", "{{id}}", "sh"],
+                                "env": {"TERM": "xterm-256color"},
+                                "workingDir": "/"
+                            }]
+                        }
+                    ]
+                }]
+            }
+        }"#,
+    );
+
+    let manifest = load_from_dir(tmp.path()).unwrap();
+    let workbench = &manifest.contributes.resource_workbenches[0];
+
+    let layout = workbench.layout.as_ref().unwrap();
+    // left tree 根节点 + lazy children 声明。
+    let left = layout.left.as_ref().unwrap();
+    assert_eq!(Some(260), left.width);
+    match &left.source {
+        crate::extension::manifest::ResourceWorkbenchNavSource::Tree { roots } => {
+            assert_eq!(1, roots.len());
+            let children = roots[0].children.as_ref().unwrap();
+            // 旧 manifest 不写 `kind`:必须解析成 remote,行为与改动前逐字一致。
+            assert!(children.is_remote());
+            assert!(children.static_items().is_none());
+            assert!(children.items.is_empty());
+            assert_eq!(Some("listContainers"), children.operation.as_deref());
+            assert_eq!(Some("/containers"), children.items_path.as_deref());
+            let open = children.open.as_ref().unwrap();
+            assert_eq!("container-inspect", open.page_id);
+            // 二级 lazy children:route 用 parent 绑定源引用父行。
+            let nested = children.children.as_deref().unwrap();
+            assert_eq!(Some("/mounts"), nested.items_path.as_deref());
+            assert!(nested.children.is_none());
+            assert_eq!(
+                crate::extension::manifest::ResourceWorkbenchBindingSource::Parent,
+                nested.open.as_ref().unwrap().route["id"].source
+            );
+        }
+        other => panic!("expected tree nav, got {other:?}"),
+    }
+    // center tabGroups:组只声明一份,页面经 tabGroupId 引用。
+    let center = layout.center.as_ref().unwrap();
+    match &center.source {
+        crate::extension::manifest::ResourceWorkbenchCenterSource::Pages { tab_groups } => {
+            assert_eq!(1, tab_groups.len());
+            assert_eq!(2, tab_groups[0].tabs.len());
+            assert_eq!("container-exec", tab_groups[0].tabs[1].page_id);
+        }
+        other => panic!("expected pages center, got {other:?}"),
+    }
+    let inspect = workbench
+        .pages
+        .iter()
+        .find(|page| page.id == "container-inspect")
+        .unwrap();
+    assert_eq!(Some("container"), inspect.tab_group_id.as_deref());
+    // bottom status items 声明。
+    let bottom = layout.bottom.as_ref().unwrap();
+    match &bottom.source {
+        crate::extension::manifest::ResourceWorkbenchBottomSource::Status { operation, items } => {
+            assert_eq!("systemUsage", operation);
+            assert_eq!(3, items.len());
+            assert!(matches!(
+                items[1].format,
+                crate::extension::manifest::ResourceWorkbenchStatusFormat::Pair
+            ));
+            assert_eq!(Some("/containers_total"), items[1].other_path.as_deref());
+        }
+        other => panic!("expected status bottom, got {other:?}"),
+    }
+
+    let exec = workbench
+        .pages
+        .iter()
+        .find(|page| page.id == "container-exec")
+        .unwrap();
+    let terminal = exec
+        .stack
+        .iter()
+        .find_map(|primitive| match primitive {
+            ResourceWorkbenchPrimitive::Terminal(terminal) => Some(terminal),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!(Some("docker"), terminal.command.as_deref());
+    assert_eq!(terminal.args, ["exec", "-it", "{{id}}", "sh"]);
+    assert_eq!(
+        Some("xterm-256color"),
+        terminal.env.get("TERM").map(String::as_str)
+    );
+    assert_eq!(Some("/"), terminal.working_dir.as_deref());
+}
+
+/// 静态树子项:`kind: "static"` + `items`,展开即得、零请求。
+///
+/// 同一个 `children` 结构体承载两套字段,靠 `kind` 判形。这里把两件事钉在一起:
+/// 静态形态能解析出来,且静态项各自持有自己的 `open`(集合级 `open` 只属于
+/// 远程形态)。写错形态由注册期拒绝,不在解析期静默兜底。
+#[test]
+fn manifest_parses_static_tree_children() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_manifest(
+        tmp.path(),
+        r#"{
+            "schema_version": 1,
+            "id": "com.example.indexstore",
+            "name": "Index Store",
+            "version": "1.0.0",
+            "engines": { "onetcli": ">=0.1.0" },
+            "permissions": ["spawn:./bin/provider"],
+            "runtime": {
+                "ipc": [{
+                    "id": "main",
+                    "entry": { "command": "./bin/provider" },
+                    "transport": { "kind": "local_socket" }
+                }]
+            },
+            "contributes": {
+                "connections": [{
+                    "id": "store",
+                    "label": "Store",
+                    "runtimeId": "main",
+                    "resourceType": "search"
+                }],
+                "resourceWorkbenches": [{
+                    "schemaVersion": 3,
+                    "id": "store",
+                    "title": "Store",
+                    "connectionIds": ["store"],
+                    "runtimeId": "main",
+                    "resourceType": "search",
+                    "defaultPage": "indices",
+                    "operations": {
+                        "listIndices": {
+                            "mode": "invoke",
+                            "method": "store/index/list",
+                            "requires": ["store/index/list"],
+                            "effect": "read"
+                        }
+                    },
+                    "pages": [{
+                        "id": "indices",
+                        "title": "Indices",
+                        "renderer": {"kind": "native"},
+                        "load": {"operation": "listIndices"},
+                        "stack": [{"kind": "viewer", "format": "json"}]
+                    }, {
+                        "id": "index-mapping",
+                        "title": "Mapping",
+                        "renderer": {"kind": "native"},
+                        "route": {"name": {"type": "string", "required": true}},
+                        "stack": [{"kind": "viewer", "format": "json"}]
+                    }, {
+                        "id": "index-settings",
+                        "title": "Settings",
+                        "renderer": {"kind": "native"},
+                        "route": {"name": {"type": "string", "required": true}},
+                        "stack": [{"kind": "viewer", "format": "json"}]
+                    }],
+                    "layout": {
+                        "left": {
+                            "width": 260,
+                            "source": {
+                                "kind": "tree",
+                                "roots": [{
+                                    "id": "indices",
+                                    "title": "Indices",
+                                    "pageId": "indices",
+                                    "children": {
+                                        "operation": "listIndices",
+                                        "itemsPath": "/indices",
+                                        "keyPaths": ["/name"],
+                                        "labelPath": "/name",
+                                        "open": {
+                                            "pageId": "indices",
+                                            "route": {"name": {"source": "selection", "path": "/name", "type": "string"}}
+                                        },
+                                        "children": {
+                                            "kind": "static",
+                                            "items": [
+                                                {
+                                                    "id": "mapping",
+                                                    "title": "Mapping",
+                                                    "open": {
+                                                        "pageId": "index-mapping",
+                                                        "route": {"name": {"source": "parent", "path": "/name", "type": "string"}}
+                                                    }
+                                                },
+                                                {
+                                                    "id": "settings",
+                                                    "title": "Settings",
+                                                    "open": {
+                                                        "pageId": "index-settings",
+                                                        "route": {"name": {"source": "parent", "path": "/name", "type": "string"}}
+                                                    }
+                                                }
+                                            ]
+                                        }
+                                    }
+                                }]
+                            }
+                        }
+                    }
+                }]
+            }
+        }"#,
+    );
+
+    let manifest = load_from_dir(tmp.path()).unwrap();
+    let workbench = &manifest.contributes.resource_workbenches[0];
+    let layout = workbench.layout.as_ref().unwrap();
+    match &layout.left.as_ref().unwrap().source {
+        crate::extension::manifest::ResourceWorkbenchNavSource::Tree { roots } => {
+            let children = roots[0].children.as_ref().unwrap();
+            assert!(children.is_remote());
+            let static_children = children.children.as_deref().unwrap();
+            assert!(!static_children.is_remote());
+            let items = static_children.static_items().unwrap();
+            assert_eq!(2, items.len());
+            assert_eq!("mapping", items[0].id);
+            assert_eq!("settings", items[1].id);
+            // 静态项各带自己的 open:同一层可以指向不同页面。
+            assert_eq!("index-mapping", items[0].open.page_id);
+            assert_eq!("index-settings", items[1].open.page_id);
+            assert_eq!(
+                crate::extension::manifest::ResourceWorkbenchBindingSource::Parent,
+                items[0].open.route["name"].source
+            );
+            assert!(items[0].children.is_none());
+        }
+        other => panic!("expected tree nav, got {other:?}"),
+    }
+}
+
+#[test]
+fn manifest_loads_remote_file_editor_contributions() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_manifest(
+        tmp.path(),
+        r#"{
+            "schema_version": 1,
+            "id": "com.onetcli.editor.notepad-plus-plus",
+            "name": "Notepad++ External Editor",
+            "version": "0.1.0",
+            "engines": { "onetcli": ">=0.1.0" },
+            "contributes": {
+                "remoteFileEditors": [{
+                    "id": "notepad-plus-plus",
+                    "displayName": "Notepad++",
+                    "platforms": ["windows"],
+                    "fileMasks": ["*"],
+                    "priority": 100,
+                    "command": {
+                        "programCandidates": [
+                            "${env:ProgramFiles}\\Notepad++\\notepad++.exe",
+                            "${env:ProgramFiles(x86)}\\Notepad++\\notepad++.exe"
+                        ],
+                        "args": ["{file}"]
+                    }
+                }]
+            }
+        }"#,
+    );
+
+    let manifest = load_from_dir(tmp.path()).unwrap();
+    let editor = &manifest.contributes.remote_file_editors[0];
+
+    assert_eq!("notepad-plus-plus", editor.id);
+    assert_eq!("Notepad++", editor.display_name);
+    assert_eq!(vec!["windows"], editor.platforms);
+    assert_eq!(vec!["*"], editor.file_masks);
+    assert_eq!(100, editor.priority);
+    assert_eq!(
+        RemoteFileEditorLaunchMode::Direct,
+        editor.command.launch_mode
+    );
+    assert_eq!(2, editor.command.program_candidates.len());
+    assert_eq!(vec!["{file}"], editor.command.args);
+}
+
+#[test]
+fn manifest_loads_macos_open_remote_file_editor_launch_mode() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_manifest(
+        tmp.path(),
+        r#"{
+            "schema_version": 1,
+            "id": "com.onetcli.editor.notepad-minus-minus",
+            "name": "Notepad-- External Editor",
+            "version": "0.1.1",
+            "engines": { "onetcli": ">=0.8.6" },
+            "contributes": {
+                "remoteFileEditors": [{
+                    "id": "notepad-minus-minus",
+                    "displayName": "Notepad--",
+                    "platforms": ["macos"],
+                    "command": {
+                        "launchMode": "macos_open",
+                        "programCandidates": [
+                            "/Applications/Notepad--.app/Contents/MacOS/Notepad--"
+                        ],
+                        "args": ["{file}"]
+                    }
+                }]
+            }
+        }"#,
+    );
+
+    let manifest = load_from_dir(tmp.path()).unwrap();
+    let command = &manifest.contributes.remote_file_editors[0].command;
+
+    assert_eq!(RemoteFileEditorLaunchMode::MacosOpen, command.launch_mode);
+}
+
+#[test]
+fn manifest_accepts_windows_env_fs_permissions_for_connection_importers() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_manifest(
+        tmp.path(),
+        r#"{
+            "schema_version": 1,
+            "id": "com.onetcli.importer.dbeaver",
+            "name": "DBeaver Importer",
+            "version": "0.1.0",
+            "engines": { "onetcli": ">=0.7.0" },
+            "runtime": {
+                "wasm": [{
+                    "id": "dbeaver-importer",
+                    "module": "wasm/dbeaver_importer_wasm.wasm",
+                    "kind": "component"
+                }]
+            },
+            "permissions": [
+                "fs:read:%APPDATA%/DBeaverData/workspace6/General/.dbeaver/data-sources.json"
+            ],
+            "contributes": {
+                "connectionImporters": [{
+                    "id": "dbeaver",
+                    "runtimeId": "dbeaver-importer",
+                    "displayName": "DBeaver",
+                    "outputKinds": ["database"],
+                    "platforms": ["windows"],
+                    "candidateFiles": [{
+                        "id": "dbeaver-windows-data-sources",
+                        "platform": "windows",
+                        "path": "%APPDATA%/DBeaverData/workspace6/General/.dbeaver/data-sources.json"
+                    }]
+                }]
+            }
+        }"#,
+    );
+
+    let manifest = load_from_dir(tmp.path()).unwrap();
+
+    assert_eq!("com.onetcli.importer.dbeaver", manifest.id);
+    assert_eq!(1, manifest.contributes.connection_importers.len());
+}
+
+#[test]
+fn manifest_rejects_wasm_module_path_escape() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_manifest(
+        tmp.path(),
+        r#"{
+            "schema_version": 1,
+            "id": "com.example.bad",
+            "name": "Bad",
+            "version": "1.0.0",
+            "engines": { "onetcli": ">=0.4.0" },
+            "runtime": {
+                "wasm": [{
+                    "id": "main",
+                    "module": "../escape.wasm",
+                    "kind": "component"
+                }]
+            }
+        }"#,
+    );
+
+    let err = load_from_dir(tmp.path()).unwrap_err();
+
+    match err {
+        ManifestError::InvalidField { field, reason } => {
+            assert_eq!("/runtime/wasm/main/module", field);
+            assert!(reason.contains("逃逸"));
+        }
+        other => panic!("expected invalid wasm path, got {other:?}"),
+    }
+}
+
+#[test]
+fn manifest_parses_document_exporters() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_manifest(
+        tmp.path(),
+        r#"{
+            "schema_version": 1,
+            "id": "com.navop.exporter.documents",
+            "name": "Document Exporter",
+            "version": "0.1.0",
+            "engines": { "onetcli": ">=0.7.0" },
+            "runtime": { "wasm": [{ "id": "main", "module": "wasm/main.wasm", "kind": "component" }] },
+            "contributes": {
+                "documentExporters": [{
+                    "id": "documents",
+                    "displayName": "HTML, PDF and Word",
+                    "runtimeId": "main",
+                    "formats": ["html", "pdf", "docx"],
+                    "outputMediaTypes": ["text/html", "application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]
+                }]
+            }
+        }"#,
+    );
+
+    let manifest = load_from_dir(tmp.path()).unwrap();
+    let exporter = &manifest.contributes.document_exporters[0];
+    assert_eq!("documents", exporter.id);
+    assert_eq!("export-document", exporter.function);
+    assert_eq!(vec!["html", "pdf", "docx"], exporter.formats);
+}
+
+#[test]
+fn manifest_parses_typed_shell_view() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_shell_entry(tmp.path(), "ui/explorer.js");
+    write_shell_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "explorer",
+            "title": "Resources",
+            "entry": "ui/explorer.js",
+            "surface": "tab",
+            "backends": { "main": "provider" },
+            "modules": ["context", "resource"]
+        }),
+    );
+
+    let manifest = load_from_dir(tmp.path()).unwrap();
+    let view = &manifest.contributes.shell_views[0];
+
+    assert_eq!("explorer", view.id);
+    assert_eq!("ui/explorer.js", view.entry);
+    assert_eq!(
+        Some("provider"),
+        view.backends.get("main").map(String::as_str)
+    );
+}
+
+#[test]
+fn manifest_rejects_shell_view_entry_escape() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_shell_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "explorer",
+            "title": "Resources",
+            "entry": "../escape.js",
+            "surface": "tab",
+            "backends": { "main": "provider" },
+            "modules": ["resource"]
+        }),
+    );
+
+    match load_from_dir(tmp.path()).unwrap_err() {
+        ManifestError::InvalidField { field, reason } => {
+            assert_eq!("/contributes/shellViews/explorer/entry", field);
+            assert!(reason.contains("escape"), "{reason}");
+        }
+        other => panic!("expected invalid shell entry, got {other:?}"),
+    }
+}
+
+#[test]
+fn manifest_rejects_missing_shell_view_entry() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_shell_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "explorer",
+            "title": "Resources",
+            "entry": "ui/missing.js",
+            "surface": "tab",
+            "backends": { "main": "provider" },
+            "modules": ["resource"]
+        }),
+    );
+
+    let error = load_from_dir(tmp.path()).unwrap_err();
+
+    assert!(error.to_string().contains("does not exist"), "{error}");
+}
+
+#[test]
+fn manifest_rejects_unknown_shell_view_field() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_shell_entry(tmp.path(), "ui/explorer.js");
+    write_shell_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "explorer",
+            "title": "Resources",
+            "entry": "ui/explorer.js",
+            "surface": "tab",
+            "backends": { "main": "provider" },
+            "modules": ["resource"],
+            "unexpected": true
+        }),
+    );
+
+    match load_from_dir(tmp.path()).unwrap_err() {
+        ManifestError::Parse { message, .. } => {
+            assert!(message.contains("unknown field"), "{message}")
+        }
+        other => panic!("expected shell view parse failure, got {other:?}"),
+    }
+}
+
+#[test]
+fn manifest_rejects_removed_ui_host_module() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_shell_entry(tmp.path(), "ui/explorer.js");
+    write_shell_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "explorer",
+            "title": "Resources",
+            "entry": "ui/explorer.js",
+            "surface": "tab",
+            "modules": ["ui"]
+        }),
+    );
+
+    let error = load_from_dir(tmp.path()).unwrap_err();
+    assert!(
+        error.to_string().contains("unknown variant `ui`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn manifest_accepts_registered_shell_lifecycle_modules() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_shell_entry(tmp.path(), "ui/explorer.js");
+    write_shell_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "explorer",
+            "title": "Resources",
+            "entry": "ui/explorer.js",
+            "surface": "tab",
+            "backends": { "main": "provider" },
+            "modules": ["job", "event", "blob", "runtime", "log"]
+        }),
+    );
+
+    let manifest = load_from_dir(tmp.path()).expect("registered shell modules");
+    assert_eq!(5, manifest.contributes.shell_views[0].modules.len());
+}
+
+#[cfg(unix)]
+#[test]
+fn manifest_rejects_shell_entry_symlink_escape() {
+    use std::os::unix::fs::symlink;
+
+    let tmp = tempfile::TempDir::new().unwrap();
+    let outside = tempfile::TempDir::new().unwrap();
+    std::fs::write(outside.path().join("outside.js"), "export default class {}").unwrap();
+    std::fs::create_dir_all(tmp.path().join("ui")).unwrap();
+    symlink(
+        outside.path().join("outside.js"),
+        tmp.path().join("ui/explorer.js"),
+    )
+    .unwrap();
+    write_shell_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "explorer",
+            "title": "Resources",
+            "entry": "ui/explorer.js",
+            "surface": "tab",
+            "backends": { "main": "provider" },
+            "modules": ["context", "resource"]
+        }),
+    );
+
+    let error = load_from_dir(tmp.path()).unwrap_err();
+
+    assert!(error.to_string().contains("符号链接"), "{error}");
+}
+
+#[cfg(unix)]
+#[test]
+fn manifest_rejects_auto_restart_without_restart_budget() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_ipc_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "main",
+            "entry": { "command": "bin/provider" },
+            "auto_restart": true,
+            "max_restart_attempts": 0
+        }),
+    );
+
+    match load_from_dir(tmp.path()).unwrap_err() {
+        ManifestError::InvalidField { field, reason } => {
+            assert_eq!("/runtime/ipc/main/max_restart_attempts", field);
+            assert!(reason.contains("1"), "{reason}");
+        }
+        other => panic!("expected invalid restart policy, got {other:?}"),
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn manifest_rejects_unsupported_ipc_transport() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_ipc_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "main",
+            "entry": { "command": "bin/provider" },
+            "transport": { "kind": "stdio" }
+        }),
+    );
+
+    match load_from_dir(tmp.path()).unwrap_err() {
+        ManifestError::InvalidField { field, reason } => {
+            assert_eq!("/runtime/ipc/main/transport/kind", field);
+            assert!(reason.contains("local_socket"), "{reason}");
+        }
+        other => panic!("expected invalid IPC transport, got {other:?}"),
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn manifest_rejects_ipc_working_directory_escape() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_ipc_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "main",
+            "entry": {
+                "command": "bin/provider",
+                "working_dir": "../outside"
+            }
+        }),
+    );
+
+    match load_from_dir(tmp.path()).unwrap_err() {
+        ManifestError::InvalidField { field, reason } => {
+            assert_eq!("/runtime/ipc/main/entry/working_dir", field);
+            assert!(reason.contains("逃逸"), "{reason}");
+        }
+        other => panic!("expected invalid IPC working directory, got {other:?}"),
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn manifest_rejects_absolute_ipc_working_directory() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_ipc_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "main",
+            "entry": {
+                "command": "bin/provider",
+                "working_dir": "/tmp/runtime"
+            }
+        }),
+    );
+
+    match load_from_dir(tmp.path()).unwrap_err() {
+        ManifestError::InvalidField { field, reason } => {
+            assert_eq!("/runtime/ipc/main/entry/working_dir", field);
+            assert!(reason.contains("绝对路径"), "{reason}");
+        }
+        other => panic!("expected invalid IPC working directory, got {other:?}"),
+    }
+}
+
+#[test]
+fn manifest_requires_spawn_permission_for_resolved_ipc_command() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let manifest = serde_json::json!({
+        "schema_version": 1,
+        "id": "com.example.resources",
+        "name": "Resources",
+        "version": "0.1.0",
+        "engines": { "onetcli": ">=0.1.0" },
+        "permissions": ["spawn:./bin/provider"],
+        "runtime": {
+            "ipc": [{
+                "id": "main",
+                "entry": {
+                    "command": "./bin/provider",
+                    "working_dir": "runtime"
+                }
+            }]
+        }
+    });
+    write_manifest(
+        tmp.path(),
+        &serde_json::to_string_pretty(&manifest).unwrap(),
+    );
+
+    match load_from_dir(tmp.path()).unwrap_err() {
+        ManifestError::InvalidField { field, reason } => {
+            assert_eq!("/runtime/ipc/main/entry/command", field);
+            assert!(reason.contains("spawn:./runtime/bin/provider"), "{reason}");
+        }
+        other => panic!("expected missing spawn permission, got {other:?}"),
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn manifest_rejects_ipc_command_that_relies_on_path_lookup() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_ipc_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "main",
+            "entry": { "command": "provider" }
+        }),
+    );
+
+    match load_from_dir(tmp.path()).unwrap_err() {
+        ManifestError::InvalidField { field, reason } => {
+            assert_eq!("/runtime/ipc/main/entry/command", field);
+            assert!(reason.contains("PATH"), "{reason}");
+        }
+        other => panic!("expected PATH lookup rejection, got {other:?}"),
+    }
+}
+
+fn write_shell_manifest(dir: &std::path::Path, view: serde_json::Value) {
+    let manifest = serde_json::json!({
+        "schema_version": 1,
+        "id": "com.example.resources",
+        "name": "Resources",
+        "version": "0.1.0",
+        "engines": { "onetcli": ">=0.1.0", "gpui_shell": "0.6.4" },
+        "api": { "shell": "1.0" },
+        "permissions": ["shell:exec", "spawn:./bin/provider"],
+        "runtime": {
+            "ipc": [{
+                "id": "provider",
+                "entry": { "command": "./bin/provider" }
+            }]
+        },
+        "contributes": { "shellViews": [view] }
+    });
+    write_manifest(dir, &serde_json::to_string_pretty(&manifest).unwrap());
+}
+
+fn write_shell_entry(dir: &std::path::Path, entry: &str) {
+    let path = dir.join(entry);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(path, "export default class View {}").unwrap();
+}
+
+#[cfg(unix)]
+fn write_ipc_manifest(dir: &std::path::Path, runtime: serde_json::Value) {
+    let manifest = serde_json::json!({
+        "schema_version": 1,
+        "id": "com.example.resources",
+        "name": "Resources",
+        "version": "0.1.0",
+        "engines": { "onetcli": ">=0.1.0" },
+        "permissions": ["spawn:./bin/provider"],
+        "runtime": { "ipc": [runtime] }
+    });
+    write_manifest(dir, &serde_json::to_string_pretty(&manifest).unwrap());
+}
+
+#[test]
+fn reference_resource_plugin_manifests_are_parser_valid() {
+    let repo_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let examples = [
+        ("nacos", "com.navop.nacos"),
+        ("elasticsearch", "com.navop.elasticsearch"),
+        ("rocketmq", "com.navop.rocketmq"),
+        ("kafka", "com.navop.kafka"),
+        ("docker", "com.navop.docker"),
+        ("kubernetes", "com.navop.kubernetes"),
+        ("api-test", "com.navop.api-test"),
+    ];
+
+    for (name, expected_id) in examples {
+        let directory = repo_root
+            .join("docs/extension-resource-plugins/examples")
+            .join(name);
+        let manifest = load_from_dir(&directory)
+            .unwrap_or_else(|error| panic!("{}: {error}", directory.display()));
+
+        assert_eq!(expected_id, manifest.id);
+        assert_eq!(1, manifest.runtime.ipc.len());
+        assert_eq!("main", manifest.runtime.ipc[0].id);
+        assert!(!manifest.contributes.connections.is_empty());
+    }
+}
+
+#[test]
+fn manifest_accepts_toolbox_surface_with_log_only_modules() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_shell_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "hosts-tool",
+            "title": "Hosts Editor",
+            "entry": "ui/tool.js",
+            "surface": "toolbox",
+            "singleton": true,
+            "category": "system",
+            "keywords": ["hosts", "dns"],
+            "modules": ["log"]
+        }),
+    );
+    write_shell_entry(tmp.path(), "ui/tool.js");
+    let manifest = load_from_dir(tmp.path()).unwrap();
+    let view = &manifest.contributes.shell_views[0];
+    assert_eq!(view.surface, ShellSurface::Toolbox);
+    assert_eq!(view.category.as_deref(), Some("system"));
+    assert_eq!(
+        view.keywords.as_deref(),
+        Some(
+            ["hosts", "dns"]
+                .iter()
+                .map(|keyword| keyword.to_string())
+                .collect::<Vec<_>>()
+                .as_slice()
+        )
+    );
+}
+
+#[test]
+fn manifest_accepts_toolbox_surface_with_backends_and_backend_modules() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_shell_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "docker-tool",
+            "title": "Docker Cleaner",
+            "entry": "ui/tool.js",
+            "surface": "toolbox",
+            "singleton": true,
+            "category": "network",
+            "backends": { "main": "provider" },
+            "modules": ["resource", "job", "log"]
+        }),
+    );
+    write_shell_entry(tmp.path(), "ui/tool.js");
+    let manifest = load_from_dir(tmp.path()).unwrap();
+    let view = &manifest.contributes.shell_views[0];
+    assert_eq!(view.surface, ShellSurface::Toolbox);
+    assert_eq!(view.backends.len(), 1);
+    assert!(view.modules.contains(&ShellHostModule::Resource));
+}
+
+#[test]
+fn manifest_rejects_invalid_toolbox_category() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    write_shell_manifest(
+        tmp.path(),
+        serde_json::json!({
+            "id": "bad-tool",
+            "title": "Bad Tool",
+            "entry": "ui/tool.js",
+            "surface": "toolbox",
+            "category": "Network Tools!"
+        }),
+    );
+    write_shell_entry(tmp.path(), "ui/tool.js");
+    let error = load_from_dir(tmp.path()).unwrap_err();
+    assert!(error.to_string().contains("toolbox category"), "{error}");
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Navop Release Notes"
+  short_description: "Maintain bilingual Navop changelog and release notes."
+  default_prompt: "Use $navop-release-notes to generate the next bilingual Navop changelog entry before tagging, then verify the GitHub and R2 release-note inputs."

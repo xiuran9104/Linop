@@ -1,0 +1,807 @@
+use db::ipc::{ExternalDatabasePlugin, IpcDriverManifest};
+use db::{BinaryCell, ColumnInfo, DatabasePlugin, DbManager, TableCellValue};
+use one_core::storage::DatabaseType;
+use one_ui::edit_table::tsv::parse_tsv_rows;
+use std::path::PathBuf;
+
+use super::*;
+
+fn column(name: &str, data_type: &str) -> ColumnInfo {
+    ColumnInfo {
+        name: name.to_string(),
+        data_type: data_type.to_string(),
+        is_nullable: true,
+        is_primary_key: name == "id",
+        default_value: None,
+        comment: None,
+        charset: None,
+        collation: None,
+        is_auto_increment: false,
+    }
+}
+
+fn sql_context<'a>(
+    input: (
+        &'a [Vec<Option<String>>],
+        &'a [SharedString],
+        &'a TableMetadata,
+    ),
+    plugin: &'a dyn DatabasePlugin,
+) -> CopyFormatContext<'a> {
+    let (data, columns, metadata) = input;
+    CopyFormatContext::new(data, columns, metadata).with_plugin(plugin)
+}
+
+fn binary_cell(row_index: usize, column_index: usize, bytes: &[u8]) -> BinaryCell {
+    BinaryCell {
+        row_index,
+        column_index,
+        bytes: bytes.to_vec(),
+    }
+}
+
+fn compatible_driver_plugin(database_type: DatabaseType) -> ExternalDatabasePlugin {
+    let mut manifest: IpcDriverManifest = serde_json::from_value(serde_json::json!({
+        "id": "test-compatible",
+        "name": "Test Compatible",
+        "entry": { "command": "driver" },
+        "transport": { "name": "test-compatible.sock" }
+    }))
+    .expect("compatible driver manifest should parse");
+    manifest.manifest_dir = PathBuf::from("/drivers/test-compatible");
+    manifest.dialect.compatible_database_type = Some(database_type);
+    ExternalDatabasePlugin::for_driver(manifest)
+}
+
+#[test]
+fn formats_csv_and_structured_null_values() {
+    let data = vec![vec![None, Some(String::new()), Some("NULL".into())]];
+    let columns = vec!["nullable".into(), "empty".into(), "literal".into()];
+    let metadata = TableMetadata::new("values_table");
+
+    assert_eq!(
+        CopyFormatter::format(
+            CopyFormat::Csv,
+            CopyFormatContext::new(&data, &columns, &metadata)
+        ),
+        "\\N,\"\",NULL"
+    );
+    assert_eq!(
+        CopyFormatter::format(
+            CopyFormat::Tsv,
+            CopyFormatContext::new(&data, &columns, &metadata)
+        ),
+        "\\N\t\tNULL"
+    );
+    assert!(
+        CopyFormatter::format(
+            CopyFormat::Json,
+            CopyFormatContext::new(&data, &columns, &metadata)
+        )
+        .contains("\"nullable\": null")
+    );
+}
+
+#[test]
+fn json_escapes_column_names_and_only_emits_strict_json_numbers() {
+    let data = vec![vec![
+        Some("1".into()),
+        Some("-1.5e2".into()),
+        Some("+1".into()),
+        Some("01".into()),
+        Some("1.".into()),
+        Some("NaN".into()),
+        Some("inf".into()),
+    ]];
+    let columns = vec![
+        "a\"b\\c\n".into(),
+        "exponent".into(),
+        "plus".into(),
+        "leading_zero".into(),
+        "trailing_dot".into(),
+        "nan".into(),
+        "infinity".into(),
+    ];
+    let metadata = TableMetadata::new("values_table");
+
+    let json = CopyFormatter::format(
+        CopyFormat::Json,
+        CopyFormatContext::new(&data, &columns, &metadata),
+    );
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json).expect("copy output should be valid JSON");
+    let row = parsed[0].as_object().expect("row should be a JSON object");
+
+    assert_eq!(row["a\"b\\c\n"], serde_json::json!(1));
+    assert_eq!(row["exponent"].as_f64(), Some(-1.5e2));
+    assert_eq!(row["plus"], serde_json::json!("+1"));
+    assert_eq!(row["leading_zero"], serde_json::json!("01"));
+    assert_eq!(row["trailing_dot"], serde_json::json!("1."));
+    assert_eq!(row["nan"], serde_json::json!("NaN"));
+    assert_eq!(row["infinity"], serde_json::json!("inf"));
+}
+
+#[test]
+fn plain_copy_formats_use_binary_sidecar_without_guessing_text() {
+    let data = vec![
+        vec![
+            Some("wrong".into()),
+            Some("true".into()),
+            Some("8000".into()),
+            Some("AQID".into()),
+        ],
+        vec![None, Some("base64:AQID".into()), None, None],
+    ];
+    let columns = vec![
+        "binary".into(),
+        "boolean_text".into(),
+        "number_text".into(),
+        "base64_shaped_text".into(),
+    ];
+    let metadata = TableMetadata::new("values_table");
+    let binary_cells = vec![binary_cell(0, 0, &[1, 2, 3]), binary_cell(1, 0, &[])];
+    let context =
+        CopyFormatContext::new(&data, &columns, &metadata).with_binary_cells(&binary_cells);
+
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::Tsv, context),
+        "base64:AQID\ttrue\t8000\tAQID\nbase64:\tbase64:AQID\t\\N\t\\N"
+    );
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::Csv, context),
+        "base64:AQID,true,8000,AQID\nbase64:,base64:AQID,\\N,\\N"
+    );
+
+    let json = CopyFormatter::format(CopyFormat::Json, context);
+    assert!(json.contains("\"binary\": \"base64:AQID\""), "{json}");
+    assert!(json.contains("\"binary\": \"base64:\""), "{json}");
+    assert!(json.contains("\"base64_shaped_text\": \"AQID\""), "{json}");
+
+    let markdown = CopyFormatter::format(CopyFormat::Markdown, context);
+    assert!(
+        markdown.contains("| base64:AQID | true | 8000 | AQID |"),
+        "{markdown}"
+    );
+    assert!(
+        markdown.contains("| base64: | base64:AQID | \\N | \\N |"),
+        "{markdown}"
+    );
+}
+
+#[test]
+fn mysql_insert_uses_typed_bit_and_string_literals() {
+    let manager = DbManager::default();
+    let plugin = manager.get_plugin(&DatabaseType::MySQL).unwrap();
+    let data = vec![vec![Some("1".into()), Some("1".into()), Some("1".into())]];
+    let columns = vec!["id".into(), "bit_name".into(), "text_name".into()];
+    let metadata = TableMetadata::new("test_bit")
+        .with_columns(columns.clone())
+        .with_column_meta(vec![
+            column("id", "INT"),
+            column("bit_name", "BIT(1)"),
+            column("text_name", "VARCHAR(20)"),
+        ])
+        .with_primary_keys(vec![0]);
+
+    let sql = CopyFormatter::format(
+        CopyFormat::SqlInsert,
+        sql_context((&data, &columns, &metadata), plugin.as_ref()),
+    );
+
+    assert_eq!(
+        sql,
+        "INSERT INTO `test_bit` (`id`, `bit_name`, `text_name`) VALUES\n(1, 1, '1');"
+    );
+}
+
+#[test]
+fn mysql_sql_formats_use_binary_sidecar_as_authoritative_bytes() {
+    let manager = DbManager::default();
+    let plugin = manager.get_plugin(&DatabaseType::MySQL).unwrap();
+    let data = vec![vec![None, Some("wrong".into())]];
+    let columns = vec!["binary_id".into(), "payload".into()];
+    let metadata = TableMetadata::new("binary_values")
+        .with_columns(columns.clone())
+        .with_column_meta(vec![
+            column("binary_id", "VARBINARY(8)"),
+            column("payload", "BLOB"),
+        ])
+        .with_primary_keys(vec![0]);
+    let binary_cells = vec![
+        binary_cell(0, 0, &[1, 2, 3]),
+        binary_cell(0, 1, &[0xde, 0xad]),
+    ];
+    let context =
+        sql_context((&data, &columns, &metadata), plugin.as_ref()).with_binary_cells(&binary_cells);
+
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlInsert, context),
+        "INSERT INTO `binary_values` (`binary_id`, `payload`) VALUES\n(X'010203', X'dead');"
+    );
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlUpdate, context),
+        "UPDATE `binary_values` SET `payload` = X'dead' WHERE `binary_id` = X'010203';"
+    );
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlDelete, context),
+        "DELETE FROM `binary_values` WHERE `binary_id` = X'010203';"
+    );
+}
+
+#[test]
+fn single_column_in_preserves_binary_rows_and_distinguishes_null() {
+    let manager = DbManager::default();
+    let plugin = manager.get_plugin(&DatabaseType::MySQL).unwrap();
+    let data = vec![
+        vec![None],
+        vec![None],
+        vec![Some("plain".into())],
+        vec![Some("wrong".into())],
+    ];
+    let columns = vec!["value".into()];
+    let metadata = TableMetadata::new("binary_values")
+        .with_columns(columns.clone())
+        .with_column_meta(vec![column("value", "BLOB")]);
+    let binary_cells = vec![binary_cell(1, 0, &[]), binary_cell(3, 0, &[1, 2, 3])];
+    let context =
+        sql_context((&data, &columns, &metadata), plugin.as_ref()).with_binary_cells(&binary_cells);
+
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlIn, context),
+        "(`value` IN (X'', X'706c61696e', X'010203') OR `value` IS NULL)"
+    );
+}
+
+#[test]
+fn fallback_sql_uses_standard_hex_literal_for_binary_sidecar() {
+    let data = vec![vec![Some("wrong".into())]];
+    let columns = vec!["payload".into()];
+    let metadata = TableMetadata::new("binary_values").with_columns(columns.clone());
+    let binary_cells = vec![binary_cell(0, 0, &[0, 0xff])];
+    let context =
+        CopyFormatContext::new(&data, &columns, &metadata).with_binary_cells(&binary_cells);
+
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlInsert, context),
+        "INSERT INTO \"binary_values\" (\"payload\") VALUES\n(X'00ff');"
+    );
+}
+
+#[test]
+fn every_builtin_database_uses_its_typed_literals() {
+    let cases = [
+        (DatabaseType::PostgreSQL, "BOOLEAN", "TRUE"),
+        (DatabaseType::SQLite, "BOOLEAN", "1"),
+        (DatabaseType::MSSQL, "BIT", "1"),
+        (DatabaseType::Oracle, "BOOLEAN", "TRUE"),
+    ];
+    for (database_type, data_type, expected) in cases {
+        assert_typed_insert(database_type, data_type, expected);
+    }
+}
+
+#[test]
+fn clickhouse_driver_uses_clickhouse_typed_literals() {
+    // ClickHouse 已无内置原生插件,改由 clickhouse IPC 驱动提供;宿主按
+    // dialect.compatible_database_type 复用 ClickHouse 字面量格式化(布尔写作 true)。
+    let plugin = compatible_driver_plugin(DatabaseType::ClickHouse);
+    let data = vec![vec![Some("true".into())]];
+    let columns = vec!["enabled".into()];
+    let metadata = TableMetadata::new("flags")
+        .with_columns(columns.clone())
+        .with_column_meta(vec![column("enabled", "Boolean")]);
+
+    let sql = CopyFormatter::format(
+        CopyFormat::SqlInsert,
+        sql_context((&data, &columns, &metadata), &plugin),
+    );
+
+    assert!(sql.contains("VALUES\n(true);"), "{sql}");
+}
+
+#[test]
+fn compatible_external_database_uses_duckdb_typed_literals() {
+    let plugin = compatible_driver_plugin(DatabaseType::DuckDB);
+    let data = vec![vec![Some("true".into())]];
+    let columns = vec!["enabled".into()];
+    let metadata = TableMetadata::new("flags")
+        .with_columns(columns.clone())
+        .with_column_meta(vec![column("enabled", "BOOLEAN")]);
+
+    let sql = CopyFormatter::format(
+        CopyFormat::SqlInsert,
+        sql_context((&data, &columns, &metadata), &plugin),
+    );
+
+    assert!(sql.contains("VALUES\n(TRUE);"), "{sql}");
+}
+
+fn assert_typed_insert(database_type: DatabaseType, data_type: &str, expected: &str) {
+    let manager = DbManager::default();
+    let plugin = manager.get_plugin(&database_type).unwrap();
+    let data = vec![vec![Some("true".into())]];
+    let columns = vec!["enabled".into()];
+    let metadata = TableMetadata::new("flags")
+        .with_columns(columns.clone())
+        .with_column_meta(vec![column("enabled", data_type)]);
+    let sql = CopyFormatter::format(
+        CopyFormat::SqlInsert,
+        sql_context((&data, &columns, &metadata), plugin.as_ref()),
+    );
+
+    assert!(
+        sql.contains(&format!("VALUES\n({expected});")),
+        "{database_type:?}: {sql}"
+    );
+}
+
+#[test]
+fn selected_metadata_remaps_primary_keys_and_types() {
+    let metadata = TableMetadata::new("items")
+        .with_columns(vec!["id", "enabled", "name"])
+        .with_column_meta(vec![
+            column("id", "INT"),
+            column("enabled", "BIT"),
+            column("name", "VARCHAR(20)"),
+        ])
+        .with_primary_keys(vec![0, 2]);
+
+    let selected = metadata.select_columns(&[2, 1]);
+
+    assert_eq!(selected.column_names, vec!["name", "enabled"]);
+    assert_eq!(selected.primary_key_indices, vec![0]);
+    assert_eq!(
+        selected.column_meta[1]
+            .as_ref()
+            .map(|column| column.data_type.as_str()),
+        Some("BIT")
+    );
+}
+
+#[test]
+fn export_metadata_preserves_known_types_when_one_column_is_unknown() {
+    let metadata = TableMetadata::new("items")
+        .with_columns(vec!["id", "enabled"])
+        .with_column_meta(vec![column("id", "INT"), column("enabled", "BIT")])
+        .with_primary_keys(vec![0]);
+
+    let selected = metadata.for_columns(&["enabled".into(), "computed".into()]);
+
+    assert_eq!(
+        selected.column_meta[0]
+            .as_ref()
+            .map(|column| column.data_type.as_str()),
+        Some("BIT")
+    );
+    assert!(selected.column_meta[1].is_none());
+    assert!(selected.primary_key_indices.is_empty());
+}
+
+#[test]
+fn typed_numeric_rejects_malicious_literal() {
+    let manager = DbManager::default();
+    let plugin = manager.get_plugin(&DatabaseType::MySQL).unwrap();
+    let data = vec![vec![Some("1); DROP TABLE users; --".into())]];
+    let columns = vec!["id".into()];
+    let metadata = TableMetadata::new("users")
+        .with_columns(columns.clone())
+        .with_column_meta(vec![column("id", "INT")]);
+    let sql = CopyFormatter::format(
+        CopyFormat::SqlInsert,
+        sql_context((&data, &columns, &metadata), plugin.as_ref()),
+    );
+
+    assert!(sql.contains("'1); DROP TABLE users; --'"));
+}
+
+#[test]
+fn fallback_quotes_identifiers_and_non_finite_numbers() {
+    let data = vec![
+        vec![Some("NaN".into())],
+        vec![Some("inf".into())],
+        vec![Some("1.5".into())],
+    ];
+    let columns = vec!["value name".into()];
+    let metadata = TableMetadata::new("odd\" table").with_columns(columns.clone());
+
+    let sql = CopyFormatter::format(
+        CopyFormat::SqlInsert,
+        CopyFormatContext::new(&data, &columns, &metadata),
+    );
+
+    assert_eq!(
+        sql,
+        concat!(
+            "INSERT INTO \"odd\"\" table\" (\"value name\") VALUES\n",
+            "('NaN'),\n",
+            "('inf'),\n",
+            "(1.5);",
+        )
+    );
+}
+
+#[test]
+fn sql_mutations_preserve_typed_values_and_null_predicates() {
+    let plugin = DbManager::default()
+        .get_plugin(&DatabaseType::MySQL)
+        .expect("MySQL plugin should exist");
+    let data = vec![vec![Some("1".into()), Some("1".into()), None]];
+    let columns = vec!["id".into(), "enabled".into(), "note".into()];
+    let metadata = TableMetadata::new("test_bit")
+        .with_columns(columns.clone())
+        .with_column_meta(vec![
+            column("id", "INT"),
+            column("enabled", "BIT(1)"),
+            column("note", "VARCHAR(20)"),
+        ])
+        .with_primary_keys(vec![0]);
+    let context = sql_context((&data, &columns, &metadata), plugin.as_ref());
+
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlUpdate, context),
+        "UPDATE `test_bit` SET `enabled` = 1, `note` = NULL WHERE `id` = 1;"
+    );
+
+    let context = sql_context((&data, &columns, &metadata), plugin.as_ref());
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlDelete, context),
+        "DELETE FROM `test_bit` WHERE `id` = 1;"
+    );
+
+    let in_data = vec![vec![Some("1".into())], vec![Some("0".into())], vec![None]];
+    let in_columns = vec!["enabled".into()];
+    let in_metadata = TableMetadata::new("test_bit")
+        .with_columns(in_columns.clone())
+        .with_column_meta(vec![column("enabled", "BIT(1)")]);
+    let context = sql_context((&in_data, &in_columns, &in_metadata), plugin.as_ref());
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlIn, context),
+        "(`enabled` IN (1, 0) OR `enabled` IS NULL)"
+    );
+}
+
+#[test]
+fn sql_mutations_require_non_null_primary_keys() {
+    let plugin = DbManager::default()
+        .get_plugin(&DatabaseType::MySQL)
+        .expect("MySQL plugin should exist");
+    let columns = vec!["id".into(), "name".into()];
+    let no_key_metadata = TableMetadata::new("items")
+        .with_columns(columns.clone())
+        .with_column_meta(vec![column("id", "INT"), column("name", "VARCHAR(20)")]);
+    let data = vec![vec![Some("1".into()), Some("safe".into())]];
+    let context = sql_context((&data, &columns, &no_key_metadata), plugin.as_ref());
+
+    assert_eq!(CopyFormatter::format(CopyFormat::SqlUpdate, context), "");
+    assert_eq!(CopyFormatter::format(CopyFormat::SqlDelete, context), "");
+
+    let keyed_metadata = no_key_metadata.with_primary_keys(vec![0]);
+    let null_key_data = vec![vec![None, Some("unsafe".into())]];
+    let context = sql_context((&null_key_data, &columns, &keyed_metadata), plugin.as_ref());
+    assert_eq!(CopyFormatter::format(CopyFormat::SqlUpdate, context), "");
+    assert_eq!(CopyFormatter::format(CopyFormat::SqlDelete, context), "");
+}
+
+// 回归用例：只选中非主键单元格时「复制为 → UPDATE/DELETE」必须仍能生成可执行 SQL。
+// 修复前选区不含主键 → select_columns 丢掉 primary_key_indices → 生成空字符串。
+#[test]
+fn sql_mutations_include_primary_keys_missing_from_the_selection() {
+    let plugin = DbManager::default()
+        .get_plugin(&DatabaseType::MySQL)
+        .expect("MySQL plugin should exist");
+    let metadata = TableMetadata::new("items")
+        .with_columns(vec!["id", "name"])
+        .with_column_meta(vec![column("id", "INT"), column("name", "VARCHAR(20)")])
+        .with_primary_keys(vec![0]);
+
+    // 选区只有 name 列（原始索引 1），主键 id 被补到末尾。
+    let indices = metadata.indices_with_primary_keys(&[1]);
+    assert_eq!(indices, vec![1, 0]);
+
+    let selected = metadata.select_columns(&indices);
+    assert_eq!(selected.primary_key_indices, vec![1]);
+
+    let columns = indices
+        .iter()
+        .map(|index| metadata.column_names[*index].clone())
+        .collect::<Vec<SharedString>>();
+    let data = vec![vec![Some("safe".into()), Some("1".into())]];
+
+    let context = sql_context((&data, &columns, &selected), plugin.as_ref());
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlUpdate, context),
+        "UPDATE `items` SET `name` = 'safe' WHERE `id` = 1;"
+    );
+
+    let context = sql_context((&data, &columns, &selected), plugin.as_ref());
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlDelete, context),
+        "DELETE FROM `items` WHERE `id` = 1;"
+    );
+
+    // 表没有主键时语义不变：不补列，仍然给不出 UPDATE/DELETE。
+    let no_key_metadata = TableMetadata::new("items")
+        .with_columns(vec!["id", "name"])
+        .with_column_meta(vec![column("id", "INT"), column("name", "VARCHAR(20)")]);
+    assert_eq!(no_key_metadata.indices_with_primary_keys(&[1]), vec![1]);
+    let columns = vec!["name".into()];
+    let data = vec![vec![Some("safe".into())]];
+    let context = sql_context((&data, &columns, &no_key_metadata), plugin.as_ref());
+    assert_eq!(CopyFormatter::format(CopyFormat::SqlUpdate, context), "");
+}
+
+#[test]
+fn typed_cells_are_authoritative_over_legacy_projection() {
+    let data = vec![vec![
+        Some("legacy-text".into()),
+        Some("0x9999".into()),
+        None,
+    ]];
+    let columns = vec!["text".into(), "binary".into(), "nullish".into()];
+    let metadata = TableMetadata::new("values_table");
+    // legacy sidecar 与 typed cells 冲突,typed 应优先。
+    let binary_cells = vec![binary_cell(0, 1, &[9, 9])];
+    let typed_cells = vec![vec![
+        TableCellValue::Text("typed-text".into()),
+        TableCellValue::Binary(vec![1, 2, 3]),
+        TableCellValue::Null,
+    ]];
+
+    let context = CopyFormatContext::new(&data, &columns, &metadata)
+        .with_binary_cells(&binary_cells)
+        .with_typed_cells(&typed_cells);
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::Tsv, context),
+        "typed-text\tbase64:AQID\t\\N"
+    );
+
+    let context = CopyFormatContext::new(&data, &columns, &metadata)
+        .with_binary_cells(&binary_cells)
+        .with_typed_cells(&typed_cells);
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::Csv, context),
+        "typed-text,base64:AQID,\\N"
+    );
+
+    // 无 typed cells 时维持 legacy 行为。
+    let context =
+        CopyFormatContext::new(&data, &columns, &metadata).with_binary_cells(&binary_cells);
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::Tsv, context),
+        "legacy-text\tbase64:CQk=\t\\N"
+    );
+}
+
+/// issue #355：复制整行 → 粘贴必须是「无损往返」，否则现象就是「剪贴板里字段是全的，
+/// 粘进去少了几个字段」。
+///
+/// 复制端 = [`CopyFormatter::format`] 的 TSV 分支（表数据页签右键「复制」，与
+/// Ctrl/Cmd+C 走的 `one_ui::edit_table::EditTableState::action_copy` 同一套编码）；
+/// 粘贴端 = `EditTableState::action_paste` 与 `EditorTableDelegate` 右键粘贴共用的
+/// [`parse_tsv_rows`]。
+#[test]
+fn clipboard_tsv_round_trip_is_lossless() {
+    let columns: Vec<SharedString> = vec!["id".into(), "note".into(), "tail".into()];
+    let cases: Vec<(&str, Vec<Option<String>>)> = vec![
+        (
+            "普通整行",
+            vec![
+                Some("1".into()),
+                Some("alice".into()),
+                Some("beijing".into()),
+            ],
+        ),
+        (
+            "字段含制表符",
+            vec![Some("1".into()), Some("a\tb".into()), Some("c".into())],
+        ),
+        (
+            "字段含换行",
+            vec![
+                Some("1".into()),
+                Some("line1\nline2".into()),
+                Some("c".into()),
+            ],
+        ),
+        (
+            "字段含回车",
+            vec![
+                Some("1".into()),
+                Some("line1\r\nline2".into()),
+                Some("c".into()),
+            ],
+        ),
+        (
+            "字段含引号",
+            vec![
+                Some("1".into()),
+                Some("\"quoted\"".into()),
+                Some("say \"hi\"".into()),
+            ],
+        ),
+        (
+            "字段是 JSON",
+            vec![
+                Some("1".into()),
+                Some(r#"{"name":"张三","age":1}"#.into()),
+                Some("tail".into()),
+            ],
+        ),
+        (
+            "含空值与 SQL NULL",
+            vec![None, Some(String::new()), Some("\\N".into())],
+        ),
+    ];
+
+    let mut failures = Vec::new();
+    for (name, row) in cases {
+        let data = vec![row.clone()];
+        let metadata = TableMetadata::new("t").with_columns(columns.clone());
+        let clipboard = CopyFormatter::format(
+            CopyFormat::Tsv,
+            CopyFormatContext::new(&data, &columns, &metadata),
+        );
+        let expected: Vec<Vec<String>> = vec![
+            row.iter()
+                .map(|cell| cell.clone().unwrap_or_else(|| "\\N".to_string()))
+                .collect(),
+        ];
+        let pasted = parse_tsv_rows(&clipboard);
+        if pasted != expected {
+            failures.push(format!(
+                "{name}: 剪贴板 {clipboard:?} 粘回来是 {pasted:?}，期望 {expected:?}"
+            ));
+        }
+    }
+
+    assert!(failures.is_empty(), "往返丢字段：\n{}", failures.join("\n"));
+}
+
+/// #355：表数据页签的右键复制/粘贴也必须走共享编解码，不能单面带一套转义。
+#[test]
+fn table_data_clipboard_sites_use_the_shared_codec() {
+    let delegate = include_str!("results_delegate.rs").replace("\r\n", "\n");
+    assert!(delegate.contains("parse_tsv_rows"), "右键粘贴要解转义");
+    assert!(
+        !delegate.contains(r"split('\t')"),
+        "右键粘贴不能按制表符裸切"
+    );
+
+    let copy_formats = include_str!("copy_format.rs");
+    assert!(copy_formats.contains("encode_tsv_rows"), "右键复制要转义");
+    assert!(
+        !copy_formats.contains(r#"join("\t")"#),
+        "右键复制不能直接拼制表符"
+    );
+}
+
+#[test]
+fn clipboard_tsv_escapes_fields_with_separators() {
+    let data = vec![vec![Some("1".into()), Some("a\tb".into())]];
+    let columns = vec!["id".into(), "note".into()];
+    let metadata = TableMetadata::new("t").with_columns(columns.clone());
+    let context = CopyFormatContext::new(&data, &columns, &metadata);
+
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::Tsv, context),
+        "1\t\"a\tb\""
+    );
+}
+
+/// 表数据里复制 JSON 字段（Ctrl/Cmd+C 与右键「复制」）时，剪贴板内容必须等于存储
+/// 原文；两侧再套一层引号会让粘到应用外的内容和库里的值不一致。
+#[test]
+fn clipboard_tsv_copies_json_cell_verbatim() {
+    const JSON: &str = r#"{"name":"张三","age":1}"#;
+    let columns = vec!["id".into(), "payload".into()];
+    let metadata = TableMetadata::new("t").with_columns(columns.clone());
+
+    let data = vec![vec![Some("1".into()), Some(JSON.into())]];
+    assert_eq!(
+        format!("1\t{JSON}"),
+        CopyFormatter::format(
+            CopyFormat::Tsv,
+            CopyFormatContext::new(&data, &columns, &metadata),
+        )
+    );
+
+    // 只复制这一个单元格时同样是原文。
+    let single = vec![vec![Some(JSON.into())]];
+    let one_column = vec!["payload".into()];
+    let single_metadata = TableMetadata::new("t").with_columns(one_column.clone());
+    let clipboard = CopyFormatter::format(
+        CopyFormat::Tsv,
+        CopyFormatContext::new(&single, &one_column, &single_metadata),
+    );
+    assert_eq!(JSON, clipboard);
+    assert_eq!(vec![vec![JSON.to_string()]], parse_tsv_rows(&clipboard));
+}
+
+/// 查询结果里的表名是 `库.表` 的拼接形式，复制出来的 SQL 必须逐段引用，
+/// 否则会得到 `ads.tbl` 这种被粘在一个引号对里的非法名字。
+#[test]
+fn qualified_table_name_is_quoted_per_part() {
+    let plugin = DbManager::default()
+        .get_plugin(&DatabaseType::MySQL)
+        .expect("MySQL plugin should exist");
+    let data = vec![vec![Some("4".into()), Some("值".into())]];
+    let columns = vec!["indicator_key".into(), "indicator_name".into()];
+    let metadata = TableMetadata::new("ads.ads_tb_indicator_target_fill_test")
+        .with_columns(columns.clone())
+        .with_column_meta(vec![
+            column("indicator_key", "VARCHAR(20)"),
+            column("indicator_name", "VARCHAR(50)"),
+        ])
+        .with_primary_keys(vec![0]);
+    let context = sql_context((&data, &columns, &metadata), plugin.as_ref());
+
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlInsert, context),
+        concat!(
+            "INSERT INTO `ads`.`ads_tb_indicator_target_fill_test` ",
+            "(`indicator_key`, `indicator_name`) VALUES\n('4', '值');",
+        )
+    );
+
+    let context = sql_context((&data, &columns, &metadata), plugin.as_ref());
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlUpdate, context),
+        concat!(
+            "UPDATE `ads`.`ads_tb_indicator_target_fill_test` SET `indicator_name` = '值' ",
+            "WHERE `indicator_key` = '4';",
+        )
+    );
+
+    let context = sql_context((&data, &columns, &metadata), plugin.as_ref());
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlDelete, context),
+        "DELETE FROM `ads`.`ads_tb_indicator_target_fill_test` WHERE `indicator_key` = '4';"
+    );
+}
+
+#[test]
+fn qualified_table_name_is_split_for_dialectless_and_multi_part_names() {
+    let data = vec![vec![Some("1".into())]];
+    let columns = vec!["id".into()];
+
+    let metadata = TableMetadata::new("sales.orders").with_columns(columns.clone());
+    let context = CopyFormatContext::new(&data, &columns, &metadata);
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlInsert, context),
+        "INSERT INTO \"sales\".\"orders\" (\"id\") VALUES\n(1);"
+    );
+
+    let metadata = TableMetadata::new("warehouse.sales.orders").with_columns(columns.clone());
+    let context = CopyFormatContext::new(&data, &columns, &metadata);
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlInsert, context),
+        "INSERT INTO \"warehouse\".\"sales\".\"orders\" (\"id\") VALUES\n(1);"
+    );
+}
+
+#[test]
+fn unqualified_table_name_stays_a_single_identifier() {
+    let data = vec![vec![Some("1".into())]];
+    let columns = vec!["id".into()];
+    let metadata = TableMetadata::new("users").with_columns(columns.clone());
+    let context = CopyFormatContext::new(&data, &columns, &metadata);
+
+    assert_eq!(
+        CopyFormatter::format(CopyFormat::SqlInsert, context),
+        "INSERT INTO \"users\" (\"id\") VALUES\n(1);"
+    );
+}
+
+#[test]
+fn sql_insert_and_multicolumn_in_reject_ragged_rows() {
+    let data = vec![
+        vec![Some("1".into()), Some("a".into())],
+        vec![Some("2".into())],
+    ];
+    let columns = vec!["id".into(), "name".into()];
+    let metadata = TableMetadata::new("items").with_columns(columns.clone());
+    let context = CopyFormatContext::new(&data, &columns, &metadata);
+
+    assert_eq!(CopyFormatter::format(CopyFormat::SqlInsert, context), "");
+    assert_eq!(CopyFormatter::format(CopyFormat::SqlIn, context), "");
+}

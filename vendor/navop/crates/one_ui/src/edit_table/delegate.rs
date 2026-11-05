@@ -1,0 +1,548 @@
+use std::{collections::HashSet, ops::Range};
+
+use crate::edit_table::filter_panel::{FilterValue, FilterValueKey};
+use crate::edit_table::{Column, ColumnSort, EditTableState, loading::Loading};
+use crate::{DateTimePicker, DateTimePickerState, TimePicker, TimePickerState};
+use gpui::{
+    AnyElement, App, Context, Div, Entity, Font, InteractiveElement as _, IntoElement,
+    ParentElement as _, SharedString, Stateful, StatefulInteractiveElement, Styled as _,
+    Subscription, Window, div, px,
+};
+use gpui_component::date_picker::{DatePicker, DatePickerState};
+use gpui_component::{
+    ActiveTheme as _, Icon, Size, h_flex,
+    input::{Input, InputState},
+    menu::PopupMenu,
+};
+use one_assets::IconName;
+
+pub enum CellEditor {
+    Input(Entity<InputState>),
+    DatePicker(Entity<DatePickerState>),
+    DateTimePicker(Entity<DateTimePickerState>),
+    TimePicker(Entity<TimePickerState>),
+    DatePickerInput {
+        input: Entity<InputState>,
+        picker: Entity<DatePickerState>,
+    },
+    DateTimePickerInput {
+        input: Entity<InputState>,
+        picker: Entity<DateTimePickerState>,
+    },
+    TimePickerInput {
+        input: Entity<InputState>,
+        picker: Entity<TimePickerState>,
+    },
+}
+
+impl CellEditor {
+    pub fn render(&self, window: &mut Window, cx: &mut App) -> AnyElement {
+        match self {
+            CellEditor::Input(input) => h_flex()
+                .size_full()
+                .items_center()
+                .overflow_hidden()
+                .child(
+                    div()
+                        .w_full()
+                        .h(window.line_height())
+                        .overflow_hidden()
+                        .child(Input::new(input).w_full().h_full().appearance(false)),
+                )
+                .into_any_element(),
+            CellEditor::DatePicker(picker) => DatePicker::new(picker)
+                .w_full()
+                .appearance(false)
+                .cleanable(true)
+                .into_any_element(),
+            CellEditor::DateTimePicker(picker) => DateTimePicker::new(picker)
+                .w_full()
+                .appearance(false)
+                .cleanable(true)
+                .into_any_element(),
+            CellEditor::TimePicker(picker) => TimePicker::new(picker)
+                .w_full()
+                .appearance(false)
+                .cleanable(true)
+                .into_any_element(),
+            CellEditor::DatePickerInput { input, picker } => {
+                let input_handle = input.clone();
+                let picker_handle = picker.clone();
+                h_flex()
+                    .w_full()
+                    .h_full()
+                    .items_center()
+                    .gap_1()
+                    .child(Input::new(input).flex_1().h_full().appearance(false))
+                    .child(
+                        div()
+                            .id(SharedString::from("date-picker-popup"))
+                            .px_1()
+                            .cursor_pointer()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .hover(|this| this.text_color(cx.theme().foreground))
+                            .on_click(move |_, window, cx| {
+                                cx.stop_propagation();
+                                let picker_handle = picker_handle.clone();
+                                let input_handle = input_handle.clone();
+                                window.defer(cx, move |window, cx| {
+                                    let is_open = picker_handle.read(cx).is_open();
+                                    picker_handle.update(cx, |state, cx| {
+                                        state.set_open(!is_open, cx);
+                                    });
+                                    input_handle.update(cx, |state, cx| {
+                                        state.focus(window, cx);
+                                    });
+                                });
+                            })
+                            .child(IconName::Calendar),
+                    )
+                    .child(
+                        div()
+                            .w_0()
+                            .h(px(0.))
+                            .overflow_hidden()
+                            .child(DatePicker::new(picker).appearance(false).cleanable(true)),
+                    )
+                    .into_any_element()
+            }
+            CellEditor::DateTimePickerInput { input, picker } => {
+                let input_handle = input.clone();
+                let picker_handle = picker.clone();
+                h_flex()
+                    .w_full()
+                    .h_full()
+                    .items_center()
+                    .gap_1()
+                    .child(Input::new(input).flex_1().h_full().appearance(false))
+                    .child(
+                        div()
+                            .id(SharedString::from("date-time-picker-popup"))
+                            .px_1()
+                            .cursor_pointer()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .hover(|this| this.text_color(cx.theme().foreground))
+                            .on_click(move |_, window, cx| {
+                                cx.stop_propagation();
+                                let picker_handle = picker_handle.clone();
+                                let input_handle = input_handle.clone();
+                                window.defer(cx, move |window, cx| {
+                                    picker_handle.update(cx, |state, cx| {
+                                        state.set_open(true, window, cx);
+                                    });
+                                    input_handle.update(cx, |state, cx| {
+                                        state.focus(window, cx);
+                                    });
+                                });
+                            })
+                            .child(IconName::Calendar),
+                    )
+                    .child(
+                        div().w_0().h(px(0.)).overflow_hidden().child(
+                            DateTimePicker::new(picker)
+                                .appearance(false)
+                                .cleanable(true),
+                        ),
+                    )
+                    .into_any_element()
+            }
+            CellEditor::TimePickerInput { input, picker } => {
+                let input_handle = input.clone();
+                let picker_handle = picker.clone();
+                h_flex()
+                    .w_full()
+                    .h_full()
+                    .items_center()
+                    .gap_1()
+                    .child(Input::new(input).flex_1().h_full().appearance(false))
+                    .child(
+                        div()
+                            .id(SharedString::from("time-picker-popup"))
+                            .px_1()
+                            .cursor_pointer()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .hover(|this| this.text_color(cx.theme().foreground))
+                            .on_click(move |_, window, cx| {
+                                cx.stop_propagation();
+                                let picker_handle = picker_handle.clone();
+                                let input_handle = input_handle.clone();
+                                window.defer(cx, move |window, cx| {
+                                    picker_handle.update(cx, |state, cx| {
+                                        state.set_open(true, window, cx);
+                                    });
+                                    input_handle.update(cx, |state, cx| {
+                                        state.focus(window, cx);
+                                    });
+                                });
+                            })
+                            .child(IconName::Calendar),
+                    )
+                    .child(
+                        div()
+                            .w_0()
+                            .h(px(0.))
+                            .overflow_hidden()
+                            .child(TimePicker::new(picker).appearance(false).cleanable(true)),
+                    )
+                    .into_any_element()
+            }
+        }
+    }
+
+    pub fn get_value(&self, cx: &App) -> String {
+        match self {
+            CellEditor::Input(input) => input.read(cx).text().to_string(),
+            CellEditor::DatePicker(picker) => picker
+                .read(cx)
+                .date()
+                .format("%Y-%m-%d")
+                .unwrap_or_default()
+                .to_string(),
+            CellEditor::DateTimePicker(picker) => picker
+                .read(cx)
+                .datetime()
+                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+                .unwrap_or_default(),
+            CellEditor::TimePicker(picker) => picker
+                .read(cx)
+                .time()
+                .map(|t| t.format("%H:%M:%S").to_string())
+                .unwrap_or_default(),
+            CellEditor::DatePickerInput { input, .. } => input.read(cx).text().to_string(),
+            CellEditor::DateTimePickerInput { input, .. } => input.read(cx).text().to_string(),
+            CellEditor::TimePickerInput { input, .. } => input.read(cx).text().to_string(),
+        }
+    }
+}
+
+#[allow(unused)]
+pub trait EditTableDelegate: Sized + 'static {
+    fn cell_edit_enabled(&self, cx: &App) -> bool {
+        false
+    }
+
+    /// 是否启用单击编辑模式（类似 Navicat）。
+    /// 启用后，第一次单击选中单元格，再次单击已选中的单元格进入编辑模式。
+    /// 默认为 false，即保持双击编辑行为。
+    fn single_click_to_edit(&self, cx: &App) -> bool {
+        false
+    }
+
+    fn row_number_enabled(&self, cx: &App) -> bool {
+        false
+    }
+
+    fn columns_count(&self, cx: &App) -> usize;
+
+    fn rows_count(&self, cx: &App) -> usize;
+
+    fn column(&self, col_ix: usize, cx: &App) -> Column;
+
+    fn perform_sort(
+        &mut self,
+        col_ix: usize,
+        sort: ColumnSort,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) {
+    }
+
+    fn render_header(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) -> Stateful<Div> {
+        div().id("header")
+    }
+
+    fn render_th(
+        &mut self,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) -> impl IntoElement {
+        div()
+            .size_full()
+            .child(self.column(col_ix, cx).name.clone())
+    }
+
+    fn render_tr(
+        &mut self,
+        row_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) -> Stateful<Div> {
+        div().id(("row", row_ix))
+    }
+
+    fn context_menu(
+        &mut self,
+        row_ix: usize,
+        menu: PopupMenu,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) -> PopupMenu {
+        menu
+    }
+
+    /// Context menu for the column header at `col_ix`. The default returns the
+    /// menu unchanged (no header-specific items).
+    fn header_context_menu(
+        &mut self,
+        col_ix: usize,
+        menu: PopupMenu,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) -> PopupMenu {
+        menu
+    }
+
+    fn render_td(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) -> impl IntoElement;
+
+    fn move_column(
+        &mut self,
+        col_ix: usize,
+        to_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) {
+    }
+
+    fn render_empty(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) -> impl IntoElement {
+        h_flex()
+            .size_full()
+            .justify_center()
+            .text_color(cx.theme().muted_foreground.opacity(0.6))
+            .child(Icon::new(IconName::Inbox).size_12())
+            .into_any_element()
+    }
+
+    fn loading(&self, cx: &App) -> bool {
+        false
+    }
+
+    fn render_loading(
+        &mut self,
+        size: Size,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) -> impl IntoElement {
+        Loading::new().size(size)
+    }
+
+    fn has_more(&self, cx: &App) -> bool {
+        false
+    }
+
+    fn load_more_threshold(&self) -> usize {
+        20
+    }
+
+    fn load_more(&mut self, window: &mut Window, cx: &mut Context<EditTableState<Self>>) {}
+
+    fn render_last_empty_col(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) -> impl IntoElement {
+        h_flex().w_3().h_full().flex_shrink_0()
+    }
+
+    fn visible_rows_changed(
+        &mut self,
+        visible_range: Range<usize>,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) {
+    }
+
+    fn visible_columns_changed(
+        &mut self,
+        visible_range: Range<usize>,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) {
+    }
+
+    fn build_input(
+        &self,
+        row_ix: usize,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) -> Option<(CellEditor, Vec<Subscription>)> {
+        None
+    }
+
+    fn cell_font(&mut self, _cx: &mut Context<EditTableState<Self>>) -> Option<Font> {
+        None
+    }
+
+    fn on_cell_edited(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        new_value: String,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) -> bool {
+        true
+    }
+
+    fn is_cell_modified(&self, row_ix: usize, col_ix: usize, cx: &App) -> bool {
+        false
+    }
+
+    fn is_row_deleted(&self, row_ix: usize, cx: &App) -> bool {
+        false
+    }
+
+    fn is_row_added(&self, row_ix: usize, cx: &App) -> bool {
+        false
+    }
+
+    /// 新增一行。返回新行在**视图层**的显示行号（列筛选生效时不等于数据行下标）。
+    fn on_row_added(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) -> usize {
+        0
+    }
+
+    /// 删除一行。`row_ix` 是视图层的显示行号。
+    fn on_row_deleted(
+        &mut self,
+        row_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) {
+    }
+
+    /// 一次删除多行。`display_row_indices` 是视图层的显示行号。
+    ///
+    /// 默认逐行转交 [`Self::on_row_deleted`]；行集会在删除过程中变化的委托（删掉未保存的
+    /// 新行会真的移除数据行，显示行号与数据行下标的映射随之改变）必须覆盖它，否则整批里
+    /// 后面的显示行号会落到别的行上。
+    fn on_rows_deleted(
+        &mut self,
+        display_row_indices: &[usize],
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) {
+        for &row_ix in display_row_indices {
+            self.on_row_deleted(row_ix, window, cx);
+        }
+    }
+
+    fn column_filter_enabled(&self, cx: &App) -> bool {
+        false
+    }
+
+    fn get_column_filter_values(&self, col_ix: usize, cx: &App) -> Vec<FilterValue> {
+        vec![]
+    }
+
+    fn is_column_filtered(&self, col_ix: usize, cx: &App) -> bool {
+        false
+    }
+
+    fn on_column_filter_changed(
+        &mut self,
+        col_ix: usize,
+        selected_values: HashSet<FilterValueKey>,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) {
+    }
+
+    fn on_column_filter_cleared(
+        &mut self,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<EditTableState<Self>>,
+    ) {
+    }
+
+    /// 是否支持多选
+    fn multi_select_enabled(&self, _cx: &App) -> bool {
+        true
+    }
+
+    /// 是否支持表格内查找（Cmd/Ctrl+F）。
+    ///
+    /// 只有知道「显示行」顺序和单元格文本的 delegate 才能正确实现
+    /// 查找，所以默认关闭，由数据表格自行开启。
+    fn find_in_table_enabled(&self, _cx: &App) -> bool {
+        false
+    }
+
+    /// 返回该单元格参与查找的文本（`None` 表示按 SQL NULL 处理）。
+    ///
+    /// 默认取 `get_optional_cell_value`；二进制列等需要显示描述文本的
+    /// delegate 应重写此方法，让查找口径与用户看到的文本一致。
+    fn find_cell_text(&self, row_ix: usize, col_ix: usize, cx: &App) -> Option<String> {
+        self.get_optional_cell_value(row_ix, col_ix, cx)
+    }
+
+    /// 获取单元格的原始字符串值（用于复制）
+    fn get_cell_value(&self, _row_ix: usize, _col_ix: usize, _cx: &App) -> String {
+        String::new()
+    }
+
+    /// 获取保留 SQL NULL 语义的单元格值（用于结构化复制/导出）。
+    ///
+    /// 默认实现兼容只实现了 [`Self::get_cell_value`] 的 delegate；数据库表格
+    /// delegate 应覆盖此方法，让 `None` 表示 SQL NULL。
+    fn get_optional_cell_value(&self, row_ix: usize, col_ix: usize, cx: &App) -> Option<String> {
+        Some(self.get_cell_value(row_ix, col_ix, cx))
+    }
+
+    /// 批量设置单元格值（用于粘贴）
+    /// 返回 true 表示成功，false 表示失败或不支持
+    fn set_cell_values(
+        &mut self,
+        _changes: Vec<(usize, usize, String)>,
+        _window: &mut Window,
+        _cx: &mut Context<EditTableState<Self>>,
+    ) -> bool {
+        false
+    }
+
+    /// 复制选中单元格时的回调
+    fn on_copy(
+        &mut self,
+        _data: Vec<Vec<Option<String>>>,
+        _window: &mut Window,
+        _cx: &mut Context<EditTableState<Self>>,
+    ) {
+    }
+
+    /// 粘贴数据时的回调
+    fn on_paste(
+        &mut self,
+        _data: Vec<Vec<String>>,
+        _start: (usize, usize),
+        _window: &mut Window,
+        _cx: &mut Context<EditTableState<Self>>,
+    ) {
+    }
+
+    /// 获取指定列的名称
+    fn get_column_name(&self, col_ix: usize, cx: &App) -> SharedString {
+        self.column(col_ix, cx).name.clone()
+    }
+}

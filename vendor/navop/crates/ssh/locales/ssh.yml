@@ -1,0 +1,79 @@
+_version: 2
+
+Ssh:
+  auth_password_failed:
+    en: Password authentication failed
+    zh-CN: 密码认证失败
+    zh-HK: 密碼認證失敗
+  auth_certificate_failed:
+    en: Certificate authentication failed
+    zh-CN: 证书认证失败
+    zh-HK: 證書認證失敗
+  auth_public_key_failed:
+    en: Public key authentication failed
+    zh-CN: 公钥认证失败
+    zh-HK: 公鑰認證失敗
+  auth_agent_connect_failed:
+    en: SSH agent connection failed
+    zh-CN: SSH Agent 连接失败
+    zh-HK: SSH Agent 連線失敗
+  auth_agent_no_identities:
+    en: SSH agent has no available identities
+    zh-CN: SSH Agent 中没有可用身份
+    zh-HK: SSH Agent 中沒有可用身份
+  auth_agent_failed:
+    en: SSH agent authentication failed
+    zh-CN: SSH Agent 认证失败
+    zh-HK: SSH Agent 認證失敗
+  auth_auto_publickey_failed:
+    en: Automatic public key authentication failed
+    zh-CN: 自动公钥认证失败
+    zh-HK: 自動公鑰認證失敗
+  auth_no_local_identity:
+    en: No available local SSH identity was detected
+    zh-CN: 未检测到可用的本地 SSH 身份
+    zh-HK: 未檢測到可用的本地 SSH 身份
+  auth_auto_publickey_next_step:
+    en: Please load SSH Agent or switch to "Private Key" mode to specify a key file manually
+    zh-CN: 请加载 SSH Agent，或切换为「私钥文件」模式手动指定私钥
+    zh-HK: 請加載 SSH Agent，或切換為「私鑰文件」模式手動指定私鑰
+  auth_keyboard_interactive_required:
+    en: The server rejected the current authentication method and requires keyboard-interactive to finish signing in. If this server really uses OTP/second-factor, enable "Two-factor authentication" for this connection and try again; otherwise re-check that the saved password or credentials are correct.
+    zh-CN: 服务器拒绝了当前认证方式，并要求用 keyboard-interactive 完成登录。若该服务器确实需要 OTP/二次认证，请在此连接中启用「双因素认证」后重试；若不需要，请先确认密码或凭据是否正确。
+    zh-HK: 伺服器拒絕了目前認證方式，並要求以 keyboard-interactive 完成登入。若該伺服器確實需要 OTP/二次認證，請在此連線中啟用「雙因素認證」後重試；若不需要，請先確認密碼或憑據是否正確。
+  auth_keyboard_interactive_failed:
+    en: MFA/keyboard-interactive authentication failed
+    zh-CN: MFA/keyboard-interactive 二次认证失败
+    zh-HK: MFA/keyboard-interactive 二次認證失敗
+  auth_keyboard_interactive_cancelled:
+    en: MFA/keyboard-interactive authentication was cancelled
+    zh-CN: 已取消 MFA/keyboard-interactive 二次认证
+    zh-HK: 已取消 MFA/keyboard-interactive 二次認證
+  auth_chain_failed:
+    en: Multi-factor authentication failed
+    zh-CN: 多因素认证失败
+    zh-HK: 多因素認證失敗
+  auth_chain_incomplete:
+    en: The server still requires another authentication factor the client does not have. Check that the connection provides every factor this server asks for (for example both password and private key).
+    zh-CN: 服务器仍要求其它认证因素，但当前连接没有提供。请确认该连接已配置服务器要求的全部因素（例如同时提供密码与私钥）。
+    zh-HK: 伺服器仍要求其它認證因素，但目前的連線沒有提供。請確認該連線已設定伺服器要求的全部因素（例如同時提供密碼與私鑰）。
+  auth_chain_unsupported_factor:
+    en: This authentication factor cannot be used in a multi-factor chain. Use a password together with a private key.
+    zh-CN: 该认证因素不能用于多因素认证组合。请使用「密码 + 密钥」组合。
+    zh-HK: 該認證因素不能用於多因素認證組合。請使用「密碼 + 金鑰」組合。
+  socks5_proxy_connect_failed:
+    en: "SOCKS5 proxy connection failed: %{error}"
+    zh-CN: "SOCKS5代理连接失败: %{error}"
+    zh-HK: "SOCKS5代理連線失敗: %{error}"
+  http_proxy_connect_failed:
+    en: "Failed to connect HTTP proxy: %{error}"
+    zh-CN: "连接HTTP代理失败: %{error}"
+    zh-HK: "連線HTTP代理失敗: %{error}"
+  http_proxy_connection_failed:
+    en: "HTTP proxy connection failed: %{response}"
+    zh-CN: "HTTP代理连接失败: %{response}"
+    zh-HK: "HTTP代理連線失敗: %{response}"
+  legacy_algorithms_required_hint:
+    en: The server may only support legacy SSH algorithms, for example a DSA host key, SHA-1 key exchange, or SHA-1 MAC. Edit this connection and enable “Allow Legacy SSH Algorithms” under “Advanced Settings”, then try again.
+    zh-CN: 服务器可能仅支持旧版 SSH 算法，例如 DSA 主机密钥、SHA-1 密钥交换或 SHA-1 MAC。请编辑此连接，在“高级设置”中开启“允许旧版 SSH 算法”后重试。
+    zh-HK: 伺服器可能僅支援舊版 SSH 演算法，例如 DSA 主機金鑰、SHA-1 金鑰交換或 SHA-1 MAC。請編輯此連線，在「進階設定」中開啟「允許舊版 SSH 演算法」後重試。

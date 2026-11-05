@@ -1,0 +1,1301 @@
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use async_trait::async_trait;
+use chrono::{DateTime, FixedOffset, Local, NaiveDate, NaiveDateTime, Utc};
+use one_core::storage::DbConnectionConfig;
+use oracle::sql_type::OracleType;
+use tokio::sync::Mutex;
+use tokio::sync::mpsc;
+use tokio::time::timeout;
+use tracing::{debug, error, info};
+
+use crate::connection::{DbConnection, DbError, StreamingProgress};
+use crate::executor::{
+    BinaryCell, ExecOptions, ExecResult, QueryColumnMeta, QueryResult, SqlErrorInfo, SqlResult,
+    SqlSource,
+};
+use crate::ssh_tunnel::resolve_connection_target;
+use crate::types::FieldType;
+use crate::{DatabasePlugin, format_message, truncate_str};
+use connection_tunnel::TunnelGuard;
+use db_value::{
+    CellState, ColumnDescriptor, DbValue, FloatWidth, Nullability, ResultBatch, ResultRow,
+};
+
+pub struct OracleDbConnection {
+    config: DbConnectionConfig,
+    conn: Arc<Mutex<Option<oracle::Connection>>>,
+    tunnel: Option<TunnelGuard>,
+}
+
+impl OracleDbConnection {
+    pub fn new(config: DbConnectionConfig) -> Self {
+        Self {
+            config,
+            conn: Arc::new(Mutex::new(None)),
+            tunnel: None,
+        }
+    }
+
+    fn build_connect_string(config: &DbConnectionConfig, host: &str, port: u16) -> String {
+        if let Some(ref service) = config.service_name {
+            format!("//{}:{}/{}", host, port, service)
+        } else {
+            format!(
+                "//{}:{}/{}",
+                host,
+                port,
+                config.sid.clone().unwrap_or_default()
+            )
+        }
+    }
+
+    /// 解析连接表单的 Oracle 角色（default / sysdba / sysoper）为特权模式。
+    fn connect_privilege(config: &DbConnectionConfig) -> Option<oracle::Privilege> {
+        match config
+            .get_param(crate::ORACLE_ROLE_PARAM)?
+            .trim()
+            .to_ascii_lowercase()
+            .as_str()
+        {
+            "sysdba" => Some(oracle::Privilege::Sysdba),
+            "sysoper" => Some(oracle::Privilege::Sysoper),
+            _ => None,
+        }
+    }
+
+    fn format_binary(bytes: &[u8]) -> String {
+        if bytes.is_empty() {
+            return String::new();
+        }
+
+        let hex: String = bytes.iter().map(|byte| format!("{:02X}", byte)).collect();
+        format!("0x{}", hex)
+    }
+
+    fn format_naive_date(value: NaiveDate) -> String {
+        value.format("%Y-%m-%d").to_string()
+    }
+
+    fn format_naive_date_time(value: NaiveDateTime) -> String {
+        let micros = value.and_utc().timestamp_subsec_micros();
+        if micros == 0 {
+            value.format("%Y-%m-%d %H:%M:%S").to_string()
+        } else {
+            format!("{}.{:06}", value.format("%Y-%m-%d %H:%M:%S"), micros)
+        }
+    }
+
+    fn format_offset_date_time(value: DateTime<FixedOffset>) -> String {
+        let micros = value.timestamp_subsec_micros();
+        if micros == 0 {
+            value.format("%Y-%m-%d %H:%M:%S %:z").to_string()
+        } else {
+            format!(
+                "{}.{:06} {}",
+                value.format("%Y-%m-%d %H:%M:%S"),
+                micros,
+                value.format("%:z")
+            )
+        }
+    }
+
+    fn extract_scalar_value(row: &oracle::Row, index: usize) -> Option<String> {
+        row.get::<usize, Option<String>>(index)
+            .ok()
+            .flatten()
+            .or_else(|| {
+                row.get::<usize, Option<i64>>(index)
+                    .ok()
+                    .flatten()
+                    .map(|v| v.to_string())
+            })
+            .or_else(|| {
+                row.get::<usize, Option<f64>>(index)
+                    .ok()
+                    .flatten()
+                    .map(|v| v.to_string())
+            })
+            .or_else(|| {
+                row.get::<usize, Option<bool>>(index)
+                    .ok()
+                    .flatten()
+                    .map(|v| v.to_string())
+            })
+            .or_else(|| {
+                row.get::<usize, Option<u64>>(index)
+                    .ok()
+                    .flatten()
+                    .map(|v| v.to_string())
+            })
+    }
+
+    fn extract_value(row: &oracle::Row, index: usize, oracle_type: &OracleType) -> Option<String> {
+        match oracle_type {
+            OracleType::Date | OracleType::Timestamp(_) => row
+                .get::<usize, Option<NaiveDateTime>>(index)
+                .ok()
+                .flatten()
+                .map(Self::format_naive_date_time)
+                .or_else(|| {
+                    row.get::<usize, Option<NaiveDate>>(index)
+                        .ok()
+                        .flatten()
+                        .map(Self::format_naive_date)
+                })
+                .or_else(|| Self::extract_scalar_value(row, index)),
+            OracleType::TimestampTZ(_) | OracleType::TimestampLTZ(_) => row
+                .get::<usize, Option<DateTime<FixedOffset>>>(index)
+                .ok()
+                .flatten()
+                .map(Self::format_offset_date_time)
+                .or_else(|| {
+                    row.get::<usize, Option<DateTime<Utc>>>(index)
+                        .ok()
+                        .flatten()
+                        .map(|value| Self::format_offset_date_time(value.fixed_offset()))
+                })
+                .or_else(|| {
+                    row.get::<usize, Option<DateTime<Local>>>(index)
+                        .ok()
+                        .flatten()
+                        .map(|value| Self::format_offset_date_time(value.fixed_offset()))
+                })
+                .or_else(|| {
+                    row.get::<usize, Option<NaiveDateTime>>(index)
+                        .ok()
+                        .flatten()
+                        .map(Self::format_naive_date_time)
+                })
+                .or_else(|| Self::extract_scalar_value(row, index)),
+            OracleType::Raw(_) | OracleType::LongRaw | OracleType::BLOB | OracleType::BFILE => row
+                .get::<usize, Option<Vec<u8>>>(index)
+                .ok()
+                .flatten()
+                .map(|bytes| Self::format_binary(&bytes))
+                .or_else(|| Self::extract_scalar_value(row, index)),
+            OracleType::BinaryFloat => row
+                .get::<usize, Option<f32>>(index)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .or_else(|| Self::extract_scalar_value(row, index)),
+            OracleType::BinaryDouble => row
+                .get::<usize, Option<f64>>(index)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .or_else(|| Self::extract_scalar_value(row, index)),
+            OracleType::Boolean => row
+                .get::<usize, Option<bool>>(index)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .or_else(|| Self::extract_scalar_value(row, index)),
+            OracleType::Int64 => row
+                .get::<usize, Option<i64>>(index)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .or_else(|| Self::extract_scalar_value(row, index)),
+            OracleType::UInt64 => row
+                .get::<usize, Option<u64>>(index)
+                .ok()
+                .flatten()
+                .map(|v| v.to_string())
+                .or_else(|| Self::extract_scalar_value(row, index)),
+            OracleType::Number(_, _)
+            | OracleType::Float(_)
+            | OracleType::Varchar2(_)
+            | OracleType::NVarchar2(_)
+            | OracleType::Char(_)
+            | OracleType::NChar(_)
+            | OracleType::Rowid
+            | OracleType::CLOB
+            | OracleType::NCLOB
+            | OracleType::IntervalDS(_, _)
+            | OracleType::IntervalYM(_)
+            | OracleType::Object(_)
+            | OracleType::Long
+            | OracleType::Json
+            | OracleType::Xml
+            | OracleType::RefCursor => Self::extract_scalar_value(row, index),
+        }
+    }
+
+    fn is_binary_oracle_type(oracle_type: &OracleType) -> bool {
+        matches!(
+            oracle_type,
+            OracleType::Raw(_) | OracleType::LongRaw | OracleType::BLOB | OracleType::BFILE
+        )
+    }
+
+    /// 把 GET 结果解码为成功值、SQL NULL 或显式解码失败,三者严格分开。
+    fn decode_failure(oracle_type: &OracleType, diagnostic: String) -> (CellState, Option<String>) {
+        let type_name = oracle_type.to_string();
+        (
+            CellState::DecodeError {
+                native_type: type_name.clone(),
+                raw: None,
+                diagnostic,
+            },
+            Some(format!("<{type_name} decode error>")),
+        )
+    }
+
+    fn date_time_cell(
+        row: &oracle::Row,
+        index: usize,
+        oracle_type: &OracleType,
+    ) -> (CellState, Option<String>) {
+        match row.get::<usize, Option<NaiveDateTime>>(index) {
+            Ok(Some(value)) => {
+                let display = Self::format_naive_date_time(value);
+                (
+                    CellState::Decoded(DbValue::DateTime(display.clone())),
+                    Some(display),
+                )
+            }
+            Ok(None) => (CellState::Decoded(DbValue::Null), None),
+            Err(_) => match row.get::<usize, Option<NaiveDate>>(index) {
+                Ok(Some(value)) => {
+                    let display = Self::format_naive_date(value);
+                    (
+                        CellState::Decoded(DbValue::Date(display.clone())),
+                        Some(display),
+                    )
+                }
+                Ok(None) => (CellState::Decoded(DbValue::Null), None),
+                Err(error) => Self::decode_failure(oracle_type, error.to_string()),
+            },
+        }
+    }
+
+    fn offset_date_time_cell(
+        row: &oracle::Row,
+        index: usize,
+        oracle_type: &OracleType,
+    ) -> (CellState, Option<String>) {
+        let fallback = |row: &oracle::Row, index: usize| -> Option<(CellState, Option<String>)> {
+            if let Ok(Some(value)) = row.get::<usize, Option<DateTime<Local>>>(index) {
+                let display = Self::format_offset_date_time(value.fixed_offset());
+                return Some((
+                    CellState::Decoded(DbValue::DateTime(display.clone())),
+                    Some(display),
+                ));
+            }
+            if let Ok(Some(value)) = row.get::<usize, Option<NaiveDateTime>>(index) {
+                let display = Self::format_naive_date_time(value);
+                return Some((
+                    CellState::Decoded(DbValue::DateTime(display.clone())),
+                    Some(display),
+                ));
+            }
+            None
+        };
+
+        match row.get::<usize, Option<DateTime<FixedOffset>>>(index) {
+            Ok(Some(value)) => {
+                let display = Self::format_offset_date_time(value);
+                (
+                    CellState::Decoded(DbValue::DateTime(display.clone())),
+                    Some(display),
+                )
+            }
+            Ok(None) => (CellState::Decoded(DbValue::Null), None),
+            Err(_) => match row.get::<usize, Option<DateTime<Utc>>>(index) {
+                Ok(Some(value)) => {
+                    let display = Self::format_offset_date_time(value.fixed_offset());
+                    (
+                        CellState::Decoded(DbValue::DateTime(display.clone())),
+                        Some(display),
+                    )
+                }
+                Ok(None) => (CellState::Decoded(DbValue::Null), None),
+                Err(_) => match fallback(row, index) {
+                    Some(cell) => cell,
+                    None => Self::decode_failure(
+                        oracle_type,
+                        "no compatible temporal decoder".to_string(),
+                    ),
+                },
+            },
+        }
+    }
+
+    fn number_cell(
+        row: &oracle::Row,
+        index: usize,
+        oracle_type: &OracleType,
+    ) -> (CellState, Option<String>) {
+        match row.get::<usize, Option<String>>(index) {
+            Ok(Some(value)) => {
+                let display = value;
+                (
+                    CellState::Decoded(DbValue::Decimal(display.clone())),
+                    Some(display),
+                )
+            }
+            Ok(None) => (CellState::Decoded(DbValue::Null), None),
+            Err(_) => match row.get::<usize, Option<i64>>(index) {
+                Ok(Some(value)) => {
+                    let display = value.to_string();
+                    (
+                        CellState::Decoded(DbValue::Integer(display.clone())),
+                        Some(display),
+                    )
+                }
+                Ok(None) => (CellState::Decoded(DbValue::Null), None),
+                Err(_) => match row.get::<usize, Option<f64>>(index) {
+                    Ok(Some(value)) => {
+                        let display = value.to_string();
+                        (
+                            CellState::Decoded(DbValue::Float {
+                                value: display.clone(),
+                                width: FloatWidth::F64,
+                            }),
+                            Some(display),
+                        )
+                    }
+                    Ok(None) => (CellState::Decoded(DbValue::Null), None),
+                    Err(error) => Self::decode_failure(oracle_type, error.to_string()),
+                },
+            },
+        }
+    }
+
+    fn text_cell(
+        row: &oracle::Row,
+        index: usize,
+        oracle_type: &OracleType,
+    ) -> (CellState, Option<String>) {
+        match row.get::<usize, Option<String>>(index) {
+            Ok(Some(value)) => (
+                CellState::Decoded(DbValue::Text(value.clone())),
+                Some(value),
+            ),
+            Ok(None) => (CellState::Decoded(DbValue::Null), None),
+            Err(error) => Self::decode_failure(oracle_type, error.to_string()),
+        }
+    }
+
+    /// 按 Oracle 类型分派解码:RAW/LOB 为 Binary,文本家族为 Text,其余标量带类型。
+    fn extract_cell(
+        row: &oracle::Row,
+        index: usize,
+        oracle_type: &OracleType,
+    ) -> (CellState, Option<String>) {
+        if Self::is_binary_oracle_type(oracle_type) {
+            return match row.get::<usize, Option<Vec<u8>>>(index) {
+                Ok(Some(bytes)) => {
+                    let display = Self::format_binary(&bytes);
+                    (
+                        CellState::Decoded(DbValue::Binary(bytes.clone())),
+                        Some(display),
+                    )
+                }
+                Ok(None) => (CellState::Decoded(DbValue::Null), None),
+                Err(error) => Self::decode_failure(oracle_type, error.to_string()),
+            };
+        }
+
+        match oracle_type {
+            OracleType::Date | OracleType::Timestamp(_) => {
+                Self::date_time_cell(row, index, oracle_type)
+            }
+            OracleType::TimestampTZ(_) | OracleType::TimestampLTZ(_) => {
+                Self::offset_date_time_cell(row, index, oracle_type)
+            }
+            OracleType::Number(_, _) | OracleType::Float(_) => {
+                Self::number_cell(row, index, oracle_type)
+            }
+            OracleType::BinaryFloat => match row.get::<usize, Option<f32>>(index) {
+                Ok(Some(value)) => {
+                    let display = value.to_string();
+                    (
+                        CellState::Decoded(DbValue::Float {
+                            value: display.clone(),
+                            width: FloatWidth::F32,
+                        }),
+                        Some(display),
+                    )
+                }
+                Ok(None) => (CellState::Decoded(DbValue::Null), None),
+                Err(error) => Self::decode_failure(oracle_type, error.to_string()),
+            },
+            OracleType::BinaryDouble => match row.get::<usize, Option<f64>>(index) {
+                Ok(Some(value)) => {
+                    let display = value.to_string();
+                    (
+                        CellState::Decoded(DbValue::Float {
+                            value: display.clone(),
+                            width: FloatWidth::F64,
+                        }),
+                        Some(display),
+                    )
+                }
+                Ok(None) => (CellState::Decoded(DbValue::Null), None),
+                Err(error) => Self::decode_failure(oracle_type, error.to_string()),
+            },
+            OracleType::Boolean => match row.get::<usize, Option<bool>>(index) {
+                Ok(Some(value)) => (
+                    CellState::Decoded(DbValue::Bool(value)),
+                    Some(value.to_string()),
+                ),
+                Ok(None) => (CellState::Decoded(DbValue::Null), None),
+                Err(error) => Self::decode_failure(oracle_type, error.to_string()),
+            },
+            OracleType::Int64 => match row.get::<usize, Option<i64>>(index) {
+                Ok(Some(value)) => {
+                    let display = value.to_string();
+                    (
+                        CellState::Decoded(DbValue::Integer(display.clone())),
+                        Some(display),
+                    )
+                }
+                Ok(None) => (CellState::Decoded(DbValue::Null), None),
+                Err(error) => Self::decode_failure(oracle_type, error.to_string()),
+            },
+            OracleType::UInt64 => match row.get::<usize, Option<u64>>(index) {
+                Ok(Some(value)) => {
+                    let display = value.to_string();
+                    (
+                        CellState::Decoded(DbValue::Unsigned(display.clone())),
+                        Some(display),
+                    )
+                }
+                Ok(None) => (CellState::Decoded(DbValue::Null), None),
+                Err(error) => Self::decode_failure(oracle_type, error.to_string()),
+            },
+            OracleType::Varchar2(_)
+            | OracleType::NVarchar2(_)
+            | OracleType::Char(_)
+            | OracleType::NChar(_)
+            | OracleType::CLOB
+            | OracleType::NCLOB
+            | OracleType::Long
+            | OracleType::Rowid
+            | OracleType::Json
+            | OracleType::Xml => Self::text_cell(row, index, oracle_type),
+            _ => {
+                // 未建模类型:保留 legacy 显示,typed 明确 Undecoded,不伪装成值。
+                let display = Self::extract_value(row, index, oracle_type);
+                (
+                    CellState::Undecoded {
+                        native_type: oracle_type.to_string(),
+                        raw: None,
+                        reason: "no typed decoder for this Oracle type".to_string(),
+                    },
+                    display,
+                )
+            }
+        }
+    }
+
+    fn build_descriptors(
+        column_meta: &[QueryColumnMeta],
+        columns: &[String],
+    ) -> Vec<ColumnDescriptor> {
+        (0..columns.len())
+            .map(|index| {
+                let native_type = column_meta
+                    .get(index)
+                    .map(|meta| meta.db_type.clone())
+                    .unwrap_or_else(|| "UNKNOWN".to_string());
+                ColumnDescriptor {
+                    id: format!("column:{index}"),
+                    label: columns[index].clone(),
+                    native_type: native_type.clone(),
+                    logical_type: format!("{:?}", FieldType::from_db_type(&native_type)),
+                    nullable: Nullability::Unknown,
+                    charset: None,
+                    collation: None,
+                    precision: None,
+                    scale: None,
+                }
+            })
+            .collect()
+    }
+
+    fn collect_binary_cells(rows: &[ResultRow]) -> Vec<BinaryCell> {
+        let mut binary_cells = Vec::new();
+        for (row_index, row) in rows.iter().enumerate() {
+            for (column_index, cell) in row.cells.iter().enumerate() {
+                if let CellState::Decoded(DbValue::Binary(bytes)) = cell {
+                    binary_cells.push(BinaryCell {
+                        row_index,
+                        column_index,
+                        bytes: bytes.clone(),
+                    });
+                }
+            }
+        }
+        binary_cells
+    }
+
+    fn build_query_result(
+        columns: Vec<String>,
+        column_meta: Vec<QueryColumnMeta>,
+        cells_rows: Vec<Vec<CellState>>,
+        display_rows: Vec<Vec<Option<String>>>,
+        sql: String,
+        elapsed_ms: u128,
+    ) -> SqlResult {
+        let descriptors = Self::build_descriptors(&column_meta, &columns);
+        let batch_rows = cells_rows
+            .into_iter()
+            .enumerate()
+            .map(|(row_index, cells)| ResultRow {
+                id: row_index as u64,
+                cells,
+            })
+            .collect::<Vec<_>>();
+        let binary_cells = Self::collect_binary_cells(&batch_rows);
+        let typed_batch = match ResultBatch::try_new(0, descriptors, batch_rows, true) {
+            Ok(batch) => Arc::new(batch),
+            Err(error) => {
+                return SqlResult::Error(SqlErrorInfo {
+                    sql,
+                    message: format!("failed to build typed result batch: {error}"),
+                });
+            }
+        };
+
+        SqlResult::Query(QueryResult {
+            sql,
+            columns,
+            column_meta,
+            rows: display_rows,
+            binary_cells,
+            elapsed_ms,
+            typed_batch: Some(typed_batch),
+        })
+    }
+
+    fn build_exec_result(sql: String, rows_affected: u64, elapsed_ms: u128) -> SqlResult {
+        let message = format_message(&sql, rows_affected);
+        SqlResult::Exec(ExecResult {
+            sql,
+            rows_affected,
+            elapsed_ms,
+            message: Some(message),
+        })
+    }
+
+    fn commit_sync(conn: &oracle::Connection) -> Result<(), DbError> {
+        conn.commit().map_err(|e| {
+            error!("[Oracle] Commit failed: {}", e);
+            DbError::transaction_with_source("failed to commit", e)
+        })
+    }
+
+    fn has_reached_query_row_limit(row_count: usize, max_rows: Option<usize>) -> bool {
+        matches!(max_rows, Some(limit) if limit > 0 && row_count >= limit)
+    }
+
+    fn execute_statement_sync(
+        conn: &oracle::Connection,
+        sql: &str,
+        max_rows: Option<usize>,
+    ) -> Result<SqlResult, DbError> {
+        let start = Instant::now();
+        let sql_string = sql.to_string();
+        let sql_preview = if sql.len() > 200 {
+            format!("{}...", truncate_str(&sql, 200))
+        } else {
+            sql.to_string()
+        };
+
+        match conn.statement(sql).build() {
+            Ok(mut stmt) => {
+                if stmt.is_query() {
+                    match stmt.query(&[]) {
+                        Ok(rows) => {
+                            let elapsed_ms = start.elapsed().as_millis();
+
+                            let column_info = rows.column_info();
+                            let columns: Vec<String> = column_info
+                                .iter()
+                                .map(|col| col.name().to_string())
+                                .collect();
+
+                            let column_meta: Vec<QueryColumnMeta> = column_info
+                                .iter()
+                                .map(|col| {
+                                    QueryColumnMeta::new(
+                                        col.name().to_string(),
+                                        col.oracle_type().to_string(),
+                                    )
+                                })
+                                .collect();
+                            let column_types: Vec<OracleType> = column_info
+                                .iter()
+                                .map(|col| col.oracle_type().clone())
+                                .collect();
+
+                            let mut cells_rows: Vec<Vec<CellState>> = Vec::new();
+                            let mut display_rows: Vec<Vec<Option<String>>> = Vec::new();
+                            let mut rows = rows;
+                            loop {
+                                if Self::has_reached_query_row_limit(cells_rows.len(), max_rows) {
+                                    break;
+                                }
+
+                                let Some(row_result) = rows.next() else {
+                                    break;
+                                };
+                                match row_result {
+                                    Ok(row) => {
+                                        let mut cells = Vec::with_capacity(columns.len());
+                                        let mut display = Vec::with_capacity(columns.len());
+                                        for i in 0..columns.len() {
+                                            let (state, cell_display) = match column_types.get(i) {
+                                                Some(oracle_type) => {
+                                                    Self::extract_cell(&row, i, oracle_type)
+                                                }
+                                                None => (CellState::Decoded(DbValue::Null), None),
+                                            };
+                                            cells.push(state);
+                                            display.push(cell_display);
+                                        }
+                                        cells_rows.push(cells);
+                                        display_rows.push(display);
+                                    }
+                                    Err(e) => {
+                                        error!(
+                                            "[Oracle] Failed to fetch row: {}, SQL: {}",
+                                            e, sql_preview
+                                        );
+                                        return Ok(SqlResult::Error(SqlErrorInfo {
+                                            sql: sql_string,
+                                            message: e.to_string(),
+                                        }));
+                                    }
+                                }
+                            }
+
+                            debug!(
+                                "[Oracle] Query completed: {} rows, {} columns, {}ms",
+                                display_rows.len(),
+                                columns.len(),
+                                elapsed_ms
+                            );
+                            Ok(Self::build_query_result(
+                                columns,
+                                column_meta,
+                                cells_rows,
+                                display_rows,
+                                sql_string,
+                                elapsed_ms,
+                            ))
+                        }
+                        Err(e) => {
+                            error!("[Oracle] Query failed: {}, SQL: {}", e, sql_preview);
+                            Ok(SqlResult::Error(SqlErrorInfo {
+                                sql: sql_string,
+                                message: e.to_string(),
+                            }))
+                        }
+                    }
+                } else {
+                    match stmt.execute(&[]) {
+                        Ok(()) => {
+                            let elapsed_ms = start.elapsed().as_millis();
+                            let rows_affected = stmt.row_count().unwrap_or(0);
+                            debug!(
+                                "[Oracle] Execute completed: {} rows affected, {}ms",
+                                rows_affected, elapsed_ms
+                            );
+                            Ok(Self::build_exec_result(
+                                sql_string,
+                                rows_affected,
+                                elapsed_ms,
+                            ))
+                        }
+                        Err(e) => {
+                            error!("[Oracle] Execute failed: {}, SQL: {}", e, sql_preview);
+                            Ok(SqlResult::Error(SqlErrorInfo {
+                                sql: sql_string,
+                                message: e.to_string(),
+                            }))
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!(
+                    "[Oracle] Statement build failed: {}, SQL: {}",
+                    e, sql_preview
+                );
+                Ok(SqlResult::Error(SqlErrorInfo {
+                    sql: sql_string,
+                    message: e.to_string(),
+                }))
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl DbConnection for OracleDbConnection {
+    fn config(&self) -> &DbConnectionConfig {
+        &self.config
+    }
+
+    fn set_config_database(&mut self, database: Option<String>) {
+        self.config.database = database;
+    }
+
+    fn ping_query(&self) -> &'static str {
+        "SELECT 1 FROM DUAL"
+    }
+
+    async fn connect(&mut self) -> Result<(), DbError> {
+        let config = self.config.clone();
+        info!("[Oracle] Connecting to {}:{}", config.host, config.port);
+        let target = resolve_connection_target(&config).await?;
+        self.tunnel = target.tunnel;
+
+        let connect_string = Self::build_connect_string(&config, &target.host, target.port);
+        debug!("[Oracle] Connect string: {}", connect_string);
+        let username = config.username.clone();
+        let password = config.password.clone();
+
+        // 获取连接超时，默认 30 秒
+        let connect_timeout_secs = config.get_param_as::<u64>("connect_timeout").unwrap_or(30);
+        debug!(
+            "[Oracle] Connecting with timeout {}s...",
+            connect_timeout_secs
+        );
+
+        // 使用 tokio::timeout 包装 spawn_blocking
+        let privilege = Self::connect_privilege(&config);
+        let conn_result = timeout(
+            Duration::from_secs(connect_timeout_secs),
+            tokio::task::spawn_blocking(move || {
+                let mut connector = oracle::Connector::new(&username, &password, &connect_string);
+                if let Some(privilege) = privilege {
+                    connector.privilege(privilege);
+                }
+                connector.connect().map_err(|e| {
+                    error!("[Oracle] Connection failed: {}", e);
+                    DbError::connection_with_source("failed to connect", e)
+                })
+            }),
+        )
+        .await;
+
+        let conn = match conn_result {
+            Ok(Ok(Ok(conn))) => conn,
+            Ok(Ok(Err(e))) => return Err(e),
+            Ok(Err(e)) => {
+                error!("[Oracle] Task error: {}", e);
+                return Err(DbError::Internal(format!("task error: {}", e)));
+            }
+            Err(_) => {
+                error!(
+                    "[Oracle] Connection timed out after {}s",
+                    connect_timeout_secs
+                );
+                return Err(DbError::connection(format!(
+                    "connection timed out after {}s",
+                    connect_timeout_secs
+                )));
+            }
+        };
+
+        {
+            let mut guard = self.conn.lock().await;
+            *guard = Some(conn);
+        }
+
+        info!("[Oracle] Connected successfully");
+        Ok(())
+    }
+
+    async fn disconnect(&mut self) -> Result<(), DbError> {
+        debug!("[Oracle] Disconnecting...");
+        let conn_opt = {
+            let mut guard = self.conn.lock().await;
+            guard.take()
+        };
+
+        if let Some(conn) = conn_opt {
+            tokio::task::spawn_blocking(move || {
+                conn.close().map_err(|e| {
+                    error!("[Oracle] Disconnect failed: {}", e);
+                    DbError::connection_with_source("failed to disconnect", e)
+                })
+            })
+            .await
+            .map_err(|e| {
+                error!("[Oracle] Disconnect task error: {}", e);
+                DbError::Internal(format!("task error: {}", e))
+            })??;
+        }
+
+        info!("[Oracle] Disconnected");
+        self.tunnel = None;
+        Ok(())
+    }
+
+    async fn execute(
+        &self,
+        plugin: &dyn DatabasePlugin,
+        script: &str,
+        options: ExecOptions,
+    ) -> Result<Vec<SqlResult>, DbError> {
+        debug!(
+            "[Oracle] execute() called, stop_on_error={}",
+            options.stop_on_error
+        );
+        let parser = plugin
+            .create_parser(SqlSource::Script(script.to_string()))
+            .map_err(|e| DbError::query(format!("Failed to create parser: {}", e)))?;
+        let statements: Vec<String> = parser
+            .collect::<std::io::Result<Vec<_>>>()
+            .map_err(|e| DbError::query_with_source("failed to parse SQL script", e))?
+            .into_iter()
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        debug!("[Oracle] Split into {} statement(s)", statements.len());
+        let mut results = Vec::new();
+        let conn_arc = self.conn.clone();
+        let stop_on_error = options.stop_on_error;
+        let max_rows = options.max_rows;
+        let mut saw_exec = false;
+        let mut saw_error = false;
+
+        for (idx, sql) in statements.iter().enumerate() {
+            let conn_clone = conn_arc.clone();
+            let sql_clone = sql.clone();
+            let sql_preview = if sql.len() > 200 {
+                format!("{}...", truncate_str(sql, 200))
+            } else {
+                sql.clone()
+            };
+            debug!(
+                "[Oracle] Executing statement {}/{}",
+                idx + 1,
+                statements.len()
+            );
+
+            let result = tokio::task::spawn_blocking(move || {
+                let guard = conn_clone.blocking_lock();
+                let conn = guard.as_ref().ok_or(DbError::NotConnected)?;
+
+                Self::execute_statement_sync(conn, &sql_clone, max_rows)
+            })
+            .await
+            .map_err(|e| {
+                error!("[Oracle] Task error: {}, SQL: {}", e, sql_preview);
+                DbError::Internal(format!("task error: {}", e))
+            })??;
+
+            let is_error = result.is_error();
+            saw_exec |= matches!(result, SqlResult::Exec(_));
+            saw_error |= is_error;
+            if is_error {
+                debug!(
+                    "[Oracle] Statement {}/{} returned error",
+                    idx + 1,
+                    statements.len()
+                );
+            }
+            results.push(result.with_original_sql(sql.as_str()));
+
+            if is_error && stop_on_error {
+                debug!("[Oracle] Stopping execution due to error (stop_on_error=true)");
+                break;
+            }
+        }
+
+        if saw_exec && !saw_error {
+            let conn_clone = conn_arc.clone();
+            tokio::task::spawn_blocking(move || {
+                let guard = conn_clone.blocking_lock();
+                let conn = guard.as_ref().ok_or(DbError::NotConnected)?;
+                Self::commit_sync(conn)
+            })
+            .await
+            .map_err(|e| {
+                error!("[Oracle] Commit task error: {}", e);
+                DbError::Internal(format!("task error: {}", e))
+            })??;
+            debug!("[Oracle] Transaction committed");
+        }
+
+        debug!(
+            "[Oracle] execute() completed with {} result(s)",
+            results.len()
+        );
+        Ok(results)
+    }
+
+    async fn query(&self, query: &str) -> Result<SqlResult, DbError> {
+        debug!("[Oracle] query() called");
+        let conn_arc = self.conn.clone();
+        let sql = query.to_string();
+        let sql_preview = if query.len() > 200 {
+            format!("{}...", truncate_str(query, 200))
+        } else {
+            query.to_string()
+        };
+
+        tokio::task::spawn_blocking(move || {
+            let guard = conn_arc.blocking_lock();
+            let conn = guard.as_ref().ok_or(DbError::NotConnected)?;
+
+            Self::execute_statement_sync(conn, &sql, None)
+        })
+        .await
+        .map_err(|e| {
+            error!("[Oracle] Query task error: {}, SQL: {}", e, sql_preview);
+            DbError::Internal(format!("task error: {}", e))
+        })?
+    }
+
+    async fn current_database(&self) -> Result<Option<String>, DbError> {
+        debug!("[Oracle] Querying current schema");
+        let conn_arc = self.conn.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let guard = conn_arc.blocking_lock();
+            let conn = guard.as_ref().ok_or(DbError::NotConnected)?;
+
+            match conn.query_row_as::<String>(
+                "SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM DUAL",
+                &[],
+            ) {
+                Ok(schema) => {
+                    debug!("[Oracle] Current schema: {}", schema);
+                    Ok(Some(schema))
+                }
+                Err(e) => {
+                    error!("[Oracle] Failed to get current schema: {}", e);
+                    Err(DbError::query_with_source(
+                        "failed to get current schema",
+                        e,
+                    ))
+                }
+            }
+        })
+        .await
+        .map_err(|e| {
+            error!("[Oracle] Task error: {}", e);
+            DbError::Internal(format!("task error: {}", e))
+        })?
+    }
+
+    async fn switch_database(&self, schema: &str) -> Result<(), DbError> {
+        self.switch_schema(schema).await
+    }
+
+    async fn switch_schema(&self, schema: &str) -> Result<(), DbError> {
+        debug!("[Oracle] Switching to schema: {}", schema);
+        let sql = format!(
+            "ALTER SESSION SET CURRENT_SCHEMA = \"{}\"",
+            schema.replace("\"", "\"\"")
+        );
+        let conn_arc = self.conn.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let guard = conn_arc.blocking_lock();
+            let conn = guard.as_ref().ok_or(DbError::NotConnected)?;
+
+            conn.execute(&sql, &[]).map_err(|e| {
+                error!("[Oracle] Failed to switch schema: {}, SQL: {}", e, sql);
+                DbError::query_with_source("failed to switch schema", e)
+            })?;
+
+            info!("[Oracle] Switched to schema");
+            Ok(())
+        })
+        .await
+        .map_err(|e| {
+            error!("[Oracle] Task error: {}", e);
+            DbError::Internal(format!("task error: {}", e))
+        })?
+    }
+
+    async fn execute_streaming(
+        &self,
+        plugin: &dyn DatabasePlugin,
+        source: SqlSource,
+        options: ExecOptions,
+        sender: mpsc::Sender<StreamingProgress>,
+    ) -> Result<(), DbError> {
+        debug!(
+            "[Oracle] execute_streaming() called, streaming={}",
+            options.streaming
+        );
+
+        let total_size = source.file_size().unwrap_or(0);
+        let is_file_source = source.is_file();
+        let stop_on_error = options.stop_on_error;
+        let max_rows = options.max_rows;
+
+        let mut parser = plugin
+            .create_parser(source)
+            .map_err(|e| DbError::query(format!("Failed to create parser: {}", e)))?;
+
+        if options.streaming || is_file_source {
+            let mut current = 0usize;
+
+            while let Some(stmt_result) = parser.next() {
+                let bytes_read = parser.bytes_read();
+                let sql = match stmt_result {
+                    Ok(s) if !s.trim().is_empty() => s,
+                    Ok(_) => continue,
+                    Err(e) => {
+                        let progress = StreamingProgress::with_file_progress(
+                            current,
+                            SqlResult::Error(SqlErrorInfo {
+                                sql: String::new(),
+                                message: format!("Parse error: {}", e),
+                            }),
+                            bytes_read,
+                            total_size,
+                        );
+                        let _ = sender.send(progress).await;
+                        if stop_on_error {
+                            break;
+                        }
+                        continue;
+                    }
+                };
+
+                current += 1;
+                let sql_preview = if sql.len() > 200 {
+                    format!("{}...", truncate_str(&sql, 200))
+                } else {
+                    sql.clone()
+                };
+                debug!("[Oracle] Streaming statement {}", current);
+
+                let conn_arc = self.conn.clone();
+                let sql_clone = sql.clone();
+
+                let result = match tokio::task::spawn_blocking(move || {
+                    let guard = conn_arc.blocking_lock();
+                    let conn = guard.as_ref().ok_or(DbError::NotConnected)?;
+                    Self::execute_statement_sync(conn, &sql_clone, max_rows)
+                })
+                .await
+                {
+                    Ok(Ok(r)) => r,
+                    Ok(Err(e)) => {
+                        error!(
+                            "[Oracle] Streaming statement {} failed: {}, SQL: {}",
+                            current, e, sql_preview
+                        );
+                        SqlResult::Error(SqlErrorInfo {
+                            sql: sql.clone(),
+                            message: e.to_string(),
+                        })
+                    }
+                    Err(e) => {
+                        error!("[Oracle] Streaming task error: {}, SQL: {}", e, sql_preview);
+                        SqlResult::Error(SqlErrorInfo {
+                            sql: sql.clone(),
+                            message: e.to_string(),
+                        })
+                    }
+                };
+
+                let result = result.with_original_sql(sql.as_str());
+                let is_error = result.is_error();
+                let progress =
+                    StreamingProgress::with_file_progress(current, result, bytes_read, total_size);
+                if sender.send(progress).await.is_err() {
+                    break;
+                }
+
+                if is_error && stop_on_error {
+                    break;
+                }
+            }
+        } else {
+            let statements: Vec<String> = parser
+                .collect::<std::io::Result<Vec<_>>>()
+                .map_err(|e| DbError::query_with_source("failed to parse SQL script", e))?
+                .into_iter()
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect();
+
+            let total = statements.len();
+            debug!("[Oracle] Streaming {} statement(s)", total);
+
+            for (index, sql) in statements.into_iter().enumerate() {
+                let current = index + 1;
+                let sql_preview = if sql.len() > 200 {
+                    format!("{}...", truncate_str(&sql, 200))
+                } else {
+                    sql.clone()
+                };
+                debug!("[Oracle] Streaming statement {}/{}", current, total);
+
+                let conn_arc = self.conn.clone();
+                let sql_clone = sql.clone();
+
+                let result = match tokio::task::spawn_blocking(move || {
+                    let guard = conn_arc.blocking_lock();
+                    let conn = guard.as_ref().ok_or(DbError::NotConnected)?;
+                    Self::execute_statement_sync(conn, &sql_clone, max_rows)
+                })
+                .await
+                {
+                    Ok(Ok(r)) => r,
+                    Ok(Err(e)) => {
+                        error!(
+                            "[Oracle] Streaming statement {}/{} failed: {}, SQL: {}",
+                            current, total, e, sql_preview
+                        );
+                        SqlResult::Error(SqlErrorInfo {
+                            sql: sql.clone(),
+                            message: e.to_string(),
+                        })
+                    }
+                    Err(e) => {
+                        error!("[Oracle] Streaming task error: {}, SQL: {}", e, sql_preview);
+                        SqlResult::Error(SqlErrorInfo {
+                            sql: sql.clone(),
+                            message: e.to_string(),
+                        })
+                    }
+                };
+
+                let result = result.with_original_sql(sql.as_str());
+                let is_error = result.is_error();
+                let progress = StreamingProgress::new(current, total, result);
+                if sender.send(progress).await.is_err() {
+                    break;
+                }
+
+                if is_error && stop_on_error {
+                    break;
+                }
+            }
+        }
+
+        debug!("[Oracle] execute_streaming() completed");
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use one_core::storage::DatabaseType;
+    use std::collections::HashMap;
+
+    fn test_config() -> DbConnectionConfig {
+        DbConnectionConfig {
+            id: "oracle-test".to_string(),
+            database_type: DatabaseType::Oracle,
+            name: "Oracle Test".to_string(),
+            host: "127.0.0.1".to_string(),
+            port: 1521,
+            username: "user".to_string(),
+            password: "password".to_string(),
+            database: None,
+            service_name: Some("ORCL".to_string()),
+            sid: None,
+            workspace_id: None,
+            proxy: None,
+            credential_reference: None,
+            extra_params: HashMap::new(),
+        }
+    }
+
+    #[test]
+    fn oracle_ping_uses_dual_for_legacy_oracle_versions() {
+        let connection = OracleDbConnection::new(test_config());
+
+        assert_eq!("SELECT 1 FROM DUAL", connection.ping_query());
+    }
+
+    #[test]
+    fn oracle_connect_privilege_maps_form_role() {
+        let mut config = test_config();
+
+        assert_eq!(None, OracleDbConnection::connect_privilege(&config));
+
+        for (role, expected) in [
+            ("sysdba", Some(oracle::Privilege::Sysdba)),
+            ("SYSDBA", Some(oracle::Privilege::Sysdba)),
+            (" sysoper ", Some(oracle::Privilege::Sysoper)),
+            ("default", None),
+            ("unknown", None),
+        ] {
+            config
+                .extra_params
+                .insert(crate::ORACLE_ROLE_PARAM.to_string(), role.to_string());
+            assert_eq!(
+                expected,
+                OracleDbConnection::connect_privilege(&config),
+                "role {role:?} should map to {expected:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn oracle_query_row_limit_treats_none_and_zero_as_unbounded() {
+        assert!(!OracleDbConnection::has_reached_query_row_limit(100, None));
+        assert!(!OracleDbConnection::has_reached_query_row_limit(
+            100,
+            Some(0)
+        ));
+        assert!(!OracleDbConnection::has_reached_query_row_limit(
+            24,
+            Some(25)
+        ));
+        assert!(OracleDbConnection::has_reached_query_row_limit(
+            25,
+            Some(25)
+        ));
+    }
+
+    #[test]
+    fn raw_and_lob_types_are_binary_but_text_families_are_not() {
+        use oracle::sql_type::OracleType;
+
+        for oracle_type in [
+            OracleType::Raw(8),
+            OracleType::LongRaw,
+            OracleType::BLOB,
+            OracleType::BFILE,
+        ] {
+            assert!(
+                OracleDbConnection::is_binary_oracle_type(&oracle_type),
+                "{oracle_type:?}"
+            );
+        }
+        for oracle_type in [
+            OracleType::Varchar2(20),
+            OracleType::NVarchar2(20),
+            OracleType::Char(4),
+            OracleType::NChar(4),
+            OracleType::CLOB,
+            OracleType::NCLOB,
+        ] {
+            assert!(
+                !OracleDbConnection::is_binary_oracle_type(&oracle_type),
+                "{oracle_type:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn raw_empty_and_non_utf8_bytes_format_as_hex() {
+        assert_eq!(OracleDbConnection::format_binary(&[]), String::new());
+        assert_eq!(
+            OracleDbConnection::format_binary(&[0xFF, 0x00, 0x68]),
+            "0xFF0068".to_string()
+        );
+    }
+}

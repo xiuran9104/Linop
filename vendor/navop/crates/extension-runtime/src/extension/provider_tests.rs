@@ -1,0 +1,424 @@
+use std::{fs, sync::Arc};
+
+use super::{
+    DatabaseDriverExtensionProvider, ExtensionKind, ExtensionProvider, ExtensionRegistry,
+    LanguageBundleExtensionProvider, LanguageExtensionProvider,
+    RemoteDesktopProviderExtensionProvider, builtin_registry, load_language_extensions_from_root,
+    register_language_extension_manifests_from_root,
+};
+
+#[test]
+fn extension_kind_maps_stable_directories() {
+    assert_eq!("languages", ExtensionKind::Language.dir_name());
+    assert_eq!("language_bundles", ExtensionKind::LanguageBundle.dir_name());
+    assert_eq!("database_drivers", ExtensionKind::DatabaseDriver.dir_name());
+    assert_eq!(
+        "remote_desktop_providers",
+        ExtensionKind::RemoteDesktopProvider.dir_name()
+    );
+    assert_eq!("composite", ExtensionKind::Composite.dir_name());
+}
+
+#[test]
+fn extension_kind_parses_language_bundle() {
+    let kind: ExtensionKind = serde_json::from_str(r#""language_bundle""#).unwrap();
+
+    assert_eq!(ExtensionKind::LanguageBundle, kind);
+}
+
+#[test]
+fn extension_kind_parses_remote_desktop_provider() {
+    let kind: ExtensionKind = serde_json::from_str(r#""remote_desktop_provider""#).unwrap();
+
+    assert_eq!(ExtensionKind::RemoteDesktopProvider, kind);
+}
+
+#[test]
+fn extension_kind_defaults_unknown_kinds_to_unsupported() {
+    let kind: ExtensionKind = serde_json::from_str(r#""mcp_helper""#).unwrap();
+
+    assert_eq!(ExtensionKind::Unsupported, kind);
+}
+
+#[test]
+fn language_provider_lists_installed_language_summaries() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path().join("extensions");
+    let language_dir = root.join("languages").join("rust");
+    fs::create_dir_all(&language_dir).unwrap();
+    fs::write(
+        language_dir.join("manifest.json"),
+        r#"{
+            "name": "rust",
+            "version": "0.24.0",
+            "file_extensions": ["rs", "rsx"]
+        }"#,
+    )
+    .unwrap();
+    fs::write(language_dir.join("parser.wasm"), [0u8; 4]).unwrap();
+
+    let mut registry = ExtensionRegistry::new(root);
+    registry.register_provider(Arc::new(LanguageExtensionProvider));
+
+    let list = registry
+        .list_installed_of(ExtensionKind::Language)
+        .expect("language extensions should list");
+
+    assert_eq!(1, list.len());
+    assert_eq!(ExtensionKind::Language, list[0].kind);
+    assert_eq!("rust", list[0].name);
+    assert_eq!("0.24.0", list[0].version);
+    assert_eq!(language_dir, list[0].path);
+    assert_eq!(
+        vec!["rs".to_string(), "rsx".to_string()],
+        list[0].file_extensions
+    );
+    assert!(list[0].description.contains(".rs"));
+}
+
+#[test]
+fn language_bundle_provider_lists_installed_bundle_markers() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path().join("extensions");
+    let marker_dir = root.join("language_bundles").join("tree-sitter-languages");
+    fs::create_dir_all(&marker_dir).unwrap();
+    fs::write(
+        marker_dir.join("manifest.json"),
+        r#"{
+            "id": "tree-sitter-languages",
+            "name": "Tree-sitter Languages",
+            "version": "0.1.0",
+            "languages": ["javascript", "rust"],
+            "file_extensions": ["js", "rs"]
+        }"#,
+    )
+    .unwrap();
+
+    let mut registry = ExtensionRegistry::new(root);
+    registry.register_provider(Arc::new(LanguageBundleExtensionProvider));
+
+    let list = registry
+        .list_installed_of(ExtensionKind::LanguageBundle)
+        .expect("language bundles should list");
+
+    assert_eq!(1, list.len());
+    assert_eq!(ExtensionKind::LanguageBundle, list[0].kind);
+    assert_eq!("tree-sitter-languages", list[0].name);
+    assert_eq!("0.1.0", list[0].version);
+    assert_eq!(
+        vec!["js".to_string(), "rs".to_string()],
+        list[0].file_extensions
+    );
+}
+
+#[test]
+fn language_bundle_provider_uninstalls_marker_and_tracked_languages() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path().join("extensions");
+    let marker_dir = root.join("language_bundles").join("tree-sitter-languages");
+    fs::create_dir_all(&marker_dir).unwrap();
+    fs::create_dir_all(root.join("languages/rust")).unwrap();
+    fs::create_dir_all(root.join("languages/javascript")).unwrap();
+    fs::write(
+        marker_dir.join("manifest.json"),
+        r#"{
+            "id": "tree-sitter-languages",
+            "name": "Tree-sitter Languages",
+            "version": "0.1.0",
+            "languages": ["javascript", "rust"],
+            "file_extensions": ["js", "rs"]
+        }"#,
+    )
+    .unwrap();
+
+    let mut registry = ExtensionRegistry::new(root.clone());
+    registry.register_provider(Arc::new(LanguageBundleExtensionProvider));
+
+    let id = registry
+        .uninstall(ExtensionKind::LanguageBundle, "tree-sitter-languages")
+        .expect("language bundle should uninstall");
+
+    assert_eq!("tree-sitter-languages", id);
+    assert!(!marker_dir.exists());
+    assert!(!root.join("languages/rust").exists());
+    assert!(!root.join("languages/javascript").exists());
+}
+
+#[test]
+fn database_driver_provider_lists_installed_driver_summaries() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path().join("extensions");
+    let driver_dir = root.join("database_drivers").join("fake_pg");
+    fs::create_dir_all(&driver_dir).unwrap();
+    fs::write(
+        driver_dir.join("driver.json"),
+        r#"{
+            "id": "fake_pg",
+            "name": "Fake PostgreSQL",
+            "description": "Test database driver",
+            "version": "1.2.3",
+            "api": "mongodb",
+            "compatibility": {
+                "server": { "min": "4.0", "max": "8.0" },
+                "variant": "modern"
+            },
+            "entry": { "command": "./fake_driver" },
+            "transport": { "name": "fake_pg.sock" },
+            "ui": {
+                "icon": "Database",
+                "default_port": 15432
+            }
+        }"#,
+    )
+    .unwrap();
+
+    let mut registry = ExtensionRegistry::new(root);
+    registry.register_provider(Arc::new(DatabaseDriverExtensionProvider));
+
+    let list = registry
+        .list_installed_of(ExtensionKind::DatabaseDriver)
+        .expect("database drivers should list");
+
+    assert_eq!(1, list.len());
+    assert_eq!(ExtensionKind::DatabaseDriver, list[0].kind);
+    assert_eq!("fake_pg", list[0].name);
+    assert_eq!("1.2.3", list[0].version);
+    assert_eq!("Test database driver", list[0].description);
+    assert_eq!(Some("fake_pg"), list[0].driver_id.as_deref());
+    assert_eq!(Some("mongodb"), list[0].driver_api.as_deref());
+    assert_eq!(
+        Some("modern"),
+        list[0]
+            .driver_compatibility
+            .as_ref()
+            .and_then(|value| value.get("variant"))
+            .and_then(serde_json::Value::as_str)
+    );
+    assert_eq!(Some("Database"), list[0].icon.as_deref());
+    assert_eq!(Some(15432), list[0].default_port);
+}
+
+#[test]
+fn database_driver_provider_install_from_dir_requires_driver_manifest() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path().join("database_drivers");
+    let empty_dir = root.join("empty");
+    fs::create_dir_all(&empty_dir).unwrap();
+
+    let provider = DatabaseDriverExtensionProvider;
+    let err = provider.install_from_dir(&empty_dir).unwrap_err();
+
+    assert!(err.to_string().contains("driver"));
+}
+
+#[test]
+fn database_driver_provider_install_from_dir_reports_invalid_driver_manifest() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path().join("database_drivers");
+    let driver_dir = root.join("broken");
+    fs::create_dir_all(&driver_dir).unwrap();
+    fs::write(
+        driver_dir.join("driver.json"),
+        r#"{
+            "id": "broken",
+            "name": "Broken Driver"
+        }"#,
+    )
+    .unwrap();
+
+    let provider = DatabaseDriverExtensionProvider;
+    let err = provider.install_from_dir(&driver_dir).unwrap_err();
+    let message = err.to_string();
+
+    assert!(message.contains("解析 driver manifest 失败"));
+    assert!(
+        message.contains("invalid driver manifest") || message.contains("missing field `entry`")
+    );
+}
+
+#[test]
+fn database_driver_provider_install_rejects_missing_packaged_entry() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let driver_dir = tmp.path().join("redis");
+    fs::create_dir_all(&driver_dir).unwrap();
+    fs::write(
+        driver_dir.join("driver.json"),
+        r#"{
+            "id": "redis",
+            "name": "Redis",
+            "api": "redis",
+            "entry": { "command": "./missing-redis-sidecar" },
+            "transport": { "name": "redis.sock" }
+        }"#,
+    )
+    .unwrap();
+
+    let error = DatabaseDriverExtensionProvider
+        .install_from_dir(&driver_dir)
+        .unwrap_err();
+
+    assert!(error.to_string().contains("驱动入口不存在"));
+}
+
+#[test]
+fn database_driver_provider_install_from_dir_accepts_single_wrapped_driver_directory() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path().join("database_drivers");
+    let outer_dir = root.join("gbase8s");
+    let driver_dir = outer_dir.join("gbase8s");
+    fs::create_dir_all(&driver_dir).unwrap();
+    fs::write(
+        driver_dir.join("driver.json"),
+        r#"{
+            "id": "gbase8s",
+            "name": "GBase 8s",
+            "description": "GBase 8s IPC driver",
+            "version": "0.1.0",
+            "entry": { "command": "./gbase8s-ipc-driver" },
+            "transport": { "name": "gbase8s.sock" }
+        }"#,
+    )
+    .unwrap();
+    let entry = driver_dir.join("gbase8s-ipc-driver");
+    fs::write(&entry, b"driver").unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&entry, fs::Permissions::from_mode(0o755)).unwrap();
+    }
+
+    let provider = DatabaseDriverExtensionProvider;
+    let summary = provider.install_from_dir(&outer_dir).unwrap();
+
+    assert_eq!("gbase8s", summary.name);
+    assert_eq!("0.1.0", summary.version);
+    assert_eq!(driver_dir, summary.path);
+}
+
+#[test]
+fn remote_desktop_provider_lists_installed_provider_summaries() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path().join("extensions");
+    let provider_dir = root.join("remote_desktop_providers").join("rdp");
+    fs::create_dir_all(&provider_dir).unwrap();
+    fs::write(
+        provider_dir.join("remote_desktop_provider.json"),
+        remote_desktop_provider_json("rdp", "RDP", "rdp", "./onetcli-rdp-helper"),
+    )
+    .unwrap();
+
+    let mut registry = ExtensionRegistry::new(root);
+    registry.register_provider(Arc::new(RemoteDesktopProviderExtensionProvider));
+
+    let list = registry
+        .list_installed_of(ExtensionKind::RemoteDesktopProvider)
+        .expect("remote desktop providers should list");
+
+    assert_eq!(1, list.len());
+    assert_eq!(ExtensionKind::RemoteDesktopProvider, list[0].kind);
+    assert_eq!("rdp", list[0].name);
+    assert_eq!("1.2.3", list[0].version);
+    assert_eq!("RDP provider", list[0].description);
+    assert_eq!(Some("Monitor"), list[0].icon.as_deref());
+    assert_eq!(Some(3389), list[0].default_port);
+}
+
+#[test]
+fn remote_desktop_provider_install_from_dir_requires_manifest() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let empty_dir = tmp.path().join("remote_desktop_providers").join("empty");
+    fs::create_dir_all(&empty_dir).unwrap();
+
+    let provider = RemoteDesktopProviderExtensionProvider;
+    let err = provider.install_from_dir(&empty_dir).unwrap_err();
+
+    assert!(err.to_string().contains("remote_desktop_provider"));
+}
+
+#[test]
+fn builtin_registry_registers_all_extension_providers() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let registry = builtin_registry(tmp.path().join("extensions"));
+
+    assert!(registry.provider(ExtensionKind::Language).is_some());
+    assert!(registry.provider(ExtensionKind::LanguageBundle).is_some());
+    assert!(registry.provider(ExtensionKind::DatabaseDriver).is_some());
+    assert!(
+        registry
+            .provider(ExtensionKind::RemoteDesktopProvider)
+            .is_some()
+    );
+    assert!(registry.provider(ExtensionKind::Composite).is_some());
+    assert_eq!(
+        tmp.path().join("extensions/languages"),
+        registry.root_for(ExtensionKind::Language)
+    );
+}
+
+fn remote_desktop_provider_json(id: &str, name: &str, protocol: &str, command: &str) -> String {
+    format!(
+        r#"{{
+            "id": "{id}",
+            "name": "{name}",
+            "description": "{name} provider",
+            "version": "1.2.3",
+            "protocol": "{protocol}",
+            "entry": {{ "command": "{command}" }},
+            "capabilities": {{
+                "resize": "remote_resize",
+                "clipboard_text": true,
+                "cursor_shape": true,
+                "audio": false,
+                "file_transfer": false
+            }},
+            "ui": {{
+                "icon": "Monitor",
+                "default_port": 3389
+            }}
+        }}"#
+    )
+}
+
+#[test]
+fn load_language_extensions_from_root_scans_languages_directory() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path().join("extensions");
+    let language_dir = root.join("languages").join("broken");
+    fs::create_dir_all(&language_dir).unwrap();
+    fs::write(
+        language_dir.join("manifest.json"),
+        r#"{"name":"broken","version":"0.1.0"}"#,
+    )
+    .unwrap();
+    fs::write(language_dir.join("parser.wasm"), [0u8; 4]).unwrap();
+
+    let report = load_language_extensions_from_root(&root).unwrap();
+
+    assert!(report.loaded.is_empty());
+    assert_eq!(1, report.failed.len());
+    assert_eq!("broken", report.failed[0].0);
+}
+
+#[test]
+fn register_language_extension_manifests_from_root_does_not_load_wasm() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let root = tmp.path().join("extensions");
+    let language_dir = root.join("languages").join("__runtime_lazy_manifest__");
+    fs::create_dir_all(&language_dir).unwrap();
+    fs::write(
+        language_dir.join("manifest.json"),
+        r#"{"name":"__runtime_lazy_manifest__","version":"0.1.0","file_extensions":["lazy_manifest"]}"#,
+    )
+    .unwrap();
+    fs::write(language_dir.join("parser.wasm"), [0u8; 4]).unwrap();
+
+    let report = register_language_extension_manifests_from_root(&root).unwrap();
+
+    assert_eq!(vec!["__runtime_lazy_manifest__".to_string()], report.loaded);
+    assert!(report.failed.is_empty());
+    assert_eq!(
+        crate::language_extensions::registered_language_name("lazy_manifest").as_deref(),
+        Some("__runtime_lazy_manifest__")
+    );
+    crate::language_extensions::forget_language("__runtime_lazy_manifest__");
+}

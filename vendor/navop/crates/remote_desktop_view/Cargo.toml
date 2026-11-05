@@ -1,0 +1,59 @@
+[package]
+name = "remote_desktop_view"
+version = "0.15.2"
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+one-assets = { workspace = true }
+anyhow = { workspace = true }
+dunce = "1.0"
+gpui = { workspace = true }
+gpui-component = { workspace = true }
+connection-form = { workspace = true }
+connection_tunnel = { workspace = true }
+one-core = { workspace = true }
+one-ui = { workspace = true }
+remote_desktop = { workspace = true }
+windows_rdp_host = { workspace = true, optional = true }
+raw-window-handle = { workspace = true, optional = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+image = { workspace = true }
+smallvec = { workspace = true }
+rust-i18n = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# 与 gpui-pre 的 objc2 生态版本保持一致(见 gpui-pre 根 Cargo.toml)。
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3.2", features = ["NSPasteboard"] }
+objc2-foundation = { version = "0.3.2", features = [
+    "NSArray",
+    "NSData",
+    "NSURL",
+    "NSString",
+] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { workspace = true, features = [
+    "Win32_Foundation",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+] }
+
+[dev-dependencies]
+futures = { workspace = true }
+gpui = { workspace = true, features = ["test-support"] }
+tempfile = "3"
+
+[features]
+default = []
+windows-native-rdp = [
+    "dep:raw-window-handle",
+    "dep:windows_rdp_host",
+    "remote_desktop/windows-native-rdp",
+]
+
+[lints]
+workspace = true

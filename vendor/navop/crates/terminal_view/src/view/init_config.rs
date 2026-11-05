@@ -1,0 +1,19 @@
+use super::*;
+
+pub(super) struct TerminalViewInit {
+    pub(super) terminal: Entity<Terminal>,
+    pub(super) connection_id: Option<i64>,
+    pub(super) stored_connection: Option<StoredConnection>,
+    /// 连接设置里选的图标。扩展连接打开的是本地终端、没有 `StoredConnection`,
+    /// 由调用方解析好图标后直接传入。
+    pub(super) connection_icon: Option<Icon>,
+    pub(super) sync_path_enabled: bool,
+    pub(super) local_working_dir: Option<PathBuf>,
+    /// 本地终端文件树的来源；WSL 会话指向发行版文件系统（`\\wsl$\<发行版>`），
+    /// 容器 exec 会话指向容器文件系统（经 `docker exec` 浏览）。
+    pub(super) workspace_source: Option<LocalWorkspaceSource>,
+    pub(super) tab_index: Option<usize>,
+    pub(super) duplicate_source: Option<TerminalDuplicateSource>,
+    pub(super) recording_playback_name: Option<SharedString>,
+    pub(super) session_log_name: Option<SharedString>,
+}

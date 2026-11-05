@@ -1,0 +1,1065 @@
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "GitHub Release tag to build or repair, for example v0.8.10"
+        required: true
+        type: string
+      platform:
+        description: "Build all primary platforms or repair one platform"
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - macos-arm64
+          - macos-x64
+          - linux-x64
+          - linux-arm64
+          - windows-x64
+          - windows-x86
+      products:
+        description: "all = 全量 + 两个独立产品同 tag 发布；full = 仅全量；standalone = 仅独立产品"
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - full
+          - standalone
+      build_mode:
+        description: "fast 用 thin LTO（构建较快、体积略大）；release 用 fat LTO + panic=abort（体积最小）"
+        required: true
+        type: choice
+        default: release
+        options:
+          - release
+          - fast
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTC_WRAPPER: sccache
+  SCCACHE_GHA_ENABLED: "true"
+  SCCACHE_IDLE_TIMEOUT: "7200"
+
+jobs:
+  prepare:
+    name: Prepare release build
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      tag: ${{ steps.release.outputs.tag }}
+      platform: ${{ steps.release.outputs.platform }}
+      build_mode: ${{ steps.release.outputs.build_mode }}
+      channel: ${{ steps.release.outputs.channel }}
+
+    steps:
+      - name: Validate release request
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_PLATFORM: ${{ inputs.platform }}
+          BUILD_MODE: ${{ inputs.build_mode }}
+        run: |
+          set -euo pipefail
+          if [ "$BUILD_MODE" != "release" ] && [ "$BUILD_MODE" != "fast" ]; then
+            echo "::error::Unsupported build mode: $BUILD_MODE"
+            exit 1
+          fi
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid release tag: $RELEASE_TAG"
+            exit 1
+          fi
+          # 发布通道：纯稳定版本号（vX.Y.Z）走 stable，其余（vX.Y.Z-beta.N /
+          # -rc.N 等预发布）走 beta。与 upload-r2.yml 里的推导规则保持一字不差。
+          if [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then CHANNEL=stable; else CHANNEL=beta; fi
+          gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" >/dev/null
+          if [ "$RELEASE_PLATFORM" != "all" ]; then
+            gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null
+          fi
+          {
+            echo "tag=$RELEASE_TAG"
+            echo "platform=$RELEASE_PLATFORM"
+            echo "build_mode=$BUILD_MODE"
+            echo "channel=$CHANNEL"
+          } >> "$GITHUB_OUTPUT"
+          echo "Release channel: $CHANNEL"
+
+      - name: Check out release tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+
+      - name: Verify application version matches release tag
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          expected_version="${RELEASE_TAG#v}"
+          # 统一版本约定：一个 tag 同时发布全量与两个独立产品，
+          # 四个 manifest 的 version 必须全部与 tag 对齐，否则装出来的
+          # 包自报版本（env!("CARGO_PKG_VERSION")）与 feed 比较会错。
+          status=0
+          for manifest in \
+            crates/navop_app/Cargo.toml \
+            apps/navop/Cargo.toml \
+            apps/navop-shell/Cargo.toml \
+            apps/navop-data/Cargo.toml
+          do
+            manifest_version="$(
+              awk -F'"' '
+                /^\[package\]$/ { in_package = 1; next }
+                /^\[/ { in_package = 0 }
+                in_package && /^version = "/ { print $2; exit }
+              ' "$manifest"
+            )"
+            if [ "$manifest_version" != "$expected_version" ]; then
+              echo "::error::${manifest} version ${manifest_version:-<missing>} does not match release tag ${RELEASE_TAG}"
+              status=1
+            fi
+          done
+          if [ "$status" -ne 0 ]; then
+            exit 1
+          fi
+          echo "Verified unified product versions: $expected_version (navop / navop-shell / navop-data)"
+
+      - name: Verify changelog entry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -f CHANGELOG.md ] && [ -f script/changelog.py ]; then
+            python3 script/changelog.py extract \
+              --tag "$RELEASE_TAG" \
+              --changelog CHANGELOG.md \
+              --output /tmp/release-notes.md
+            echo "Verified tagged changelog entry: $RELEASE_TAG"
+          elif gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::warning::${RELEASE_TAG} predates the tracked changelog; preserving its existing GitHub Release body for this legacy repair."
+          else
+            echo "::error::${RELEASE_TAG} does not contain CHANGELOG.md and script/changelog.py. Generate and commit the changelog entry before creating a new release tag."
+            exit 1
+          fi
+
+      - name: Resolve platform matrix
+        id: matrix
+        env:
+          RELEASE_PLATFORM: ${{ inputs.platform }}
+          RELEASE_PRODUCTS: ${{ inputs.products }}
+        run: |
+          set -euo pipefail
+          # Linux ships one package per architecture. It is built with
+          # cargo-zigbuild against glibc 2.28 so it also runs on hosts that
+          # predate the runner image, and the Mesa stack it may need is a
+          # separate dependency archive rather than a second app package.
+          #
+          # 三个产品共用同一份矩阵字段：product 是 cargo 包名（-p），
+          # binary 是产物二进制名，archive 是自更新器直连的 target-triple
+          # 资产名（{binary}-{target}.tar.gz|.zip），bundle_name 是 macOS
+          # .app 目录名，portable_marker 是便携版标记文件名。全量与独立
+          # 产品同 tag 发布，公开产物名统一 {product}-{version}-{label}。
+          macos_arm64='{"target":"aarch64-apple-darwin","os":"macos-latest","product":"navop","binary":"navop","archive":"navop-aarch64-apple-darwin.tar.gz","public_label":"macos-arm64","bundle_name":"Navop","portable_marker":"navop.portable","arm_linux":false,"windows_native_rdp":false}'
+          macos_x64='{"target":"x86_64-apple-darwin","os":"macos-15-intel","product":"navop","binary":"navop","archive":"navop-x86_64-apple-darwin.tar.gz","public_label":"macos-x64","bundle_name":"Navop","portable_marker":"navop.portable","arm_linux":false,"windows_native_rdp":false}'
+          linux_x64='{"target":"x86_64-unknown-linux-gnu","os":"ubuntu-latest","product":"navop","binary":"navop","archive":"navop-x86_64-unknown-linux-gnu.tar.gz","public_label":"linux-x64","bundle_name":"Navop","portable_marker":"navop.portable","arm_linux":false,"windows_native_rdp":false}'
+          linux_arm64='{"target":"aarch64-unknown-linux-gnu","os":"ubuntu-24.04-arm","product":"navop","binary":"navop","archive":"navop-aarch64-unknown-linux-gnu.tar.gz","public_label":"linux-arm64","bundle_name":"Navop","portable_marker":"navop.portable","arm_linux":true,"windows_native_rdp":false}'
+          windows_x64='{"target":"x86_64-pc-windows-msvc","os":"windows-latest","product":"navop","binary":"navop.exe","archive":"navop-x86_64-pc-windows-msvc.zip","public_label":"windows-x64","bundle_name":"Navop","portable_marker":"navop.portable","arm_linux":false,"windows_native_rdp":true,"windows_arch":"x64"}'
+          windows_x86='{"target":"i686-pc-windows-msvc","os":"windows-latest","product":"navop","binary":"navop.exe","archive":"navop-i686-pc-windows-msvc.zip","public_label":"win32","bundle_name":"Navop","portable_marker":"navop.portable","arm_linux":false,"windows_native_rdp":true,"windows_arch":"x86"}'
+          # 独立产品只覆盖主力平台（无 linux-arm64 / win32），对齐原
+          # standalone-products.yml 的平台面；win32 的 shell-plugins 依赖
+          # 仅支持 64 位，等独立产品需要 32 位时再单独评估。
+          shell_macos_arm64='{"target":"aarch64-apple-darwin","os":"macos-latest","product":"navop-shell","binary":"navop-shell","archive":"navop-shell-aarch64-apple-darwin.tar.gz","public_label":"macos-arm64","bundle_name":"Navop Shell","portable_marker":"navop-shell.portable","arm_linux":false,"windows_native_rdp":false}'
+          shell_macos_x64='{"target":"x86_64-apple-darwin","os":"macos-15-intel","product":"navop-shell","binary":"navop-shell","archive":"navop-shell-x86_64-apple-darwin.tar.gz","public_label":"macos-x64","bundle_name":"Navop Shell","portable_marker":"navop-shell.portable","arm_linux":false,"windows_native_rdp":false}'
+          shell_linux_x64='{"target":"x86_64-unknown-linux-gnu","os":"ubuntu-latest","product":"navop-shell","binary":"navop-shell","archive":"navop-shell-x86_64-unknown-linux-gnu.tar.gz","public_label":"linux-x64","bundle_name":"Navop Shell","portable_marker":"navop-shell.portable","arm_linux":false,"windows_native_rdp":false}'
+          shell_windows_x64='{"target":"x86_64-pc-windows-msvc","os":"windows-latest","product":"navop-shell","binary":"navop-shell.exe","archive":"navop-shell-x86_64-pc-windows-msvc.zip","public_label":"windows-x64","bundle_name":"Navop Shell","portable_marker":"navop-shell.portable","arm_linux":false,"windows_native_rdp":true,"windows_arch":"x64"}'
+          data_macos_arm64='{"target":"aarch64-apple-darwin","os":"macos-latest","product":"navop-data","binary":"navop-data","archive":"navop-data-aarch64-apple-darwin.tar.gz","public_label":"macos-arm64","bundle_name":"Navop Data","portable_marker":"navop-data.portable","arm_linux":false,"windows_native_rdp":false}'
+          data_macos_x64='{"target":"x86_64-apple-darwin","os":"macos-15-intel","product":"navop-data","binary":"navop-data","archive":"navop-data-x86_64-apple-darwin.tar.gz","public_label":"macos-x64","bundle_name":"Navop Data","portable_marker":"navop-data.portable","arm_linux":false,"windows_native_rdp":false}'
+          data_linux_x64='{"target":"x86_64-unknown-linux-gnu","os":"ubuntu-latest","product":"navop-data","binary":"navop-data","archive":"navop-data-x86_64-unknown-linux-gnu.tar.gz","public_label":"linux-x64","bundle_name":"Navop Data","portable_marker":"navop-data.portable","arm_linux":false,"windows_native_rdp":false}'
+          data_windows_x64='{"target":"x86_64-pc-windows-msvc","os":"windows-latest","product":"navop-data","binary":"navop-data.exe","archive":"navop-data-x86_64-pc-windows-msvc.zip","public_label":"windows-x64","bundle_name":"Navop Data","portable_marker":"navop-data.portable","arm_linux":false,"windows_native_rdp":true,"windows_arch":"x64"}'
+
+          case "$RELEASE_PLATFORM" in
+            all)
+              full_matrix="[$macos_arm64,$macos_x64,$linux_x64,$linux_arm64,$windows_x64,$windows_x86]"
+              standalone_matrix="[$shell_macos_arm64,$shell_macos_x64,$shell_linux_x64,$shell_windows_x64,$data_macos_arm64,$data_macos_x64,$data_linux_x64,$data_windows_x64]"
+              ;;
+            macos-arm64)
+              full_matrix="[$macos_arm64]"
+              standalone_matrix="[$shell_macos_arm64,$data_macos_arm64]"
+              ;;
+            macos-x64)
+              full_matrix="[$macos_x64]"
+              standalone_matrix="[$shell_macos_x64,$data_macos_x64]"
+              ;;
+            linux-x64)
+              full_matrix="[$linux_x64]"
+              standalone_matrix="[$shell_linux_x64,$data_linux_x64]"
+              ;;
+            linux-arm64)
+              full_matrix="[$linux_arm64]"
+              standalone_matrix=""
+              ;;
+            windows-x64)
+              full_matrix="[$windows_x64]"
+              standalone_matrix="[$shell_windows_x64,$data_windows_x64]"
+              ;;
+            windows-x86)
+              full_matrix="[$windows_x86]"
+              standalone_matrix=""
+              ;;
+            *) echo "::error::Unsupported platform: $RELEASE_PLATFORM"; exit 1 ;;
+          esac
+
+          case "$RELEASE_PRODUCTS" in
+            full)
+              matrix="$full_matrix"
+              ;;
+            standalone)
+              if [ -z "$standalone_matrix" ]; then
+                echo "::error::Standalone products are not built for platform: $RELEASE_PLATFORM"
+                exit 1
+              fi
+              matrix="$standalone_matrix"
+              ;;
+            all)
+              if [ -n "$standalone_matrix" ]; then
+                # 两个 JSON 数组拼成一个：各去掉一层方括号后以逗号相连。
+                # 不能用 `tr ' ' ','` 拼接：`bundle_name` 里带空格（"Navop Shell"），
+                # 那样会把空格也换成逗号，macOS 产物目录变成 `Navop,Shell.app`，
+                # 后续 `tar` 找不到包。方括号用参数展开去掉，其余字节原样保留。
+                combined="${full_matrix%]},${standalone_matrix#\[}"
+                matrix="$combined"
+              else
+                matrix="$full_matrix"
+              fi
+              ;;
+            *) echo "::error::Unsupported products selection: $RELEASE_PRODUCTS"; exit 1 ;;
+          esac
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build (${{ matrix.product }} / ${{ matrix.target }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    runs-on: ${{ matrix.os }}
+    # fat LTO + codegen-units=1 让链接阶段更慢（Windows x64 基线已 64min），一律给 180min
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: ${{ matrix.target }}
+          cache: false
+
+      # sccache 只是构建加速器：GitHub Release CDN 偶发 504 会让下载安装失败，
+      # 此时必须退化成无缓存构建，而不是让整个发布 job 失败。
+      - name: Setup sccache
+        id: sccache
+        uses: mozilla-actions/sccache-action@v0.0.10
+        continue-on-error: true
+
+      - name: Initialize sccache
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.sccache.outcome }}" != "success" ]; then
+            echo "::warning::sccache 安装失败，本次构建退化为无编译器缓存"
+            echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          sccache --start-server
+          sccache --zero-stats
+          sccache --show-stats
+
+      - name: Restore shared Cargo inputs
+        id: cargo-inputs-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: navop-cargo-inputs-v1-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            navop-cargo-inputs-v1-${{ runner.os }}-
+            release-cargo-inputs-${{ runner.os }}-${{ matrix.target }}-
+
+      - name: Free disk space (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          df -h
+
+          remove_path() {
+            local path="$1"
+            if [ -e "$path" ]; then
+              sudo rm -rf "$path" || echo "::warning::Failed to remove $path"
+            fi
+          }
+
+          remove_directory_contents() {
+            local path="$1"
+            if [ -d "$path" ]; then
+              sudo find "$path" -mindepth 1 -maxdepth 1 -exec rm -rf {} + \
+                || echo "::warning::Failed to remove some entries under $path"
+            fi
+          }
+
+          remove_path /usr/local/lib/node_modules
+          remove_path "$HOME/.npm"
+          remove_path "$HOME/.nvm"
+          remove_directory_contents "$HOME/Library/Caches"
+          remove_path /System/Library/Frameworks/Python.framework
+
+          df -h
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: script/bootstrap
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: script/bootstrap
+
+      - name: Install system dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake --version
+          choco install nasm --no-progress --yes
+          $nasmDir = Join-Path $env:ProgramFiles "NASM"
+          $nasmExe = Join-Path $nasmDir "nasm.exe"
+          if (-not (Test-Path -LiteralPath $nasmExe -PathType Leaf)) {
+            throw "NASM executable was not found at '$nasmExe'"
+          }
+          $env:Path = "$nasmDir;$env:Path"
+          $nasmDir | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          nasm -v
+
+      - name: Install Zig toolchain (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/ziglang"
+          "$RUNNER_TEMP/ziglang/bin/python" -m pip install ziglang==0.14.1
+          cargo install --locked cargo-zigbuild --version 0.23.0
+          echo "CARGO_ZIGBUILD_PYTHON_PATH=$RUNNER_TEMP/ziglang/bin/python" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/ziglang/bin/python" -m ziglang version
+          cargo-zigbuild --version
+
+      - name: Configure MSVC environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.windows_arch }}
+
+      - name: Build Windows RDP toolchain probe
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: >-
+          ./script/build-windows-rdp-probe.ps1
+          -Target "${{ matrix.target }}"
+
+      - name: Set environment variables
+        shell: bash
+        run: |
+          VERSION="${{ needs.prepare.outputs.tag }}"
+          echo "ONETCLI_VERSION=${VERSION#v}" >> "$GITHUB_ENV"
+          # 公开产物名统一 {product}-{version}-{label}：全量保持
+          # navop-{version}-{label} 不变，独立产品自带 navop-shell- /
+          # navop-data- 前缀，与全量在 Release 资产列表里天然分流。
+          echo "PUBLIC_BASENAME=${{ matrix.product }}-${VERSION#v}-${{ matrix.public_label }}" >> "$GITHUB_ENV"
+
+      - name: Verify secrets are set
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_URL" ]; then
+            echo "::error::SUPABASE_URL secret is empty or not set"
+            exit 1
+          fi
+          if [ -z "$SUPABASE_ANON_KEY" ]; then
+            echo "::error::SUPABASE_ANON_KEY secret is empty or not set"
+            exit 1
+          fi
+
+      - name: Build release binary
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          NAVOP_PUBLIC_BASE_URL: ${{ vars.NAVOP_PUBLIC_BASE_URL }}
+          NAVOP_WEBSITE_BASE_URL: ${{ vars.NAVOP_WEBSITE_BASE_URL }}
+          ONETCLI_TEAM_MANAGEMENT_URL_TEMPLATE: ${{ vars.ONETCLI_TEAM_MANAGEMENT_URL_TEMPLATE }}
+        run: |
+          set -euo pipefail
+          if [ "${{ needs.prepare.outputs.build_mode }}" = "fast" ]; then
+            export CARGO_PROFILE_RELEASE_LTO=thin
+            export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
+          elif [ "${{ matrix.arm_linux }}" = "true" ]; then
+            export CARGO_BUILD_JOBS=2
+            export CARGO_PROFILE_RELEASE_LTO=thin
+            export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
+          fi
+          cargo --version
+          rustc --version
+          echo "CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-}"
+          echo "CARGO_PROFILE_RELEASE_LTO=${CARGO_PROFILE_RELEASE_LTO:-}"
+          echo "CARGO_PROFILE_RELEASE_CODEGEN_UNITS=${CARGO_PROFILE_RELEASE_CODEGEN_UNITS:-}"
+          # 三个平台交付同一个形态：关闭窗口即销毁（`remove_window()`）。
+          #
+          # 这里曾经给 x86_64-apple-darwin 打开 `macos-touchbar-window-hide`（关闭即隐藏），
+          # 用来绕开带 Touch Bar 的 Mac 上关闭窗口闪退（navop#262 / #308 / #314）。上游 zed#65186
+          # 修掉了根因（accesskit 换成普通 Adapter，不再动态替换内容视图的类），该修复随
+          # gpui-pre fork-0.3.124 进来，所以这个开关重新关掉。
+          #
+          # 机制本身保留在代码里（`crate::window_close::HIDE_WINDOWS_ON_CLOSE`）：万一上游修复在
+          # 真机上被否证，重新在这里给对应 target 打开这个 feature 即可，代码不用改
+          # （写法见 `crates/core/Cargo.toml` 的 feature 注释）。完整背景见
+          # docs/macos-memory-investigation.md §10。
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            # The glibc 2.28 target is what makes the single Linux package run on
+            # hosts that predate the runner image; the dependency archive is
+            # built against the same baseline.
+            #
+            # No platform overrides the feature set: the default set is the one
+            # shape all three platforms ship, and it leaves `embedded-webview`
+            # out (see crates/navop_app/Cargo.toml). The HTML preview host on Linux is
+            # WebKitGTK 4.1, which cannot be provided with the package, and an
+            # in-app HTML preview that works on two platforms but not the third
+            # is not worth a second shape to test and release.
+            #
+            # 三个 app crate 都依赖 main（default-features=false + 显式
+            # feature 列表），feature 形态由各 apps/*/Cargo.toml 固定，
+            # 这里只换 -p 包名即可构建对应产品。
+            cargo zigbuild \
+              --release \
+              -p ${{ matrix.product }} \
+              --target "${{ matrix.target }}.2.28"
+          else
+            cargo build --release -p ${{ matrix.product }} --target "${{ matrix.target }}"
+          fi
+          test -x "target/${{ matrix.target }}/release/${{ matrix.binary }}"
+          # 体积回归在日志里可见（fat LTO + panic=abort 后约 107MiB）
+          ls -lh "target/${{ matrix.target }}/release/${{ matrix.binary }}"
+
+      - name: Build release binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          NAVOP_PUBLIC_BASE_URL: ${{ vars.NAVOP_PUBLIC_BASE_URL }}
+          NAVOP_WEBSITE_BASE_URL: ${{ vars.NAVOP_WEBSITE_BASE_URL }}
+          ONETCLI_TEAM_MANAGEMENT_URL_TEMPLATE: ${{ vars.ONETCLI_TEAM_MANAGEMENT_URL_TEMPLATE }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:VCToolsInstallDir)) {
+            throw "VCToolsInstallDir is not configured"
+          }
+
+          $target = "${{ matrix.target }}"
+          $linkerArchitecture = if ($target -eq "i686-pc-windows-msvc") {
+            "x86"
+          } else {
+            "x64"
+          }
+          $linker = Join-Path `
+            $env:VCToolsInstallDir `
+            "bin\Hostx64\$linkerArchitecture\link.exe"
+          if (-not (Test-Path -LiteralPath $linker -PathType Leaf)) {
+            throw "MSVC linker was not found at '$linker'"
+          }
+
+          $linkerEnvironmentName = "CARGO_TARGET_$($target.Replace('-', '_').ToUpperInvariant())_LINKER"
+          [Environment]::SetEnvironmentVariable(
+            $linkerEnvironmentName,
+            $linker,
+            [EnvironmentVariableTarget]::Process
+          )
+
+          cargo --version
+          rustc --version
+          Write-Host "Using MSVC linker for ${target}: $linker"
+          if ("${{ needs.prepare.outputs.build_mode }}" -eq "fast") {
+            $env:CARGO_PROFILE_RELEASE_LTO = "thin"
+            $env:CARGO_PROFILE_RELEASE_CODEGEN_UNITS = "16"
+            Write-Host "Fast build mode: thin LTO, codegen-units=16"
+          }
+          # 32 位 Windows 暂不支持 shell-plugins：其 gpui-shell 依赖的
+          # quickjs-jit 运行时代码与 cranelift 后端仅支持 64 位
+          # (x86_64/aarch64)，i686 无法编译。win32 构建先剔除该 feature。
+          # 这是唯一一处显式写 feature 列表的地方，内容是「默认集减去 shell-plugins」，
+          # 所以不要在这里补回 `embedded-webview`：默认集本身已经不带它了
+          # （见 crates/navop_app/Cargo.toml），补回来会让 win32 成为唯一的另一种形态。
+          # 这两组开关只服务全量产品（`apps/navop` 会把它们转发给 `navop_app`）；
+          # 独立产品的特性集写在自己的 Cargo.toml 里（`default-features = false`），
+          # 给它们传同样的 feature 名会直接报「package does not contain these features」。
+          $features = if ("${{ matrix.product }}" -ne "navop") {
+            @()
+          } elseif ($target -eq "i686-pc-windows-msvc") {
+            @("--no-default-features", "--features", "wasm-components,windows-native-rdp")
+          } else {
+            @("--features", "windows-native-rdp")
+          }
+          cargo build `
+            --release `
+            -p ${{ matrix.product }} `
+            @features `
+            --target $target
+
+          $binary = "target\$target\release\${{ matrix.binary }}"
+          if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
+            throw "Release binary was not created: '$binary'"
+          }
+
+      - name: Validate Windows executable manifest
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Windows 加载器在进 main 之前就解析导入表：产物缺 Common-Controls v6 清单时，
+          # exe 会因为静态导入 comctl32!TaskDialogIndirect 而直接以
+          # STATUS_ENTRYPOINT_NOT_FOUND / 0xC0000139 退出（弹「无法定位程序输入点」），
+          # 编译期没有任何信号，所以必须在打包前对真实产物校验一次。
+          node script/validate-windows-exe.mjs `
+            "target/${{ matrix.target }}/release/${{ matrix.binary }}"
+
+      - name: Verify Linux glibc baseline
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          script/check-linux-glibc-baseline.sh \
+            "target/${{ matrix.target }}/release/${{ matrix.binary }}" \
+            "2.28"
+
+      - name: Save shared Cargo inputs
+        if: >-
+          ${{
+            always() &&
+            steps.cargo-inputs-cache.outcome == 'success' &&
+            steps.cargo-inputs-cache.outputs.cache-hit != 'true' &&
+            (
+              needs.prepare.outputs.platform != 'all' ||
+              matrix.target == 'x86_64-apple-darwin' ||
+              matrix.target == 'x86_64-unknown-linux-gnu' ||
+              matrix.target == 'x86_64-pc-windows-msvc'
+            )
+          }}
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ steps.cargo-inputs-cache.outputs.cache-primary-key }}
+
+      - name: Show sccache statistics
+        if: always()
+        shell: bash
+        run: sccache --show-stats || true
+
+      - name: Create macOS app bundle
+        if: runner.os == 'macOS'
+        run: |
+          chmod +x script/bundle-macos.sh
+          chmod +x script/bundle-macos-dmg.sh
+          script/bundle-macos.sh ${{ matrix.target }} ${{ matrix.product }}
+          # 释放磁盘：release target 目录很大，DMG 制作（在 target/ 下写入镜像）
+          # 会因 runner 空间不足而失败（hdiutil: No space left on device）。
+          df -h
+          rm -rf target/release/deps target/release/build target/release/incremental target/release/.fingerprint
+          rm -rf "target/${{ matrix.target }}/release/deps" "target/${{ matrix.target }}/release/build" "target/${{ matrix.target }}/release/incremental" "target/${{ matrix.target }}/release/.fingerprint"
+          df -h
+          script/bundle-macos-dmg.sh ${{ matrix.target }} ${{ matrix.product }}
+          tar czf ${{ matrix.archive }} -C target "${{ matrix.bundle_name }}.app"
+          cp "${{ matrix.archive }}" "${PUBLIC_BASENAME}.tar.gz"
+          mv "${{ matrix.binary }}-${{ matrix.target }}.dmg" "${PUBLIC_BASENAME}.dmg"
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ matrix.product }}" = "navop" ]; then
+            # 全量：desktop/mime/icons 在工作流里就地打包。
+            rm -rf package
+            mkdir -p package/usr/bin
+            cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" package/usr/bin/
+
+            mkdir -p package/usr/share/applications
+            mkdir -p package/usr/share/mime/packages
+            mkdir -p package/usr/share/icons/hicolor/128x128/apps
+            mkdir -p package/usr/share/icons/hicolor/256x256/apps
+            mkdir -p package/usr/share/icons/hicolor/512x515/apps
+            cp resources/linux/navop.desktop package/usr/share/applications/
+            cp resources/linux/navop.xml package/usr/share/mime/packages/
+            cp resources/linux/navop-128.png package/usr/share/icons/hicolor/128x128/apps/navop.png
+            cp resources/linux/navop-256.png package/usr/share/icons/hicolor/256x256/apps/navop.png
+            cp resources/linux/navop-512.png package/usr/share/icons/hicolor/512x515/apps/navop.png
+            tar \
+              --sort=name \
+              --mtime='UTC 1970-01-01' \
+              --owner=0 \
+              --group=0 \
+              --numeric-owner \
+              -czf "${{ matrix.archive }}" \
+              -C package .
+            cp "${{ matrix.archive }}" "${PUBLIC_BASENAME}.tar.gz"
+          else
+            # 独立产品：desktop/icons 由 package-linux-product.sh 按产品身份
+            # 打包（usr/bin/{binary} + {product}.desktop + 三尺寸 icon），
+            # 产物名通过参数对齐 {product}-{version}-{label} 公开命名。
+            chmod +x script/package-linux-product.sh
+            script/package-linux-product.sh "${{ matrix.product }}" "${{ matrix.target }}" \
+              "${{ matrix.archive }}" "${PUBLIC_BASENAME}.tar.gz" "${PUBLIC_BASENAME}-portable.tar.gz"
+          fi
+
+          # Portable variant: the very same binary plus the marker file the
+          # application looks for next to the executable. With the marker
+          # present Navop keeps config, state and cache under ./data instead of
+          # the host user directories, so the extracted directory can be moved
+          # around as a whole. External dependencies are still required, exactly
+          # like the regular package.
+          # Keep this in sync with PORTABLE_MARKER_FILE in
+          # crates/core/src/app_paths.rs; script/test-release-packaging.mjs
+          # asserts the two never drift apart.
+          PORTABLE_MARKER_FILE="${{ matrix.portable_marker }}"
+          rm -rf portable-package
+          mkdir -p portable-package
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary }}" portable-package/
+          : > "portable-package/${PORTABLE_MARKER_FILE}"
+          tar \
+            --sort=name \
+            --mtime='UTC 1970-01-01' \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -czf "${PUBLIC_BASENAME}-portable.tar.gz" \
+            -C portable-package .
+
+      - name: Package Linux GPU dependency stack
+        if: runner.os == 'Linux' && matrix.product == 'navop'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The Mesa software renderer and the X11/Wayland client libraries ship
+          # as a separate dependency archive rather than inside this package, so
+          # the download stays small for hosts that already render. It is built
+          # against the same glibc 2.28 baseline as the binary above, because the
+          # host loader resolves the collected libraries directly.
+          script/package-linux-gpu-stack-docker.sh \
+            --binary "target/${{ matrix.target }}/release/${{ matrix.binary }}" \
+            --target "${{ matrix.target }}" \
+            --output dist-gpu-stack
+          # Publish it under the same versioned public name as every other
+          # asset, so a download page cannot mistake it for an unversioned file.
+          cp dist-gpu-stack/navop-gpu-stack-linux-*.tar.gz "${PUBLIC_BASENAME}-gpu-stack.tar.gz"
+
+      - name: Install Linux packaging dependencies
+        if: matrix.product == 'navop' && matrix.target == 'x86_64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
+      - name: Package Linux installers (x86_64)
+        if: matrix.product == 'navop' && matrix.target == 'x86_64-unknown-linux-gnu'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          PACKAGE_VERSION="${ONETCLI_VERSION//-/.}"
+          DEB_NAME="navop_${PACKAGE_VERSION}_amd64.deb"
+          RPM_NAME="navop-${PACKAGE_VERSION}-1.x86_64.rpm"
+          APPIMAGE_NAME="navop_${PACKAGE_VERSION}_amd64.AppImage"
+
+          rm -rf package-deb rpmbuild Navop.AppDir linuxdeploy-x86_64.AppImage
+
+          mkdir -p package-deb/DEBIAN
+          cp -a package/. package-deb/
+          cat > package-deb/DEBIAN/control <<EOF
+          Package: navop
+          Version: ${PACKAGE_VERSION}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Provides: onetcli
+          Replaces: onetcli
+          Conflicts: onetcli
+          Maintainer: feigeCode <noreply@github.com>
+          Homepage: https://github.com/feigeCode/navop
+          Description: Navop - Database, SSH, Terminal, AI Tools
+          EOF
+          cat > package-deb/DEBIAN/postinst <<'EOF'
+          #!/bin/sh
+          set -e
+          if command -v update-mime-database >/dev/null 2>&1; then
+            update-mime-database /usr/share/mime
+          fi
+          if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database /usr/share/applications
+          fi
+          EOF
+          cat > package-deb/DEBIAN/postrm <<'EOF'
+          #!/bin/sh
+          set -e
+          if command -v update-mime-database >/dev/null 2>&1; then
+            update-mime-database /usr/share/mime
+          fi
+          if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database /usr/share/applications
+          fi
+          EOF
+          chmod 0755 package-deb/DEBIAN/postinst package-deb/DEBIAN/postrm
+          dpkg-deb --root-owner-group --build package-deb "${DEB_NAME}"
+
+          RPM_ROOT="${PWD}/rpmbuild"
+          mkdir -p "${RPM_ROOT}"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
+          tar czf "${RPM_ROOT}/SOURCES/navop-${PACKAGE_VERSION}.tar.gz" -C package .
+          cat > "${RPM_ROOT}/SPECS/navop.spec" <<EOF
+          Name: navop
+          Version: ${PACKAGE_VERSION}
+          Release: 1%{?dist}
+          Summary: Navop - Database, SSH, Terminal, AI Tools
+          License: Apache-2.0
+          URL: https://github.com/feigeCode/navop
+          BuildArch: x86_64
+          Provides: onetcli = %{version}-%{release}
+          Obsoletes: onetcli < %{version}-%{release}
+          Source0: %{name}-%{version}.tar.gz
+
+          %description
+          Navop - Database, SSH, Terminal, AI Tools.
+
+          %prep
+          mkdir -p %{_builddir}/%{name}-%{version}
+          tar -xzf %{SOURCE0} -C %{_builddir}/%{name}-%{version}
+
+          %build
+
+          %install
+          mkdir -p %{buildroot}
+          cp -a %{_builddir}/%{name}-%{version}/* %{buildroot}/
+
+          %post
+          update-mime-database /usr/share/mime >/dev/null 2>&1 || :
+          update-desktop-database /usr/share/applications >/dev/null 2>&1 || :
+
+          %postun
+          update-mime-database /usr/share/mime >/dev/null 2>&1 || :
+          update-desktop-database /usr/share/applications >/dev/null 2>&1 || :
+
+          %files
+          /usr/bin/navop
+          /usr/share/applications/navop.desktop
+          /usr/share/mime/packages/navop.xml
+          /usr/share/icons/hicolor/128x128/apps/navop.png
+          /usr/share/icons/hicolor/256x256/apps/navop.png
+          /usr/share/icons/hicolor/512x515/apps/navop.png
+          EOF
+          rpmbuild --define "_topdir ${RPM_ROOT}" -bb "${RPM_ROOT}/SPECS/navop.spec"
+          generated_rpm="$(find "${RPM_ROOT}/RPMS" -name "navop-${PACKAGE_VERSION}-1*.x86_64.rpm" -print -quit)"
+          test -n "${generated_rpm}"
+          cp "${generated_rpm}" "${RPM_NAME}"
+
+          mkdir -p Navop.AppDir
+          cp -a package/. Navop.AppDir/
+          curl -L -o linuxdeploy-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+          VERSION="${PACKAGE_VERSION}" APPIMAGE_EXTRACT_AND_RUN=1 ./linuxdeploy-x86_64.AppImage \
+            --appdir Navop.AppDir \
+            --executable Navop.AppDir/usr/bin/navop \
+            --desktop-file resources/linux/navop.desktop \
+            --icon-file package/usr/share/icons/hicolor/512x515/apps/navop.png \
+            --output appimage
+          generated_appimage="$(find . -maxdepth 1 -name '*.AppImage' ! -name 'linuxdeploy-x86_64.AppImage' -print -quit)"
+          test -n "${generated_appimage}"
+          mv "${generated_appimage}" "${APPIMAGE_NAME}"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force package | Out-Null
+          New-Item -ItemType Directory -Force portable-package | Out-Null
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" "package/${{ matrix.binary }}"
+          Copy-Item "target/${{ matrix.target }}/release/${{ matrix.binary }}" "portable-package/${{ matrix.binary }}"
+          # 便携标记文件名按产品身份区分（navop.portable / navop-shell.portable /
+          # navop-data.portable），与 crates/core/src/app_paths.rs 的
+          # PORTABLE_MARKER_FILE 保持一致。
+          Set-Content -Path "portable-package/${{ matrix.portable_marker }}" -Value "" -NoNewline
+          Compress-Archive -Path "package/*" -DestinationPath "${{ matrix.archive }}"
+          Copy-Item "${{ matrix.archive }}" "${env:PUBLIC_BASENAME}.zip"
+          Compress-Archive -Path "portable-package/*" -DestinationPath "${env:PUBLIC_BASENAME}-portable.zip"
+
+      - name: Install WiX Toolset
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          node script/generate-windows-license.mjs
+          dotnet tool install --global wix --version 6.0.2
+          wix extension add -g WixToolset.UI.wixext/6.0.2
+          wix extension add -g WixToolset.BootstrapperApplications.wixext/6.0.2
+
+      - name: Build Windows installers
+        if: runner.os == 'Windows' && matrix.product == 'navop'
+        shell: pwsh
+        run: |
+          $msiVersion = ($env:ONETCLI_VERSION -split '-')[0]
+          if ($msiVersion -notmatch '^\d+\.\d+\.\d+$') {
+            $msiVersion = '0.0.0'
+          }
+          wix build installer/windows/navop.wxs `
+            -ext WixToolset.UI.wixext `
+            -culture en-US `
+            -loc installer/windows/navop.wxl `
+            -arch ${{ matrix.windows_arch }} `
+            -d Version="$msiVersion" `
+            -d SourceDir="${{ github.workspace }}\package" `
+            -d IconPath="${{ github.workspace }}\resources\windows\navop.ico" `
+            -out "${env:PUBLIC_BASENAME}.msi"
+          wix build installer/windows/navop-bundle.wxs `
+            -ext WixToolset.BootstrapperApplications.wixext `
+            -arch ${{ matrix.windows_arch }} `
+            -d Version="$msiVersion" `
+            -d MsiPath="${{ github.workspace }}\${env:PUBLIC_BASENAME}.msi" `
+            -d IconPath="${{ github.workspace }}\resources\windows\navop.ico" `
+            -out "${env:PUBLIC_BASENAME}.exe"
+
+      - name: Build Windows product installers
+        if: runner.os == 'Windows' && matrix.product != 'navop'
+        shell: pwsh
+        run: |
+          # 独立产品用 build-product-installer.ps1（navop-product.wxs +
+          # navop-product-bundle.wxs，UpgradeCode 按 Product 固定），产物
+          # {Product}-{Version}-{Arch}.msi/.exe 再改名进公开命名。
+          New-Item -ItemType Directory -Force product-package | Out-Null
+          Copy-Item "package/${{ matrix.binary }}" "product-package/${{ matrix.binary }}"
+          # 每个独立产品有自己的 ico，安装包与卸载项都跟着产品身份走。
+          $iconPath = "${{ github.workspace }}\resources\windows\${{ matrix.product }}.ico"
+          ./installer/windows/build-product-installer.ps1 `
+            -Product "${{ matrix.product }}" `
+            -Version "$env:ONETCLI_VERSION" `
+            -SourceDir "${{ github.workspace }}\product-package" `
+            -OutDir "${{ github.workspace }}\dist-product" `
+            -IconPath $iconPath `
+            -Arch "x64"
+          $installerBase = "${{ matrix.product }}-$env:ONETCLI_VERSION-x64"
+          Move-Item "dist-product/$installerBase.msi" "${env:PUBLIC_BASENAME}.msi"
+          Move-Item "dist-product/$installerBase.exe" "${env:PUBLIC_BASENAME}.exe"
+
+      - name: Validate Windows MSI metadata
+        if: runner.os == 'Windows' && matrix.product == 'navop'
+        shell: pwsh
+        run: |
+          # validate-windows-msi.ps1 断言的是全量 navop.wxs 的 MSI 表结构
+          # （快捷方式/Directory 名），独立产品 MSI 用 navop-product.wxs，
+          # 不适用该校验（build-product-installer.ps1 内部自带断言）。
+          ./script/validate-windows-msi.ps1 `
+            -Path "${env:PUBLIC_BASENAME}.msi" `
+            -ExpectedLanguage 1033
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive }}
+          path: ${{ matrix.archive }}
+
+      - name: Upload versioned public package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.product }}-${{ matrix.public_label }}-packages
+          path: |
+            ${{ matrix.product }}-*-${{ matrix.public_label }}.tar.gz
+            ${{ matrix.product }}-*-${{ matrix.public_label }}-portable.tar.gz
+            ${{ matrix.product }}-*-${{ matrix.public_label }}-gpu-stack.tar.gz
+            ${{ matrix.product }}-*-${{ matrix.public_label }}.dmg
+            ${{ matrix.product }}-*-${{ matrix.public_label }}.zip
+            ${{ matrix.product }}-*-${{ matrix.public_label }}-portable.zip
+            ${{ matrix.product }}-*-${{ matrix.public_label }}.msi
+            ${{ matrix.product }}-*-${{ matrix.public_label }}.exe
+          if-no-files-found: error
+
+      - name: Upload Linux installer artifacts
+        if: matrix.product == 'navop' && matrix.target == 'x86_64-unknown-linux-gnu'
+        uses: actions/upload-artifact@v4
+        with:
+          name: navop-linux-x86_64-installers
+          path: |
+            navop_*.deb
+            navop-*.rpm
+            navop_*.AppImage
+
+  release:
+    name: Publish Release
+    needs:
+      - prepare
+      - build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
+
+      - name: Extract release notes from changelog
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if [ -f CHANGELOG.md ] && [ -f script/changelog.py ]; then
+            python3 script/changelog.py extract \
+              --tag "$RELEASE_TAG" \
+              --changelog CHANGELOG.md \
+              --output release-notes.md
+          elif gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "::warning::${RELEASE_TAG} predates the tracked changelog; using its existing GitHub Release body for this legacy repair."
+            gh release view "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json body \
+              --jq .body > release-notes.md
+          else
+            echo "::error::Cannot publish ${RELEASE_TAG}: the tag has no tracked changelog entry and no legacy GitHub Release body."
+            exit 1
+          fi
+          if [ ! -s release-notes.md ]; then
+            echo "::error::Release notes for ${RELEASE_TAG} are empty"
+            exit 1
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la artifacts/
+
+      - name: Merge existing assets and generate checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mkdir -p publish
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            if ! gh release download "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "navop-*" \
+              --pattern "navop_*" \
+              --dir publish; then
+              echo "No existing release assets found; publishing only newly built artifacts."
+            fi
+          fi
+          cp -a artifacts/. publish/
+          cd publish
+          shopt -s nullglob
+          release_files=(navop-* navop_*)
+          if [ "${#release_files[@]}" -eq 0 ]; then
+            echo "::error::No release artifacts found for checksum generation"
+            exit 1
+          fi
+          sha256sum "${release_files[@]}" > sha256sums.txt
+          cat sha256sums.txt
+
+      - name: Write release metadata
+        env:
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          RELEASE_PLATFORM: ${{ needs.prepare.outputs.platform }}
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const releaseTag = process.env.RELEASE_TAG;
+          const version = releaseTag.replace(/^v/, "");
+          const platform = process.env.RELEASE_PLATFORM;
+          fs.mkdirSync("release-metadata", { recursive: true });
+          fs.writeFileSync(
+            "release-metadata/release-metadata.json",
+            `${JSON.stringify({ release_tag: releaseTag, version, platform }, null, 2)}\n`,
+          );
+          NODE
+
+      - name: Upload release metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-metadata
+          path: release-metadata/release-metadata.json
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
+        run: |
+          set -euo pipefail
+          # 只有 beta 通道把 Release 标成 prerelease：稳定版修复时误标会让
+          # /releases/latest 跳过它，老客户端（只认该端点）就再也收不到更新。
+          # 空数组在 `set -u` 下的展开要显式兜底，见 ${arr[@]+"${arr[@]}"}.
+          prerelease_args=()
+          if [ "$CHANNEL" = "beta" ]; then
+            prerelease_args+=(--prerelease)
+          fi
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "Navop $RELEASE_TAG" \
+              ${prerelease_args[@]+"${prerelease_args[@]}"} \
+              --notes-file release-notes.md
+          else
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "Navop $RELEASE_TAG" \
+              ${prerelease_args[@]+"${prerelease_args[@]}"} \
+              --notes-file release-notes.md
+          fi
+
+          shopt -s nullglob
+          new_files=(artifacts/navop-* artifacts/navop_*)
+          if [ "${#new_files[@]}" -eq 0 ]; then
+            echo "::error::No newly built release assets found"
+            exit 1
+          fi
+          gh release upload "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber \
+            "${new_files[@]}" \
+            publish/sha256sums.txt
+
+          # Dispatch R2 explicitly after the Release assets are present.
+          # Relying only on workflow_run is not reliable when this workflow
+          # itself is dispatched by release-trigger.yml.
+          # channel 必须显式传下去：beta 发布只能写 updates/beta/latest.json，
+          # 绝不能覆盖稳定清单 updates/latest.json。
+          gh workflow run upload-r2.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f tag="$RELEASE_TAG" \
+            -f channel="$CHANNEL"
+
+          # CNB 镜像同步不在这里派发：它只同步 GitHub Release 资产，必须等
+          # upload-r2.yml 把 feed-*.json 写回 Release 之后再跑，所以由
+          # upload-r2.yml 的最后一步派发 sync-cnb-release-assets.yml。

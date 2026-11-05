@@ -1,0 +1,557 @@
+_version: 2
+
+Common:
+  save:
+    en: "Save"
+    zh-CN: "保存"
+    zh-HK: "保存"
+  cancel:
+    en: "Cancel"
+    zh-CN: "取消"
+    zh-HK: "取消"
+  search:
+    en: "Search..."
+    zh-CN: "搜索..."
+    zh-HK: "搜尋..."
+  settings:
+    en: "Settings"
+    zh-CN: "设置"
+    zh-HK: "設定"
+
+TabSwitcher:
+  title:
+    en: Tabs
+    zh-CN: 标签页
+    zh-HK: 標籤頁
+  show_all:
+    en: Show all tabs
+    zh-CN: 显示全部标签页
+    zh-HK: 顯示全部標籤頁
+  search:
+    en: Search tabs
+    zh-CN: 搜索标签页
+    zh-HK: 搜尋標籤頁
+  search_or_connect:
+    en: Search tabs by title, or enter ssh -p 2222 user@host to quickly connect to a server
+    zh-CN: 输入标题搜索标签页，或输入ssh -p 2222 user@host快速连接服务器
+    zh-HK: 輸入標題搜尋標籤頁，或輸入ssh -p 2222 user@host快速連線至伺服器
+
+BackgroundTasks:
+  title:
+    en: "Background Tasks"
+    zh-CN: "后台任务"
+    zh-HK: "後台任務"
+  open:
+    en: "Show background tasks"
+    zh-CN: "查看后台任务"
+    zh-HK: "查看後台任務"
+  no_tasks:
+    en: "No background tasks"
+    zh-CN: "暂无后台任务"
+    zh-HK: "暫無後台任務"
+  queued:
+    en: "Queued"
+    zh-CN: "等待中"
+    zh-HK: "等待中"
+  running:
+    en: "Running"
+    zh-CN: "进行中"
+    zh-HK: "進行中"
+  succeeded:
+    en: "Succeeded"
+    zh-CN: "已成功"
+    zh-HK: "已成功"
+  failed:
+    en: "Failed"
+    zh-CN: "已失败"
+    zh-HK: "已失敗"
+  cancelled:
+    en: "Cancelled"
+    zh-CN: "已取消"
+    zh-HK: "已取消"
+  cancelling:
+    en: "Cancelling"
+    zh-CN: "取消中"
+    zh-HK: "取消中"
+  cancel:
+    en: "Cancel"
+    zh-CN: "取消"
+    zh-HK: "取消"
+  cancel_all:
+    en: "Cancel all"
+    zh-CN: "全部取消"
+    zh-HK: "全部取消"
+  open_folder:
+    en: "Open folder"
+    zh-CN: "打开目录"
+    zh-HK: "開啟目錄"
+  filter_all:
+    en: "All"
+    zh-CN: "全部"
+    zh-HK: "全部"
+  filter_queued:
+    en: "Waiting"
+    zh-CN: "等待中"
+    zh-HK: "等待中"
+  filter_running:
+    en: "Running"
+    zh-CN: "进行中"
+    zh-HK: "進行中"
+  filter_succeeded:
+    en: "Completed"
+    zh-CN: "已完成"
+    zh-HK: "已完成"
+  filter_cancelled:
+    en: "Cancelled"
+    zh-CN: "已取消"
+    zh-HK: "已取消"
+  filter_failed:
+    en: "Failed"
+    zh-CN: "失败"
+    zh-HK: "失敗"
+  group_other:
+    en: "General"
+    zh-CN: "通用"
+    zh-HK: "通用"
+  result:
+    en: "Result"
+    zh-CN: "结果"
+    zh-HK: "結果"
+  clear_finished:
+    en: "Clear finished"
+    zh-CN: "清除已完成"
+    zh-HK: "清除已完成"
+  progress_unknown_total:
+    en: "In progress"
+    zh-CN: "进行中"
+    zh-HK: "進行中"
+
+Window:
+  always_on_top:
+    en: Keep window on top
+    zh-CN: 窗口置顶
+    zh-HK: 視窗置頂
+  saved_but_close_failed:
+    en: Saved, but the window could not be closed. Close it again to retry — the data is already saved.
+    zh-CN: 已保存，但窗口没能关闭。可以再次关闭窗口重试，数据已经保存好了。
+    zh-HK: 已儲存，但視窗未能關閉。可以再次關閉視窗重試，資料已經儲存好了。
+
+CredentialError:
+  not_found:
+    en: "Keychain entry %{id} was not found"
+    zh-CN: "未找到钥匙串记录 %{id}"
+    zh-HK: "找不到鑰匙串記錄 %{id}"
+  empty_field:
+    en: "Keychain entry \"%{name}\" has no %{field}"
+    zh-CN: "钥匙串记录“%{name}”中没有%{field}"
+    zh-HK: "鑰匙串記錄「%{name}」中沒有%{field}"
+  field_username:
+    en: username
+    zh-CN: 用户名
+    zh-HK: 使用者名稱
+  field_password:
+    en: password
+    zh-CN: 密码
+    zh-HK: 密碼
+  field_private_key:
+    en: private key
+    zh-CN: 私钥
+    zh-HK: 私鑰
+  field_passphrase:
+    en: key passphrase
+    zh-CN: 私钥口令
+    zh-HK: 私鑰口令
+  field_secret:
+    en: password or private key
+    zh-CN: 密码或私钥
+    zh-HK: 密碼或私鑰
+
+Home:
+  open_connection:
+    en: Open Connection
+    zh-CN: 打开连接
+    zh-HK: 開啟連線
+  title:
+    en: Home
+    zh-CN: 主页
+    zh-HK: 主頁
+
+Sidebar:
+  hide_navigation:
+    en: Hide connection tree
+    zh-CN: 收起连接树
+    zh-HK: 收起連線樹
+  show_navigation:
+    en: Show connection tree
+    zh-CN: 展开连接树
+    zh-HK: 展開連線樹
+  hide_panel:
+    en: Hide panel
+    zh-CN: 隐藏面板
+    zh-HK: 隱藏面板
+  show_panel:
+    en: Show panel
+    zh-CN: 显示面板
+    zh-HK: 顯示面板
+
+TabContextMenu:
+  rename_tab:
+    en: "Rename Tab"
+    zh-CN: "重命名标签页"
+    zh-HK: "重命名標籤頁"
+  copy_label:
+    en: "Copy \"%{label}\""
+    zh-CN: "复制 \"%{label}\""
+    zh-HK: "複製 \"%{label}\""
+  copy_label_success:
+    en: "Copied to clipboard"
+    zh-CN: "已复制到剪贴板"
+    zh-HK: "已複製到剪貼簿"
+  duplicate_tab:
+    en: "Duplicate Tab"
+    zh-CN: "复制标签页"
+    zh-HK: "複製標籤頁"
+  lock_session:
+    en: "Lock Session"
+    zh-CN: "锁定会话"
+    zh-HK: "鎖定會話"
+  unlock_session:
+    en: "Unlock Session"
+    zh-CN: "解锁会话"
+    zh-HK: "解鎖會話"
+  close_disconnected_tabs:
+    en: "Close Disconnected Connections"
+    zh-CN: "关闭已断开的连接"
+    zh-HK: "關閉已斷開的連線"
+  close_tab:
+    en: "Close Tab"
+    zh-CN: "关闭标签页"
+    zh-HK: "關閉標籤頁"
+  close_all_tabs:
+    en: "Close All Tabs"
+    zh-CN: "关闭全部标签页"
+    zh-HK: "關閉全部標籤頁"
+  close_other_tabs:
+    en: "Close Other Tabs"
+    zh-CN: "关闭其他标签页"
+    zh-HK: "關閉其他標籤頁"
+  close_tabs_to_left:
+    en: "Close Tabs to the Left"
+    zh-CN: "关闭左侧标签页"
+    zh-HK: "關閉左側標籤頁"
+  close_tabs_to_right:
+    en: "Close Tabs to the Right"
+    zh-CN: "关闭右侧标签页"
+    zh-HK: "關閉右側標籤頁"
+  tab_name_placeholder:
+    en: "Tab name"
+    zh-CN: "标签页名称"
+    zh-HK: "標籤頁名稱"
+  split_help:
+    en: "Terminal Split Guide"
+    zh-CN: "终端分屏说明"
+    zh-HK: "終端分屏說明"
+  split_supported:
+    en: "This Terminal tab supports splitting"
+    zh-CN: "当前终端标签页支持分屏"
+    zh-HK: "目前終端標籤頁支援分屏"
+  split_not_supported:
+    en: "This tab does not support splitting"
+    zh-CN: "当前标签页不支持分屏"
+    zh-HK: "目前標籤頁不支援分屏"
+  split_only_terminal:
+    en: "Only Terminal tabs support splitting"
+    zh-CN: "仅终端标签页支持分屏"
+    zh-HK: "僅終端標籤頁支援分屏"
+  split_drag:
+    en: "Drag a single Terminal tab onto a terminal pane"
+    zh-CN: "将单终端标签页拖到目标终端区域"
+    zh-HK: "將單終端標籤頁拖到目標終端區域"
+  split_directions:
+    en: "Drop position chooses left, right, top, or bottom"
+    zh-CN: "根据落点自动选择左、右、上或下分屏"
+    zh-HK: "根據落點自動選擇左、右、上或下分屏"
+  split_limit:
+    en: "A tab that already contains splits cannot be dragged into another pane"
+    zh-CN: "已包含分屏的标签页不能再次拖入其他终端"
+    zh-HK: "已包含分屏的標籤頁不能再次拖入其他終端"
+  split_cancel:
+    en: "Use Cancel Split or drag the floating title back to the tab bar"
+    zh-CN: "点击取消分屏，或将浮动标题拖回标签栏"
+    zh-HK: "點擊取消分屏，或將浮動標題拖回標籤列"
+
+SessionLock:
+  title:
+    en: "Lock Session"
+    zh-CN: "锁定会话"
+    zh-HK: "鎖定會話"
+  unlock_title:
+    en: "Unlock Session"
+    zh-CN: "解锁会话"
+    zh-HK: "解鎖會話"
+  password:
+    en: "Password"
+    zh-CN: "密码"
+    zh-HK: "密碼"
+  password_placeholder:
+    en: "Enter password"
+    zh-CN: "请输入密码"
+    zh-HK: "請輸入密碼"
+  confirm_password:
+    en: "Re-enter Password"
+    zh-CN: "再次输入密码"
+    zh-HK: "再次輸入密碼"
+  confirm_password_placeholder:
+    en: "Re-enter password"
+    zh-CN: "请再次输入密码"
+    zh-HK: "請再次輸入密碼"
+  lock_all:
+    en: "Lock All Sessions"
+    zh-CN: "锁定所有会话"
+    zh-HK: "鎖定所有會話"
+  hide_output:
+    en: "Hide Output"
+    zh-CN: "隐藏输出"
+    zh-HK: "隱藏輸出"
+  unlock_all:
+    en: "Unlock All Sessions"
+    zh-CN: "解锁所有会话"
+    zh-HK: "解鎖所有會話"
+  lock:
+    en: "Lock"
+    zh-CN: "锁定"
+    zh-HK: "鎖定"
+  unlock:
+    en: "Unlock"
+    zh-CN: "解锁"
+    zh-HK: "解鎖"
+  password_empty:
+    en: "Password cannot be empty"
+    zh-CN: "密码不能为空"
+    zh-HK: "密碼不能為空"
+  password_mismatch:
+    en: "Passwords do not match"
+    zh-CN: "两次输入的密码不一致"
+    zh-HK: "兩次輸入的密碼不一致"
+  incorrect_password:
+    en: "Incorrect password"
+    zh-CN: "密码错误"
+    zh-HK: "密碼錯誤"
+  locked_notice:
+    en: "Session Locked"
+    zh-CN: "会话已锁定"
+    zh-HK: "會話已鎖定"
+  hidden_notice:
+    en: "Session Locked - Output Hidden"
+    zh-CN: "会话已锁定 - 输出已隐藏"
+    zh-HK: "會話已鎖定 - 輸出已隱藏"
+
+TabStatus:
+  connected:
+    en: "Connected"
+    zh-CN: "已连接"
+    zh-HK: "已連接"
+  connected_locked:
+    en: "Connected and Locked"
+    zh-CN: "已连接且已锁定"
+    zh-HK: "已連接且已鎖定"
+  locked_close_blocked:
+    en: "Unlock the session before closing the tab"
+    zh-CN: "请先解锁会话再关闭标签页"
+    zh-HK: "請先解鎖會話再關閉標籤頁"
+  disconnected:
+    en: "Disconnected"
+    zh-CN: "已断开"
+    zh-HK: "已斷開"
+  locked:
+    en: "Session Locked"
+    zh-CN: "会话已锁定"
+    zh-HK: "會話已鎖定"
+
+AiChat:
+  title:
+    en: "AI Assistant"
+    zh-CN: "AI 助手"
+    zh-HK: "AI 助手"
+  input_placeholder:
+    en: "Ask AI... (Enter to send, Shift+Enter for newline)"
+    zh-CN: "向 AI 提问...（回车发送，Shift+Enter 换行）"
+    zh-HK: "向 AI 提問...（按 Enter 送出，Shift+Enter 換行）"
+  send:
+    en: "Send"
+    zh-CN: "发送"
+    zh-HK: "發送"
+  cancel:
+    en: "Stop"
+    zh-CN: "终止"
+    zh-HK: "終止"
+  new_session_name:
+    en: "New session"
+    zh-CN: "新会话"
+    zh-HK: "新會話"
+  session_name_placeholder:
+    en: "Session name"
+    zh-CN: "会话名称"
+    zh-HK: "會話名稱"
+  rename_session_title:
+    en: "Rename session"
+    zh-CN: "重命名会话"
+    zh-HK: "重命名會話"
+  rename_session_prompt:
+    en: "Enter a new session name:"
+    zh-CN: "请输入新的会话名称："
+    zh-HK: "請輸入新的會話名稱："
+  select_provider_first:
+    en: "Please select an AI provider first."
+    zh-CN: "请先选择 AI 提供商"
+    zh-HK: "請先選擇 AI 提供商"
+  invalid_provider_id:
+    en: "Invalid provider ID."
+    zh-CN: "无效的提供商 ID"
+    zh-HK: "無效的提供商 ID"
+  session_create_failed:
+    en: "Failed to create session: %{error}"
+    zh-CN: "创建会话失败：%{error}"
+    zh-HK: "建立會話失敗：%{error}"
+  operation_cancelled:
+    en: "Operation cancelled."
+    zh-CN: "操作已取消"
+    zh-HK: "操作已取消"
+  operation_cancelled_markdown:
+    en: "\n\n*Operation cancelled*"
+    zh-CN: "\n\n*操作已取消*"
+    zh-HK: "\n\n*操作已取消*"
+  stream_provider_not_found:
+    en: "AI model not found."
+    zh-CN: "AI 模型未找到"
+    zh-HK: "AI 模型未找到"
+  stream_api_error:
+    en: "API error: %{error}"
+    zh-CN: "API 错误: %{error}"
+    zh-HK: "API 錯誤: %{error}"
+  stream_storage_error:
+    en: "Storage error: %{error}"
+    zh-CN: "存储错误: %{error}"
+    zh-HK: "存儲錯誤: %{error}"
+  session_repo_unavailable:
+    en: "Session repository unavailable."
+    zh-CN: "会话仓库不可用"
+    zh-HK: "會話倉庫不可用"
+  session_not_found:
+    en: "Session not found."
+    zh-CN: "会话未找到"
+    zh-HK: "會話未找到"
+  session_storage_error:
+    en: "Storage error: %{error}"
+    zh-CN: "存储错误: %{error}"
+    zh-HK: "存儲錯誤: %{error}"
+  thinking:
+    en: "Thinking..."
+    zh-CN: "思考中..."
+    zh-HK: "思考中..."
+  reasoning_title:
+    en: "Thought process"
+    zh-CN: "思考过程"
+    zh-HK: "思考過程"
+  reasoning_expand:
+    en: "Show thought process"
+    zh-CN: "展开思考过程"
+    zh-HK: "展開思考過程"
+  reasoning_collapse:
+    en: "Hide thought process"
+    zh-CN: "折叠思考过程"
+    zh-HK: "摺疊思考過程"
+  sql_result:
+    en: "SQL result"
+    zh-CN: "SQL 结果"
+    zh-HK: "SQL 結果"
+  unknown_time:
+    en: "Unknown time"
+    zh-CN: "未知时间"
+    zh-HK: "未知時間"
+  ask_ai_template:
+    en: |-
+      I encountered an error while running the following SQL:
+
+      ```sql
+      %{sql}
+      ```
+
+      Error message:
+      ```
+      %{error}
+      ```
+    zh-CN: |-
+      我在执行以下SQL时遇到了错误：
+
+      ```sql
+      %{sql}
+      ```
+
+      错误信息：
+      ```
+      %{error}
+      ```
+    zh-HK: |-
+      我在執行以下SQL時遇到了錯誤：
+
+      ```sql
+      %{sql}
+      ```
+
+      錯誤信息：
+      ```
+      %{error}
+      ```
+  ask_ai_context:
+    en: "\n\nContext:\n%{context}"
+    zh-CN: "\n\n上下文信息：\n%{context}"
+    zh-HK: "\n\n上下文資訊：\n%{context}"
+  ask_ai_request_help:
+    en: "\n\nPlease help me analyze this error and provide a solution."
+    zh-CN: "\n\n请帮我分析这个错误并提供解决方案。"
+    zh-HK: "\n\n請幫我分析這個錯誤並提供解決方案。"
+  ask_ai_button:
+    en: "Ask AI"
+    zh-CN: "询问AI"
+    zh-HK: "詢問AI"
+  select_provider_placeholder:
+    en: "Select provider"
+    zh-CN: "选择提供商"
+    zh-HK: "選擇提供商"
+  select_model_placeholder:
+    en: "Select model"
+    zh-CN: "选择模型"
+    zh-HK: "選擇模型"
+  model_settings_title:
+    en: "Model settings"
+    zh-CN: "模型设置"
+    zh-HK: "模型設定"
+  temperature_label:
+    en: "Temperature"
+    zh-CN: "温度"
+    zh-HK: "溫度"
+  temperature_desc:
+    en: "Controls randomness. Higher values produce more random output."
+    zh-CN: "控制输出随机性，值越高越随机"
+    zh-HK: "控制輸出隨機性，值越高越隨機"
+  history_label:
+    en: "History"
+    zh-CN: "历史记录"
+    zh-HK: "歷史記錄"
+  history_desc:
+    en: "Number of history messages to include."
+    zh-CN: "对话时携带的历史消息数"
+    zh-HK: "對話時攜帶的歷史消息數"
+  max_tokens_label:
+    en: "Max tokens"
+    zh-CN: "最大 Token"
+    zh-HK: "最大 Token"
+  max_tokens_desc:
+    en: "Maximum number of tokens in the output."
+    zh-CN: "模型输出的最大 token 数"
+    zh-HK: "模型輸出的最大 token 數"
+  settings_footer_notice:
+    en: "Settings take effect immediately."
+    zh-CN: "设置将立即生效"
+    zh-HK: "設定將立即生效"

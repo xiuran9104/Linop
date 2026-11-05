@@ -1,0 +1,54 @@
+[package]
+name = "db_view"
+version = "0.15.2"
+edition = "2024"
+
+[features]
+default = []
+builtin-duckdb = ["db/builtin-duckdb"]
+
+[dependencies]
+one-assets = { workspace = true }
+anyhow.workspace = true
+base64.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+futures.workspace = true
+smol.workspace = true
+gpui.workspace = true
+ai_chat_view = { workspace = true, default-features = false }
+db.workspace = true
+db-value.workspace = true
+er_flow.workspace = true
+extension-component = { workspace = true }
+ferrum-flow.workspace = true
+gpui-component = { workspace = true }
+gpui-base.workspace = true
+one-ui.workspace = true
+connection-form.workspace = true
+one-core.workspace = true
+tool_runtime.workspace = true
+sum-tree.workspace = true
+lsp-types.workspace = true
+uuid.workspace = true
+rust_xlsxwriter.workspace = true
+rust-i18n.workspace = true
+json5.workspace = true
+image.workspace = true
+regex.workspace = true
+ropey.workspace = true
+parking_lot.workspace = true
+once_cell.workspace = true
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+proptest = { workspace = true }
+zip = "6.0.0"
+
+[lints]
+workspace = true

@@ -1,0 +1,6006 @@
+use gpui::prelude::*;
+use gpui::{
+    Anchor, AnyElement, App, AsyncApp, ClickEvent, ClipboardItem, Context, Div, Entity,
+    EventEmitter, FocusHandle, Focusable, Font, Hsla, Image, ImageFormat, IntoElement,
+    ListSizingBehavior, ObjectFit, ParentElement, PathPromptOptions, Pixels, ScrollHandle,
+    ScrollStrategy, SharedString, Stateful, Styled, Subscription, TextRun, UniformListScrollHandle,
+    Window, actions, div, img, px, uniform_list,
+};
+use gpui_component::{
+    ActiveTheme as _, Disableable as _, Icon, Sizable as _, Size, WindowExt,
+    button::Button,
+    checkbox::Checkbox,
+    h_flex,
+    input::{Input, InputEvent, InputState},
+    notification::Notification,
+    popover::Popover,
+    scroll::{Scrollbar, ScrollbarMode},
+    v_flex,
+};
+use one_assets::IconName;
+use one_ui::edit_table::{
+    Column, EditTable, EditTableDelegate as _, EditTableEvent, EditTableState, FindNext,
+    FindPrevious, HOSTED_FIND_CONTEXT,
+};
+use one_ui::{create_large_text_editor_with_content, large_text_values_equivalent};
+use rust_i18n::t;
+use rust_xlsxwriter::Workbook;
+use tracing::{error, log::trace};
+
+use crate::import_export::table_export_view::DataExportView;
+use crate::search_shortcut::{
+    DB_SEARCH_CONTEXT, FocusSearchInput, OpenSelectedTableQuery, OpenTableDesigner,
+    focus_search_input,
+};
+use crate::sidebar::execution_history::ExecutionContext;
+use crate::sidebar::execution_history_panel::ExecutionHistoryPanel;
+use crate::sql_editor::SqlEditor;
+use crate::table_data::copy_format::{CopyFormat, CopyFormatContext, CopyFormatter, TableMetadata};
+use crate::table_data::filter_editor::{FilterEditorEvent, TableFilterEditor, TableSchema};
+use crate::table_data::results_delegate::{EditorTableDelegate, RowChange, VerticalCellValue};
+use chrono::Local;
+use db::{
+    BinaryCell, ColumnInfo, DatabasePlugin, DbManager, ExecOptions, GlobalDbState, IndexInfo,
+    QueryColumnMeta, QueryResult, SqlFormatOptions, SqlResult, TableCellChange, TableCellValue,
+    TableDataRequest, TableRowChange, TableSaveRequest, binary_value::format_binary_input,
+};
+use gpui_component::button::ButtonVariants;
+use gpui_component::dialog::DialogButtonProps;
+use gpui_component::menu::{DropdownMenu, PopupMenu, PopupMenuItem};
+use one_core::connection_notifier::{ConnectionDataEvent, GlobalConnectionNotifier};
+use one_core::gpui_tokio::Tokio;
+use one_core::popup_window::{PopupWindowOptions, open_reusable_popup_window};
+use one_core::settings::{
+    AppSettings, LargeTextCellEditorOpenMode, TableViewMode, installed_grid_monospace_font,
+};
+use one_core::storage::DatabaseType;
+use one_core::tab_container::TabContainer;
+use one_ui::edit_table::ColumnSort;
+use std::collections::HashMap;
+use std::ops::Range;
+use std::path::PathBuf;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
+
+actions!(
+    data_grid,
+    [Page500, Page1000, Page2000, Page10000, Page100000]
+);
+
+/// 「字段过滤」面板的尺寸与行高。
+///
+/// 面板固定宽度；字段列表的高度按行数算、封顶后再内部滚动。行高必须是确定值：
+/// 滚动区的高度由它乘出来，行高一变列表就会被撑开、滚动条也跟着失效。
+pub(super) const COLUMN_VISIBILITY_PANEL_WIDTH: Pixels = px(240.);
+pub(super) const COLUMN_VISIBILITY_PANEL_MAX_HEIGHT: Pixels = px(320.);
+pub(super) const COLUMN_VISIBILITY_ROW_HEIGHT: Pixels = px(28.);
+
+/// 「字段过滤」面板要渲染的全部数据。
+///
+/// `rows` 已经过搜索词过滤，而计数要用全量字段数当分母：搜索时也要能看出
+/// 「匹配了几个 / 一共多少列、当前显示几个」。
+pub(super) struct ColumnVisibilityPanelState {
+    /// 当前搜索词过滤后、按展示顺序排列的字段：`(原始列索引, 名称, 是否可见)`。
+    pub rows: Vec<(usize, SharedString, bool)>,
+    /// 字段总数（不受搜索影响）。
+    pub total: usize,
+    /// 当前可见字段数。
+    pub visible_total: usize,
+}
+
+/// 按搜索词过滤字段条目。
+///
+/// 空串不过滤；命中规则是不区分大小写的子串匹配——字段名多是 snake_case，
+/// 用户输入 `id` 时不应被迫记住大小写。
+pub(super) fn filter_column_visibility_entries(
+    entries: &[(usize, SharedString, bool)],
+    query: &str,
+) -> Vec<(usize, SharedString, bool)> {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return entries.to_vec();
+    }
+    entries
+        .iter()
+        .filter(|(_, name, _)| name.to_lowercase().contains(&query))
+        .cloned()
+        .collect()
+}
+
+/// 构建「字段过滤」面板：标题与计数、字段搜索框、勾选列表（限高滚动）、
+/// 底部提示与「显示全部字段」。
+///
+/// 面板内容每次渲染都会重建，因此读到的搜索词与列可见状态永远是最新的。
+pub(super) fn build_column_visibility_panel(data_grid: &Entity<DataGrid>, cx: &App) -> AnyElement {
+    let state = data_grid.read(cx).column_visibility_panel_state(cx);
+    let ColumnVisibilityPanelState {
+        rows,
+        total,
+        visible_total,
+    } = state;
+    let row_hover_bg = cx.theme().muted;
+    let search_input = data_grid.read(cx).column_visibility_search.clone();
+
+    let header = h_flex()
+        .w_full()
+        .items_center()
+        .justify_between()
+        .gap_2()
+        .px_3()
+        .pt_2()
+        .pb_1()
+        .child(
+            div()
+                .text_sm()
+                .child(t!("TableDataGrid.column_visibility").to_string()),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                // 与查找框同款计数写法：显示几个 / 一共几列。
+                .child(format!("{visible_total}/{total}")),
+        );
+
+    let search = div().w_full().px_3().pb_2().child(
+        Input::new(&search_input)
+            // Medium 档的总高只有 32px，扣掉上下各 8px 内边距和 1px 边框只剩
+            // 14px，而单行 Input 的行盒固定是 1.25rem=20px，placeholder 会被
+            // 裁掉上下各 3px。Large 是这套尺寸档里唯一装得下行盒的档位。
+            .with_size(Size::Large)
+            .prefix(Icon::new(IconName::Search).text_color(cx.theme().muted_foreground))
+            .cleanable(true)
+            .w_full(),
+    );
+
+    let mut list = v_flex().id("column-visibility-list").w_full();
+    if rows.is_empty() {
+        list = list.child(
+            div()
+                .h(COLUMN_VISIBILITY_ROW_HEIGHT)
+                .px_3()
+                .flex()
+                .items_center()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(t!("TableDataGrid.search_no_match").to_string()),
+        );
+    }
+    for (ix, (original_ix, name, visible)) in rows.iter().cloned().enumerate() {
+        let label: SharedString = if name.trim().is_empty() {
+            t!("TableDataGrid.unnamed_column").to_string().into()
+        } else {
+            name
+        };
+        // 只剩最后一个可见字段时禁止继续隐藏，避免整表无列。
+        let is_last_visible = visible && visible_total <= 1;
+        let grid = data_grid.clone();
+        list = list.child(
+            h_flex()
+                .id(("column-visibility-row", ix))
+                .w_full()
+                .h(COLUMN_VISIBILITY_ROW_HEIGHT)
+                .items_center()
+                .gap_2()
+                .px_3()
+                .when(!is_last_visible, |this| {
+                    this.hover(move |style| style.bg(row_hover_bg)).on_click(
+                        move |_, _window, cx| {
+                            grid.update(cx, |grid, cx| {
+                                grid.set_column_visibility(original_ix, !visible, cx)
+                            });
+                        },
+                    )
+                })
+                // 勾选框只负责显示，点击交给整行：勾选框与文字都能点，
+                // 两个都挂处理器会让一次点击翻转两遍。
+                .child(
+                    Checkbox::new(("column-visibility-check", ix))
+                        .checked(visible)
+                        .disabled(is_last_visible),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .text_sm()
+                        .child(label),
+                ),
+        );
+    }
+
+    // 列表高度按行数算出来再封顶：滚动区必须有确定高度，否则内容会把容器
+    // 撑到全部展开——滚动条永远不出现，看起来就像“根本不能滚”。
+    let list_height = (COLUMN_VISIBILITY_ROW_HEIGHT * rows.len().max(1) as f32)
+        .min(COLUMN_VISIBILITY_PANEL_MAX_HEIGHT);
+    let list = list
+        .h(list_height)
+        .overflow_y_scroll()
+        .track_scroll(&data_grid.read(cx).column_visibility_scroll.clone());
+
+    let reset_grid = data_grid.clone();
+    let footer = h_flex()
+        .w_full()
+        .items_center()
+        .justify_between()
+        .gap_2()
+        .px_3()
+        .py_2()
+        .border_t_1()
+        .border_color(cx.theme().border)
+        .child(
+            div()
+                .min_w_0()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(t!("TableDataGrid.column_visibility_keep_one_hint").to_string()),
+        )
+        .child(
+            Button::new("column-visibility-all")
+                .ghost()
+                .with_size(Size::XSmall)
+                .label(t!("TableDataGrid.show_all_columns").to_string())
+                .disabled(visible_total == total)
+                .on_click(move |_, _window, cx| {
+                    reset_grid.update(cx, |grid, cx| grid.show_all_columns(cx));
+                }),
+        );
+
+    v_flex()
+        .child(header)
+        .child(search)
+        // 滚动条放在非滚动容器上：它是绝对定位的，放进滚动容器会跟着内容跑。
+        .child(
+            div().relative().child(list).child(
+                div().absolute().inset_0().child(
+                    Scrollbar::vertical(&data_grid.read(cx).column_visibility_scroll)
+                        .mode(ScrollbarMode::Always)
+                        .viewport_from_layout(),
+                ),
+            ),
+        )
+        .child(footer)
+        .into_any_element()
+}
+
+/// 「字段定位」面板的尺寸与行高。
+///
+/// 取值与「字段过滤」面板一致：两个入口在工具栏上紧挨着，面板忽宽忽窄会让人
+/// 以为是两套东西。常量各自定义而不是直接复用，是为了让契约测试能分别钉住。
+pub(super) const COLUMN_LOCATE_PANEL_WIDTH: Pixels = px(240.);
+pub(super) const COLUMN_LOCATE_PANEL_MAX_HEIGHT: Pixels = px(320.);
+pub(super) const COLUMN_LOCATE_ROW_HEIGHT: Pixels = px(28.);
+
+/// 原始列索引 → 它在可见列里的位序（0 基）。
+///
+/// 表格只渲染可见列，所以隐藏列没有位序，返回 `None` 由调用方决定先取消隐藏。
+pub(super) fn display_position_of_original_column(
+    visible: &[usize],
+    original_ix: usize,
+) -> Option<usize> {
+    visible.iter().position(|&ix| ix == original_ix)
+}
+
+/// 纵向视图里「第一条记录的某个字段」所在的行下标。
+///
+/// 每条记录先占一行记录头，再跟 `column_count` 行字段，所以第 0 条记录的第
+/// `display_col` 个字段固定在 `display_col + 1` 行——与
+/// [`grid_column_of_display_col`] 一样，都是 [`vertical_line_at`] 的反向映射。
+pub(super) fn vertical_line_of_first_field(display_col: usize) -> usize {
+    display_col + 1
+}
+
+/// 渲染「字段定位」面板的字段列表。
+///
+/// 整行可点：一次点击既定位、也把面板收起，因此这里不挂勾选框，只列名字。
+/// 隐藏字段照旧列出并标注状态——用户正是靠定位去找回被过滤掉的列。
+fn render_column_locate_list(
+    rows: &[(usize, SharedString, bool)],
+    data_grid: &Entity<DataGrid>,
+    cx: &App,
+) -> Stateful<Div> {
+    let row_hover_bg: Hsla = cx.theme().muted;
+    let mut list = v_flex().id("column-locate-list").w_full();
+
+    if rows.is_empty() {
+        return list.child(
+            div()
+                .h(COLUMN_LOCATE_ROW_HEIGHT)
+                .px_3()
+                .flex()
+                .items_center()
+                .text_sm()
+                .text_color(cx.theme().muted_foreground)
+                .child(t!("TableDataGrid.search_no_match").to_string()),
+        );
+    }
+
+    for (ix, (original_ix, name, visible)) in rows.iter().cloned().enumerate() {
+        let label: SharedString = if name.trim().is_empty() {
+            t!("TableDataGrid.unnamed_column").to_string().into()
+        } else {
+            name
+        };
+        let grid = data_grid.clone();
+        // `hover` / `on_click` 放在最后：`when` 只在 `Stateful<Div>` 上可用，
+        // 一旦进入 Selectable 链就调不动它了——与「字段过滤」面板同一套写法。
+        list = list.child(
+            h_flex()
+                .id(("column-locate-row", ix))
+                .w_full()
+                .h(COLUMN_LOCATE_ROW_HEIGHT)
+                .items_center()
+                .gap_2()
+                .px_3()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .text_sm()
+                        .child(label),
+                )
+                .when(!visible, |this| {
+                    this.child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(t!("TableDataGrid.locate_column_hidden").to_string()),
+                    )
+                })
+                .hover(move |style| style.bg(row_hover_bg))
+                .on_click(move |_, _window, cx| {
+                    grid.update(cx, |grid, cx| grid.locate_column(original_ix, cx));
+                }),
+        );
+    }
+
+    // 高度按行数算出来再封顶：滚动区必须有确定高度，否则内容会把容器撑到全部
+    // 展开，滚动条永远不出现——与「字段过滤」面板同一个坑。
+    let list_height =
+        (COLUMN_LOCATE_ROW_HEIGHT * rows.len().max(1) as f32).min(COLUMN_LOCATE_PANEL_MAX_HEIGHT);
+    list.h(list_height)
+        .overflow_y_scroll()
+        .track_scroll(&data_grid.read(cx).column_locate_scroll)
+}
+
+/// 构建「字段定位」面板：标题、字段搜索框、限高滚动列表与底部说明。
+///
+/// 面板内容每次渲染都会重建，因此读到的搜索词与列可见状态永远是最新的。
+pub(super) fn build_column_locate_panel(data_grid: &Entity<DataGrid>, cx: &App) -> AnyElement {
+    let rows = data_grid.read(cx).column_locate_rows(cx);
+
+    let header = div()
+        .w_full()
+        .px_3()
+        .pt_2()
+        .pb_1()
+        .text_sm()
+        .child(t!("TableDataGrid.locate_column").to_string());
+
+    let search = div().w_full().px_3().pb_2().child(
+        Input::new(&data_grid.read(cx).column_locate_search)
+            // 与「字段过滤」面板同款：档位决定单行 Input 能否装下 1.25rem 行盒。
+            .with_size(Size::Large)
+            .prefix(Icon::new(IconName::Search).text_color(cx.theme().muted_foreground))
+            .cleanable(true)
+            .w_full(),
+    );
+
+    let footer = h_flex()
+        .w_full()
+        .px_3()
+        .py_2()
+        .border_t_1()
+        .border_color(cx.theme().border)
+        .child(
+            div()
+                .min_w_0()
+                .text_xs()
+                .text_color(cx.theme().muted_foreground)
+                .child(t!("TableDataGrid.locate_column_hint").to_string()),
+        );
+
+    v_flex()
+        .child(header)
+        .child(search)
+        // 滚动条放在非滚动容器上：它是绝对定位的，放进滚动容器会跟着内容跑。
+        .child(
+            div()
+                .relative()
+                .child(render_column_locate_list(&rows, data_grid, cx))
+                .child(
+                    div().absolute().inset_0().child(
+                        Scrollbar::vertical(&data_grid.read(cx).column_locate_scroll)
+                            .mode(ScrollbarMode::Always)
+                            .viewport_from_layout(),
+                    ),
+                ),
+        )
+        .child(footer)
+        .into_any_element()
+}
+
+/// 构建「显示方式」菜单：网格 / 纵向「列：值」。
+///
+/// 与字段过滤菜单同样在点击时构建，因此读到的一定是最新的设置值。
+fn build_view_mode_menu(
+    menu: PopupMenu,
+    data_grid: &Entity<DataGrid>,
+    cx: &mut Context<PopupMenu>,
+) -> PopupMenu {
+    let current = AppSettings::global(cx).table_view_mode;
+
+    let mut menu = menu;
+    for (mode, label_key) in [
+        (TableViewMode::Grid, "TableDataGrid.view_mode_grid"),
+        (TableViewMode::Vertical, "TableDataGrid.view_mode_vertical"),
+    ] {
+        let grid = data_grid.clone();
+        menu = menu.item(
+            PopupMenuItem::new(t!(label_key).to_string())
+                .checked(current == mode)
+                .on_click(move |_, _window, cx| {
+                    grid.update(cx, |grid, cx| grid.switch_view_mode(mode, cx));
+                }),
+        );
+    }
+    menu
+}
+
+fn build_header_order_by_clause(
+    db_manager: &DbManager,
+    database_type: DatabaseType,
+    column_name: &str,
+    sort: ColumnSort,
+) -> Result<Option<String>, String> {
+    let direction = match sort {
+        ColumnSort::Ascending => "ASC",
+        ColumnSort::Descending => "DESC",
+        ColumnSort::Default => return Ok(None),
+    };
+
+    let plugin = db_manager
+        .get_plugin(&database_type)
+        .map_err(|_| t!("TableDataGrid.plugin_unavailable").to_string())?;
+
+    Ok(Some(format!(
+        "{} {}",
+        plugin.quote_identifier(column_name),
+        direction
+    )))
+}
+
+fn collect_delete_row_indices<I>(selected_rows: I, fallback_row: Option<usize>) -> Vec<usize>
+where
+    I: IntoIterator<Item = usize>,
+{
+    let mut row_indices: Vec<usize> = selected_rows.into_iter().collect();
+
+    if row_indices.is_empty() {
+        if let Some(row_ix) = fallback_row {
+            row_indices.push(row_ix);
+        }
+    } else {
+        row_indices.sort_unstable();
+        row_indices.dedup();
+    }
+
+    row_indices.sort_unstable_by(|left, right| right.cmp(left));
+    row_indices
+}
+
+fn resolve_copy_row_indices(
+    delegate: &EditorTableDelegate,
+    display_row_indices: &[usize],
+) -> Vec<usize> {
+    display_row_indices
+        .iter()
+        .filter_map(|&display_row| delegate.resolve_display_row(display_row))
+        .filter(|&actual_row| !delegate.is_deleted_row(actual_row))
+        .collect()
+}
+
+fn build_large_text_editor_title(column_name: &str, display_row_ix: usize) -> String {
+    t!(
+        "TableDataGrid.edit_cell_title",
+        column = column_name,
+        row = display_row_ix + 1
+    )
+    .to_string()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LargeTextCellTarget {
+    pub display_row_ix: usize,
+    pub actual_row_ix: usize,
+    pub col_ix: usize,
+    pub column_name: String,
+    pub value: String,
+    pub editable: bool,
+}
+
+struct TextEditorDialogRequest {
+    initial_text: String,
+    title: String,
+    /// 显示行号：确认时再换算成实际行（弹窗开着的时候表格可能已经刷新过）。
+    display_row_ix: usize,
+    /// 原始列下标：写回直接用它，不再从网格列反推。
+    original_col_ix: usize,
+    editable: bool,
+}
+
+#[derive(Clone, Debug)]
+pub enum DataGridEvent {
+    LargeTextSelectionChanged,
+    ToggleLargeTextEditorRequested,
+    SaveChangesRequested,
+    OpenTableDesignerRequested,
+    OpenTableQueryRequested,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LargeTextEditorRoute {
+    PagePreview,
+    Dialog,
+}
+
+fn resolve_large_text_editor_route(mode: LargeTextCellEditorOpenMode) -> LargeTextEditorRoute {
+    match mode {
+        LargeTextCellEditorOpenMode::SidebarPreview => LargeTextEditorRoute::PagePreview,
+        LargeTextCellEditorOpenMode::Dialog => LargeTextEditorRoute::Dialog,
+    }
+}
+
+/// 数据表格使用场景
+#[derive(Clone, Debug, PartialEq)]
+pub enum DataGridUsage {
+    /// 在表格数据页签中使用（编辑器高度较低）
+    TableData,
+    /// 在SQL结果页签中使用（编辑器高度较高）
+    SqlResult,
+}
+
+#[derive(Debug)]
+struct ExportPayload {
+    columns: Vec<SharedString>,
+    rows: Vec<Vec<Option<String>>>,
+    binary_cells: Vec<BinaryCell>,
+}
+
+struct SqlResultExportRequest {
+    connection_id: String,
+    database: Option<String>,
+    schema: Option<String>,
+    session_id: Option<String>,
+    sql: String,
+}
+
+fn result_set_export_exec_options() -> ExecOptions {
+    ExecOptions {
+        max_rows: None,
+        ..Default::default()
+    }
+}
+
+async fn list_columns_direct_on_runtime(
+    cx: &mut AsyncApp,
+    global_state: GlobalDbState,
+    connection_id: String,
+    database_name: String,
+    schema_name: Option<String>,
+    table_name: String,
+) -> anyhow::Result<Vec<ColumnInfo>> {
+    Tokio::spawn_result(cx, async move {
+        let (database_name, schema_name, table_name) = resolve_metadata_table_identity(
+            &global_state,
+            &connection_id,
+            database_name,
+            schema_name,
+            table_name,
+        );
+        global_state
+            .list_columns_direct(&connection_id, &database_name, schema_name, &table_name)
+            .await
+    })
+    .await
+}
+
+/// 并发读取 SQL 结果列来源分析涉及的所有基表列信息。
+///
+/// 返回顺序与 `tables` 一致；单表读取失败时对应位置为 `None`，不影响其它表。
+async fn load_lineage_table_columns_on_runtime(
+    cx: &mut AsyncApp,
+    global_state: GlobalDbState,
+    connection_id: String,
+    database_name: String,
+    schema_name: Option<String>,
+    tables: Vec<String>,
+) -> Vec<Option<Vec<ColumnInfo>>> {
+    let table_count = tables.len();
+    if table_count == 0 {
+        return Vec::new();
+    }
+
+    let result = Tokio::spawn_result(cx, async move {
+        Ok(futures::future::join_all(tables.into_iter().map(|table_name| {
+            let global_state = global_state.clone();
+            let connection_id = connection_id.clone();
+            let database_name = database_name.clone();
+            let schema_name = schema_name.clone();
+            async move {
+                let (database_name, schema_name, table_name) = resolve_metadata_table_identity(
+                    &global_state,
+                    &connection_id,
+                    database_name,
+                    schema_name,
+                    table_name,
+                );
+                global_state
+                    .list_columns_direct(&connection_id, &database_name, schema_name, &table_name)
+                    .await
+                    .ok()
+            }
+        }))
+        .await)
+    })
+    .await;
+
+    result.unwrap_or_else(|_| vec![None; table_count])
+}
+
+fn normalized_column_comment(comment: Option<&str>) -> Option<String> {
+    comment
+        .map(str::trim)
+        .filter(|comment| !comment.is_empty())
+        .map(str::to_string)
+}
+
+/// 按来源分析把表结构注释映射到结果列。
+///
+/// 分析不完整或展开后的列数与结果列数不一致时，退化为「列名在候选表中唯一」
+/// 的保守匹配。
+fn resolve_result_column_comments(
+    table_columns: &[Option<Vec<ColumnInfo>>],
+    lineage: &db::ResultColumnLineage,
+    result_column_names: &[String],
+) -> Vec<Option<String>> {
+    let mut resolved = Vec::new();
+    let mut aligned = lineage.complete;
+
+    for source in &lineage.columns {
+        match source {
+            db::ResultColumnSource::Refs(refs) => {
+                resolved.push(resolve_reference_comment(refs, table_columns));
+            }
+            db::ResultColumnSource::Wildcard { table } => {
+                match table_columns.get(*table).and_then(Option::as_ref) {
+                    Some(columns) => resolved.extend(
+                        columns
+                            .iter()
+                            .map(|column| normalized_column_comment(column.comment.as_deref())),
+                    ),
+                    None => aligned = false,
+                }
+            }
+            db::ResultColumnSource::Unknown => resolved.push(None),
+        }
+    }
+
+    if aligned && resolved.len() == result_column_names.len() {
+        return resolved;
+    }
+    resolve_column_comments_by_name(table_columns, result_column_names)
+}
+
+fn resolve_reference_comment(
+    refs: &[db::ColumnReference],
+    table_columns: &[Option<Vec<ColumnInfo>>],
+) -> Option<String> {
+    let mut resolved: Option<(usize, String)> = None;
+
+    for reference in refs {
+        if reference.tables.is_empty() {
+            return None;
+        }
+        let mut matches = Vec::new();
+        for &table in &reference.tables {
+            let Some(columns) = table_columns.get(table).and_then(Option::as_ref) else {
+                return None;
+            };
+            if let Some(column) = columns
+                .iter()
+                .find(|column| column.name.eq_ignore_ascii_case(&reference.column))
+            {
+                matches.push((table, column));
+            }
+        }
+
+        match matches.len() {
+            0 => continue,
+            1 => {
+                let (table, column) = matches[0];
+                let identity = (table, column.name.to_ascii_lowercase());
+                match &resolved {
+                    Some(existing) if *existing != identity => return None,
+                    Some(_) => {}
+                    None => resolved = Some(identity),
+                }
+            }
+            // 多张候选表都包含该字段，无法唯一确定来源。
+            _ => return None,
+        }
+    }
+
+    let (table, name) = resolved?;
+    let columns = table_columns.get(table)?.as_ref()?;
+    let column = columns
+        .iter()
+        .find(|column| column.name.eq_ignore_ascii_case(&name))?;
+    normalized_column_comment(column.comment.as_deref())
+}
+
+fn resolve_column_comments_by_name(
+    table_columns: &[Option<Vec<ColumnInfo>>],
+    result_column_names: &[String],
+) -> Vec<Option<String>> {
+    // 任意一张表的元数据缺失时都无法排除同名冲突，宁可不显示。
+    if table_columns.iter().any(Option::is_none) {
+        return vec![None; result_column_names.len()];
+    }
+
+    result_column_names
+        .iter()
+        .map(|name| {
+            let mut matched = None;
+            let mut match_count = 0usize;
+            for columns in table_columns.iter().flatten() {
+                for column in columns {
+                    if column.name.eq_ignore_ascii_case(name) {
+                        match_count += 1;
+                        matched = Some(column);
+                    }
+                }
+            }
+            if match_count == 1 {
+                matched.and_then(|column| normalized_column_comment(column.comment.as_deref()))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+async fn list_indexes_direct_on_runtime(
+    cx: &mut AsyncApp,
+    global_state: GlobalDbState,
+    connection_id: String,
+    database_name: String,
+    schema_name: Option<String>,
+    table_name: String,
+) -> anyhow::Result<Vec<IndexInfo>> {
+    Tokio::spawn_result(cx, async move {
+        let (database_name, schema_name, table_name) = resolve_metadata_table_identity(
+            &global_state,
+            &connection_id,
+            database_name,
+            schema_name,
+            table_name,
+        );
+        global_state
+            .list_indexes_direct(&connection_id, &database_name, schema_name, &table_name)
+            .await
+    })
+    .await
+}
+
+/// 把表名解析成元数据查询需要的 (database, schema, table)。
+///
+/// 查询结果的表名来自 SQL 分析（`库.表` / `schema.table` 拼接形式，
+/// 见 db crate 的 `qualified_table_parts`），直接拿去查 INFORMATION_SCHEMA 会
+/// 命中不到任何列/索引，主键信息随之丢失（保存时会退化成全列比较）。
+/// 方言相关的拆分规则交给插件决定。
+fn resolve_metadata_table_identity(
+    global_state: &GlobalDbState,
+    connection_id: &str,
+    database_name: String,
+    schema_name: Option<String>,
+    table_name: String,
+) -> (String, Option<String>, String) {
+    let fallback = || {
+        (
+            database_name.clone(),
+            schema_name.clone(),
+            table_name.clone(),
+        )
+    };
+    if !table_name.contains('.') {
+        return fallback();
+    }
+    let Some(plugin) = global_state.get_config(connection_id).and_then(|config| {
+        global_state
+            .db_manager
+            .get_plugin(&config.database_type)
+            .ok()
+    }) else {
+        return fallback();
+    };
+    plugin.resolve_metadata_table_identity(&database_name, schema_name.as_deref(), &table_name)
+}
+
+async fn execute_sql_result_export(
+    global_state: GlobalDbState,
+    request: SqlResultExportRequest,
+    cx: &mut AsyncApp,
+) -> Result<ExportPayload, String> {
+    let SqlResultExportRequest {
+        connection_id,
+        database,
+        schema,
+        session_id,
+        sql,
+    } = request;
+    let options = Some(result_set_export_exec_options());
+    let results = match session_id {
+        Some(session_id) => {
+            Tokio::spawn_result(cx, async move {
+                global_state.execute_session(session_id, sql, options).await
+            })
+            .await
+        }
+        None => {
+            global_state
+                .execute_script(cx, connection_id, sql, database, schema, options)
+                .await
+        }
+    }
+    .map_err(|error| error.to_string())?;
+
+    query_result_for_export(results)
+}
+
+fn query_result_for_export(results: Vec<SqlResult>) -> Result<ExportPayload, String> {
+    let mut results = results.into_iter();
+    let result = results
+        .next()
+        .ok_or_else(|| "query returned no results".to_string())?;
+    if results.next().is_some() {
+        return Err("query returned multiple results".to_string());
+    }
+
+    match result {
+        SqlResult::Query(result) => Ok(DataGrid::normalize_query_result(result)),
+        SqlResult::Exec(_) => Err("statement did not return a result set".to_string()),
+        SqlResult::Error(error) => Err(error.message),
+    }
+}
+
+/// 将结果集自带的列元数据转换为表格列元数据。
+///
+/// 结果集在驱动执行时已携带每列的 `db_type`，列序天然与结果列一致，
+/// 无需额外查询表结构即可完成字段类型（日期、数值等）识别。
+fn column_infos_from_query_meta(query_meta: &[QueryColumnMeta]) -> Vec<ColumnInfo> {
+    query_meta
+        .iter()
+        .map(|meta| ColumnInfo {
+            name: meta.name.clone(),
+            data_type: meta.db_type.clone(),
+            is_nullable: meta.nullable,
+            is_primary_key: false,
+            default_value: None,
+            comment: None,
+            charset: None,
+            collation: None,
+            // 结果集元数据不携带自增信息。
+            is_auto_increment: false,
+        })
+        .collect()
+}
+
+fn notify_export_failure(
+    cx: &mut AsyncApp,
+    window_id: Option<gpui::AnyWindowHandle>,
+    error: String,
+) {
+    let Some(window_id) = window_id else {
+        return;
+    };
+    let _ = cx.update_window(window_id, |_entity, window, cx| {
+        window.push_notification(
+            t!("TableDataGrid.export_failed", error = error).to_string(),
+            cx,
+        );
+    });
+}
+
+/// 数据表格配置
+#[derive(Clone, Debug, PartialEq)]
+pub struct DataGridConfig {
+    /// 数据库名称
+    pub database_name: String,
+    /// Schema名称（用于支持schema的数据库如PostgreSQL、MSSQL、Oracle）
+    pub schema_name: Option<String>,
+    /// 表名称
+    pub table_name: String,
+    /// 数据库连接ID
+    pub connection_id: String,
+    /// 数据库类型
+    pub database_type: DatabaseType,
+    /// 是否允许编辑
+    pub editable: bool,
+    /// Whether the SQL result has a reliable direct-table schema identity.
+    pub schema_metadata_safe: bool,
+    /// 是否显示工具栏
+    pub show_toolbar: bool,
+    /// 使用场景
+    pub usage: DataGridUsage,
+    /// 原始 SQL（SqlResult 场景使用）
+    pub sql: String,
+    /// Existing execution session for manual transaction results.
+    pub session_id: Option<String>,
+    /// 执行时间（SqlResult 场景使用）
+    execution_time: u128,
+    /// 数据行数（SqlResult 场景使用）
+    rows_count: usize,
+}
+
+impl DataGridConfig {
+    pub fn new(
+        database_name: impl Into<String>,
+        table_name: impl Into<String>,
+        connection_id: impl Into<String>,
+        database_type: DatabaseType,
+    ) -> Self {
+        Self {
+            database_name: database_name.into(),
+            schema_name: None,
+            table_name: table_name.into(),
+            connection_id: connection_id.into(),
+            database_type,
+            editable: true,
+            schema_metadata_safe: false,
+            show_toolbar: true,
+            usage: DataGridUsage::TableData,
+            sql: "".to_string(),
+            session_id: None,
+            execution_time: 0,
+            rows_count: 0,
+        }
+    }
+
+    pub fn with_schema(mut self, schema: impl Into<String>) -> Self {
+        self.schema_name = Some(schema.into());
+        self
+    }
+
+    pub fn editable(mut self, editable: bool) -> Self {
+        self.editable = editable;
+        self
+    }
+
+    pub fn schema_metadata_safe(mut self, safe: bool) -> Self {
+        self.schema_metadata_safe = safe;
+        self
+    }
+
+    pub fn show_toolbar(mut self, show: bool) -> Self {
+        self.show_toolbar = show;
+        self
+    }
+
+    pub fn usage(mut self, usage: DataGridUsage) -> Self {
+        self.usage = usage;
+        self
+    }
+
+    pub fn sql(mut self, sql: impl Into<String>) -> Self {
+        self.sql = sql.into();
+        self
+    }
+    pub fn with_session_id(mut self, session_id: impl Into<String>) -> Self {
+        self.session_id = Some(session_id.into());
+        self
+    }
+    pub fn execution_time(mut self, execution_time: u128) -> Self {
+        self.execution_time = execution_time;
+        self
+    }
+    pub fn rows_count(mut self, rows_count: usize) -> Self {
+        self.rows_count = rows_count;
+        self
+    }
+}
+
+#[derive(Clone)]
+pub struct TableDataInfo {
+    pub current_page: usize,
+    pub page_size: usize,
+    pub total_count: usize,
+    pub duration: u128,
+    pub current_sql: String,
+    pub columns: Vec<ColumnInfo>,
+    pub index_infos: Vec<IndexInfo>,
+    pub error_message: Option<String>,
+}
+
+impl Default for TableDataInfo {
+    fn default() -> Self {
+        Self {
+            current_page: 1,
+            page_size: 500,
+            total_count: 0,
+            duration: 0,
+            current_sql: String::new(),
+            columns: vec![],
+            index_infos: vec![],
+            error_message: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum ExportScope {
+    All,
+    CurrentPage,
+}
+
+#[derive(Clone, Copy)]
+enum ExportFormat {
+    Xlsx,
+    Csv,
+    InsertSql,
+}
+
+impl ExportFormat {
+    fn extension(self) -> &'static str {
+        match self {
+            ExportFormat::Xlsx => "xlsx",
+            ExportFormat::Csv => "csv",
+            ExportFormat::InsertSql => "sql",
+        }
+    }
+
+    fn copy_format(self) -> CopyFormat {
+        match self {
+            ExportFormat::Xlsx | ExportFormat::Csv => CopyFormat::Csv,
+            ExportFormat::InsertSql => CopyFormat::SqlInsert,
+        }
+    }
+
+    fn include_header(self) -> bool {
+        matches!(self, ExportFormat::Xlsx | ExportFormat::Csv)
+    }
+}
+
+struct ExportBuildInput {
+    rows: Vec<Vec<Option<String>>>,
+    binary_cells: Vec<BinaryCell>,
+    columns: Vec<SharedString>,
+    metadata: TableMetadata,
+    plugin: Option<Arc<dyn DatabasePlugin>>,
+}
+
+fn build_export_bytes(
+    format: ExportFormat,
+    input: ExportBuildInput,
+) -> Result<Option<Vec<u8>>, String> {
+    let ExportBuildInput {
+        rows,
+        mut binary_cells,
+        columns,
+        metadata,
+        plugin,
+    } = input;
+    if rows.is_empty() {
+        return Ok(None);
+    }
+
+    let mut export_rows = rows;
+
+    if format.include_header() {
+        let header = columns
+            .iter()
+            .map(|column| Some(column.as_ref().to_string()))
+            .collect();
+        export_rows.insert(0, header);
+        for cell in &mut binary_cells {
+            cell.row_index += 1;
+        }
+    }
+
+    let metadata = metadata.for_columns(&columns);
+
+    match format {
+        ExportFormat::Xlsx => build_xlsx_bytes(&export_rows, &binary_cells).map(Some),
+        _ => {
+            let context = CopyFormatContext::new(&export_rows, &columns, &metadata)
+                .with_binary_cells(&binary_cells);
+            let context = plugin
+                .as_deref()
+                .map_or(context, |plugin| context.with_plugin(plugin));
+            Ok(Some(
+                CopyFormatter::format(format.copy_format(), context).into_bytes(),
+            ))
+        }
+    }
+}
+
+fn build_xlsx_bytes(
+    rows: &[Vec<Option<String>>],
+    binary_cells: &[BinaryCell],
+) -> Result<Vec<u8>, String> {
+    let mut workbook = Workbook::new();
+    let worksheet = workbook.add_worksheet();
+    let mut binary_index = HashMap::with_capacity(binary_cells.len());
+    for cell in binary_cells {
+        binary_index
+            .entry((cell.row_index, cell.column_index))
+            .or_insert_with(|| cell.bytes.as_slice());
+    }
+
+    for (row_index, row) in rows.iter().enumerate() {
+        for (col_index, cell) in row.iter().enumerate() {
+            if let Some(bytes) = binary_index.get(&(row_index, col_index)) {
+                worksheet
+                    .write_string(
+                        row_index as u32,
+                        col_index as u16,
+                        format_binary_input(bytes),
+                    )
+                    .map_err(|error| error.to_string())?;
+            } else if let Some(cell) = cell {
+                worksheet
+                    .write_string(row_index as u32, col_index as u16, cell)
+                    .map_err(|error| error.to_string())?;
+            }
+        }
+    }
+
+    workbook.save_to_buffer().map_err(|error| error.to_string())
+}
+
+fn table_has_unsaved_changes(editing_cell: Option<(usize, usize)>, change_count: usize) -> bool {
+    editing_cell.is_some() || change_count > 0
+}
+
+fn first_execution_error(results: &[SqlResult]) -> Option<&str> {
+    results.iter().find_map(|result| match result {
+        SqlResult::Error(error) => Some(error.message.as_str()),
+        _ => None,
+    })
+}
+
+fn data_generation_is_current(generation: &AtomicU64, expected: u64) -> bool {
+    generation.load(Ordering::Acquire) == expected
+}
+
+/// 纵向「列：值」视图里的一行。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum VerticalLine {
+    /// 记录头：每条数据占一行
+    Record {
+        /// 显示行下标
+        row: usize,
+    },
+    /// 字段行：一条「列名 + 值」
+    Field {
+        /// 显示行下标
+        row: usize,
+        /// 展示层列下标（不是原始列下标）
+        col: usize,
+    },
+}
+
+/// 纵向视图里「列名」列的固定宽度。
+///
+/// 标签列固定在横向滚动区之外，值区再长也不会把列名推出视野。
+const VERTICAL_LABEL_WIDTH: f32 = 200.;
+
+/// 值区内容宽度的额外余量：用等宽口径估算，留一点避免最后一个字被吃掉。
+const VERTICAL_VALUE_WIDTH_PADDING: f32 = 16.;
+
+/// 底部横向滚动条的高度（`one_ui` 里的同名常量是私有的）。
+const HORIZONTAL_SCROLLBAR_THICKNESS: Pixels = px(16.);
+
+/// 量值文本宽度时最多扫到的字符数。
+///
+/// 每帧只量可见行，但一个几 MB 的字段逐帧全量扫描并不合适；超长值按已量
+/// 部分的字节数外推即可——这个宽度只用来撑开横向滚动区，不必像素级精确。
+const VERTICAL_VALUE_MEASURE_CHARS: usize = 4096;
+
+/// 展示列号 → 网格列号。
+///
+/// `EditTableState` 的选中/编辑坐标是网格坐标，开了行号列时整体右移一位。
+/// 纵向视图的字段行与「定位字段」都要做这次换算，两处必须共用同一个口径，
+/// 否则点击/选中会落到隔壁列。
+pub(super) fn grid_column_of_display_col(display_col: usize, row_number_enabled: bool) -> usize {
+    if row_number_enabled {
+        display_col + 1
+    } else {
+        display_col
+    }
+}
+
+/// [`grid_column_of_display_col`] 的逆：网格列（含行号列）→ 展示列（只数数据列）。
+///
+/// 行号列的位置上取不到数据列，返回 `None`。
+pub(super) fn display_col_of_grid_column(
+    grid_col: usize,
+    row_number_enabled: bool,
+) -> Option<usize> {
+    if row_number_enabled {
+        grid_col.checked_sub(1)
+    } else {
+        Some(grid_col)
+    }
+}
+
+/// 等宽口径下值文本的像素宽度估算。
+///
+/// 纵向视图的横向滚动区靠它撑开。宁可略宽也不能偏窄：偏窄会让长值被截断，
+/// 而「滚到底能看到全文」正是这个滚动条存在的理由。
+pub(super) fn vertical_value_text_width(
+    text: &str,
+    ascii_advance: Pixels,
+    wide_advance: Pixels,
+) -> Pixels {
+    let mut width = px(0.);
+    let mut measured_bytes = 0usize;
+
+    for (measured_chars, (offset, ch)) in text.char_indices().enumerate() {
+        if measured_chars >= VERTICAL_VALUE_MEASURE_CHARS {
+            break;
+        }
+        width += if ch.is_ascii() {
+            ascii_advance
+        } else {
+            wide_advance
+        };
+        measured_bytes = offset + ch.len_utf8();
+    }
+
+    if measured_bytes < text.len() && measured_bytes > 0 {
+        width *= text.len() as f32 / measured_bytes as f32;
+    }
+
+    width
+}
+
+/// 量一次数据字体的单字符宽度：返回（ASCII、全宽）两个 advance。
+///
+/// 字体族与字号都要和值文本一致，否则估算出来的宽度对不上。等宽字体里 ASCII
+/// 字符一个格宽、中日韩字符两个格宽，分开量才能两种页面都不偏。
+fn vertical_char_advances(font: &Font, window: &Window) -> (Pixels, Pixels) {
+    let font_size = window.text_style().font_size.to_pixels(window.rem_size());
+    let advance = |sample: &str| {
+        let chars = sample.chars().count().max(1) as f32;
+        let run = vertical_measure_run(sample, font);
+        window
+            .text_system()
+            .shape_line(sample.to_string().into(), font_size, &[run], None)
+            .width()
+            / chars
+    };
+
+    (advance("0000000000"), advance("中中中中中中中中中中"))
+}
+
+/// 量宽度时用的文本 run（颜色等样式与宽度无关）。
+fn vertical_measure_run(text: &str, font: &Font) -> TextRun {
+    TextRun {
+        len: text.len(),
+        font: font.clone(),
+        color: gpui::black(),
+        background_color: None,
+        underline: None,
+        strikethrough: None,
+    }
+}
+
+/// 纵向视图的总行数：每条记录一行记录头 + 每个可见列一行。
+///
+/// `column_count` 必须是**可见列数**——隐藏列在纵向视图里同样不出现。
+pub(super) fn vertical_line_count(row_count: usize, column_count: usize) -> usize {
+    if column_count == 0 {
+        return 0;
+    }
+    row_count.saturating_mul(column_count + 1)
+}
+
+/// 把纵向视图的扁平行号还原成「记录头 / 字段行」。
+///
+/// 纵向视图靠 `uniform_list` 虚拟化，要求所有行等高，所以记录头与字段行
+/// 共用同一个行号空间：每 `column_count + 1` 行构成一条记录。
+pub(super) fn vertical_line_at(line_ix: usize, column_count: usize) -> Option<VerticalLine> {
+    if column_count == 0 {
+        return None;
+    }
+
+    let lines_per_record = column_count + 1;
+    let row = line_ix / lines_per_record;
+    let slot = line_ix % lines_per_record;
+
+    Some(if slot == 0 {
+        VerticalLine::Record { row }
+    } else {
+        VerticalLine::Field { row, col: slot - 1 }
+    })
+}
+
+/// 纵向视图里一个字段的显示文本。
+///
+/// 与网格单元格共用口径：NULL 用弱化斜体标出，二进制给大小描述。
+fn render_vertical_value(value: &VerticalCellValue, font: &Font, cx: &App) -> AnyElement {
+    let base = div()
+        .w_full()
+        .overflow_hidden()
+        .whitespace_nowrap()
+        .text_ellipsis()
+        .font(font.clone());
+
+    match value {
+        // 与网格单元格一致：NULL 弱化成斜体，不能被当成空字符串。
+        VerticalCellValue::Null => base
+            .text_color(cx.theme().muted_foreground.opacity(0.5))
+            .italic()
+            .child(SharedString::from(value.display_text().into_owned()))
+            .into_any_element(),
+        VerticalCellValue::Binary { .. } | VerticalCellValue::Text(_) => base
+            .child(SharedString::from(value.display_text().into_owned()))
+            .into_any_element(),
+    }
+}
+
+/// 纵向视图里一条字段行的状态快照。
+///
+/// 一次性把需要的东西从表格状态里取出来，避免渲染元素时还持有表格读锁。
+struct VerticalFieldLine {
+    name: SharedString,
+    value: VerticalCellValue,
+    /// 网格列号（含行号列偏移），选中与编辑都用它
+    grid_col: usize,
+    /// 可编辑（只读结果集、已删除行等情况为 false）
+    editable: bool,
+    selected: bool,
+    editing: bool,
+    modified: bool,
+    /// 这一格是不是刚「定位」到的字段：只染名称格，不染整行。
+    located: bool,
+}
+
+/// 画纵向视图的一行：记录头，或一条「列名 + 值」。
+///
+/// 值区与网格同一套共享横滚机制：标签列固定在滚动区外，值区用一个显式的
+/// 内容宽度（全页最宽值）撑开，所有行同步横滚，滚到底就能看到长值全文。
+///
+/// `line_ix` 只用来给可交互元素造稳定 ID（值区与行都需要 ID 才能变成
+/// `Stateful`、拿到点击与滚动跟踪）。
+fn render_vertical_line(
+    line: VerticalLine,
+    line_ix: usize,
+    grid: &DataGrid,
+    font: &Font,
+    line_height: Pixels,
+    cx: &mut Context<DataGrid>,
+    window: &mut Window,
+) -> AnyElement {
+    match line {
+        VerticalLine::Record { row } => h_flex()
+            .h(line_height)
+            .w_full()
+            .items_center()
+            .px_2()
+            .bg(cx.theme().muted)
+            .child(
+                div()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(t!("TableDataGrid.vertical_record", index = row + 1).to_string()),
+            )
+            .into_any_element(),
+        VerticalLine::Field { row, col } => {
+            let Some(line) = grid.vertical_field_line(row, col, cx) else {
+                return div().h(line_height).w_full().into_any_element();
+            };
+
+            // 编辑态的编辑器不放进横滚容器：值区可能已经横向滚到一半，编辑器
+            // 若跟着偏移，光标会跑到视野外。
+            let editor = line.editing.then(|| {
+                grid.table.update(cx, |table, cx| {
+                    table
+                        .editing_input()
+                        .map(|editor| editor.render(window, cx))
+                })
+            });
+            let editor = editor.flatten();
+
+            let value_area = div()
+                .id(gpui::ElementId::named_usize("vertical-value", line_ix))
+                .flex_1()
+                .h_full()
+                .min_w_0()
+                // 横向必须是 Scroll 而不是 Hidden：gpui 只把滚轮/触控板增量应用在
+                // `Overflow::Scroll` 的轴上，隐藏溢出的话横向手势不会生效。
+                // 再限制到手势轴：否则纯竖向滚轮会被当成横向滚动，值区会自己跑。
+                .overflow_x_scroll()
+                .restrict_scroll_to_axis()
+                .when(editor.is_none(), |this| {
+                    this.track_scroll(&grid.vertical_horizontal_scroll_handle)
+                        .child(
+                            div()
+                                .flex_none()
+                                .h_full()
+                                .w(grid.vertical_value_width)
+                                .overflow_hidden()
+                                .child(render_vertical_value(&line.value, font, cx)),
+                        )
+                })
+                .when_some(editor, |this, editor| this.child(editor));
+
+            let mut row_element = h_flex()
+                .id(gpui::ElementId::named_usize("vertical-field", line_ix))
+                .h(line_height)
+                .w_full()
+                .min_w_0()
+                .items_center()
+                .gap_2()
+                .px_2()
+                .border_b_1()
+                .border_color(cx.theme().border)
+                .when(line.modified, |this| {
+                    this.bg(cx.theme().warning.opacity(0.15))
+                })
+                .when(line.selected && !line.editing, |this| {
+                    this.bg(cx.theme().table_active)
+                })
+                .when(line.editing, |this| {
+                    this.bg(cx.theme().background)
+                        .border_2()
+                        .border_color(cx.theme().ring)
+                })
+                .child(
+                    div()
+                        .flex_none()
+                        .w(px(VERTICAL_LABEL_WIDTH))
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        // 定位标记只染名称这一格，值区保持干净。
+                        .when(line.located, |this| this.bg(cx.theme().table_active))
+                        .child(line.name),
+                )
+                .child(value_area);
+
+            if line.editable {
+                let grid_col = line.grid_col;
+                row_element = row_element.on_click(cx.listener(
+                    move |grid: &mut DataGrid, _: &ClickEvent, window, cx| {
+                        grid.handle_vertical_field_click(row, grid_col, window, cx);
+                    },
+                ));
+            }
+
+            row_element.into_any_element()
+        }
+    }
+}
+
+/// 纵向视图的数据字体缓存。
+///
+/// 字体族解析要走系统字体枚举（macOS 上是 CoreText 全量枚举），不能按行
+/// 调用；纵向视图每次渲染只解析一次，之后命中这里的缓存。
+#[derive(Clone)]
+struct VerticalFontCache {
+    requested_family: String,
+    font: Font,
+}
+
+/// 数据表格组件
+pub struct DataGrid {
+    /// 组件配置
+    config: DataGridConfig,
+    /// 内部表格状态
+    pub(crate) table: Entity<EditTableState<EditorTableDelegate>>,
+    /// 表格事件订阅
+    _table_sub: Option<Subscription>,
+    /// 全局连接通知订阅（整表清空 → 数据网格自动刷新）
+    _connection_event_sub: Option<Subscription>,
+    /// 表格实体的通知订阅：纵向视图的行是自绘的，部分状态变化（例如 Escape
+    /// 取消编辑）只 `notify` 不 `emit`，只能靠观察实体补上重画。
+    _table_observe_sub: Option<Subscription>,
+    /// 焦点句柄
+    focus_handle: FocusHandle,
+    /// 表格数据信息（分页、总数等）
+    table_data_info: Entity<TableDataInfo>,
+    /// 过滤器编辑器
+    filter_editor: Entity<TableFilterEditor>,
+    /// 过滤器事件订阅
+    _filter_sub: Option<Subscription>,
+    /// 表内查找输入框（输入即高亮，计数与上下跳并排放在工具栏）
+    find_input: Entity<InputState>,
+    /// 查找输入框事件订阅
+    _find_sub: Option<Subscription>,
+    /// 「字段过滤」面板里的字段搜索框（面板关着时也一直是同一个实体，
+    /// 打开时才能直接接着上次的搜索词）
+    column_visibility_search: Entity<InputState>,
+    /// 字段搜索框事件订阅
+    _column_visibility_search_sub: Option<Subscription>,
+    /// 「字段过滤」面板的字段列表滚动句柄
+    column_visibility_scroll: ScrollHandle,
+    /// 「字段定位」面板里的字段搜索框（同样在 `new()` 里创建，面板重建不丢光标）
+    column_locate_search: Entity<InputState>,
+    /// 字段定位搜索框事件订阅
+    _column_locate_search_sub: Option<Subscription>,
+    /// 「字段定位」面板的字段列表滚动句柄
+    column_locate_scroll: ScrollHandle,
+    /// 「字段定位」面板是否展开。面板是受控 Popover：定位成功后要主动收起，
+    /// 否则盖在表格上的面板正好挡住「定位到了哪一列」这个结果。
+    column_locate_open: bool,
+    /// 当前数据库 tab 的共享 SQL 执行记录
+    execution_history: Option<Entity<ExecutionHistoryPanel>>,
+    /// 侧边栏大文本编辑器是否已为当前表格打开
+    is_large_text_editor_sidebar_open: bool,
+    /// Invalidates stale asynchronous data and metadata callbacks.
+    data_generation: Arc<AtomicU64>,
+    /// 纵向「列：值」视图的滚动句柄
+    vertical_scroll_handle: UniformListScrollHandle,
+    /// 纵向视图值区的横向滚动句柄（标签列固定在滚动区外，值区整列同步横滚）
+    vertical_horizontal_scroll_handle: ScrollHandle,
+    /// 纵向视图值区的内容宽度（取量到过的最宽值）
+    vertical_value_width: Pixels,
+    /// 上面那个宽度属于哪一屏数据（行数、可见列数），换页或换列可见性时重置
+    vertical_value_width_key: (usize, usize),
+    /// 纵向视图的数据字体（按字体族缓存，字体枚举是系统级全量调用）
+    vertical_font_cache: Option<VerticalFontCache>,
+}
+
+impl DataGrid {
+    pub fn new(
+        config: DataGridConfig,
+        execution_history: Option<Entity<ExecutionHistoryPanel>>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let editable = config.editable;
+        let is_table_data = config.usage == DataGridUsage::TableData;
+        let database_type = config.database_type.clone();
+        let table_name = config.table_name.clone();
+        let data_grid_handle = cx.entity().downgrade();
+        let table = cx.new(|cx| {
+            let mut delegate =
+                EditorTableDelegate::new(vec![], vec![], editable, database_type, window, cx);
+            // 设置表名，用于 SQL 生成
+            delegate.set_table_name(table_name);
+            EditTableState::new(delegate, window, cx)
+        });
+        table.update(cx, |state, _| {
+            state.delegate_mut().set_data_grid(data_grid_handle.clone());
+        });
+        let focus_handle = cx.focus_handle();
+        let filter_editor = cx.new(|cx| TableFilterEditor::new(window, cx));
+        let find_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("TableDataGrid.search_placeholder").to_string())
+                .clean_on_escape()
+        });
+        // 字段搜索框在弹出面板里，不能等面板打开再建：弹出面板的内容闭包
+        // 每次渲染都会重跑，在那里建实体会每次换一个新的、光标也跟着丢。
+        let column_visibility_search = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("TableDataGrid.column_visibility_search_placeholder").to_string())
+                .clean_on_escape()
+        });
+        // 「字段定位」用独立的搜索框：两个面板可能先后打开，共用一个实体
+        // 会让「在过滤框里输入的词」莫名其妙出现在定位框里。
+        let column_locate_search = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(t!("TableDataGrid.column_visibility_search_placeholder").to_string())
+                .clean_on_escape()
+        });
+        let table_data_info = cx.new(|_| TableDataInfo::default());
+        let mut result = Self {
+            config,
+            table,
+            _table_sub: None,
+            _connection_event_sub: None,
+            _table_observe_sub: None,
+            focus_handle,
+            table_data_info,
+            filter_editor,
+            _filter_sub: None,
+            find_input,
+            _find_sub: None,
+            column_visibility_search,
+            _column_visibility_search_sub: None,
+            column_visibility_scroll: ScrollHandle::default(),
+            column_locate_search,
+            _column_locate_search_sub: None,
+            column_locate_scroll: ScrollHandle::default(),
+            column_locate_open: false,
+            execution_history,
+            is_large_text_editor_sidebar_open: false,
+            data_generation: Arc::new(AtomicU64::new(0)),
+            vertical_scroll_handle: UniformListScrollHandle::default(),
+            vertical_horizontal_scroll_handle: ScrollHandle::default(),
+            vertical_value_width: px(0.),
+            vertical_value_width_key: (0, 0),
+            vertical_font_cache: None,
+        };
+        result.bind_table_event(window, cx);
+        result.bind_column_visibility_search_event(window, cx);
+        result.bind_column_locate_search_event(window, cx);
+        if is_table_data {
+            // 表格数据页的查找输入框就在工具栏里（同页唯一一个搜索框），
+            // 表格自身不再浮出查找面板。
+            result
+                .table
+                .update(cx, |state, cx| state.set_find_hosted(true, cx));
+            result.bind_filter_event(window, cx);
+            result.bind_find_event(window, cx);
+            // 监听整表清空（TRUNCATE / 无 WHERE 的 DELETE）通知，
+            // 让已打开的数据网格立即反映清空结果，而不是停留在旧数据。
+            result.bind_connection_data_event(window, cx);
+            result.load_data_with_clauses(1, cx);
+        }
+        result
+    }
+
+    /// 订阅全局连接通知，精确匹配到当前网格的表被整表清空时自动刷新。
+    ///
+    /// 按 `connection_id + database + schema + table` 四元组匹配，
+    /// 其余表的清空事件不会引起本网格任何刷新。
+    fn bind_connection_data_event(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(notifier) = cx.try_global::<GlobalConnectionNotifier>().cloned() else {
+            self._connection_event_sub = None;
+            return;
+        };
+
+        self._connection_event_sub = Some(cx.subscribe_in(
+            &notifier.0,
+            window,
+            |this, _notifier, event: &ConnectionDataEvent, _window, cx| {
+                let ConnectionDataEvent::TableDataCleared {
+                    connection_id,
+                    database,
+                    schema,
+                    table,
+                } = event
+                else {
+                    return;
+                };
+                if connection_id != &this.config.connection_id
+                    || database != &this.config.database_name
+                    || schema.as_deref() != this.config.schema_name.as_deref()
+                    || table != &this.config.table_name
+                {
+                    return;
+                }
+                // 清空后回到第一页重新拉取；保留用户的过滤/排序条件，
+                // 结果集自然为空。正在加载时跳过，避免与进行中的请求互踩。
+                if this.table.read(cx).delegate().is_loading() {
+                    return;
+                }
+                this.load_data_with_clauses(1, cx);
+            },
+        ));
+    }
+
+    fn bind_table_event(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let sub = cx.subscribe_in(
+            &self.table,
+            window,
+            |this, _, evt: &EditTableEvent, window, cx| match evt {
+                EditTableEvent::SelectCell(row, col) => {
+                    trace!("select cell: {:?}", (row, col));
+                    cx.emit(DataGridEvent::LargeTextSelectionChanged);
+                    // 纵向视图的行是自绘的：表格状态变了不会自动让 DataGrid 重画。
+                    cx.notify();
+                }
+                EditTableEvent::SelectionChanged(_) | EditTableEvent::CellEdited(_, _) => {
+                    cx.emit(DataGridEvent::LargeTextSelectionChanged);
+                    cx.notify();
+                }
+                // 在表格里按 Cmd/Ctrl+F：输入框在工具栏这边，聚焦只能由宿主完成。
+                EditTableEvent::FindRequested => {
+                    focus_search_input(&this.find_input, window, cx);
+                }
+                // 命中计数与当前序号由表格算，这里只负责重新渲染工具栏。
+                EditTableEvent::FindStateChanged => cx.notify(),
+                _ => {}
+            },
+        );
+        self._table_sub = Some(sub);
+        self._table_observe_sub = Some(cx.observe(&self.table, |_, _, cx| cx.notify()));
+    }
+
+    /// 字段搜索框 → 「字段过滤」面板的列表过滤。
+    ///
+    /// 搜索词只影响面板自己的列表，不碰表格：这里只需要让宿主重画，
+    /// 面板在下一次渲染里自己读最新的输入值。
+    fn bind_column_visibility_search_event(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let sub = cx.subscribe_in(
+            &self.column_visibility_search,
+            window,
+            |_this: &mut DataGrid, _input, evt: &InputEvent, _window, cx| {
+                if let InputEvent::Change = evt {
+                    cx.notify();
+                }
+            },
+        );
+        self._column_visibility_search_sub = Some(sub);
+    }
+
+    /// 字段搜索框 → 「字段定位」面板的列表过滤。
+    ///
+    /// 与「字段过滤」同款：搜索词只影响面板自己的列表，不碰表格。
+    fn bind_column_locate_search_event(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let sub = cx.subscribe_in(
+            &self.column_locate_search,
+            window,
+            |_this: &mut DataGrid, _input, evt: &InputEvent, _window, cx| {
+                if let InputEvent::Change = evt {
+                    cx.notify();
+                }
+            },
+        );
+        self._column_locate_search_sub = Some(sub);
+    }
+
+    fn bind_filter_event(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let sub = cx.subscribe_in(
+            &self.filter_editor,
+            window,
+            |this: &mut DataGrid, _, evt: &FilterEditorEvent, _, cx| match evt {
+                FilterEditorEvent::QueryApply => {
+                    this.load_data_with_clauses(1, cx);
+                    cx.notify()
+                }
+            },
+        );
+        self._filter_sub = Some(sub);
+    }
+
+    /// 工具栏查找框 → 表格内的命中高亮。
+    ///
+    /// 输入框只是入口：查询词、命中统计、当前序号与滚动都在表格状态里，
+    /// 表格算完通过 `EditTableEvent::FindStateChanged` 让这里重新渲染计数。
+    fn bind_find_event(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let sub = cx.subscribe_in(
+            &self.find_input,
+            window,
+            |this: &mut DataGrid, input, evt: &InputEvent, _window, cx| {
+                if let InputEvent::Change = evt {
+                    let query = input.read(cx).text().to_string();
+                    this.table
+                        .update(cx, |state, cx| state.set_find_query(&query, cx));
+                    cx.notify();
+                }
+            },
+        );
+        self._find_sub = Some(sub);
+    }
+
+    /// 跳到下（上）一个命中。
+    fn goto_next_find_match(&mut self, cx: &mut Context<Self>) {
+        self.table.update(cx, |state, cx| state.find_next(cx));
+        cx.notify();
+    }
+
+    fn goto_previous_find_match(&mut self, cx: &mut Context<Self>) {
+        self.table.update(cx, |state, cx| state.find_previous(cx));
+        cx.notify();
+    }
+
+    fn handle_find_next(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.goto_next_find_match(cx);
+    }
+
+    fn handle_find_previous(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.goto_previous_find_match(cx);
+    }
+
+    /// Cmd/Ctrl+G、Cmd/Ctrl+Shift+G 在查找框里也应当上下跳（见
+    /// [`HOSTED_FIND_CONTEXT`]）。
+    pub(crate) fn on_action_find_next(
+        &mut self,
+        _: &FindNext,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.goto_next_find_match(cx);
+    }
+
+    pub(crate) fn on_action_find_previous(
+        &mut self,
+        _: &FindPrevious,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.goto_previous_find_match(cx);
+    }
+
+    // ========== 字段（列）过滤 ==========
+
+    /// 「字段过滤」面板的展示数据：搜索词过滤后的字段，以及计数要用到的
+    /// 总数与当前可见数。
+    ///
+    /// 过滤是纯函数（`filter_column_visibility_entries`），这里只负责把
+    /// 搜索框里的字和列状态凑到一起。
+    fn column_visibility_panel_state(&self, cx: &App) -> ColumnVisibilityPanelState {
+        let entries = self.table.read(cx).delegate().column_visibility_entries();
+        let total = entries.len();
+        let visible_total = entries.iter().filter(|(_, _, visible)| *visible).count();
+        let query = self.column_visibility_search.read(cx).text().to_string();
+
+        ColumnVisibilityPanelState {
+            rows: filter_column_visibility_entries(&entries, &query),
+            total,
+            visible_total,
+        }
+    }
+
+    /// 是否存在被隐藏的列。
+    pub fn has_hidden_columns(&self, cx: &App) -> bool {
+        self.table.read(cx).delegate().has_hidden_columns()
+    }
+
+    /// 显示全部列。
+    pub fn show_all_columns(&mut self, cx: &mut Context<Self>) {
+        let changed = self.table.update(cx, |state, cx| {
+            let changed = state.delegate_mut().show_all_columns();
+            if changed {
+                cx.notify();
+            }
+            changed
+        });
+        if changed {
+            self.table.update(cx, |state, cx| state.refresh(cx));
+            cx.notify();
+        }
+    }
+
+    fn set_column_visibility(&mut self, original_ix: usize, visible: bool, cx: &mut Context<Self>) {
+        let changed = self.table.update(cx, |state, cx| {
+            let changed = state
+                .delegate_mut()
+                .set_column_visible(original_ix, visible);
+            if changed {
+                cx.notify();
+            }
+            changed
+        });
+        if changed {
+            self.table.update(cx, |state, cx| state.refresh(cx));
+            cx.notify();
+        }
+    }
+
+    // ========== 字段定位 ==========
+
+    /// 「字段定位」面板的列表数据：按展示顺序列出全部字段（含被隐藏的字段），
+    /// 再按面板自己的搜索词过滤。
+    ///
+    /// 隐藏字段也列出来是刻意的：用户正是靠定位去找回被「字段过滤」筛掉的列。
+    fn column_locate_rows(&self, cx: &App) -> Vec<(usize, SharedString, bool)> {
+        let entries = self.table.read(cx).delegate().column_visibility_entries();
+        let query = self.column_locate_search.read(cx).text().to_string();
+        filter_column_visibility_entries(&entries, &query)
+    }
+
+    /// 定位到某个字段：必要时先取消该列的隐藏，再把它带到眼前并标记出来。
+    ///
+    /// 标记只用表格自己的「定位列」状态，不走 `set_selected_col`/`select_cell`：
+    /// 那两者会给整列（或整行）逐格染色，绘制量随可见行数线性增长，滚动时最容易
+    /// 掉帧。这里只染一格——网格染表头，纵向染该字段的名称格。
+    fn locate_column(&mut self, original_ix: usize, cx: &mut Context<Self>) {
+        self.column_locate_open = false;
+
+        // 隐藏的列压根不在表格的列组里，先显示它并重建列组，否则无处可滚。
+        self.set_column_visibility(original_ix, true, cx);
+
+        let vertical = self.is_vertical_view(cx);
+        let display_col = {
+            let table = self.table.read(cx);
+            display_position_of_original_column(
+                &table.delegate().visible_column_indices(),
+                original_ix,
+            )
+        };
+        let Some(display_col) = display_col else {
+            // 取消隐藏后仍然算不出位序（列数刚刚变了）：只重画，不猜位置。
+            cx.notify();
+            return;
+        };
+        let row_number_enabled = self.table.read(cx).delegate().row_number_enabled(cx);
+        let grid_col = grid_column_of_display_col(display_col, row_number_enabled);
+
+        if vertical {
+            // 滚动句柄是自绘的 uniform_list，表格状态管不到它，得自己滚。
+            self.vertical_scroll_handle.scroll_to_item(
+                vertical_line_of_first_field(display_col),
+                ScrollStrategy::Top,
+            );
+        }
+        // 两种形态共用同一个标记，各自只染一格。
+        self.table
+            .update(cx, |state, cx| state.set_located_col(grid_col, cx));
+        cx.notify();
+    }
+
+    fn execution_context(&self) -> ExecutionContext {
+        ExecutionContext {
+            connection_id: self.config.connection_id.clone(),
+            database: Some(self.config.database_name.clone()),
+            schema: self.config.schema_name.clone(),
+        }
+    }
+
+    fn record_execution_results(&self, sql: String, results: &[SqlResult], cx: &mut App) {
+        let Some(execution_history) = &self.execution_history else {
+            return;
+        };
+        execution_history.update(cx, |history, cx| {
+            history.record_table_data_results(self.execution_context(), sql, results, cx);
+        });
+    }
+
+    fn record_execution_failure(&self, error: String, sql: Option<String>, cx: &mut App) {
+        let Some(execution_history) = &self.execution_history else {
+            return;
+        };
+        execution_history.update(cx, |history, cx| {
+            history.record_transport_error(
+                self.execution_context(),
+                sql.unwrap_or_default(),
+                error,
+                cx,
+            );
+        });
+    }
+
+    fn on_action_focus_search(
+        &mut self,
+        _: &FocusSearchInput,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.config.usage == DataGridUsage::TableData {
+            focus_search_input(&self.find_input, window, cx);
+        }
+    }
+
+    // ========== 公共访问器 ==========
+
+    pub fn table(&self) -> &Entity<EditTableState<EditorTableDelegate>> {
+        &self.table
+    }
+
+    /// 网格内部表格的焦点句柄。
+    ///
+    /// 表内查找（Cmd/Ctrl+F）等快捷键绑定在 `EditTable` 键盘上下文上，
+    /// 宿主页签激活时必须把焦点交给这个句柄，否则焦点停在页签外壳上，
+    /// `EditTable` 不在焦点路径里，按 Cmd/Ctrl+F 不会有任何反应。
+    pub fn table_focus_handle(&self, cx: &App) -> FocusHandle {
+        self.table.read(cx).table_focus_handle()
+    }
+
+    pub fn update_data(
+        &self,
+        columns: Vec<Column>,
+        rows: Vec<Vec<Option<String>>>,
+        rowids: Vec<String>,
+        cx: &mut App,
+    ) {
+        self.update_data_with_binary_cells(columns, rows, rowids, vec![], cx);
+    }
+
+    pub fn update_data_with_binary_cells(
+        &self,
+        columns: Vec<Column>,
+        rows: Vec<Vec<Option<String>>>,
+        rowids: Vec<String>,
+        binary_cells: Vec<BinaryCell>,
+        cx: &mut App,
+    ) {
+        self.update_data_with_typed_batch(columns, rows, rowids, binary_cells, None, cx);
+    }
+
+    pub fn update_data_with_typed_batch(
+        &self,
+        columns: Vec<Column>,
+        rows: Vec<Vec<Option<String>>>,
+        rowids: Vec<String>,
+        binary_cells: Vec<BinaryCell>,
+        typed_batch: Option<Arc<db_value::ResultBatch>>,
+        cx: &mut App,
+    ) {
+        self.data_generation.fetch_add(1, Ordering::AcqRel);
+        self.table.update(cx, |state, cx| {
+            state.delegate_mut().update_data_with_typed_batch(
+                columns,
+                rows,
+                rowids,
+                binary_cells,
+                typed_batch,
+                cx,
+            );
+            state.refresh(cx);
+            // 命中缓存按「显示行」存，换页/刷新后整批失效；查询框会跨页保留，
+            // 所以必须按当前查询词重扫一遍，否则高亮会留在错误的行上。
+            state.refresh_find(cx);
+        });
+    }
+
+    pub(crate) fn current_data_generation(&self) -> u64 {
+        self.data_generation.load(Ordering::Acquire)
+    }
+
+    pub(crate) fn is_data_generation_current(&self, expected: u64) -> bool {
+        data_generation_is_current(&self.data_generation, expected)
+    }
+
+    pub(crate) fn download_binary_value(
+        &self,
+        bytes: Vec<u8>,
+        file_name: String,
+        cx: &mut Context<Self>,
+    ) {
+        let window_id = cx.active_window();
+        let future = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            multiple: false,
+            directories: true,
+            prompt: Some(t!("TableData.select_binary_download_directory").into()),
+        });
+
+        cx.spawn(async move |_this, cx| {
+            let output_dir = match future.await {
+                Ok(Ok(Some(paths))) => match paths.into_iter().next() {
+                    Some(path) => path,
+                    None => return,
+                },
+                _ => return,
+            };
+            let output_path = output_dir.join(file_name);
+            let path_for_write = output_path.clone();
+            let write_result = cx
+                .background_spawn(async move { std::fs::write(path_for_write, bytes) })
+                .await;
+
+            let _ = cx.update(|cx| {
+                if let Some(window_id) = window_id {
+                    let _ = cx.update_window(window_id, |_entity, window, cx| match write_result {
+                        Ok(()) => window.push_notification(
+                            Notification::success(
+                                t!(
+                                    "TableData.binary_download_complete",
+                                    path = output_path.display()
+                                )
+                                .to_string(),
+                            )
+                            .autohide(true),
+                            cx,
+                        ),
+                        Err(error) => window.push_notification(
+                            Notification::error(
+                                t!("TableData.binary_download_failed", error = error).to_string(),
+                            )
+                            .autohide(true),
+                            cx,
+                        ),
+                    });
+                }
+            });
+        })
+        .detach();
+    }
+
+    pub(crate) fn show_binary_image_preview(
+        &self,
+        bytes: Arc<Vec<u8>>,
+        format: ImageFormat,
+        title: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let image = Arc::new(Image::from_bytes(format, bytes.as_ref().clone()));
+        window.open_dialog(cx, move |dialog, _window, _cx| {
+            dialog
+                .title(SharedString::from(title.clone()))
+                .w(px(900.))
+                .h(px(680.))
+                .child(
+                    div()
+                        .size_full()
+                        .min_w_0()
+                        .min_h_0()
+                        .overflow_hidden()
+                        .child(
+                            img(image.clone())
+                                .size_full()
+                                .object_fit(ObjectFit::Contain),
+                        ),
+                )
+                .close_button(true)
+                .overlay(false)
+                .content_center()
+        });
+    }
+
+    /// 快路径：SQL 结果页签直接使用结果集自带的列元数据。
+    ///
+    /// 结果集在驱动执行时已携带每列的 `db_type`，无需额外查询表结构即可完成
+    /// 日期/数值等字段类型识别。仅当列类型需要在结果列上重算时（见
+    /// [`DataGrid::load_column_meta_for_sql_result`]）才需要慢路径的表结构查询。
+    pub fn set_sql_result_column_meta(&self, query_meta: Vec<QueryColumnMeta>, cx: &mut App) {
+        let meta = column_infos_from_query_meta(&query_meta);
+        self.table.update(cx, |state, cx| {
+            state.delegate_mut().set_column_meta(meta);
+            cx.notify();
+        });
+    }
+
+    pub fn load_column_meta_for_sql_result(&self, cx: &mut App) {
+        if self.config.usage != DataGridUsage::SqlResult
+            || self.config.sql.is_empty()
+            || self.config.database_type != DatabaseType::MySQL
+            || !self.config.schema_metadata_safe
+            || self.config.table_name.is_empty()
+        {
+            return;
+        }
+
+        let global_state = cx.global::<GlobalDbState>().clone();
+        let connection_id = self.config.connection_id.clone();
+        let database_name = self.config.database_name.clone();
+        let schema_name = self.config.schema_name.clone();
+        let table_name = self.config.table_name.clone();
+        let table = self.table.clone();
+        let table_info = self.table_data_info.clone();
+        let data_generation = self.data_generation.clone();
+        let expected_generation = data_generation.load(Ordering::Acquire);
+        cx.spawn(async move |cx: &mut AsyncApp| {
+            let result = list_columns_direct_on_runtime(
+                cx,
+                global_state,
+                connection_id,
+                database_name,
+                schema_name,
+                table_name,
+            )
+            .await;
+
+            if let Ok(cols) = result {
+                cx.update(|cx| {
+                    if !data_generation_is_current(&data_generation, expected_generation) {
+                        return;
+                    }
+
+                    let reconcile_result = table.update(cx, |state, cx| {
+                        let result = state
+                            .delegate_mut()
+                            .reconcile_binary_cells_with_column_meta(cols.clone());
+                        if result.is_ok() {
+                            state.refresh(cx);
+                            cx.notify();
+                        }
+                        result
+                    });
+                    match reconcile_result {
+                        Ok(()) => {
+                            table_info.update(cx, |info, cx| {
+                                info.columns = cols;
+                                cx.notify();
+                            });
+                        }
+                        Err(error) => {
+                            tracing::warn!(
+                                "failed to reconcile SQL result binary cells with metadata: {error}"
+                            );
+                        }
+                    }
+                })
+            }
+        })
+        .detach();
+    }
+
+    /// 为 SQL 查询结果补全字段注释。
+    ///
+    /// 仅在「列头显示字段注释」打开时执行。分析结果不完整时会退化为按列名
+    /// 唯一匹配；关闭开关时不会产生任何额外元数据查询。
+    pub fn load_sql_result_column_comments(&self, cx: &mut App) {
+        if self.config.usage != DataGridUsage::SqlResult
+            || self.config.sql.is_empty()
+            || !one_ui::table_column_comment_in_header(cx)
+        {
+            return;
+        }
+
+        let global_state = cx.global::<GlobalDbState>().clone();
+        let Some(plugin) = global_state
+            .db_manager
+            .get_plugin(&self.config.database_type)
+            .ok()
+        else {
+            return;
+        };
+        let Some(lineage) = plugin.analyze_result_column_lineage(&self.config.sql) else {
+            return;
+        };
+        if lineage.tables.is_empty() {
+            return;
+        }
+
+        let result_column_names: Vec<String> = self
+            .table
+            .read(cx)
+            .delegate()
+            .column_meta()
+            .iter()
+            .map(|column| column.name.clone())
+            .collect();
+        if result_column_names.is_empty() {
+            return;
+        }
+
+        let connection_id = self.config.connection_id.clone();
+        let database_name = self.config.database_name.clone();
+        let schema_name = self.config.schema_name.clone();
+        let table = self.table.clone();
+        let data_generation = self.data_generation.clone();
+        let expected_generation = data_generation.load(Ordering::Acquire);
+
+        cx.spawn(async move |cx: &mut AsyncApp| {
+            let table_columns = load_lineage_table_columns_on_runtime(
+                cx,
+                global_state,
+                connection_id,
+                database_name,
+                schema_name,
+                lineage.tables.clone(),
+            )
+            .await;
+            let comments =
+                resolve_result_column_comments(&table_columns, &lineage, &result_column_names);
+            if comments.iter().all(Option::is_none) {
+                return;
+            }
+
+            cx.update(|cx| {
+                if !data_generation_is_current(&data_generation, expected_generation) {
+                    return;
+                }
+                table.update(cx, |state, cx| {
+                    state.delegate_mut().set_column_comments(&comments);
+                    state.refresh(cx);
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
+    }
+
+    pub fn set_editable(&mut self, editable: bool, cx: &mut Context<Self>) {
+        if self.config.editable == editable {
+            return;
+        }
+
+        self.config.editable = editable;
+        self.table.update(cx, |state, cx| {
+            let delegate = state.delegate_mut();
+            delegate.set_editable(editable);
+            if !editable {
+                delegate.clear_changes();
+            }
+            state.refresh(cx);
+            cx.notify();
+        });
+        cx.notify();
+    }
+
+    pub(crate) fn apply_column_sort(
+        &mut self,
+        column_name: &str,
+        sort: ColumnSort,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if self.config.usage != DataGridUsage::TableData {
+            return;
+        }
+
+        let global_state = cx.global::<GlobalDbState>().clone();
+        let order_by_clause = match build_header_order_by_clause(
+            &global_state.db_manager,
+            self.config.database_type.clone(),
+            column_name,
+            sort,
+        ) {
+            Ok(Some(clause)) => clause,
+            Ok(None) => String::new(),
+            Err(error) => {
+                window.push_notification(error, cx);
+                return;
+            }
+        };
+
+        self.filter_editor.update(cx, |editor, cx| {
+            editor.set_order_by_clause(order_by_clause.clone(), window, cx);
+        });
+
+        self.load_data_with_clauses(1, cx);
+    }
+
+    // ========== 数据加载 ==========
+
+    fn load_data_with_clauses(&self, page: usize, cx: &mut App) {
+        let expected_generation = self.data_generation.fetch_add(1, Ordering::AcqRel) + 1;
+        let data_generation = self.data_generation.clone();
+        let global_state = cx.global::<GlobalDbState>().clone();
+        let connection_id = self.config.connection_id.clone();
+        let table_name = self.config.table_name.clone();
+        let database_name = self.config.database_name.clone();
+        let schema_name = self.config.schema_name.clone();
+        let table = self.table.clone();
+        let table_data_info = self.table_data_info.clone();
+        let where_clause = self.filter_editor.read(cx).get_where_clause(cx);
+        let order_by_clause = self.filter_editor.read(cx).get_order_by_clause(cx);
+        let filter_editor = self.filter_editor.clone();
+        let page_size = self.table_data_info.read(cx).page_size;
+
+        tracing::info!(
+            "load_data_with_clauses: connection_id={}, database={}, table={}",
+            connection_id,
+            database_name,
+            table_name
+        );
+
+        self.table.update(cx, |state, cx| {
+            state.delegate_mut().set_loading(true);
+            cx.notify();
+        });
+
+        cx.spawn(async move |cx: &mut AsyncApp| {
+            let mut request = TableDataRequest::new(&database_name, &table_name)
+                .with_page(page, page_size)
+                .with_where_clause(where_clause.clone())
+                .with_order_by_clause(order_by_clause.clone());
+
+            if let Some(schema) = schema_name.clone() {
+                request = request.with_schema(schema);
+            }
+
+            let result = global_state
+                .query_table_data(cx, connection_id.clone(), request)
+                .await;
+
+            match result {
+                Err(err) => {
+                    error!("load_data_with_clauses failed: {}", err);
+                    cx.update(|cx| {
+                        if !data_generation_is_current(&data_generation, expected_generation) {
+                            return;
+                        }
+                        table_data_info.update(cx, |info, cx| {
+                            info.error_message =
+                                Some(t!("TableDataGrid.load_data_failed", error = err).to_string());
+                            cx.notify();
+                        });
+                        table.update(cx, |state, cx| {
+                            state.delegate_mut().set_loading(false);
+                            state.delegate_mut().update_data(vec![], vec![], vec![], cx);
+                            state.refresh(cx);
+                        });
+                    })
+                }
+                Ok(response) => {
+                    if !data_generation_is_current(&data_generation, expected_generation) {
+                        return;
+                    }
+                    let query_result = response.query_result;
+
+                    let (columns, rows, rowids, binary_cells, typed_batch) =
+                        if query_result.columns.first().map(|c| c.as_str()) == Some("__rowid__") {
+                            let columns: Vec<Column> = query_result
+                                .columns
+                                .iter()
+                                .skip(1)
+                                .map(|col| Column::new(col.clone(), col.clone()))
+                                .collect();
+                            let mut rowids = Vec::new();
+                            let rows: Vec<Vec<Option<String>>> = query_result
+                                .rows
+                                .iter()
+                                .map(|row| {
+                                    if let Some(first) = row.first() {
+                                        rowids.push(first.clone().unwrap_or_default());
+                                    }
+                                    row.iter().skip(1).cloned().collect()
+                                })
+                                .collect();
+                            let binary_cells = query_result
+                                .binary_cells
+                                .iter()
+                                .filter_map(|cell| {
+                                    cell.column_index.checked_sub(1).map(|column_index| {
+                                        BinaryCell {
+                                            row_index: cell.row_index,
+                                            column_index,
+                                            bytes: cell.bytes.clone(),
+                                        }
+                                    })
+                                })
+                                .collect();
+                            // rowid 列被剥离,typed batch 与展示列不再对齐,走 legacy 回退。
+                            (columns, rows, rowids, binary_cells, None)
+                        } else {
+                            let columns: Vec<Column> = query_result
+                                .columns
+                                .iter()
+                                .map(|col| Column::new(col.clone(), col.clone()))
+                                .collect();
+                            let rows: Vec<Vec<Option<String>>> = query_result
+                                .rows
+                                .iter()
+                                .map(|row| row.iter().cloned().collect())
+                                .collect();
+                            (
+                                columns,
+                                rows,
+                                Vec::new(),
+                                query_result.binary_cells.clone(),
+                                query_result.typed_batch.clone(),
+                            )
+                        };
+
+                    let column_meta: Vec<ColumnInfo> =
+                        column_infos_from_query_meta(&query_result.column_meta)
+                            .into_iter()
+                            .filter(|col| col.name != "__rowid__")
+                            .collect();
+
+                    cx.update(|cx| {
+                        if !data_generation_is_current(&data_generation, expected_generation) {
+                            return;
+                        }
+                        table_data_info.update(cx, |info, cx| {
+                            info.total_count = response.total_count;
+                            info.current_sql = query_result.sql.clone();
+                            info.duration = response.duration;
+                            info.current_page = response.page;
+                            info.columns = column_meta.clone();
+                            info.index_infos = vec![];
+                            info.error_message = None;
+                            cx.notify();
+                        });
+                    });
+
+                    cx.update(|cx| {
+                        if !data_generation_is_current(&data_generation, expected_generation) {
+                            return;
+                        }
+                        filter_editor.update(cx, |editor, cx| {
+                            editor.set_schema(
+                                TableSchema {
+                                    columns: column_meta.clone(),
+                                },
+                                cx,
+                            );
+                        });
+
+                        table.update(cx, |state, cx| {
+                            state.delegate_mut().set_loading(false);
+                            state.delegate_mut().set_column_meta(column_meta);
+                            state.delegate_mut().update_data_with_typed_batch(
+                                columns,
+                                rows,
+                                rowids,
+                                binary_cells,
+                                typed_batch,
+                                cx,
+                            );
+                            state.delegate_mut().apply_order_by_clause(&order_by_clause);
+                            state.refresh(cx);
+                        });
+                    });
+
+                    match list_columns_direct_on_runtime(
+                        cx,
+                        global_state,
+                        connection_id,
+                        database_name,
+                        schema_name,
+                        table_name,
+                    )
+                    .await
+                    {
+                        Ok(column_meta) => {
+                            cx.update(|cx| {
+                                if !data_generation_is_current(
+                                    &data_generation,
+                                    expected_generation,
+                                ) {
+                                    return;
+                                }
+
+                                filter_editor.update(cx, |editor, cx| {
+                                    editor.set_schema(
+                                        TableSchema {
+                                            columns: column_meta.clone(),
+                                        },
+                                        cx,
+                                    );
+                                });
+
+                                let reconcile_result = table.update(cx, |state, cx| {
+                                    let result = state
+                                        .delegate_mut()
+                                        .reconcile_binary_cells_with_column_meta(
+                                            column_meta.clone(),
+                                        );
+                                    if result.is_ok() {
+                                        state.refresh(cx);
+                                    }
+                                    result
+                                });
+                                match reconcile_result {
+                                    Ok(()) => {
+                                        table_data_info.update(cx, |info, cx| {
+                                            info.columns = column_meta;
+                                            cx.notify();
+                                        });
+                                    }
+                                    Err(error) => tracing::warn!(
+                                        "failed to reconcile table data binary cells with metadata: {error}"
+                                    ),
+                                }
+                            });
+                        }
+                        Err(err) => {
+                            trace!("load_data_with_clauses list_columns failed: {}", err);
+                        }
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
+    fn handle_refresh(&self, cx: &mut App) {
+        match self.config.usage {
+            DataGridUsage::TableData => {
+                let page = self.table_data_info.read(cx).current_page;
+                self.load_data_with_clauses(page, cx);
+            }
+            DataGridUsage::SqlResult => {
+                self.load_data_with_sql(self.config.sql.clone(), cx);
+            }
+        }
+    }
+
+    pub fn refresh_data(&self, cx: &mut App) {
+        if self.table.read(cx).delegate().is_loading() {
+            return;
+        }
+        self.handle_refresh(cx);
+    }
+
+    pub fn open_large_text_editor(&self, window: &mut Window, cx: &mut Context<Self>) {
+        let settings = cx.global::<AppSettings>();
+        match resolve_large_text_editor_route(settings.large_text_cell_editor_open_mode) {
+            LargeTextEditorRoute::PagePreview => {
+                cx.emit(DataGridEvent::ToggleLargeTextEditorRequested);
+            }
+            LargeTextEditorRoute::Dialog => {
+                self.show_large_text_editor(window, cx);
+            }
+        }
+    }
+
+    pub fn set_large_text_editor_sidebar_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        if self.is_large_text_editor_sidebar_open == open {
+            return;
+        }
+
+        self.is_large_text_editor_sidebar_open = open;
+        cx.notify();
+    }
+
+    pub fn open_export_view(&self, window: &mut Window, cx: &mut App) {
+        if self.config.usage != DataGridUsage::TableData {
+            window.push_notification(t!("TableDataGrid.export_not_supported").to_string(), cx);
+            return;
+        }
+
+        let connection_id = self.config.connection_id.clone();
+        let database_name = self.config.database_name.clone();
+        let schema_name = self.config.schema_name.clone();
+        let table_name = self.config.table_name.clone();
+
+        let export_view = cx.new(|cx| {
+            DataExportView::new(
+                connection_id.clone(),
+                database_name.clone(),
+                schema_name.clone(),
+                table_name.clone(),
+                window,
+                cx,
+            )
+        });
+
+        let existing_columns = self.table_data_info.read(cx).columns.clone();
+        if !existing_columns.is_empty() {
+            export_view.update(cx, |view, cx| {
+                view.update_column_list(existing_columns, cx);
+            });
+        } else {
+            let global_state = cx.global::<GlobalDbState>().clone();
+            let export_view_handle = export_view.clone();
+            let connection_id_for_columns = self.config.connection_id.clone();
+            let database_name_for_columns = self.config.database_name.clone();
+            let schema_name_for_columns = self.config.schema_name.clone();
+            let table_name_for_columns = self.config.table_name.clone();
+
+            cx.spawn(async move |cx: &mut AsyncApp| {
+                let columns_result = list_columns_direct_on_runtime(
+                    cx,
+                    global_state,
+                    connection_id_for_columns,
+                    database_name_for_columns,
+                    schema_name_for_columns,
+                    table_name_for_columns,
+                )
+                .await;
+
+                match columns_result {
+                    Ok(columns) => {
+                        cx.update(|cx| {
+                            export_view_handle.update(cx, |view, cx| {
+                                view.update_column_list(columns, cx);
+                            });
+                        });
+                    }
+                    Err(error) => {
+                        error!("Failed to fetch export columns: {}", error);
+                    }
+                }
+            })
+            .detach();
+        }
+
+        // 复用键按「哪一个连接库里的哪一张表」区分：同一张表的导出窗口反复打开
+        // 复用同一个原生窗口，不同表各自的窗口不会互相顶掉。
+        let reuse_key = format!(
+            "table-export:{}:{}.{}.{}",
+            self.config.connection_id,
+            self.config.database_name,
+            self.config.schema_name.as_deref().unwrap_or(""),
+            self.config.table_name
+        );
+        open_reusable_popup_window(
+            PopupWindowOptions::new(t!("TableDataGrid.export_table").to_string())
+                .size(800.0, 600.0),
+            reuse_key,
+            move |_window, _cx| export_view.clone(),
+            Some(window),
+            cx,
+        );
+    }
+
+    fn export_result_set(
+        &self,
+        scope: ExportScope,
+        format: ExportFormat,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        if self.table.read(cx).delegate().is_loading() {
+            window.push_notification(t!("TableDataGrid.export_loading").to_string(), cx);
+            return;
+        }
+
+        let usage = self.config.usage.clone();
+        let connection_id = self.config.connection_id.clone();
+        let database_name = self.config.database_name.clone();
+        let schema_name = self.config.schema_name.clone();
+        let session_id = self.config.session_id.clone();
+        let sql = self.config.sql.clone();
+        let table_name = self.config.table_name.clone();
+        let current_page = self.table_data_info.read(cx).current_page;
+        let total_count = self.table_data_info.read(cx).total_count;
+        let where_clause = self.filter_editor.read(cx).get_where_clause(cx);
+        let order_by_clause = self.filter_editor.read(cx).get_order_by_clause(cx);
+        let table = self.table.clone();
+        let metadata = self.table.read(cx).delegate().get_table_metadata();
+        let window_id = cx.active_window();
+        let global_state = cx.global::<GlobalDbState>().clone();
+        let plugin = global_state.get_plugin(&self.config.database_type).ok();
+        let prompt_future = cx.prompt_for_paths(PathPromptOptions {
+            files: false,
+            multiple: false,
+            directories: true,
+            prompt: Some(t!("TableDataGrid.select_export_directory").into()),
+        });
+
+        cx.spawn(async move |cx: &mut AsyncApp| {
+            let output_dir: PathBuf = match prompt_future.await {
+                Ok(Ok(Some(paths))) => match paths.first() {
+                    Some(path) => path.clone(),
+                    None => return,
+                },
+                _ => return,
+            };
+
+            let export_payload = match scope {
+                ExportScope::CurrentPage => match Self::collect_visible_rows(&table, cx) {
+                    Ok(payload) => payload,
+                    Err(error) => {
+                        notify_export_failure(cx, window_id, error);
+                        return;
+                    }
+                },
+                ExportScope::All => match usage {
+                    DataGridUsage::TableData => {
+                        if total_count == 0 {
+                            None
+                        } else {
+                            let mut request = TableDataRequest::new(&database_name, &table_name)
+                                .with_page(1, total_count)
+                                .with_where_clause(where_clause)
+                                .with_order_by_clause(order_by_clause);
+
+                            if let Some(schema) = schema_name.clone() {
+                                request = request.with_schema(schema);
+                            }
+
+                            match global_state
+                                .query_table_data(cx, connection_id.clone(), request)
+                                .await
+                            {
+                                Ok(response) => {
+                                    let query_result = response.query_result;
+                                    Some(Self::normalize_query_result(query_result))
+                                }
+                                Err(error) => {
+                                    notify_export_failure(cx, window_id, error.to_string());
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    DataGridUsage::SqlResult => {
+                        let request = SqlResultExportRequest {
+                            connection_id: connection_id.clone(),
+                            database: (!database_name.is_empty()).then_some(database_name.clone()),
+                            schema: schema_name.clone(),
+                            session_id: session_id.clone(),
+                            sql: sql.clone(),
+                        };
+                        match execute_sql_result_export(global_state.clone(), request, cx).await {
+                            Ok(payload) => Some(payload),
+                            Err(error) => {
+                                notify_export_failure(cx, window_id, error);
+                                return;
+                            }
+                        }
+                    }
+                },
+            };
+
+            let Some(ExportPayload {
+                columns,
+                rows,
+                binary_cells,
+            }) = export_payload
+            else {
+                let _ = cx.update(|cx| {
+                    if let Some(window_id) = window_id {
+                        let _ = cx.update_window(window_id, |_entity, window, cx| {
+                            window.push_notification(
+                                t!("TableDataGrid.no_data_to_export").to_string(),
+                                cx,
+                            );
+                        });
+                    }
+                });
+                return;
+            };
+
+            let input = ExportBuildInput {
+                rows,
+                binary_cells,
+                columns: columns.clone(),
+                metadata: metadata.clone(),
+                plugin: plugin.clone(),
+            };
+            let bytes = match build_export_bytes(format, input) {
+                Ok(Some(bytes)) => bytes,
+                Ok(None) => {
+                    let _ = cx.update(|cx| {
+                        if let Some(window_id) = window_id {
+                            let _ = cx.update_window(window_id, |_entity, window, cx| {
+                                window.push_notification(
+                                    t!("TableDataGrid.no_data_to_export").to_string(),
+                                    cx,
+                                );
+                            });
+                        }
+                    });
+                    return;
+                }
+                Err(error) => {
+                    let _ = cx.update(|cx| {
+                        if let Some(window_id) = window_id {
+                            let _ = cx.update_window(window_id, |_entity, window, cx| {
+                                window.push_notification(
+                                    t!("TableDataGrid.export_failed", error = error).to_string(),
+                                    cx,
+                                );
+                            });
+                        }
+                    });
+                    return;
+                }
+            };
+
+            let base_name = if table_name.is_empty() {
+                "result_set"
+            } else {
+                table_name.as_str()
+            };
+            let scope_suffix = match scope {
+                ExportScope::All => "all".to_string(),
+                ExportScope::CurrentPage => format!("page-{}", current_page),
+            };
+            let now = Local::now();
+            let datetime_str = now.format("%Y-%m-%d_%H-%M-%S").to_string();
+            let prefix = if database_name.is_empty() {
+                base_name.to_string()
+            } else {
+                format!("{}_{}", database_name, base_name)
+            };
+            let filename = format!(
+                "{}_{}_{}.{}",
+                prefix,
+                scope_suffix,
+                datetime_str,
+                format.extension()
+            );
+            let full_path = output_dir.join(filename);
+            let full_path_for_write = full_path.clone();
+
+            let write_result = cx
+                .background_spawn(async move { std::fs::write(&full_path_for_write, bytes) })
+                .await;
+
+            let _ = cx.update(|cx| {
+                if let Some(window_id) = window_id {
+                    let _ = cx.update_window(window_id, |_entity, window, cx| match write_result {
+                        Ok(()) => {
+                            window.push_notification(
+                                t!("TableDataGrid.export_complete", path = full_path.display())
+                                    .to_string(),
+                                cx,
+                            );
+                        }
+                        Err(error) => {
+                            window.push_notification(
+                                t!("TableDataGrid.export_failed", error = error).to_string(),
+                                cx,
+                            );
+                        }
+                    });
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn collect_visible_rows(
+        table: &Entity<EditTableState<EditorTableDelegate>>,
+        cx: &AsyncApp,
+    ) -> Result<Option<ExportPayload>, String> {
+        table.read_with(cx, |table_state, _cx| {
+            let delegate = table_state.delegate();
+            let row_count = delegate.filtered_row_count();
+            if row_count == 0 {
+                return Ok(None);
+            }
+
+            let mut row_indices = Vec::with_capacity(row_count);
+            for display_row in 0..row_count {
+                let Some(actual_row) = delegate.resolve_display_row(display_row) else {
+                    continue;
+                };
+                if delegate.is_deleted_row(actual_row) {
+                    continue;
+                }
+                row_indices.push(actual_row);
+            }
+
+            let (rows, binary_cells) = delegate
+                .get_rows_with_binary_cells(&row_indices)
+                .map_err(|error| error.to_string())?;
+            if rows.is_empty() {
+                return Ok(None);
+            }
+
+            let columns = delegate
+                .columns
+                .iter()
+                .map(|column| column.name.clone())
+                .collect();
+
+            Ok(Some(ExportPayload {
+                columns,
+                rows,
+                binary_cells,
+            }))
+        })
+    }
+
+    fn normalize_query_result(query_result: QueryResult) -> ExportPayload {
+        if query_result.columns.first().map(|name| name.as_str()) == Some("__rowid__") {
+            let columns = query_result
+                .columns
+                .into_iter()
+                .skip(1)
+                .map(SharedString::from)
+                .collect();
+            let rows = query_result
+                .rows
+                .into_iter()
+                .map(|row| row.into_iter().skip(1).collect())
+                .collect();
+            let binary_cells = query_result
+                .binary_cells
+                .into_iter()
+                .filter_map(|cell| {
+                    cell.column_index
+                        .checked_sub(1)
+                        .map(|column_index| BinaryCell {
+                            row_index: cell.row_index,
+                            column_index,
+                            bytes: cell.bytes,
+                        })
+                })
+                .collect();
+            ExportPayload {
+                columns,
+                rows,
+                binary_cells,
+            }
+        } else {
+            let columns = query_result
+                .columns
+                .into_iter()
+                .map(SharedString::from)
+                .collect();
+            ExportPayload {
+                columns,
+                rows: query_result.rows,
+                binary_cells: query_result.binary_cells,
+            }
+        }
+    }
+
+    fn load_data_with_sql(&self, sql: String, cx: &mut App) {
+        let expected_generation = self.data_generation.fetch_add(1, Ordering::AcqRel) + 1;
+        let data_generation = self.data_generation.clone();
+        let global_state = cx.global::<GlobalDbState>().clone();
+        let connection_id = self.config.connection_id.clone();
+        let database_name = self.config.database_name.clone();
+        let schema_name = self.config.schema_name.clone();
+        let table = self.table.clone();
+        let table_name = self.config.table_name.clone();
+        let editable = self.config.editable;
+        let need_authoritative_meta = self.config.database_type == DatabaseType::MySQL
+            && self.config.schema_metadata_safe
+            && !self.config.table_name.is_empty();
+        let comment_lineage = if one_ui::table_column_comment_in_header(cx) {
+            cx.global::<GlobalDbState>()
+                .db_manager
+                .get_plugin(&self.config.database_type)
+                .ok()
+                .and_then(|plugin| plugin.analyze_result_column_lineage(&sql))
+        } else {
+            None
+        };
+
+        cx.spawn(async move |cx: &mut AsyncApp| {
+            let result: Result<(SqlResult, Option<Vec<ColumnInfo>>), anyhow::Error> = async {
+                let sql_result = global_state
+                    .execute_single(
+                        cx,
+                        connection_id.clone(),
+                        sql.clone(),
+                        Some(database_name.clone()),
+                        None,
+                    )
+                    .await?;
+                if editable && need_authoritative_meta {
+                    let column_meta = list_columns_direct_on_runtime(
+                        cx,
+                        global_state.clone(),
+                        connection_id.clone(),
+                        database_name.clone(),
+                        schema_name.clone(),
+                        table_name.clone(),
+                    )
+                    .await?;
+                    return Ok((sql_result, Some(column_meta)));
+                }
+                Ok((sql_result, None))
+            }
+            .await;
+
+            match result {
+                Err(err) => cx.update(|cx| {
+                    if !data_generation_is_current(&data_generation, expected_generation) {
+                        return;
+                    }
+                    notification(
+                        cx,
+                        t!("TableDataGrid.execute_sql_failed", error = err.to_string()).to_string(),
+                    );
+                }),
+                Ok(results) => {
+                    if !data_generation_is_current(&data_generation, expected_generation) {
+                        return;
+                    }
+                    let (result, column_meta) = results;
+                    if let SqlResult::Query(query_result) = result {
+                        let comments = match &comment_lineage {
+                            Some(lineage) if !lineage.tables.is_empty() => {
+                                let table_columns = load_lineage_table_columns_on_runtime(
+                                    cx,
+                                    global_state.clone(),
+                                    connection_id.clone(),
+                                    database_name.clone(),
+                                    schema_name.clone(),
+                                    lineage.tables.clone(),
+                                )
+                                .await;
+                                resolve_result_column_comments(
+                                    &table_columns,
+                                    lineage,
+                                    &query_result.columns,
+                                )
+                            }
+                            _ => Vec::new(),
+                        };
+                        let binary_cells = query_result.binary_cells.clone();
+                        let columns: Vec<Column> = query_result
+                            .columns
+                            .iter()
+                            .map(|col| Column::new(col.clone(), col.clone()))
+                            .collect();
+                        let rows: Vec<Vec<Option<String>>> = query_result
+                            .rows
+                            .iter()
+                            .map(|row| row.iter().cloned().collect())
+                            .collect();
+                        cx.update(|cx| {
+                            if !data_generation_is_current(
+                                &data_generation,
+                                expected_generation,
+                            ) {
+                                return;
+                            }
+                            table.update(cx, |state, cx| {
+                                state.delegate_mut().update_data_with_typed_batch(
+                                    columns,
+                                    rows,
+                                    vec![],
+                                    binary_cells,
+                                    query_result.typed_batch.clone(),
+                                    cx,
+                                );
+                                // 快路径：结果集自带的列类型直接可用
+                                state
+                                    .delegate_mut()
+                                    .set_column_meta(column_infos_from_query_meta(
+                                        &query_result.column_meta,
+                                    ));
+                                if let Some(columns) = column_meta
+                                    && let Err(error) = state
+                                        .delegate_mut()
+                                        .reconcile_binary_cells_with_column_meta(columns)
+                                {
+                                    tracing::warn!(
+                                        "failed to reconcile refreshed SQL result binary cells with metadata: {error}"
+                                    );
+                                }
+                                if !comments.is_empty() {
+                                    state.delegate_mut().set_column_comments(&comments);
+                                }
+                                state.refresh(cx);
+                            });
+                        })
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
+    fn handle_prev_page(&self, cx: &mut App) {
+        let page = self.table_data_info.read(cx).current_page;
+        if page > 1 {
+            self.load_data_with_clauses(page - 1, cx);
+        }
+    }
+
+    fn handle_next_page(&self, cx: &mut App) {
+        let info = self.table_data_info.read(cx);
+        let page = info.current_page;
+        let total = info.total_count;
+        let page_size = info.page_size;
+
+        if page_size == 0 {
+            return;
+        }
+        let total_pages = total.div_ceil(page_size);
+        if page < total_pages {
+            self.load_data_with_clauses(page + 1, cx);
+        }
+    }
+
+    fn handle_page_size_change(&self, new_size: usize, cx: &mut App) {
+        self.table_data_info.update(cx, |info, cx| {
+            info.page_size = new_size;
+            cx.notify();
+        });
+        self.load_data_with_clauses(1, cx);
+    }
+
+    fn handle_page_change_500(&mut self, _: &Page500, _: &mut Window, cx: &mut Context<Self>) {
+        self.handle_page_size_change(500, cx)
+    }
+
+    fn handle_page_change_1000(&mut self, _: &Page1000, _: &mut Window, cx: &mut Context<Self>) {
+        self.handle_page_size_change(1000, cx)
+    }
+
+    fn handle_page_change_2000(&mut self, _: &Page2000, _: &mut Window, cx: &mut Context<Self>) {
+        self.handle_page_size_change(2000, cx)
+    }
+
+    fn handle_page_change_10000(&mut self, _: &Page10000, _: &mut Window, cx: &mut Context<Self>) {
+        self.handle_page_size_change(10000, cx)
+    }
+
+    fn handle_page_change_100000(
+        &mut self,
+        _: &Page100000,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.handle_page_size_change(100000, cx)
+    }
+
+    fn handle_add_row(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.table.update(cx, |state, cx| state.add_row(window, cx));
+    }
+
+    fn handle_delete_row(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.table.update(cx, |state, cx| {
+            // 优先使用多选区对应的行；没有多选时回退到旧的单选兼容状态。
+            let row_indices = collect_delete_row_indices(
+                state
+                    .selection()
+                    .all_cells()
+                    .into_iter()
+                    .map(|(row_ix, _)| row_ix),
+                state
+                    .selected_row()
+                    .or_else(|| state.selected_cell().map(|(row_ix, _)| row_ix)),
+            );
+
+            // 整批交给委托：逐行删除时行集与筛选映射会变，后面的显示行号会落到别的行上。
+            state.delete_rows(&row_indices, window, cx);
+        });
+    }
+
+    fn handle_revert_changes(
+        &mut self,
+        _: &ClickEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.revert_changes(cx);
+    }
+
+    fn handle_sql_preview(&mut self, _: &ClickEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.table.update(cx, |state, cx| {
+            state.commit_cell_edit(window, cx);
+        });
+        self.show_sql_preview(window, cx);
+    }
+
+    /// 复制底部状态栏里那条实际执行的 SQL（#290）。
+    ///
+    /// 宽表场景下这条 SQL 常被省略号截断，复制的是**完整文本**，不是屏幕上看到的那一截。
+    fn handle_copy_current_sql(
+        &mut self,
+        _: &ClickEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let sql = self.table_data_info.read(cx).current_sql.clone();
+        if sql.trim().is_empty() {
+            return;
+        }
+        cx.write_to_clipboard(ClipboardItem::new_string(sql));
+        window.push_notification(t!("TableDataGrid.sql_copied").to_string(), cx);
+    }
+
+    fn handle_commit_changes(&mut self, _: &ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+        cx.emit(DataGridEvent::SaveChangesRequested);
+    }
+
+    fn handle_large_text_editor(
+        &mut self,
+        _: &ClickEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.open_large_text_editor(window, cx);
+    }
+
+    fn handle_open_table_designer(
+        &mut self,
+        _: &ClickEvent,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        cx.emit(DataGridEvent::OpenTableDesignerRequested);
+    }
+
+    fn on_action_open_table_designer(
+        &mut self,
+        _: &OpenTableDesigner,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        cx.emit(DataGridEvent::OpenTableDesignerRequested);
+    }
+
+    fn on_action_open_table_query(
+        &mut self,
+        _: &OpenSelectedTableQuery,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        cx.emit(DataGridEvent::OpenTableQueryRequested);
+    }
+
+    fn handle_toolbar_refresh(
+        &mut self,
+        _: &ClickEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.handle_refresh(cx);
+    }
+
+    fn handle_prev_page_click(
+        &mut self,
+        _: &ClickEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.handle_prev_page(cx);
+    }
+
+    fn handle_next_page_click(
+        &mut self,
+        _: &ClickEvent,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.handle_next_page(cx);
+    }
+
+    // ========== 大文本编辑器 ==========
+
+    fn show_large_text_editor(&self, window: &mut Window, cx: &mut App) {
+        let Some(target) = self.selected_large_text_target(cx) else {
+            window.push_notification(t!("TableData.select_cell").to_string(), cx);
+            return;
+        };
+
+        self.show_text_editor_dialog(
+            TextEditorDialogRequest {
+                initial_text: target.value,
+                title: build_large_text_editor_title(&target.column_name, target.display_row_ix),
+                display_row_ix: target.display_row_ix,
+                original_col_ix: target.col_ix,
+                editable: target.editable,
+            },
+            window,
+            cx,
+        );
+    }
+
+    /// 选中单元格对应的大文本编辑目标。
+    ///
+    /// 选中坐标是网格坐标，换算（展示列 → 原始列、显示行 → 实际行）一律交给
+    /// delegate，见 [`EditorTableDelegate::large_text_cell_target`]。
+    pub fn selected_large_text_target(&self, cx: &App) -> Option<LargeTextCellTarget> {
+        let table = self.table.read(cx);
+        let (display_row_ix, grid_col_ix) = table.selected_cell()?;
+        let delegate = table.delegate();
+
+        delegate.large_text_cell_target(
+            display_row_ix,
+            grid_col_ix,
+            delegate.row_number_enabled(cx),
+            self.config.editable,
+        )
+    }
+
+    pub fn apply_large_text_target_value(
+        &self,
+        target: &LargeTextCellTarget,
+        value: String,
+        cx: &mut App,
+    ) -> bool {
+        self.table.update(cx, |state, cx| {
+            let delegate = state.delegate_mut();
+            let changed = delegate.record_cell_change(target.actual_row_ix, target.col_ix, value);
+
+            if changed {
+                state.refresh(cx);
+            }
+
+            changed
+        })
+    }
+
+    fn show_text_editor_dialog(
+        &self,
+        request: TextEditorDialogRequest,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let dialog_text_editor =
+            create_large_text_editor_with_content(Some(request.initial_text.clone()), window, cx);
+        let data_grid = self.clone();
+
+        window.open_dialog(cx, move |dialog, _window, _cx| {
+            let editor = dialog_text_editor.clone();
+            let data_grid = data_grid.clone();
+            let original_text = request.initial_text.clone();
+
+            let mut d = dialog
+                .title(SharedString::from(request.title.clone()))
+                .w(px(800.0))
+                .h(px(600.0))
+                .child(v_flex().w_full().h_full().child(editor.clone()))
+                .close_button(true)
+                .overlay(false)
+                .content_center()
+                .confirm()
+                .button_props(DialogButtonProps::default().show_cancel(true));
+
+            if request.editable {
+                d = d.on_ok(move |_, window, cx| {
+                    if !editor.read(cx).has_pending_writeback() {
+                        return true;
+                    }
+                    let content = editor.read(cx).get_writeback_text(cx);
+                    return match content {
+                        Ok(val) => {
+                            if large_text_values_equivalent(&original_text, &val) {
+                                editor.update(cx, |editor, _| {
+                                    editor.mark_writeback_clean();
+                                });
+                                return true;
+                            }
+                            editor.update(cx, |editor, _| {
+                                editor.mark_writeback_clean();
+                            });
+                            data_grid.table.update(cx, |state, cx| {
+                                let delegate = state.delegate_mut();
+                                let Some(actual_row_ix) =
+                                    delegate.resolve_display_row(request.display_row_ix)
+                                else {
+                                    return false;
+                                };
+
+                                let changed = delegate.record_cell_change(
+                                    actual_row_ix,
+                                    request.original_col_ix,
+                                    val,
+                                );
+
+                                if changed {
+                                    state.refresh(cx);
+                                }
+
+                                changed
+                            });
+                            true
+                        }
+                        Err(err) => {
+                            window.push_notification(
+                                t!("TableDataGrid.error_message", error = err).to_string(),
+                                cx,
+                            );
+                            false
+                        }
+                    };
+                });
+            }
+
+            d
+        });
+    }
+
+    // ========== 数据变更 ==========
+
+    pub fn get_changes(&self, cx: &App) -> Vec<RowChange> {
+        self.table.read(cx).delegate().get_changes()
+    }
+
+    pub fn column_names(&self, cx: &App) -> Vec<String> {
+        self.table.read(cx).delegate().column_names()
+    }
+
+    pub fn clear_changes(&self, cx: &mut App) {
+        self.table.update(cx, |state, cx| {
+            state.delegate_mut().clear_changes();
+            cx.notify();
+        });
+    }
+
+    fn clear_changes_and_refresh(&self, cx: &mut App) {
+        self.clear_changes(cx);
+        self.handle_refresh(cx);
+    }
+
+    pub fn revert_changes(&self, cx: &mut App) {
+        self.table.update(cx, |state, cx| {
+            state.delegate_mut().revert_all_changes();
+            state.refresh(cx);
+            cx.notify();
+        });
+    }
+
+    pub fn has_unsaved_changes(&self, cx: &App) -> bool {
+        let table = self.table.read(cx);
+        table_has_unsaved_changes(table.editing_cell(), table.delegate().get_changes().len())
+    }
+
+    // ========== 复制为 SQL 语句 ==========
+
+    /// 复制选中行为 INSERT 语句
+    pub fn copy_as_insert(&self, row_indices: &[usize], cx: &App) -> String {
+        use db::CopySqlRequest;
+
+        let table = self.table.read(cx);
+        let delegate = table.delegate();
+
+        let row_indices = resolve_copy_row_indices(delegate, row_indices);
+        let Ok(rows_data) = delegate.get_typed_rows_data(&row_indices) else {
+            return String::new();
+        };
+        if rows_data.is_empty() {
+            return String::new();
+        }
+
+        let column_names = delegate.column_names();
+        let columns_meta = delegate.column_meta().to_vec();
+
+        let global_state = cx.global::<GlobalDbState>().clone();
+        match global_state
+            .db_manager
+            .get_plugin(&self.config.database_type)
+        {
+            Ok(plugin) => {
+                let mut request = CopySqlRequest::new(&self.config.table_name, columns_meta)
+                    .with_typed_rows(rows_data)
+                    .with_column_names(column_names);
+                if let Some(schema) = &self.config.schema_name {
+                    request = request.with_schema(schema);
+                }
+                plugin.generate_copy_insert_sql(&request)
+            }
+            Err(_) => String::new(),
+        }
+    }
+
+    /// 复制选中行为 INSERT 语句（带字段注释）
+    pub fn copy_as_insert_with_comments(&self, row_indices: &[usize], cx: &App) -> String {
+        use db::CopySqlRequest;
+
+        let table = self.table.read(cx);
+        let delegate = table.delegate();
+
+        let row_indices = resolve_copy_row_indices(delegate, row_indices);
+        let Ok(rows_data) = delegate.get_typed_rows_data(&row_indices) else {
+            return String::new();
+        };
+        if rows_data.is_empty() {
+            return String::new();
+        }
+
+        let column_names = delegate.column_names();
+        let columns_meta = delegate.column_meta().to_vec();
+
+        let global_state = cx.global::<GlobalDbState>().clone();
+        match global_state
+            .db_manager
+            .get_plugin(&self.config.database_type)
+        {
+            Ok(plugin) => {
+                let mut request = CopySqlRequest::new(&self.config.table_name, columns_meta)
+                    .with_typed_rows(rows_data)
+                    .with_column_names(column_names);
+                if let Some(schema) = &self.config.schema_name {
+                    request = request.with_schema(schema);
+                }
+                plugin.generate_copy_insert_with_comments_sql(&request)
+            }
+            Err(_) => String::new(),
+        }
+    }
+
+    /// 复制选中行为 UPDATE 语句
+    pub fn copy_as_update(&self, row_indices: &[usize], cx: &App) -> String {
+        use db::CopySqlRequest;
+
+        let table = self.table.read(cx);
+        let delegate = table.delegate();
+
+        let row_indices = resolve_copy_row_indices(delegate, row_indices);
+        let Ok(rows_data) = delegate.get_typed_rows_data(&row_indices) else {
+            return String::new();
+        };
+        let Ok(original_rows) = delegate.get_typed_original_rows_data(&row_indices) else {
+            return String::new();
+        };
+        if rows_data.is_empty() {
+            return String::new();
+        }
+
+        let column_names = delegate.column_names();
+        let columns_meta = delegate.column_meta().to_vec();
+
+        let global_state = cx.global::<GlobalDbState>().clone();
+        match global_state
+            .db_manager
+            .get_plugin(&self.config.database_type)
+        {
+            Ok(plugin) => {
+                let mut request = CopySqlRequest::new(&self.config.table_name, columns_meta)
+                    .with_typed_rows(rows_data)
+                    .with_typed_original_rows(original_rows)
+                    .with_column_names(column_names);
+                if let Some(schema) = &self.config.schema_name {
+                    request = request.with_schema(schema);
+                }
+                plugin.generate_copy_update_sql(&request)
+            }
+            Err(_) => String::new(),
+        }
+    }
+
+    /// 复制选中行为 DELETE 语句
+    pub fn copy_as_delete(&self, row_indices: &[usize], cx: &App) -> String {
+        use db::CopySqlRequest;
+
+        let table = self.table.read(cx);
+        let delegate = table.delegate();
+
+        let row_indices = resolve_copy_row_indices(delegate, row_indices);
+        let Ok(original_rows) = delegate.get_typed_original_rows_data(&row_indices) else {
+            return String::new();
+        };
+        if original_rows.is_empty() {
+            return String::new();
+        }
+
+        let column_names = delegate.column_names();
+        let columns_meta = delegate.column_meta().to_vec();
+
+        let global_state = cx.global::<GlobalDbState>().clone();
+        match global_state
+            .db_manager
+            .get_plugin(&self.config.database_type)
+        {
+            Ok(plugin) => {
+                let mut request = CopySqlRequest::new(&self.config.table_name, columns_meta)
+                    .with_typed_original_rows(original_rows)
+                    .with_column_names(column_names);
+                if let Some(schema) = &self.config.schema_name {
+                    request = request.with_schema(schema);
+                }
+                plugin.generate_copy_delete_sql(&request)
+            }
+            Err(_) => String::new(),
+        }
+    }
+
+    /// 获取当前选中的行索引列表
+    pub fn selected_row_indices(&self, cx: &App) -> Vec<usize> {
+        let table = self.table.read(cx);
+        let selection = table.selection();
+
+        if selection.is_empty() {
+            // 如果没有多选，检查单选的行
+            if let Some(row_ix) = table.selected_row() {
+                return vec![row_ix];
+            }
+            return vec![];
+        }
+
+        // 从选区获取所有行
+        let mut rows: Vec<usize> = selection.all_cells().iter().map(|(row, _)| *row).collect();
+        rows.sort();
+        rows.dedup();
+        rows
+    }
+
+    /// 复制当前选中行为指定类型的 SQL
+    pub fn copy_selection_as_sql(&self, sql_type: db::CopyAsSqlType, cx: &App) -> String {
+        use db::CopyAsSqlType;
+
+        let row_indices = self.selected_row_indices(cx);
+        if row_indices.is_empty() {
+            return String::new();
+        }
+
+        match sql_type {
+            CopyAsSqlType::Insert => self.copy_as_insert(&row_indices, cx),
+            CopyAsSqlType::InsertWithComments => {
+                self.copy_as_insert_with_comments(&row_indices, cx)
+            }
+            CopyAsSqlType::Update => self.copy_as_update(&row_indices, cx),
+            CopyAsSqlType::Delete => self.copy_as_delete(&row_indices, cx),
+        }
+    }
+
+    pub fn convert_row_changes(
+        changes: Vec<RowChange>,
+        column_names: &[String],
+    ) -> Vec<TableRowChange> {
+        changes
+            .into_iter()
+            .filter_map(|change| match change {
+                RowChange::Added { data } => Some(TableRowChange::Added {
+                    data: data.into_iter().map(TableCellValue::from).collect(),
+                }),
+                RowChange::Updated {
+                    original_data,
+                    changes,
+                    rowid,
+                } => {
+                    let converted: Vec<TableCellChange> = changes
+                        .into_iter()
+                        .map(|c| TableCellChange {
+                            column_index: c.col_ix,
+                            column_name: if c.col_name.is_empty() {
+                                column_names.get(c.col_ix).cloned().unwrap_or_default()
+                            } else {
+                                c.col_name
+                            },
+                            old_value: TableCellValue::from(c.old_value),
+                            new_value: TableCellValue::from(c.new_value),
+                        })
+                        .collect();
+
+                    if converted.is_empty() {
+                        None
+                    } else {
+                        Some(TableRowChange::Updated {
+                            original_data: original_data
+                                .into_iter()
+                                .map(TableCellValue::from)
+                                .collect(),
+                            changes: converted,
+                            rowid,
+                        })
+                    }
+                }
+                RowChange::Deleted {
+                    original_data,
+                    rowid,
+                } => Some(TableRowChange::Deleted {
+                    original_data: original_data
+                        .into_iter()
+                        .map(TableCellValue::from)
+                        .collect(),
+                    rowid,
+                }),
+            })
+            .collect()
+    }
+
+    pub fn create_save_request(
+        &self,
+        columns: Vec<ColumnInfo>,
+        index_infos: Vec<IndexInfo>,
+        cx: &App,
+    ) -> Option<TableSaveRequest> {
+        let changes = self.get_changes(cx);
+        if changes.is_empty() {
+            return None;
+        }
+
+        let column_names = self.column_names(cx);
+        let table_changes = Self::convert_row_changes(changes, &column_names);
+
+        if table_changes.is_empty() {
+            return None;
+        }
+
+        Some(TableSaveRequest {
+            database: self.config.database_name.clone(),
+            schema: self.config.schema_name.clone(),
+            table: self.config.table_name.clone(),
+            columns,
+            index_infos,
+            changes: table_changes,
+        })
+    }
+
+    pub fn save_changes(&self, window: &mut Window, cx: &mut App) {
+        self.table.update(cx, |state, cx| {
+            state.commit_cell_edit(window, cx);
+        });
+        self.handle_save_changes(&ClickEvent::default(), window, cx);
+    }
+
+    pub fn save_and_close(
+        &self,
+        tab_container: Entity<TabContainer>,
+        tab_id: String,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        self.table.update(cx, |state, cx| {
+            state.commit_cell_edit(window, cx);
+        });
+        let changes = self.get_changes(cx);
+        let window_handle = window.window_handle();
+        if changes.is_empty() {
+            let _ = cx.update_window(window_handle, |_, window, cx| {
+                tab_container.update(cx, |container, cx| {
+                    container.force_close_tab_by_id(&tab_id, window, cx);
+                });
+            });
+            return;
+        }
+
+        let global_state = cx.global::<GlobalDbState>().clone();
+        let connection_id = self.config.connection_id.clone();
+        let database_name = self.config.database_name.clone();
+        let schema_name = self.config.schema_name.clone();
+        let table_name = self.config.table_name.clone();
+        let database_type = self.config.database_type.clone();
+        let this = self.clone();
+        let delegate = self.table.read(cx).delegate();
+        let columns = delegate.column_meta.clone();
+        let has_primary_key = columns.iter().any(|c| c.is_primary_key);
+        let has_rowids = delegate.has_rowids();
+        let need_index_infos = !has_primary_key && !has_rowids;
+
+        cx.spawn(async move |cx: &mut AsyncApp| {
+            let mut index_infos = vec![];
+            if need_index_infos {
+                let index_infos_result = list_indexes_direct_on_runtime(
+                    cx,
+                    global_state.clone(),
+                    connection_id.clone(),
+                    database_name.clone(),
+                    schema_name.clone(),
+                    table_name.clone(),
+                )
+                .await;
+                index_infos = match index_infos_result {
+                    Ok(infos) => infos,
+                    Err(err) => {
+                        cx.update(|cx| {
+                            let error = err.to_string();
+                            let summary = t!("TableDataGrid.get_table_keys_failed", error = error)
+                                .to_string();
+                            notification(cx, summary);
+                            this.set_saving(false, cx);
+                        });
+                        return;
+                    }
+                };
+            }
+
+            let save_result = cx.update(|cx| {
+                let Some(save_request) = this.create_save_request(columns, index_infos, cx) else {
+                    return Err(t!("TableDataGrid.no_changes").to_string());
+                };
+                let change_count = save_request.changes.len();
+
+                let global_state = cx.global::<GlobalDbState>().clone();
+                match global_state.db_manager.get_plugin(&database_type) {
+                    Ok(plugin) => {
+                        let sql = plugin.generate_table_changes_sql(&save_request);
+                        let trimmed = sql.trim();
+                        if trimmed.is_empty()
+                            || trimmed == t!("TableDataGrid.no_changes_sql_marker")
+                        {
+                            Err(t!("TableDataGrid.no_changes").to_string())
+                        } else {
+                            Ok((sql, change_count))
+                        }
+                    }
+                    Err(_) => Err(t!("TableDataGrid.plugin_unavailable").to_string()),
+                }
+            });
+
+            let (sql_content, change_count) = match save_result {
+                Ok((sql, count)) => (sql, count),
+                Err(msg) => {
+                    cx.update(|cx| {
+                        notification(cx, msg);
+                        this.set_saving(false, cx);
+                    });
+                    return;
+                }
+            };
+
+            let exec_options = ExecOptions {
+                stop_on_error: true,
+                transactional: true,
+                max_rows: None,
+                streaming: false,
+                reconnect_on_lost_connection: false,
+            };
+
+            let result = global_state
+                .execute_script(
+                    cx,
+                    connection_id.clone(),
+                    sql_content.clone(),
+                    Some(database_name.clone()),
+                    None,
+                    Some(exec_options),
+                )
+                .await;
+
+            cx.update(|cx| match result {
+                Ok(results) => {
+                    let sql = sql_content.clone();
+                    let first_error = first_execution_error(&results).map(str::to_owned);
+                    let succeeded = first_error.is_none();
+                    this.record_execution_results(sql, &results, cx);
+                    let summary = first_error
+                        .map(|error| {
+                            t!("TableDataGrid.save_changes_failed", error = error).to_string()
+                        })
+                        .unwrap_or_else(|| {
+                            t!("TableDataGrid.save_changes_success", count = change_count)
+                                .to_string()
+                        });
+
+                    if succeeded {
+                        this.clear_changes(cx);
+                        let _ = cx.update_window(window_handle, |_, window, cx| {
+                            tab_container.update(cx, |container, cx| {
+                                container.force_close_tab_by_id(&tab_id, window, cx);
+                            });
+                        });
+                    }
+                    notification(cx, summary);
+                }
+                Err(error) => {
+                    let error = error.to_string();
+                    let summary =
+                        t!("TableDataGrid.save_changes_failed", error = error).to_string();
+                    this.record_execution_failure(error, Some(sql_content), cx);
+                    notification(cx, summary);
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// 更新「保存中」状态。
+    ///
+    /// 状态放在表格 delegate 上：`DataGrid` 已 observe 表格实体，delegate 变更
+    /// 会自动让工具栏重画；提交路径持有的 `DataGrid` clone 与主实体共享同一个
+    /// 表格 Entity，所以异步回调里也能写。
+    fn set_saving(&self, saving: bool, cx: &mut App) {
+        self.table.update(cx, |state, cx| {
+            if state.delegate().is_saving() == saving {
+                return;
+            }
+            state.delegate_mut().set_saving(saving);
+            cx.notify();
+        });
+    }
+
+    fn handle_save_changes(&self, _: &ClickEvent, _window: &mut Window, cx: &mut App) {
+        let changes = self.get_changes(cx);
+        if changes.is_empty() {
+            return;
+        }
+        self.set_saving(true, cx);
+
+        let global_state = cx.global::<GlobalDbState>().clone();
+        let connection_id = self.config.connection_id.clone();
+        let database_name = self.config.database_name.clone();
+        let schema_name = self.config.schema_name.clone();
+        let table_name = self.config.table_name.clone();
+        let database_type = self.config.database_type.clone();
+        let this = self.clone();
+        let delegate = self.table.read(cx).delegate();
+        let columns = delegate.column_meta.clone();
+        let has_primary_key = columns.iter().any(|c| c.is_primary_key);
+        let has_rowids = delegate.has_rowids();
+        let need_index_infos = !has_primary_key && !has_rowids;
+
+        cx.spawn(async move |cx: &mut AsyncApp| {
+            let mut index_infos = vec![];
+            if need_index_infos {
+                let index_infos_result = list_indexes_direct_on_runtime(
+                    cx,
+                    global_state.clone(),
+                    connection_id.clone(),
+                    database_name.clone(),
+                    schema_name.clone(),
+                    table_name.clone(),
+                )
+                .await;
+                index_infos = match index_infos_result {
+                    Ok(infos) => infos,
+                    Err(err) => {
+                        cx.update(|cx| {
+                            let error = err.to_string();
+                            let summary = t!("TableDataGrid.get_table_keys_failed", error = error)
+                                .to_string();
+                            notification(cx, summary);
+                            this.set_saving(false, cx);
+                        });
+                        return;
+                    }
+                };
+            }
+
+            let save_result = cx.update(|cx| {
+                let Some(save_request) = this.create_save_request(columns, index_infos, cx) else {
+                    return Err(t!("TableDataGrid.no_changes").to_string());
+                };
+                let change_count = save_request.changes.len();
+
+                let global_state = cx.global::<GlobalDbState>().clone();
+                match global_state.db_manager.get_plugin(&database_type) {
+                    Ok(plugin) => {
+                        let sql = plugin.generate_table_changes_sql(&save_request);
+                        let trimmed = sql.trim();
+                        if trimmed.is_empty()
+                            || trimmed == t!("TableDataGrid.no_changes_sql_marker")
+                        {
+                            Err(t!("TableDataGrid.no_changes").to_string())
+                        } else {
+                            Ok((sql, change_count))
+                        }
+                    }
+                    Err(_) => Err(t!("TableDataGrid.plugin_unavailable").to_string()),
+                }
+            });
+
+            let (sql_content, change_count) = match save_result {
+                Ok((sql, count)) => (sql, count),
+                Err(msg) => {
+                    cx.update(|cx| {
+                        notification(cx, msg);
+                        this.set_saving(false, cx);
+                    });
+                    return;
+                }
+            };
+
+            let exec_options = ExecOptions {
+                stop_on_error: true,
+                transactional: true,
+                max_rows: None,
+                streaming: false,
+                reconnect_on_lost_connection: false,
+            };
+
+            let result = global_state
+                .execute_script(
+                    cx,
+                    connection_id.clone(),
+                    sql_content.clone(),
+                    Some(database_name.clone()),
+                    None,
+                    Some(exec_options),
+                )
+                .await;
+
+            cx.update(|cx| {
+                match result {
+                    Ok(results) => {
+                        let sql = sql_content.clone();
+                        let first_error = first_execution_error(&results).map(str::to_owned);
+                        let succeeded = first_error.is_none();
+                        this.record_execution_results(sql, &results, cx);
+                        let summary = first_error
+                            .map(|error| {
+                                t!("TableDataGrid.save_changes_failed", error = error).to_string()
+                            })
+                            .unwrap_or_else(|| {
+                                t!("TableDataGrid.save_changes_success", count = change_count)
+                                    .to_string()
+                            });
+
+                        if succeeded {
+                            this.clear_changes_and_refresh(cx);
+                        }
+                        notification(cx, summary);
+                    }
+                    Err(error) => {
+                        let error = error.to_string();
+                        let summary =
+                            t!("TableDataGrid.save_changes_failed", error = error).to_string();
+                        this.record_execution_failure(error, Some(sql_content), cx);
+                        notification(cx, summary);
+                    }
+                }
+                this.set_saving(false, cx);
+            });
+        })
+        .detach();
+    }
+
+    pub fn show_sql_preview(&self, window: &mut Window, cx: &mut App) {
+        let changes = self.get_changes(cx);
+        if changes.is_empty() {
+            window.push_notification(t!("TableDataGrid.no_changes").to_string(), cx);
+            return;
+        }
+
+        let global_state = cx.global::<GlobalDbState>().clone();
+        let connection_id = self.config.connection_id.clone();
+        let database_name = self.config.database_name.clone();
+        let schema_name = self.config.schema_name.clone();
+        let table_name = self.config.table_name.clone();
+        let this = self.clone();
+        let delegate = self.table.read(cx).delegate();
+        let columns = delegate.column_meta.clone();
+        let has_primary_key = columns.iter().any(|c| c.is_primary_key);
+        let has_rowids = delegate.has_rowids();
+        let need_index_infos = !has_primary_key && !has_rowids;
+
+        cx.spawn(async move |cx: &mut AsyncApp| {
+            let mut index_infos = vec![];
+            if need_index_infos {
+                let index_infos_result = list_indexes_direct_on_runtime(
+                    cx,
+                    global_state,
+                    connection_id,
+                    database_name,
+                    schema_name,
+                    table_name,
+                )
+                .await;
+                index_infos = match index_infos_result {
+                    Ok(index_infos) => index_infos,
+                    Err(err) => {
+                        cx.update(|cx| {
+                            let error = err.to_string();
+                            let summary = t!("TableDataGrid.get_table_keys_failed", error = error)
+                                .to_string();
+                            notification(cx, summary);
+                        });
+                        return;
+                    }
+                };
+            }
+
+            cx.update(|cx| {
+                if let Some(window_id) = cx.active_window() {
+                    let _ = cx.update_window(window_id, |_entity, window, cx| {
+                        let Some(save_request) =
+                            this.create_save_request(columns.clone(), index_infos.clone(), cx)
+                        else {
+                            window
+                                .push_notification(t!("TableDataGrid.no_changes").to_string(), cx);
+                            return;
+                        };
+
+                        let sql_content = match this.build_changes_sql(&save_request, cx) {
+                            Ok(sql) => sql,
+                            Err(message) => {
+                                window.push_notification(message, cx);
+                                return;
+                            }
+                        };
+
+                        this.show_sql_editor_dialog(
+                            sql_content,
+                            t!("TableDataGrid.change_sql_preview").as_ref(),
+                            window,
+                            cx,
+                        );
+                    });
+                }
+            });
+        })
+        .detach();
+    }
+
+    pub fn show_sql_editor_dialog(
+        &self,
+        initial_sql: String,
+        title: &str,
+        window: &mut Window,
+        cx: &mut App,
+    ) {
+        let sql_editor = cx.new(|cx| SqlEditor::new(window, cx));
+        sql_editor.update(cx, |editor, cx| {
+            editor.set_value(initial_sql, window, cx);
+        });
+
+        let global_state = cx.global::<GlobalDbState>().clone();
+        let connection_id = self.config.connection_id.clone();
+        let database_name = self.config.database_name.clone();
+        let this = self.clone();
+        let title = title.to_string();
+
+        window.open_dialog(cx, move |dialog, _window, _cx| {
+            let editor = sql_editor.clone();
+            let execute_state = global_state.clone();
+            let execute_connection = connection_id.clone();
+            let execute_database = database_name.clone();
+            let data_grid = this.clone();
+
+            dialog
+                .title(SharedString::from(title.clone()))
+                .w(px(800.0))
+                .h(px(600.0))
+                .child(v_flex().w_full().h_full().child(editor.clone()))
+                .close_button(true)
+                .overlay(false)
+                .content_center()
+                .confirm()
+                .button_props(
+                    DialogButtonProps::default()
+                        .ok_text(t!("TableDataGrid.execute_sql").to_string())
+                        .show_cancel(true),
+                )
+                .on_ok(move |_, window, cx| {
+                    let sql_text = editor.read(cx).get_text(cx);
+                    if sql_text.trim().is_empty() {
+                        window.push_notification(t!("TableDataGrid.sql_empty").to_string(), cx);
+                        return false;
+                    }
+                    data_grid.execute_sql_and_refresh(
+                        sql_text,
+                        execute_state.clone(),
+                        execute_connection.clone(),
+                        execute_database.clone(),
+                        window,
+                        cx,
+                    );
+                    false
+                })
+        });
+    }
+
+    async fn execute_sql_and_refresh_async(
+        sql: String,
+        global_state: GlobalDbState,
+        connection_id: String,
+        database_name: String,
+        cx: &mut AsyncApp,
+    ) -> Result<Vec<SqlResult>, String> {
+        let exec_options = ExecOptions {
+            stop_on_error: true,
+            transactional: true,
+            max_rows: None,
+            streaming: false,
+            reconnect_on_lost_connection: false,
+        };
+
+        global_state
+            .execute_script(
+                cx,
+                connection_id,
+                sql,
+                Some(database_name),
+                None,
+                Some(exec_options),
+            )
+            .await
+            .map_err(|error| error.to_string())
+    }
+
+    fn execute_sql_and_refresh(
+        &self,
+        sql: String,
+        global_state: GlobalDbState,
+        connection_id: String,
+        database_name: String,
+        _window: &mut Window,
+        cx: &mut App,
+    ) {
+        let data_grid = self.clone();
+
+        cx.spawn(async move |cx: &mut AsyncApp| {
+            let executed_sql = sql.clone();
+            match Self::execute_sql_and_refresh_async(
+                sql,
+                global_state,
+                connection_id,
+                database_name,
+                cx,
+            )
+            .await
+            {
+                Ok(results) => {
+                    cx.update(|cx| {
+                        let first_error = first_execution_error(&results).map(str::to_owned);
+                        let succeeded = first_error.is_none();
+                        data_grid.record_execution_results(executed_sql.clone(), &results, cx);
+                        let summary = first_error
+                            .map(|error| {
+                                t!("TableDataGrid.execute_failed", error = error).to_string()
+                            })
+                            .unwrap_or_else(|| t!("TableDataGrid.execute_success").to_string());
+
+                        if succeeded {
+                            data_grid.clear_changes_and_refresh(cx);
+                            if let Some(window_id) = cx.active_window() {
+                                let _ = cx.update_window(window_id, |_entity, window, cx| {
+                                    window.close_dialog(cx);
+                                });
+                            }
+                        }
+                        notification(cx, summary);
+                    });
+                }
+                Err(error) => {
+                    cx.update(|cx| {
+                        let summary = t!("TableDataGrid.execute_failed", error = error).to_string();
+                        data_grid.record_execution_failure(error, Some(executed_sql), cx);
+                        notification(cx, summary);
+                    });
+                }
+            }
+        })
+        .detach();
+    }
+
+    fn build_changes_sql(&self, request: &TableSaveRequest, cx: &App) -> Result<String, String> {
+        let global_state = cx.global::<GlobalDbState>().clone();
+        match global_state
+            .db_manager
+            .get_plugin(&self.config.database_type)
+        {
+            Ok(plugin) => {
+                let sql = plugin.generate_table_changes_sql(request);
+                let trimmed = sql.trim();
+                if trimmed.is_empty() || trimmed == t!("TableDataGrid.no_changes_sql_marker") {
+                    Err(t!("TableDataGrid.no_changes").to_string())
+                } else {
+                    let format_options =
+                        SqlFormatOptions::from_settings(&cx.global::<AppSettings>().sql_format);
+                    Ok(plugin.format_sql_with_options(&sql, format_options))
+                }
+            }
+            Err(_) => Err(t!("TableDataGrid.plugin_unavailable").to_string()),
+        }
+    }
+
+    // ========== 渲染辅助方法 ==========
+
+    /// 当前是否处于纵向「列：值」形态。
+    fn is_vertical_view(&self, cx: &App) -> bool {
+        AppSettings::global(cx).table_view_mode.is_vertical()
+    }
+
+    /// 纵向视图的数据字体（按字体族缓存，命中后不再走系统字体枚举）。
+    fn vertical_view_font(&mut self, cx: &App) -> Font {
+        let requested_family = AppSettings::global(cx).table_preview_font_family.clone();
+        if let Some(cache) = &self.vertical_font_cache
+            && cache.requested_family == requested_family
+        {
+            return cache.font.clone();
+        }
+
+        let font =
+            installed_grid_monospace_font(&requested_family, &cx.text_system().all_font_names());
+        self.vertical_font_cache = Some(VerticalFontCache {
+            requested_family,
+            font: font.clone(),
+        });
+        font
+    }
+
+    /// 切换显示方式：网格 ⇄ 纵向「列：值」。
+    ///
+    /// 偏好写回 `AppSettings` 而不是留在实例上：SQL 结果页每执行一次查询都会
+    /// 新建一个 `DataGrid`，只存实例状态会让用户每次查询都被打回网格形态。
+    fn switch_view_mode(&mut self, mode: TableViewMode, cx: &mut Context<Self>) {
+        if AppSettings::global(cx).table_view_mode == mode {
+            return;
+        }
+        AppSettings::update_and_save(cx, |settings| {
+            settings.table_view_mode = mode;
+        });
+        cx.notify();
+    }
+
+    /// 「显示方式」入口：网格 / 纵向「列：值」。
+    fn render_view_mode_button(&self, cx: &Context<Self>) -> AnyElement {
+        let data_grid = cx.entity().clone();
+        let vertical = self.is_vertical_view(cx);
+
+        Button::new("view-mode")
+            .with_size(Size::Medium)
+            .icon(IconName::Table)
+            .when(vertical, |this| this.primary())
+            .tooltip(t!("TableDataGrid.view_mode").to_string())
+            .dropdown_menu(move |menu, _window, cx| build_view_mode_menu(menu, &data_grid, cx))
+            .into_any_element()
+    }
+
+    /// 纵向「列：值」视图：每条记录展开成「列名 + 值」逐行展示。
+    ///
+    /// 用 `uniform_list` 虚拟化——一页可能上千条记录、每列一行，全量铺开会在
+    /// 每帧重建上万个文本元素。行高取表格行高设置，与网格保持同一节奏。
+    ///
+    /// 值区横向滚动：标签列固定在滚动区外（再长的值也不会把列名推出去），
+    /// 值区所有行共用同一个横滚句柄，底部常驻横向滚动条。
+    fn render_vertical_view(&mut self, font: &Font, cx: &mut Context<Self>) -> AnyElement {
+        let (row_count, column_count, loading) = {
+            let table = self.table.read(cx);
+            let delegate = table.delegate();
+            (
+                delegate.filtered_row_count(),
+                delegate.visible_column_indices().len(),
+                delegate.is_loading(),
+            )
+        };
+        let line_count = vertical_line_count(row_count, column_count);
+
+        if line_count == 0 {
+            // 首次加载时 `rows` 本来就是空的，这时候说「暂无数据」是错的。
+            let message = if loading {
+                t!("TableDataGrid.vertical_loading")
+            } else {
+                t!("TableDataGrid.vertical_empty")
+            };
+            return div()
+                .flex_1()
+                .w_full()
+                .h_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(message.to_string()),
+                )
+                .into_any_element();
+        }
+
+        let line_height = one_ui::table_row_height(cx);
+        let font = font.clone();
+        div()
+            .relative()
+            .flex_1()
+            .size_full()
+            .overflow_hidden()
+            .child(
+                // 给常驻的横向滚动条留出高度，否则它会永久盖住最后一行的那一条。
+                div().size_full().pb(HORIZONTAL_SCROLLBAR_THICKNESS).child(
+                    uniform_list(
+                        "table-vertical-list",
+                        line_count,
+                        cx.processor(
+                            move |grid: &mut DataGrid, range: Range<usize>, window, cx| {
+                                // 先量宽度再画行：值区内容宽度要所有行一致，量到的
+                                // 最大值下一帧才生效（见 `measure_visible_vertical_values`）。
+                                grid.measure_visible_vertical_values(
+                                    &range,
+                                    column_count,
+                                    line_count,
+                                    &font,
+                                    window,
+                                    cx,
+                                );
+
+                                let grid_ref: &DataGrid = grid;
+                                range
+                                    .filter_map(|line_ix| {
+                                        vertical_line_at(line_ix, column_count)
+                                            .map(|line| (line_ix, line))
+                                    })
+                                    .map(|(line_ix, line)| {
+                                        render_vertical_line(
+                                            line,
+                                            line_ix,
+                                            grid_ref,
+                                            &font,
+                                            line_height,
+                                            cx,
+                                            window,
+                                        )
+                                    })
+                                    .collect::<Vec<_>>()
+                            },
+                        ),
+                    )
+                    .flex_grow_1()
+                    .size_full()
+                    .track_scroll(&self.vertical_scroll_handle)
+                    .with_sizing_behavior(ListSizingBehavior::Auto),
+                ),
+            )
+            .child(Scrollbar::vertical(&self.vertical_scroll_handle))
+            .child(
+                // 常驻而不是悬停才现：用户特意来找长值全文时，该知道可以左右滚。
+                // 包一层定位容器是因为滚动条要跟标签列错开，而标签列不在滚动区里。
+                div()
+                    .occlude()
+                    .absolute()
+                    .left(px(VERTICAL_LABEL_WIDTH))
+                    .right_0()
+                    .bottom_0()
+                    .h(HORIZONTAL_SCROLLBAR_THICKNESS)
+                    .child(
+                        Scrollbar::horizontal(&self.vertical_horizontal_scroll_handle)
+                            .mode(ScrollbarMode::Always)
+                            .viewport_from_layout(),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    /// 量一遍可见「字段行」的值宽度，把值区内容宽度撑到最宽的一条。
+    ///
+    /// 所有值行必须共用同一个内容宽度：共享横滚句柄的 `max_offset` 由每一行的
+    /// 滚动容器写回，宽度参差不齐时，最短的那行会把整列偏移夹回 0。所以这里把
+    /// 量到的最大宽度写回实例，下一帧所有行一起变宽。
+    ///
+    /// 只增不减：每帧都按当前可见行重算的话，宽值横向滚出视野时宽度会缩回去、
+    /// 偏移被夹断，用户看到的就是「滚到一半自己弹回」。
+    fn measure_visible_vertical_values(
+        &mut self,
+        range: &Range<usize>,
+        column_count: usize,
+        line_count: usize,
+        font: &Font,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) {
+        let key = (line_count, column_count);
+        if self.vertical_value_width_key != key {
+            // 换了数据（翻页 / 过滤 / 列可见性变化）：旧宽度可能来自另一超宽
+            // 字段，不重置会让新数据顶着一个虚高的滚动范围。
+            self.vertical_value_width_key = key;
+            self.vertical_value_width = px(0.);
+        }
+
+        let (ascii_advance, wide_advance) = vertical_char_advances(font, window);
+        let mut widest = px(0.);
+        {
+            let table = self.table.read(cx);
+            let delegate = table.delegate();
+            for line_ix in range.clone() {
+                let Some(VerticalLine::Field { row, col }) =
+                    vertical_line_at(line_ix, column_count)
+                else {
+                    continue;
+                };
+                let Some(field) = delegate.vertical_field(row, col) else {
+                    continue;
+                };
+                widest = widest.max(vertical_value_text_width(
+                    &field.value.display_text(),
+                    ascii_advance,
+                    wide_advance,
+                ));
+            }
+        }
+
+        let padded = widest + px(VERTICAL_VALUE_WIDTH_PADDING);
+        if padded > self.vertical_value_width {
+            self.vertical_value_width = padded;
+            cx.notify();
+        }
+    }
+
+    /// 读一条字段行的渲染状态。
+    ///
+    /// 显示行 → 实际行、展示列 → 原始列只能由 delegate 换算；选中与编辑坐标
+    /// 是网格坐标（含行号列），因此展示列要过 [`grid_column_of_display_col`]。
+    fn vertical_field_line(&self, row: usize, col: usize, cx: &App) -> Option<VerticalFieldLine> {
+        let table = self.table.read(cx);
+        let delegate = table.delegate();
+        let field = delegate.vertical_field(row, col)?;
+        let grid_col = grid_column_of_display_col(col, delegate.row_number_enabled(cx));
+
+        Some(VerticalFieldLine {
+            name: field.name,
+            value: field.value,
+            grid_col,
+            editable: self.config.editable && delegate.cell_edit_enabled(cx),
+            selected: table.selected_cell() == Some((row, grid_col)),
+            editing: table.editing_cell() == Some((row, grid_col)),
+            modified: delegate.is_cell_modified(row, col, cx),
+            located: table.located_col() == Some(grid_col),
+        })
+    }
+
+    /// 纵向视图里点一条「列：值」：先落地手上那条编辑，再选中；在已选中的字段
+    /// 上再点一次进入编辑——与网格「单击选中、再点编辑」的手感保持一致。
+    fn handle_vertical_field_click(
+        &mut self,
+        row: usize,
+        grid_col: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.table.update(cx, |table, cx| {
+            // 点别的字段等于“改完了”：不提交就直接换编辑目标，会把用户刚
+            // 输入的内容无声丢弃。
+            if table
+                .editing_cell()
+                .is_some_and(|editing| editing != (row, grid_col))
+            {
+                table.commit_cell_edit(window, cx);
+            }
+
+            if table.selected_cell() == Some((row, grid_col)) {
+                table.start_editing(row, grid_col, window, cx);
+            } else {
+                table.select_cell(row, grid_col, cx);
+            }
+        });
+        cx.notify();
+    }
+
+    /// 「字段过滤」入口：按当前可见状态渲染每个字段的勾选项。
+    ///
+    /// 菜单在点击时构建，因此可以从捕获的实体读出最新列状态，避免缓存过期。
+    fn render_column_visibility_button(&self, cx: &Context<Self>) -> AnyElement {
+        let data_grid = cx.entity().clone();
+        let loading = self.table.read(cx).delegate().is_loading();
+        let has_hidden = self.table.read(cx).delegate().has_hidden_columns();
+
+        // 用弹出面板而不是下拉菜单：字段多的时候菜单会一路顶到窗口底部，
+        // 面板可以固定尺寸、把字段列表关在内部滚动区里。
+        Popover::new("column-visibility")
+            .trigger(
+                Button::new("column-visibility")
+                    .with_size(Size::Medium)
+                    .icon(IconName::ListChecks)
+                    .when(has_hidden, |this| this.primary())
+                    .tooltip(t!("TableDataGrid.column_visibility").to_string())
+                    .disabled(loading),
+            )
+            .content(move |_state, _window, cx| build_column_visibility_panel(&data_grid, cx))
+            .w(COLUMN_VISIBILITY_PANEL_WIDTH)
+            .p_0()
+            .into_any_element()
+    }
+
+    /// 「字段定位」入口：列出全部字段，点一个就把表格带到那一列。
+    ///
+    /// 面板必须受控：定位成功后要主动收起它，否则展开着的面板正好挡住
+    /// 「定位到了哪一列」这个结果。字段过滤面板不用收起（要连着勾好几个），
+    /// 所以它保持非受控。
+    fn render_column_locate_button(&self, cx: &Context<Self>) -> AnyElement {
+        let open_grid = cx.entity().clone();
+        let content_grid = cx.entity().clone();
+        let loading = self.table.read(cx).delegate().is_loading();
+
+        Popover::new("column-locate")
+            .trigger(
+                Button::new("column-locate")
+                    .with_size(Size::Medium)
+                    .icon(IconName::LocateActiveTab)
+                    .tooltip(t!("TableDataGrid.locate_column").to_string())
+                    .disabled(loading),
+            )
+            .open(self.column_locate_open)
+            .on_open_change(move |open, _window, cx| {
+                let new_open = *open;
+                open_grid.update(cx, |grid, cx| {
+                    grid.column_locate_open = new_open;
+                    cx.notify();
+                });
+            })
+            .content(move |_state, _window, cx| build_column_locate_panel(&content_grid, cx))
+            .w(COLUMN_LOCATE_PANEL_WIDTH)
+            .p_0()
+            .into_any_element()
+    }
+
+    /// 工具栏里的查找框：输入即高亮命中，右侧并排给出计数与上下跳。
+    ///
+    /// 这是表数据页里唯一的搜索输入框——表格不再浮出查找面板，所以
+    /// 计数与导航必须和输入框同处一行。计数与当前序号都从表格状态读，
+    /// 保证「输入了什么」和「高亮了什么」永远是同一份数据。
+    fn render_find_bar(&self, cx: &Context<Self>) -> AnyElement {
+        let (total, current, has_query) = {
+            let table = self.table.read(cx);
+            (
+                table.find_total(),
+                table.find_current(),
+                !table.find_query().is_empty(),
+            )
+        };
+
+        let mut bar = h_flex()
+            .gap_1()
+            .items_center()
+            // 输入框在工具栏，不在表格的 `EditTable` 上下文下，这里补一份
+            // 上下跳绑定，让「在框里按 Cmd+G」与「在表格里按」行为一致。
+            .key_context(HOSTED_FIND_CONTEXT)
+            .on_action(cx.listener(Self::on_action_find_next))
+            .on_action(cx.listener(Self::on_action_find_previous))
+            .child(
+                div().w(px(200.)).child(
+                    Input::new(&self.find_input)
+                        .prefix(Icon::new(IconName::Search).text_color(cx.theme().muted_foreground))
+                        .cleanable(true)
+                        .w_full(),
+                ),
+            );
+
+        if has_query {
+            let counter: SharedString = if total == 0 {
+                t!("TableDataGrid.search_no_match").to_string().into()
+            } else {
+                format!("{}/{}", current.max(1).min(total), total).into()
+            };
+            bar = bar
+                .child(
+                    div()
+                        .min_w(px(48.))
+                        .text_sm()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(counter),
+                )
+                .child(
+                    Button::new("find-previous")
+                        .with_size(Size::Small)
+                        .icon(IconName::ChevronUp)
+                        .tooltip(t!("TableDataGrid.search_previous").to_string())
+                        .disabled(total == 0)
+                        .on_click(cx.listener(Self::handle_find_previous)),
+                )
+                .child(
+                    Button::new("find-next")
+                        .with_size(Size::Small)
+                        .icon(IconName::ChevronDown)
+                        .tooltip(t!("TableDataGrid.search_next").to_string())
+                        .disabled(total == 0)
+                        .on_click(cx.listener(Self::handle_find_next)),
+                );
+        }
+
+        bar.into_any_element()
+    }
+
+    pub fn render_toolbar(&self, _window: &mut Window, cx: &Context<Self>) -> AnyElement {
+        let editable = self.config.editable;
+        let loading = self.table.read(cx).delegate().is_loading();
+        let saving = self.table.read(cx).delegate().is_saving();
+        let data_grid = cx.entity().clone();
+        // 纵向「列：值」形态没有「行 × 列」的二维落点：行增删、表内查找、
+        // 大文本编辑器收起。但单元格编辑本身在纵向视图里是有落点的（一条
+        // 「列：值」就是一个单元格），所以撤销、提交、SQL 预览跟着可编辑状态
+        // 走，不再看形态。
+        let grid_affordances = !self.is_vertical_view(cx);
+        let find_bar = (self.config.usage == DataGridUsage::TableData && grid_affordances)
+            .then(|| self.render_find_bar(cx));
+        let settings = cx.global::<AppSettings>();
+        let large_text_button_selected = settings.large_text_cell_editor_open_mode
+            == LargeTextCellEditorOpenMode::SidebarPreview
+            && self.is_large_text_editor_sidebar_open;
+
+        h_flex()
+            .gap_1()
+            .items_center()
+            .px_2()
+            .py_1()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().background)
+            .child(
+                Button::new("refresh-data")
+                    .with_size(Size::Medium)
+                    .icon(IconName::Refresh)
+                    .tooltip(t!("TableDataGrid.refresh").to_string())
+                    .disabled(loading)
+                    .on_click(cx.listener(Self::handle_toolbar_refresh)),
+            )
+            .when(editable && grid_affordances, |this| {
+                this.child(
+                    Button::new("add-row")
+                        .with_size(Size::Medium)
+                        .icon(IconName::Plus)
+                        .tooltip(t!("TableDataGrid.add_row").to_string())
+                        .disabled(loading)
+                        .on_click(cx.listener(Self::handle_add_row)),
+                )
+            })
+            .when(editable && grid_affordances, |this| {
+                this.child(
+                    Button::new("delete-row")
+                        .with_size(Size::Medium)
+                        .icon(IconName::Minus)
+                        .tooltip(t!("TableDataGrid.delete_row").to_string())
+                        .disabled(loading)
+                        .on_click(cx.listener(Self::handle_delete_row)),
+                )
+            })
+            .when(editable, |this| {
+                this.child(
+                    Button::new("undo-changes")
+                        .with_size(Size::Medium)
+                        .icon(IconName::Undo)
+                        .tooltip(t!("TableDataGrid.undo").to_string())
+                        .disabled(loading)
+                        .on_click(cx.listener(Self::handle_revert_changes)),
+                )
+            })
+            .when(editable, |this| {
+                this.child(
+                    Button::new("sql-preview")
+                        .with_size(Size::Medium)
+                        .icon(IconName::Eye)
+                        .tooltip(t!("TableDataGrid.sql_preview").to_string())
+                        .disabled(loading)
+                        .on_click(cx.listener(Self::handle_sql_preview)),
+                )
+            })
+            .when(editable, |this| {
+                this.child(
+                    Button::new("commit-changes")
+                        .with_size(Size::Medium)
+                        .icon(IconName::ArrowUp)
+                        .tooltip(t!("TableDataGrid.commit_changes").to_string())
+                        .disabled(loading)
+                        .loading(saving)
+                        .on_click(cx.listener(Self::handle_commit_changes)),
+                )
+            })
+            .child(div().flex_1())
+            .child(self.render_view_mode_button(cx))
+            .child(self.render_column_visibility_button(cx))
+            .child(self.render_column_locate_button(cx))
+            .when_some(find_bar, |this, bar| this.child(bar))
+            .when(
+                self.config.usage == DataGridUsage::TableData && editable,
+                |this| {
+                    this.child(
+                        Button::new("open-table-designer")
+                            .with_size(Size::Medium)
+                            .icon(IconName::TableDesignTool)
+                            .tooltip(t!("TableDataGrid.open_table_designer").to_string())
+                            .disabled(loading)
+                            .on_click(cx.listener(Self::handle_open_table_designer)),
+                    )
+                },
+            )
+            .when(grid_affordances, |this| {
+                this.child(
+                    Button::new("toggle-editor")
+                        .with_size(Size::Medium)
+                        .icon(IconName::EditBorder)
+                        .when(large_text_button_selected, |this| this.primary())
+                        .tooltip(t!("TableDataGrid.large_text_editor").to_string())
+                        .disabled(loading)
+                        .on_click(cx.listener(Self::handle_large_text_editor)),
+                )
+            })
+            .child(
+                Button::new("export-data")
+                    .with_size(Size::Medium)
+                    .icon(IconName::Export)
+                    .tooltip(t!("TableDataGrid.export").to_string())
+                    .disabled(loading)
+                    .dropdown_menu(move |menu, window, _cx| {
+                        menu.item(
+                            PopupMenuItem::new(t!("TableDataGrid.export_result_xlsx").to_string())
+                                .on_click(window.listener_for(
+                                    &data_grid,
+                                    |this, _, window, cx| {
+                                        this.export_result_set(
+                                            ExportScope::All,
+                                            ExportFormat::Xlsx,
+                                            window,
+                                            cx,
+                                        );
+                                    },
+                                )),
+                        )
+                        .item(
+                            PopupMenuItem::new(t!("TableDataGrid.export_result_csv").to_string())
+                                .on_click(window.listener_for(
+                                    &data_grid,
+                                    |this, _, window, cx| {
+                                        this.export_result_set(
+                                            ExportScope::All,
+                                            ExportFormat::Csv,
+                                            window,
+                                            cx,
+                                        );
+                                    },
+                                )),
+                        )
+                        .item(
+                            PopupMenuItem::new(
+                                t!("TableDataGrid.export_result_insert_sql").to_string(),
+                            )
+                            .on_click(window.listener_for(
+                                &data_grid,
+                                |this, _, window, cx| {
+                                    this.export_result_set(
+                                        ExportScope::All,
+                                        ExportFormat::InsertSql,
+                                        window,
+                                        cx,
+                                    );
+                                },
+                            )),
+                        )
+                        .separator()
+                        .item(
+                            PopupMenuItem::new(
+                                t!("TableDataGrid.export_current_page_xlsx").to_string(),
+                            )
+                            .on_click(window.listener_for(
+                                &data_grid,
+                                |this, _, window, cx| {
+                                    this.export_result_set(
+                                        ExportScope::CurrentPage,
+                                        ExportFormat::Xlsx,
+                                        window,
+                                        cx,
+                                    );
+                                },
+                            )),
+                        )
+                        .item(
+                            PopupMenuItem::new(
+                                t!("TableDataGrid.export_current_page_csv").to_string(),
+                            )
+                            .on_click(window.listener_for(
+                                &data_grid,
+                                |this, _, window, cx| {
+                                    this.export_result_set(
+                                        ExportScope::CurrentPage,
+                                        ExportFormat::Csv,
+                                        window,
+                                        cx,
+                                    );
+                                },
+                            )),
+                        )
+                        .item(
+                            PopupMenuItem::new(
+                                t!("TableDataGrid.export_current_page_insert_sql").to_string(),
+                            )
+                            .on_click(window.listener_for(
+                                &data_grid,
+                                |this, _, window, cx| {
+                                    this.export_result_set(
+                                        ExportScope::CurrentPage,
+                                        ExportFormat::InsertSql,
+                                        window,
+                                        cx,
+                                    );
+                                },
+                            )),
+                        )
+                    }),
+            )
+            .into_any_element()
+    }
+
+    pub fn render_table_area(&mut self, cx: &mut Context<Self>) -> AnyElement {
+        let error_message = self.table_data_info.read(cx).error_message.clone();
+
+        if let Some(error) = error_message {
+            return div()
+                .flex_1()
+                .w_full()
+                .h_full()
+                .bg(cx.theme().background)
+                .border_1()
+                .border_color(cx.theme().border)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(
+                    div()
+                        .text_color(cx.theme().danger_foreground)
+                        .text_sm()
+                        .child(error),
+                )
+                .into_any_element();
+        }
+
+        if self.is_vertical_view(cx) {
+            // 数据字体只在纵向形态下解析（要过系统字体枚举），且在渲染入口
+            // 解析一次后缓存，不做成按行解析。
+            let font = self.vertical_view_font(cx);
+            return div()
+                .flex_1()
+                .w_full()
+                .h_full()
+                .bg(cx.theme().background)
+                .border_1()
+                .border_color(cx.theme().border)
+                .overflow_hidden()
+                .flex()
+                .child(self.render_vertical_view(&font, cx))
+                .into_any_element();
+        }
+
+        let table_view = EditTable::new(&self.table);
+        div()
+            .flex_1()
+            .w_full()
+            .h_full()
+            .bg(cx.theme().background)
+            .border_1()
+            .border_color(cx.theme().border)
+            .child(table_view)
+            .into_any_element()
+    }
+
+    fn render_status_bar(&self, cx: &Context<Self>) -> AnyElement {
+        let table_data_info = self.table_data_info.read(cx);
+        let table = self.table.read(cx);
+
+        let filtered_count = table.delegate().filtered_row_count();
+        let total_rows = table.delegate().rows.len();
+        let current_page_size = table_data_info.page_size;
+
+        h_flex()
+            .gap_3()
+            .items_center()
+            .px_2()
+            .py_1()
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().background)
+            .child(div().text_sm().text_color(cx.theme().foreground).child({
+                if filtered_count < total_rows {
+                    t!(
+                        "TableDataGrid.page_info",
+                        page_size = filtered_count,
+                        page_count = total_rows,
+                        total_count = table_data_info.total_count
+                    )
+                    .to_string()
+                } else {
+                    t!(
+                        "TableDataGrid.page_number",
+                        page = table_data_info.current_page,
+                        total = table_data_info.total_count
+                    )
+                    .to_string()
+                }
+            }))
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(
+                        t!(
+                            "TableDataGrid.query_elapsed",
+                            duration = table_data_info.duration
+                        )
+                        .to_string(),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .flex_1()
+                    .min_w_0()
+                    .items_center()
+                    .gap_1()
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(cx.theme().muted_foreground)
+                            .flex_1()
+                            .min_w_0()
+                            .overflow_hidden()
+                            .text_ellipsis()
+                            .child(table_data_info.current_sql.clone()),
+                    )
+                    .child(
+                        Button::new("copy-current-sql")
+                            .with_size(Size::Small)
+                            .ghost()
+                            .icon(IconName::Copy)
+                            .tooltip(t!("TableDataGrid.copy_sql").to_string())
+                            .on_click(cx.listener(Self::handle_copy_current_sql)),
+                    ),
+            )
+            .child(
+                h_flex()
+                    .gap_1()
+                    .items_center()
+                    .child(
+                        Button::new("prev-page")
+                            .with_size(Size::Small)
+                            .icon(IconName::ChevronLeft)
+                            .on_click(cx.listener(Self::handle_prev_page_click)),
+                    )
+                    .child({
+                        let label = match current_page_size {
+                            0 => t!("TableDataGrid.all").to_string(),
+                            n => format!("{}", n),
+                        };
+
+                        Button::new("page-size-selector")
+                            .with_size(Size::Small)
+                            .label(label)
+                            .dropdown_menu_with_anchor(Anchor::TopRight, move |menu, _, _| {
+                                menu.menu("500", Box::new(Page500))
+                                    .menu("1000", Box::new(Page1000))
+                                    .menu("2000", Box::new(Page2000))
+                                    .menu("10000", Box::new(Page10000))
+                                    .menu("100000", Box::new(Page100000))
+                            })
+                    })
+                    .child(
+                        Button::new("next-page")
+                            .with_size(Size::Small)
+                            .icon(IconName::ChevronRight)
+                            .on_click(cx.listener(Self::handle_next_page_click)),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    fn render_simple_status_bar(&self, cx: &App) -> AnyElement {
+        let row_count = self.config.rows_count;
+        // 将SQL中的换行符替换为空格，保持单行显示
+        let sql = self.config.sql.replace(['\n', '\r'], " ");
+        let execution_time = self.config.execution_time;
+
+        h_flex()
+            .gap_3()
+            .items_center()
+            .px_2()
+            .py_1()
+            .border_t_1()
+            .border_color(cx.theme().border)
+            .bg(cx.theme().background)
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().foreground)
+                    .child(t!("TableDataGrid.total_records", count = row_count).to_string()),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(
+                        t!("TableDataGrid.query_elapsed", duration = execution_time).to_string(),
+                    ),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .flex_1()
+                    .overflow_hidden()
+                    .text_ellipsis()
+                    .child(sql),
+            )
+            .into_any_element()
+    }
+}
+
+impl Render for DataGrid {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let is_table_data = self.config.usage == DataGridUsage::TableData;
+        // 纵向形态下查找框被收起，这里也要一起摘掉「聚焦搜索框」的绑定，
+        // 否则 Cmd/Ctrl+F 会把焦点塞进一个看不见的输入框。
+        let grid_affordances = !self.is_vertical_view(cx);
+        // 表格区域先算好：纵向视图要走 `&mut self` 刷新字体缓存，
+        // 放进 builder 链里会和下面闭包对 `self` 的借用打架。
+        let table_area = self.render_table_area(cx);
+
+        v_flex()
+            .when(is_table_data, |this| {
+                this.on_action(cx.listener(Self::handle_page_change_500))
+                    .on_action(cx.listener(Self::handle_page_change_1000))
+                    .on_action(cx.listener(Self::handle_page_change_2000))
+                    .on_action(cx.listener(Self::handle_page_change_10000))
+                    .on_action(cx.listener(Self::handle_page_change_100000))
+                    .when(grid_affordances, |this| {
+                        this.on_action(cx.listener(Self::on_action_focus_search))
+                    })
+                    .on_action(cx.listener(Self::on_action_open_table_designer))
+                    .on_action(cx.listener(Self::on_action_open_table_query))
+                    .key_context(DB_SEARCH_CONTEXT)
+            })
+            .size_full()
+            .gap_0()
+            .track_focus(&self.focus_handle)
+            .child(self.render_toolbar(window, cx))
+            .when(is_table_data, |this| {
+                this.child(
+                    h_flex()
+                        .items_center()
+                        .w_full()
+                        .px_2()
+                        .py_1()
+                        .child(self.filter_editor.clone()),
+                )
+            })
+            .child(
+                div()
+                    .flex_1()
+                    .w_full()
+                    .h_full()
+                    .overflow_hidden()
+                    .child(table_area),
+            )
+            .child(if is_table_data {
+                self.render_status_bar(cx)
+            } else {
+                self.render_simple_status_bar(cx)
+            })
+    }
+}
+
+impl Clone for DataGrid {
+    fn clone(&self) -> Self {
+        Self {
+            config: self.config.clone(),
+            table: self.table.clone(),
+            _table_sub: None,
+            _table_observe_sub: None,
+            // 连接数据事件订阅同理：副本由 `new()` 重新绑定，这里置 None。
+            _connection_event_sub: None,
+            focus_handle: self.focus_handle.clone(),
+            table_data_info: self.table_data_info.clone(),
+            filter_editor: self.filter_editor.clone(),
+            _filter_sub: None,
+            find_input: self.find_input.clone(),
+            _find_sub: None,
+            column_visibility_search: self.column_visibility_search.clone(),
+            _column_visibility_search_sub: None,
+            column_visibility_scroll: self.column_visibility_scroll.clone(),
+            // 搜索框按实体共享：副本沿用同一个输入状态；订阅由新的 `new()`
+            // 重新建立，这里一律置 None。
+            column_locate_search: self.column_locate_search.clone(),
+            _column_locate_search_sub: None,
+            column_locate_scroll: self.column_locate_scroll.clone(),
+            column_locate_open: self.column_locate_open,
+            execution_history: self.execution_history.clone(),
+            is_large_text_editor_sidebar_open: self.is_large_text_editor_sidebar_open,
+            data_generation: self.data_generation.clone(),
+            vertical_scroll_handle: self.vertical_scroll_handle.clone(),
+            // 句柄与已量到的宽度跟着走：clone 出来的副本指向同一张表，
+            // 横向滚到一半时不应又从头开始量（见 `measure_visible_vertical_values`）。
+            vertical_horizontal_scroll_handle: self.vertical_horizontal_scroll_handle.clone(),
+            vertical_value_width: self.vertical_value_width,
+            vertical_value_width_key: self.vertical_value_width_key,
+            vertical_font_cache: self.vertical_font_cache.clone(),
+        }
+    }
+}
+
+impl EventEmitter<DataGridEvent> for DataGrid {}
+
+impl Focusable for DataGrid {
+    fn focus_handle(&self, _cx: &App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+
+#[inline]
+pub fn notification(cx: &mut App, error: String) {
+    if let Some(window) = cx.active_window() {
+        _ = window.update(cx, |_, w, cx| w.push_notification(error, cx));
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        DataGrid, ExportFormat, LargeTextEditorRoute, TableMetadata, build_header_order_by_clause,
+        build_large_text_editor_title, collect_delete_row_indices, column_infos_from_query_meta,
+        data_generation_is_current, query_result_for_export, resolve_large_text_editor_route,
+        resolve_result_column_comments, result_set_export_exec_options, table_has_unsaved_changes,
+    };
+    use crate::table_data::results_delegate::{CellChange, RowChange};
+    use db::{
+        BinaryCell, ColumnInfo, DbManager, ExecResult, QueryColumnMeta, QueryResult, SqlErrorInfo,
+        SqlResult, TableCellValue, TableRowChange,
+    };
+    use gpui::SharedString;
+    use one_core::settings::LargeTextCellEditorOpenMode;
+    use one_core::storage::DatabaseType;
+    use one_ui::edit_table::ColumnSort;
+    use rust_i18n::t;
+    use std::io::{Cursor, Read};
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use zip::ZipArchive;
+
+    #[test]
+    fn data_generation_rejects_stale_async_callbacks() {
+        let generation = AtomicU64::new(7);
+
+        assert!(data_generation_is_current(&generation, 7));
+        generation.fetch_add(1, Ordering::AcqRel);
+        assert!(!data_generation_is_current(&generation, 7));
+        assert!(data_generation_is_current(&generation, 8));
+    }
+
+    #[test]
+    fn column_infos_from_query_meta_preserves_result_order_and_types() {
+        // 结果集自带列元数据必须按结果列序映射，并保留 db_type 以识别时间列。
+        let column_infos = column_infos_from_query_meta(&[
+            QueryColumnMeta::new("name", "VARCHAR(100)"),
+            QueryColumnMeta::new("created_at", "DATE"),
+            QueryColumnMeta::new("updated_at", "DATETIME"),
+            QueryColumnMeta::new("started_at", "TIME"),
+            QueryColumnMeta::new("amount", "DECIMAL(10,2)"),
+        ]);
+
+        assert_eq!(
+            column_infos
+                .iter()
+                .map(|c| c.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["name", "created_at", "updated_at", "started_at", "amount"]
+        );
+        assert_eq!(column_infos[1].data_type, "DATE");
+        assert_eq!(column_infos[2].data_type, "DATETIME");
+        assert_eq!(column_infos[3].data_type, "TIME");
+        assert!(!column_infos[0].is_primary_key);
+        assert_eq!(column_infos[0].is_nullable, true);
+        assert_eq!(column_infos[0].charset, None);
+    }
+
+    fn sample_column(name: &str, comment: Option<&str>) -> ColumnInfo {
+        ColumnInfo {
+            name: name.to_string(),
+            data_type: "TEXT".to_string(),
+            is_nullable: true,
+            is_primary_key: false,
+            default_value: None,
+            comment: comment.map(str::to_string),
+            charset: None,
+            collation: None,
+            is_auto_increment: false,
+        }
+    }
+
+    fn sample_lineage(
+        tables: Vec<&str>,
+        columns: Vec<db::ResultColumnSource>,
+        complete: bool,
+    ) -> db::ResultColumnLineage {
+        db::ResultColumnLineage {
+            tables: tables.into_iter().map(str::to_string).collect(),
+            columns,
+            complete,
+        }
+    }
+
+    fn reference(tables: Vec<usize>, column: &str) -> db::ResultColumnSource {
+        db::ResultColumnSource::Refs(vec![db::ColumnReference {
+            tables,
+            column: column.to_string(),
+        }])
+    }
+
+    #[test]
+    fn resolves_wildcard_comments_in_table_column_order() {
+        let table_columns = vec![Some(vec![
+            sample_column("id", Some("主键")),
+            sample_column("name", Some("名称")),
+        ])];
+        let lineage = sample_lineage(
+            vec!["users"],
+            vec![db::ResultColumnSource::Wildcard { table: 0 }],
+            true,
+        );
+
+        assert_eq!(
+            resolve_result_column_comments(
+                &table_columns,
+                &lineage,
+                &["id".to_string(), "name".to_string()]
+            ),
+            vec![Some("主键".to_string()), Some("名称".to_string())]
+        );
+    }
+
+    #[test]
+    fn resolves_column_only_present_in_one_joined_table() {
+        let table_columns = vec![
+            Some(vec![sample_column("id", Some("用户ID"))]),
+            Some(vec![sample_column("amount", Some("金额"))]),
+        ];
+        let lineage = sample_lineage(
+            vec!["users", "orders"],
+            vec![reference(vec![0, 1], "amount")],
+            true,
+        );
+
+        assert_eq!(
+            resolve_result_column_comments(&table_columns, &lineage, &["amount".to_string()]),
+            vec![Some("金额".to_string())]
+        );
+    }
+
+    #[test]
+    fn leaves_ambiguous_column_without_comment() {
+        let table_columns = vec![
+            Some(vec![sample_column("id", Some("用户ID"))]),
+            Some(vec![sample_column("id", Some("订单ID"))]),
+        ];
+        let lineage = sample_lineage(
+            vec!["users", "orders"],
+            vec![reference(vec![0, 1], "id")],
+            true,
+        );
+
+        assert_eq!(
+            resolve_result_column_comments(&table_columns, &lineage, &["id".to_string()]),
+            vec![None]
+        );
+    }
+
+    #[test]
+    fn leaves_multi_field_expression_without_comment() {
+        let table_columns = vec![Some(vec![
+            sample_column("price", Some("单价")),
+            sample_column("qty", Some("数量")),
+        ])];
+        let lineage = sample_lineage(
+            vec!["items"],
+            vec![reference(vec![0], "price"), reference(vec![0], "qty")],
+            true,
+        );
+
+        assert_eq!(
+            resolve_result_column_comments(&table_columns, &lineage, &["total".to_string()]),
+            vec![None]
+        );
+    }
+
+    #[test]
+    fn single_field_expression_inherits_comment() {
+        let table_columns = vec![Some(vec![sample_column("name", Some("名称"))])];
+        // `name || name` 这类只引用同一个源字段的表达式继承该字段注释。
+        let source = db::ResultColumnSource::Refs(vec![
+            db::ColumnReference {
+                tables: vec![0],
+                column: "name".to_string(),
+            },
+            db::ColumnReference {
+                tables: vec![0],
+                column: "name".to_string(),
+            },
+        ]);
+        let lineage = sample_lineage(vec!["users"], vec![source], true);
+
+        assert_eq!(
+            resolve_result_column_comments(&table_columns, &lineage, &["upper".to_string()]),
+            vec![Some("名称".to_string())]
+        );
+    }
+
+    #[test]
+    fn incomplete_lineage_falls_back_to_unique_column_names() {
+        let table_columns = vec![
+            Some(vec![
+                sample_column("id", Some("用户ID")),
+                sample_column("name", Some("名称")),
+            ]),
+            Some(vec![sample_column("id", Some("订单ID"))]),
+        ];
+        let lineage = sample_lineage(vec!["users", "orders"], vec![], false);
+
+        assert_eq!(
+            resolve_result_column_comments(
+                &table_columns,
+                &lineage,
+                &["name".to_string(), "id".to_string()]
+            ),
+            vec![Some("名称".to_string()), None]
+        );
+    }
+
+    #[test]
+    fn incomplete_lineage_with_missing_metadata_falls_back_to_no_comment() {
+        let table_columns = vec![
+            Some(vec![sample_column("name", Some("名称"))]),
+            None,
+        ];
+        let lineage = sample_lineage(vec!["users", "orders"], vec![], false);
+
+        assert_eq!(
+            resolve_result_column_comments(&table_columns, &lineage, &["name".to_string()]),
+            vec![None]
+        );
+    }
+
+    fn sample_export_input() -> (Vec<Vec<Option<String>>>, Vec<SharedString>, TableMetadata) {
+        let rows = vec![vec![
+            Some("1".to_string()),
+            Some("Line 1\nLine 2".to_string()),
+        ]];
+        let columns = vec![SharedString::from("id"), SharedString::from("body")];
+        let metadata = TableMetadata::new("news").with_columns(vec!["id", "body"]);
+        (rows, columns, metadata)
+    }
+
+    fn sample_query_result(row_count: usize) -> QueryResult {
+        QueryResult {
+            sql: "select id from users".to_string(),
+            columns: vec!["id".to_string()],
+            column_meta: vec![],
+            rows: (0..row_count)
+                .map(|row| vec![Some(row.to_string())])
+                .collect(),
+            binary_cells: vec![],
+            elapsed_ms: 0,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn result_set_export_disables_query_row_limit() {
+        assert_eq!(None, result_set_export_exec_options().max_rows);
+    }
+
+    #[test]
+    fn query_result_export_preserves_all_rows() {
+        let payload =
+            query_result_for_export(vec![SqlResult::Query(sample_query_result(1001))]).unwrap();
+        assert_eq!(1001, payload.rows.len());
+        assert!(payload.binary_cells.is_empty());
+    }
+
+    #[test]
+    fn query_result_export_preserves_binary_sidecar() {
+        let mut result = sample_query_result(1);
+        result.rows[0][0] = Some("wrong".to_string());
+        result.binary_cells = vec![BinaryCell {
+            row_index: 0,
+            column_index: 0,
+            bytes: vec![1, 2, 3],
+        }];
+
+        let payload = query_result_for_export(vec![SqlResult::Query(result)]).unwrap();
+
+        assert_eq!(payload.rows, vec![vec![Some("wrong".to_string())]]);
+        assert_eq!(payload.binary_cells.len(), 1);
+        assert_eq!(payload.binary_cells[0].bytes, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn normalize_query_result_remaps_binary_sidecar_after_rowid_column() {
+        let result = QueryResult {
+            sql: "select __rowid__, payload from sample".to_string(),
+            columns: vec!["__rowid__".to_string(), "payload".to_string()],
+            column_meta: vec![],
+            rows: vec![vec![Some("row-1".to_string()), Some("wrong".to_string())]],
+            binary_cells: vec![
+                BinaryCell {
+                    row_index: 0,
+                    column_index: 0,
+                    bytes: vec![0xaa],
+                },
+                BinaryCell {
+                    row_index: 0,
+                    column_index: 1,
+                    bytes: vec![1, 2, 3],
+                },
+            ],
+            elapsed_ms: 0,
+            ..Default::default()
+        };
+
+        let payload = DataGrid::normalize_query_result(result);
+
+        assert_eq!(payload.columns, vec![SharedString::from("payload")]);
+        assert_eq!(payload.rows, vec![vec![Some("wrong".to_string())]]);
+        assert_eq!(payload.binary_cells.len(), 1);
+        assert_eq!(payload.binary_cells[0].row_index, 0);
+        assert_eq!(payload.binary_cells[0].column_index, 0);
+        assert_eq!(payload.binary_cells[0].bytes, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn query_result_export_rejects_non_query_and_ambiguous_results() {
+        let exec = SqlResult::Exec(ExecResult {
+            sql: "update users set active = true".to_string(),
+            rows_affected: 1,
+            elapsed_ms: 0,
+            message: None,
+        });
+        assert!(query_result_for_export(vec![exec]).is_err());
+
+        let database_error = "database unavailable";
+        let error = SqlResult::Error(SqlErrorInfo {
+            sql: "select id from users".to_string(),
+            message: database_error.to_string(),
+        });
+        assert!(
+            query_result_for_export(vec![error])
+                .unwrap_err()
+                .contains(database_error)
+        );
+
+        assert!(query_result_for_export(vec![]).is_err());
+        assert!(
+            query_result_for_export(vec![
+                SqlResult::Query(sample_query_result(1)),
+                SqlResult::Query(sample_query_result(1)),
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn table_has_unsaved_changes_when_cell_is_still_editing() {
+        assert!(table_has_unsaved_changes(Some((0, 1)), 0));
+    }
+
+    #[test]
+    fn table_has_unsaved_changes_when_delegate_has_pending_changes() {
+        assert!(table_has_unsaved_changes(None, 1));
+    }
+
+    #[test]
+    fn table_has_no_unsaved_changes_without_editing_or_pending_changes() {
+        assert!(!table_has_unsaved_changes(None, 0));
+    }
+
+    #[test]
+    fn convert_row_changes_preserves_null_separately_from_empty_string() {
+        let changes = vec![RowChange::Updated {
+            original_data: vec![
+                Some("42".to_string()),
+                None,
+                Some(String::new()),
+                Some("NULL".to_string()),
+            ],
+            changes: vec![
+                CellChange {
+                    col_ix: 1,
+                    col_name: "score".to_string(),
+                    old_value: Some("7".to_string()),
+                    new_value: None,
+                },
+                CellChange {
+                    col_ix: 3,
+                    col_name: "note".to_string(),
+                    old_value: Some("old".to_string()),
+                    new_value: Some("NULL".to_string()),
+                },
+            ],
+            rowid: None,
+        }];
+
+        let converted =
+            DataGrid::convert_row_changes(changes, &["id".to_string(), "score".to_string()]);
+
+        let TableRowChange::Updated {
+            original_data,
+            changes,
+            ..
+        } = &converted[0]
+        else {
+            panic!("expected an updated row");
+        };
+        assert_eq!(
+            original_data,
+            &[
+                TableCellValue::Text("42".to_string()),
+                TableCellValue::Null,
+                TableCellValue::Text(String::new()),
+                TableCellValue::Text("NULL".to_string()),
+            ]
+        );
+        assert_eq!(changes[0].old_value, TableCellValue::Text("7".to_string()));
+        assert_eq!(changes[0].new_value, TableCellValue::Null);
+        assert_eq!(
+            changes[1].new_value,
+            TableCellValue::Text("NULL".to_string())
+        );
+    }
+
+    #[test]
+    fn convert_added_and_deleted_rows_preserve_all_cell_value_states() {
+        let values = vec![None, Some(String::new()), Some("NULL".to_string())];
+        let converted = DataGrid::convert_row_changes(
+            vec![
+                RowChange::Added {
+                    data: values.clone(),
+                },
+                RowChange::Deleted {
+                    original_data: values,
+                    rowid: None,
+                },
+            ],
+            &[],
+        );
+        let expected = vec![
+            TableCellValue::Null,
+            TableCellValue::Text(String::new()),
+            TableCellValue::Text("NULL".to_string()),
+        ];
+
+        let TableRowChange::Added { data } = &converted[0] else {
+            panic!("expected an added row");
+        };
+        assert_eq!(data, &expected);
+
+        let TableRowChange::Deleted { original_data, .. } = &converted[1] else {
+            panic!("expected a deleted row");
+        };
+        assert_eq!(original_data, &expected);
+    }
+
+    fn read_xlsx_entry(bytes: &[u8], entry_name: &str) -> String {
+        let mut archive =
+            ZipArchive::new(Cursor::new(bytes)).expect("xlsx bytes should be a valid zip archive");
+        let mut entry = archive
+            .by_name(entry_name)
+            .unwrap_or_else(|_| panic!("missing xlsx entry: {entry_name}"));
+        let mut content = String::new();
+        entry
+            .read_to_string(&mut content)
+            .expect("xlsx entry should be valid utf-8 xml");
+        content
+    }
+
+    #[test]
+    fn build_header_order_by_clause_quotes_mysql_identifier() {
+        let clause = build_header_order_by_clause(
+            &DbManager::default(),
+            DatabaseType::MySQL,
+            "order",
+            ColumnSort::Descending,
+        )
+        .expect("should build order by clause");
+
+        assert_eq!(clause.as_deref(), Some("`order` DESC"));
+    }
+
+    #[test]
+    fn build_header_order_by_clause_quotes_postgresql_identifier() {
+        let clause = build_header_order_by_clause(
+            &DbManager::default(),
+            DatabaseType::PostgreSQL,
+            "created_at",
+            ColumnSort::Ascending,
+        )
+        .expect("should build order by clause");
+
+        assert_eq!(clause.as_deref(), Some("\"created_at\" ASC"));
+    }
+
+    #[test]
+    fn build_header_order_by_clause_clears_default_sort() {
+        let clause = build_header_order_by_clause(
+            &DbManager::default(),
+            DatabaseType::SQLite,
+            "id",
+            ColumnSort::Default,
+        )
+        .expect("default sort should not require a clause");
+
+        assert!(clause.is_none());
+    }
+
+    #[test]
+    fn collect_delete_row_indices_dedups_and_sorts_descending() {
+        let rows = collect_delete_row_indices(vec![2, 4, 2, 1, 4], None);
+
+        assert_eq!(rows, vec![4, 2, 1]);
+    }
+
+    #[test]
+    fn collect_delete_row_indices_uses_fallback_when_selection_is_empty() {
+        let rows = collect_delete_row_indices(Vec::<usize>::new(), Some(3));
+
+        assert_eq!(rows, vec![3]);
+    }
+
+    #[test]
+    fn collect_delete_row_indices_prefers_selection_over_fallback() {
+        let rows = collect_delete_row_indices(vec![1, 0], Some(5));
+
+        assert_eq!(rows, vec![1, 0]);
+    }
+
+    #[test]
+    fn build_large_text_editor_title_formats_row_and_column() {
+        let title = build_large_text_editor_title("payload", 2);
+
+        assert_eq!(
+            title,
+            t!("TableDataGrid.edit_cell_title", column = "payload", row = 3).to_string()
+        );
+    }
+
+    #[test]
+    fn resolve_large_text_editor_route_uses_page_preview_for_sidebar_mode() {
+        let route = resolve_large_text_editor_route(LargeTextCellEditorOpenMode::SidebarPreview);
+
+        assert_eq!(route, LargeTextEditorRoute::PagePreview);
+    }
+
+    #[test]
+    fn resolve_large_text_editor_route_uses_dialog_for_dialog_mode() {
+        let route = resolve_large_text_editor_route(LargeTextCellEditorOpenMode::Dialog);
+
+        assert_eq!(route, LargeTextEditorRoute::Dialog);
+    }
+
+    #[test]
+    fn dialogs_bind_callbacks_and_button_props() {
+        let source = include_str!("data_grid.rs");
+        assert_dialog_callback_and_buttons(source, "fn show_text_editor_dialog(");
+        assert_dialog_callback_and_buttons(source, "fn show_sql_editor_dialog(");
+    }
+
+    fn assert_dialog_callback_and_buttons(source: &str, marker: &str) {
+        let start = source.find(marker).expect("function exists");
+        let rest = &source[start..];
+        let end = rest.find("\n    fn ").unwrap_or(rest.len());
+        let body = &rest[..end];
+        let on_ok = body.find(".on_ok(").expect("function binds ok callback");
+        let buttons = body
+            .find(".button_props(")
+            .expect("function configures dialog buttons");
+        assert_ne!(on_ok, buttons);
+    }
+
+    #[test]
+    fn build_export_bytes_creates_zip_based_xlsx_payload() {
+        let (rows, columns, metadata) = sample_export_input();
+
+        let bytes = super::build_export_bytes(
+            ExportFormat::Xlsx,
+            super::ExportBuildInput {
+                rows,
+                binary_cells: vec![],
+                columns,
+                metadata,
+                plugin: None,
+            },
+        )
+        .expect("xlsx export should build successfully")
+        .expect("xlsx export should produce bytes");
+
+        assert!(bytes.starts_with(b"PK"));
+        let sheet_xml = read_xlsx_entry(&bytes, "xl/worksheets/sheet1.xml");
+        assert!(sheet_xml.contains("<sheetData>"));
+    }
+
+    #[test]
+    fn build_export_bytes_preserves_newlines_in_xlsx_cells() {
+        let (rows, columns, metadata) = sample_export_input();
+
+        let bytes = super::build_export_bytes(
+            ExportFormat::Xlsx,
+            super::ExportBuildInput {
+                rows,
+                binary_cells: vec![],
+                columns,
+                metadata,
+                plugin: None,
+            },
+        )
+        .expect("xlsx export should build successfully")
+        .expect("xlsx export should produce bytes");
+
+        let shared_strings = read_xlsx_entry(&bytes, "xl/sharedStrings.xml");
+        assert!(
+            shared_strings.contains("Line 1\nLine 2")
+                || shared_strings.contains("Line 1&#10;Line 2")
+                || shared_strings.contains("Line 1&#xA;Line 2")
+        );
+    }
+
+    #[test]
+    fn build_export_bytes_preserves_null_empty_and_literal_null_text() {
+        let rows = vec![vec![None, Some(String::new()), Some("NULL".to_string())]];
+        let columns = vec!["nullable".into(), "empty".into(), "literal".into()];
+        let metadata = TableMetadata::new("sample");
+
+        let csv = super::build_export_bytes(
+            ExportFormat::Csv,
+            super::ExportBuildInput {
+                rows: rows.clone(),
+                binary_cells: vec![],
+                columns: columns.clone(),
+                metadata: metadata.clone(),
+                plugin: None,
+            },
+        )
+        .expect("CSV export should build")
+        .expect("CSV export should produce bytes");
+        assert_eq!(
+            String::from_utf8(csv).expect("CSV is UTF-8"),
+            "nullable,empty,literal\n\\N,\"\",NULL"
+        );
+
+        let sql = super::build_export_bytes(
+            ExportFormat::InsertSql,
+            super::ExportBuildInput {
+                rows,
+                binary_cells: vec![],
+                columns,
+                metadata,
+                plugin: None,
+            },
+        )
+        .expect("SQL export should build")
+        .expect("SQL export should produce bytes");
+        assert!(
+            String::from_utf8(sql)
+                .expect("SQL is UTF-8")
+                .contains("(NULL, '', 'NULL')")
+        );
+    }
+
+    #[test]
+    fn build_export_bytes_uses_mysql_bit_literal() {
+        let plugin = DbManager::default()
+            .get_plugin(&DatabaseType::MySQL)
+            .expect("MySQL plugin should exist");
+        let rows = vec![vec![Some("1".to_string()), Some("1".to_string())]];
+        let columns = vec!["id".into(), "bit_name".into()];
+        let metadata = TableMetadata::new("test_bit")
+            .with_columns(columns.clone())
+            .with_column_meta(vec![
+                ColumnInfo {
+                    name: "id".to_string(),
+                    data_type: "INT".to_string(),
+                    is_nullable: false,
+                    is_primary_key: true,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+                ColumnInfo {
+                    name: "bit_name".to_string(),
+                    data_type: "BIT(1)".to_string(),
+                    is_nullable: false,
+                    is_primary_key: false,
+                    default_value: None,
+                    comment: None,
+                    charset: None,
+                    collation: None,
+                    is_auto_increment: false,
+                },
+            ]);
+
+        let sql = super::build_export_bytes(
+            ExportFormat::InsertSql,
+            super::ExportBuildInput {
+                rows,
+                binary_cells: vec![],
+                columns,
+                metadata,
+                plugin: Some(plugin),
+            },
+        )
+        .expect("SQL export should build")
+        .expect("SQL export should produce bytes");
+
+        assert_eq!(
+            String::from_utf8(sql).expect("SQL is UTF-8"),
+            "INSERT INTO `test_bit` (`id`, `bit_name`) VALUES\n(1, 1);"
+        );
+    }
+
+    #[test]
+    fn build_export_bytes_uses_binary_sidecar_for_csv_xlsx_and_sql() {
+        let rows = vec![vec![Some("wrong".to_string()), None]];
+        let columns = vec![
+            SharedString::from("payload"),
+            SharedString::from("empty_payload"),
+        ];
+        let metadata =
+            TableMetadata::new("binary_values").with_columns(vec!["payload", "empty_payload"]);
+        let binary_cells = vec![
+            BinaryCell {
+                row_index: 0,
+                column_index: 0,
+                bytes: vec![1, 2, 3],
+            },
+            BinaryCell {
+                row_index: 0,
+                column_index: 1,
+                bytes: vec![],
+            },
+        ];
+
+        let csv = super::build_export_bytes(
+            ExportFormat::Csv,
+            super::ExportBuildInput {
+                rows: rows.clone(),
+                binary_cells: binary_cells.clone(),
+                columns: columns.clone(),
+                metadata: metadata.clone(),
+                plugin: None,
+            },
+        )
+        .expect("CSV export should build")
+        .expect("CSV export should produce bytes");
+        assert_eq!(
+            String::from_utf8(csv).expect("CSV is UTF-8"),
+            "payload,empty_payload\nbase64:AQID,base64:"
+        );
+
+        let xlsx = super::build_export_bytes(
+            ExportFormat::Xlsx,
+            super::ExportBuildInput {
+                rows: rows.clone(),
+                binary_cells: binary_cells.clone(),
+                columns: columns.clone(),
+                metadata: metadata.clone(),
+                plugin: None,
+            },
+        )
+        .expect("XLSX export should build")
+        .expect("XLSX export should produce bytes");
+        let shared_strings = read_xlsx_entry(&xlsx, "xl/sharedStrings.xml");
+        assert!(shared_strings.contains("base64:AQID"), "{shared_strings}");
+        assert!(shared_strings.contains("base64:"), "{shared_strings}");
+        assert!(!shared_strings.contains("wrong"), "{shared_strings}");
+
+        let plugin = DbManager::default()
+            .get_plugin(&DatabaseType::MySQL)
+            .expect("MySQL plugin should exist");
+        let sql = super::build_export_bytes(
+            ExportFormat::InsertSql,
+            super::ExportBuildInput {
+                rows,
+                binary_cells,
+                columns,
+                metadata,
+                plugin: Some(plugin),
+            },
+        )
+        .expect("SQL export should build")
+        .expect("SQL export should produce bytes");
+        assert_eq!(
+            String::from_utf8(sql).expect("SQL is UTF-8"),
+            "INSERT INTO `binary_values` (`payload`, `empty_payload`) VALUES\n(X'010203', X'');"
+        );
+    }
+}

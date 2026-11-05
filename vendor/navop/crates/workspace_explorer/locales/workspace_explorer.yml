@@ -1,0 +1,511 @@
+_version: 2
+
+WorkspaceExplorer:
+  action:
+    save:
+      en: Save
+      zh-CN: 保存
+      zh-HK: 儲存
+    search:
+      en: Search
+      zh-CN: 搜索
+      zh-HK: 搜索
+    replace:
+      en: Replace
+      zh-CN: 替换
+      zh-HK: 取代
+    reload:
+      en: Reload
+      zh-CN: 重新加载
+      zh-HK: 重新載入
+    soft_wrap:
+      en: Wrap
+      zh-CN: 自动换行
+      zh-HK: 自動換行
+    side_by_side:
+      en: Side by side
+      zh-CN: 并排对比
+      zh-HK: 並排對比
+    previous_change:
+      en: Previous change
+      zh-CN: 上一个变更
+      zh-HK: 上一個變更
+    next_change:
+      en: Next change
+      zh-CN: 下一个变更
+      zh-HK: 下一個變更
+    discard:
+      en: Discard
+      zh-CN: 放弃更改
+      zh-HK: 放棄更改
+    cancel:
+      en: Cancel
+      zh-CN: 取消
+      zh-HK: 取消
+    confirm:
+      en: Confirm
+      zh-CN: 确认
+      zh-HK: 確認
+  file_action:
+    open:
+      en: Open
+      zh-CN: 打开
+      zh-HK: 開啟
+    cut:
+      en: Cut
+      zh-CN: 剪切
+      zh-HK: 剪下
+    copy:
+      en: Copy
+      zh-CN: 复制
+      zh-HK: 複製
+    paste:
+      en: Paste
+      zh-CN: 粘贴
+      zh-HK: 貼上
+    new_file:
+      en: New File
+      zh-CN: 新建文件
+      zh-HK: 新增檔案
+    new_directory:
+      en: New Directory
+      zh-CN: 新建目录
+      zh-HK: 新增目錄
+    set_workspace_root:
+      en: Set as Workspace Root
+      zh-CN: 设为工作区根目录
+      zh-HK: 設為工作區根目錄
+    rename:
+      en: Rename
+      zh-CN: 重命名
+      zh-HK: 重新命名
+    delete:
+      en: Delete
+      zh-CN: 删除
+      zh-HK: 刪除
+    name_placeholder:
+      en: New name
+      zh-CN: 新名称
+      zh-HK: 新名稱
+    file_name_placeholder:
+      en: File name
+      zh-CN: 文件名
+      zh-HK: 檔案名稱
+    directory_name_placeholder:
+      en: Directory name
+      zh-CN: 目录名
+      zh-HK: 目錄名稱
+    delete_confirm:
+      en: "Delete %{name}? This operation cannot be undone."
+      zh-CN: "删除 %{name}？此操作无法撤销。"
+      zh-HK: "刪除 %{name}？此操作無法復原。"
+    file_created:
+      en: File created
+      zh-CN: 文件已创建
+      zh-HK: 檔案已建立
+    directory_created:
+      en: Directory created
+      zh-CN: 目录已创建
+      zh-HK: 目錄已建立
+    renamed:
+      en: Entry renamed
+      zh-CN: 已重命名
+      zh-HK: 已重新命名
+    deleted:
+      en: Entry deleted
+      zh-CN: 已删除
+      zh-HK: 已刪除
+    copied:
+      en: Entry copied
+      zh-CN: 已复制
+      zh-HK: 已複製
+    cut_ready:
+      en: Entry cut
+      zh-CN: 已剪切
+      zh-HK: 已剪下
+    pasted:
+      en: Entry pasted
+      zh-CN: 已粘贴
+      zh-HK: 已貼上
+  git_action:
+    open_changes:
+      en: Open Changes
+      zh-CN: 打开更改
+      zh-HK: 開啟變更
+    stage:
+      en: Stage Changes
+      zh-CN: 暂存更改
+      zh-HK: 暫存變更
+    unstage:
+      en: Unstage Changes
+      zh-CN: 取消暂存
+      zh-HK: 取消暫存
+    discard:
+      en: Discard Changes
+      zh-CN: 放弃更改
+      zh-HK: 放棄變更
+    discard_confirm:
+      en: "Discard all changes to %{path}? This operation cannot be undone."
+      zh-CN: "放弃 %{path} 的所有更改？此操作无法撤销。"
+      zh-HK: "放棄 %{path} 的所有變更？此操作無法復原。"
+    staged:
+      en: Changes staged
+      zh-CN: 更改已暂存
+      zh-HK: 變更已暫存
+    unstaged:
+      en: Changes unstaged
+      zh-CN: 已取消暂存
+      zh-HK: 已取消暫存
+    discarded:
+      en: Changes discarded
+      zh-CN: 更改已放弃
+      zh-HK: 變更已放棄
+  editor:
+    review_turn_tab:
+      en: "Turn changes (%{turn})"
+      zh-CN: "本轮改动（%{turn}）"
+      zh-HK: "本輪改動（%{turn}）"
+    diff_tab:
+      en: "%{name} (diff)"
+      zh-CN: "%{name}（差异）"
+      zh-HK: "%{name}（差異）"
+  diff:
+    empty:
+      en: No changes compared to HEAD
+      zh-CN: 与 HEAD 相比没有差异
+      zh-HK: 與 HEAD 相比沒有差異
+  branch:
+    manage:
+      en: Manage branches
+      zh-CN: 管理分支
+      zh-HK: 管理分支
+    search_placeholder:
+      en: Search branches
+      zh-CN: 搜索分支
+      zh-HK: 搜尋分支
+    name_placeholder:
+      en: Branch name
+      zh-CN: 分支名称
+      zh-HK: 分支名稱
+    local:
+      en: "Local (%{count})"
+      zh-CN: "本地（%{count}）"
+      zh-HK: "本機（%{count}）"
+    remote:
+      en: "Remote (%{count})"
+      zh-CN: "远程（%{count}）"
+      zh-HK: "遠端（%{count}）"
+    create:
+      en: Create branch
+      zh-CN: 创建分支
+      zh-HK: 建立分支
+    rename:
+      en: Rename branch
+      zh-CN: 重命名分支
+      zh-HK: 重新命名分支
+    merge:
+      en: Merge into current branch
+      zh-CN: 合并到当前分支
+      zh-HK: 合併到目前分支
+    delete:
+      en: Delete branch
+      zh-CN: 删除分支
+      zh-HK: 刪除分支
+    fetch:
+      en: Fetch remote branches
+      zh-CN: 拉取远程分支
+      zh-HK: 取得遠端分支
+    push:
+      en: Push branch
+      zh-CN: 推送分支
+      zh-HK: 推送分支
+    merge_confirm:
+      en: "Merge branch %{name} into the current branch?"
+      zh-CN: "将分支 %{name} 合并到当前分支？"
+      zh-HK: "將分支 %{name} 合併到目前分支？"
+    delete_confirm:
+      en: "Delete branch %{name}? Remote deletion will be pushed immediately."
+      zh-CN: "删除分支 %{name}？远程分支会立即从远程仓库删除。"
+      zh-HK: "刪除分支 %{name}？遠端分支會立即從遠端儲存庫刪除。"
+    loading:
+      en: Loading branches...
+      zh-CN: 正在加载分支...
+      zh-HK: 正在載入分支...
+    empty:
+      en: No matching branches
+      zh-CN: 没有匹配的分支
+      zh-HK: 沒有符合的分支
+    switched:
+      en: Branch switched
+      zh-CN: 已切换分支
+      zh-HK: 已切換分支
+    created:
+      en: Branch created and switched
+      zh-CN: 已创建并切换分支
+      zh-HK: 已建立並切換分支
+    renamed:
+      en: Branch renamed
+      zh-CN: 已重命名分支
+      zh-HK: 已重新命名分支
+    merged:
+      en: Branch merged
+      zh-CN: 分支合并完成
+      zh-HK: 分支合併完成
+    deleted:
+      en: Branch deleted
+      zh-CN: 分支已删除
+      zh-HK: 分支已刪除
+    fetched:
+      en: Remote branches updated
+      zh-CN: 远程分支已更新
+      zh-HK: 遠端分支已更新
+    pushed:
+      en: Branch pushed
+      zh-CN: 分支已推送到远程
+      zh-HK: 分支已推送到遠端
+  status:
+    loading:
+      en: Loading...
+      zh-CN: 加载中...
+      zh-HK: 載入中...
+    loaded:
+      en: Loaded
+      zh-CN: 已加载
+      zh-HK: 已載入
+    diff_loaded:
+      en: Diff loaded
+      zh-CN: 差异已加载
+      zh-HK: 差異已載入
+    markdown_loaded:
+      en: Markdown editor
+      zh-CN: Markdown 编辑器
+      zh-HK: Markdown 編輯器
+    load_failed:
+      en: Unable to load
+      zh-CN: 加载失败
+      zh-HK: 載入失敗
+    saving:
+      en: Saving...
+      zh-CN: 保存中...
+      zh-HK: 儲存中...
+    saved:
+      en: Saved
+      zh-CN: 已保存
+      zh-HK: 已儲存
+    unsaved:
+      en: Unsaved changes
+      zh-CN: 有未保存的更改
+      zh-HK: 有未儲存的變更
+    save_failed:
+      en: Save failed
+      zh-CN: 保存失败
+      zh-HK: 儲存失敗
+  policy:
+    code:
+      en: Code
+      zh-CN: 代码
+      zh-HK: 程式碼
+    plain_text:
+      en: Large file · plain text
+      zh-CN: 大文件 · 纯文本
+      zh-HK: 大型檔案 · 純文字
+    markdown:
+      en: Markdown · Notes
+      zh-CN: Markdown · 笔记
+      zh-HK: Markdown · 筆記
+    diff:
+      en: Git diff · read only
+      zh-CN: Git 差异 · 只读
+      zh-HK: Git 差異 · 唯讀
+  prompt:
+    unsaved_title:
+      en: Unsaved changes
+      zh-CN: 有未保存的更改
+      zh-HK: 有未儲存的更改
+    unsaved_message:
+      en: Save your changes before closing this file?
+      zh-CN: 是否在关闭文件前保存更改？
+      zh-HK: 是否在關閉檔案前儲存更改？
+  notification:
+    saved:
+      en: File saved
+      zh-CN: 文件已保存
+      zh-HK: 檔案已儲存
+  body:
+    empty:
+      en: Open a file to start editing
+      zh-CN: 打开文件以开始编辑
+      zh-HK: 開啟檔案以開始編輯
+    loading:
+      en: Loading file...
+      zh-CN: 正在加载文件...
+      zh-HK: 正在載入檔案...
+    unable_to_open:
+      en: Unable to open document
+      zh-CN: 无法打开文档
+      zh-HK: 無法打開文件
+  workspace:
+    tooltip:
+      en: Workspace
+      zh-CN: 工作区
+      zh-HK: 工作區
+    choose:
+      en: Choose workspace folder…
+      zh-CN: 选择工作区目录…
+      zh-HK: 選擇工作區目錄…
+    recent:
+      en: Recent workspaces
+      zh-CN: 最近工作区
+      zh-HK: 最近工作區
+  commit:
+    menu:
+      en: Commit all changes…
+      zh-CN: 提交全部变更…
+      zh-HK: 提交全部變更…
+    placeholder:
+      en: Commit message
+      zh-CN: 提交信息
+      zh-HK: 提交訊息
+    committed:
+      en: Changes committed
+      zh-CN: 已提交
+      zh-HK: 已提交
+    generate:
+      en: AI message
+      zh-CN: AI 生成
+      zh-HK: AI 生成
+    generating:
+      en: Generating…
+      zh-CN: 生成中…
+      zh-HK: 生成中…
+    generate_failed:
+      en: "Could not generate a commit message: %{error}"
+      zh-CN: "生成提交信息失败：%{error}"
+      zh-HK: "產生提交訊息失敗：%{error}"
+  push:
+    menu:
+      en: Push current branch
+      zh-CN: 推送当前分支
+      zh-HK: 推送目前分支
+    pushed:
+      en: Branch pushed
+      zh-CN: 已推送
+      zh-HK: 已推送
+  worktree:
+    create:
+      en: Create isolated worktree
+      zh-CN: 创建隔离工作区
+      zh-HK: 建立隔離工作區
+    empty:
+      en: No worktrees yet
+      zh-CN: 还没有隔离工作区
+      zh-HK: 還沒有隔離工作區
+    section:
+      en: "Worktrees (%{count})"
+      zh-CN: "隔离工作区（%{count}）"
+      zh-HK: "隔離工作區（%{count}）"
+    remove:
+      en: "Remove %{name}"
+      zh-CN: "删除 %{name}"
+      zh-HK: "刪除 %{name}"
+    remove_confirm:
+      en: "Remove worktree %{name} and its branch? Uncommitted changes in it are lost."
+      zh-CN: "删除隔离工作区 %{name} 及其分支？其中未提交的改动会丢失。"
+      zh-HK: "刪除隔離工作區 %{name} 及其分支？其中未提交的變更會遺失。"
+  tooltip:
+    create_worktree:
+      en: Create isolated worktree
+      zh-CN: 创建隔离工作区
+      zh-HK: 建立隔離工作區
+    close_tab:
+      en: Close tab
+      zh-CN: 关闭标签页
+      zh-HK: 關閉標籤頁
+    collapse_folders:
+      en: Collapse folders
+      zh-CN: 折叠文件夹
+      zh-HK: 摺疊資料夾
+    refresh:
+      en: Refresh files and Git changes
+      zh-CN: 刷新文件和 Git 更改
+      zh-HK: 重新整理檔案和 Git 變更
+    show_hidden_files:
+      en: Show hidden files
+      zh-CN: 显示隐藏文件
+      zh-HK: 顯示隱藏檔案
+    hide_hidden_files:
+      en: Hide hidden files
+      zh-CN: 隐藏隐藏文件
+      zh-HK: 隱藏隱藏檔案
+    show_ignored_files:
+      en: Show Git ignored files
+      zh-CN: 显示 Git 忽略文件
+      zh-HK: 顯示 Git 忽略檔案
+    hide_ignored_files:
+      en: Hide Git ignored files
+      zh-CN: 隐藏 Git 忽略文件
+      zh-HK: 隱藏 Git 忽略檔案
+  frame:
+    options:
+      en: Panel options
+      zh-CN: 面板选项
+      zh-HK: 面板選項
+    choose_root:
+      en: Choose Workspace Folder
+      zh-CN: 选择工作区目录
+      zh-HK: 選擇工作區資料夾
+    follow_terminal_cwd:
+      en: Follow Terminal Working Directory
+      zh-CN: 跟随终端工作目录
+      zh-HK: 跟隨終端工作目錄
+    move_to:
+      en: Move to
+      zh-CN: 移动到
+      zh-HK: 移動到
+    left:
+      en: Left
+      zh-CN: 左侧
+      zh-HK: 左側
+    right:
+      en: Right
+      zh-CN: 右侧
+      zh-HK: 右側
+    bottom:
+      en: Bottom
+      zh-CN: 底部
+      zh-HK: 底部
+    remove:
+      en: Remove from sidebar
+      zh-CN: 从侧边栏移除
+      zh-HK: 從側邊欄移除
+    close:
+      en: Close panel
+      zh-CN: 关闭面板
+      zh-HK: 關閉面板
+  section:
+    changes:
+      en: "CHANGES (%{count})"
+      zh-CN: "更改（%{count}）"
+      zh-HK: "變更（%{count}）"
+    files:
+      en: FILES
+      zh-CN: 文件
+      zh-HK: 檔案
+  state:
+    refreshing_changes:
+      en: Refreshing changes...
+      zh-CN: 正在刷新更改...
+      zh-HK: 正在重新整理變更...
+    working_tree_clean:
+      en: Working tree clean
+      zh-CN: 工作区没有更改
+      zh-HK: 工作區沒有變更
+    loading_workspace:
+      en: Loading workspace...
+      zh-CN: 正在加载工作区...
+      zh-HK: 正在載入工作區...
+  badge:
+    staged:
+      en: S
+      zh-CN: 暂
+      zh-HK: 暫

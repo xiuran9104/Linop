@@ -1,0 +1,114 @@
+use std::path::Path;
+
+use anyhow::Result;
+
+pub fn language_for_path(path: &str, plain_text_mode: bool) -> String {
+    if plain_text_mode {
+        return "text".to_string();
+    }
+
+    let path_without_query = path.split_once('?').map_or(path, |(path, _)| path);
+
+    Path::new(path_without_query)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .and_then(language_name_for_extension)
+        .unwrap_or_else(|| "text".to_string())
+}
+
+pub fn load_language_for_path(path: &str, plain_text_mode: bool) -> Result<String> {
+    let language = language_for_path(path, plain_text_mode);
+    if language != "text" {
+        extension_runtime::language_extensions::load_registered_language(&language)?;
+    }
+    Ok(language)
+}
+
+fn language_name_for_extension(extension: &str) -> Option<String> {
+    extension_runtime::language_extensions::registered_language_name(extension)
+        .or_else(|| local_language_name(extension).map(str::to_string))
+}
+
+fn local_language_name(extension: &str) -> Option<&'static str> {
+    match extension
+        .trim()
+        .trim_start_matches('.')
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "sh" | "bash" => Some("bash"),
+        "html" | "htm" => Some("html"),
+        "json" | "jsonc" => Some("json"),
+        "md" | "markdown" => Some("markdown"),
+        "sql" => Some("sql"),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::{language_for_path, load_language_for_path};
+
+    #[test]
+    fn language_for_path_uses_plain_text_for_large_file_mode() {
+        assert_eq!(language_for_path("/tmp/main.rs", true), "text");
+    }
+
+    #[test]
+    fn language_for_path_maps_known_extensions() {
+        assert_eq!(language_for_path("/tmp/deploy.sh", false), "bash");
+        assert_eq!(language_for_path("/tmp/index.html", false), "html");
+        assert_eq!(language_for_path("/tmp/data.json", false), "json");
+        assert_eq!(language_for_path("/tmp/README.md", false), "markdown");
+        assert_eq!(language_for_path("/tmp/query.sql", false), "sql");
+    }
+
+    #[test]
+    fn language_for_path_falls_back_to_text() {
+        assert_eq!(language_for_path("/tmp/README.unknown", false), "text");
+    }
+
+    #[test]
+    fn language_for_path_maps_local_aliases() {
+        assert_eq!(language_for_path("/tmp/settings.jsonc", false), "json");
+    }
+
+    #[test]
+    fn language_for_path_ignores_query_string() {
+        assert_eq!(
+            language_for_path("/tmp/settings.jsonc?token=Nwiw70H2Gs", false),
+            "json"
+        );
+    }
+
+    #[test]
+    fn load_language_for_path_loads_registered_parser() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "navop-remote-language-test-{}-{unique}",
+            std::process::id()
+        ));
+        let language_dir = root.join("languages").join("__remote_lazy_language__");
+        fs::create_dir_all(&language_dir).unwrap();
+        fs::write(
+            language_dir.join("manifest.json"),
+            r#"{"name":"__remote_lazy_language__","file_extensions":["remote_lazy"]}"#,
+        )
+        .unwrap();
+        fs::write(language_dir.join("parser.wasm"), [0u8; 4]).unwrap();
+        extension_runtime::extension::register_language_extension_manifests_from_root(&root)
+            .unwrap();
+
+        let error = load_language_for_path("/tmp/example.remote_lazy", false).unwrap_err();
+
+        assert!(error.to_string().contains("load wasm language"));
+        extension_runtime::language_extensions::forget_language("__remote_lazy_language__");
+        fs::remove_dir_all(root).unwrap();
+    }
+}

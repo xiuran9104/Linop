@@ -1,0 +1,426 @@
+//! 从应用连接数据构建 AgentChatView 的 ResourceContext。
+//!
+//! 连接级 AI 访问策略（issue #437）在这里落地为「可见性 + 能力」两级收窄：
+//! 禁止 AI 操作的连接不产生任何资源或 `@` 提及；只读连接保留资源但能力被
+//! 裁剪为只读子集。执行期的 ToolAccessGuard 是第二道防线，不依赖这一层。
+
+use std::collections::HashMap;
+
+use agent_runtime::{
+    AgentResourceScope, DefaultTargetReason, ResourceCapability, ResourceCatalog, ResourceContext,
+    ResourceId, ResourceKind, ResourceRef, ResourceScope,
+};
+use gpui::App;
+use one_core::storage::{
+    ConnectionRepository, ConnectionType, GlobalStorageState, StoredConnection,
+};
+use serde_json::Value;
+use tool_runtime::AiAccessLevel;
+
+use crate::input::MentionItem;
+use crate::resource_display::{first_visible_alias, visible_alias};
+
+/// 连接 id → AI 访问级别，只包含非默认（非 `Allowed`）的记录。
+pub type AiAccessLevels = HashMap<i64, AiAccessLevel>;
+
+/// 从全局存储读取连接级 AI 访问策略。
+///
+/// 读取失败时按「全部允许」处理并记录告警：这里只负责可见性收窄，执行期还有
+/// `ToolAccessGuard` 兜底，不能因为存储异常让整个 AI 面板不可用。
+pub fn load_ai_access_levels(cx: &App) -> AiAccessLevels {
+    let Some(state) = cx.try_global::<GlobalStorageState>() else {
+        return AiAccessLevels::new();
+    };
+    let Some(repo) = state.storage.get::<ConnectionRepository>() else {
+        return AiAccessLevels::new();
+    };
+    match repo.ai_access_levels() {
+        Ok(levels) => levels,
+        Err(error) => {
+            tracing::warn!(error = %error, "读取连接 AI 访问策略失败，按全部允许处理");
+            AiAccessLevels::new()
+        }
+    }
+}
+
+fn ai_access_level(
+    ai_access_levels: &AiAccessLevels,
+    connection: &StoredConnection,
+) -> AiAccessLevel {
+    connection
+        .id
+        .and_then(|id| ai_access_levels.get(&id).copied())
+        .unwrap_or(AiAccessLevel::Allowed)
+}
+
+/// 从单个连接构建 ResourceContext（用于侧边栏模式）。
+///
+/// 被设置为「禁止 AI 操作」的连接返回空上下文。
+pub fn build_resource_context_single(
+    connection: &StoredConnection,
+    ai_access_levels: &AiAccessLevels,
+) -> ResourceContext {
+    match connection_to_resource_ref(connection, ai_access_levels) {
+        Some(resource) => ResourceContext::new().with_resource(resource),
+        None => ResourceContext::new(),
+    }
+}
+
+/// 从单个连接构建 Agent 视图所需的资源上下文与 `@` 提及项。
+pub fn build_agent_context_single(
+    connection: &StoredConnection,
+    ai_access_levels: &AiAccessLevels,
+) -> (ResourceContext, Vec<MentionItem>) {
+    (
+        build_resource_context_single(connection, ai_access_levels),
+        build_mentions_single(connection, ai_access_levels),
+    )
+}
+
+/// 从连接列表构建可添加到资源池的资源 catalog。
+pub fn build_resource_catalog(
+    connections: &[StoredConnection],
+    ai_access_levels: &AiAccessLevels,
+) -> Vec<ResourceRef> {
+    connections
+        .iter()
+        .filter_map(|connection| connection_to_resource_ref(connection, ai_access_levels))
+        .collect()
+}
+
+/// 从单个连接构建侧边栏默认资源池,并附带全部连接 catalog。
+pub fn build_agent_context_single_with_catalog(
+    connection: &StoredConnection,
+    connections: &[StoredConnection],
+    ai_access_levels: &AiAccessLevels,
+) -> (ResourceContext, Vec<MentionItem>, Vec<ResourceRef>) {
+    let (pool, mentions) = build_agent_context_single(connection, ai_access_levels);
+    let mentions = if connections.is_empty() {
+        mentions
+    } else {
+        build_mentions_from_connections(connections, ai_access_levels)
+    };
+    (
+        pool,
+        mentions,
+        build_resource_catalog(connections, ai_access_levels),
+    )
+}
+
+/// 从所有连接构建 ResourceContext，并设置默认目标（用于非侧边栏模式）。
+pub fn build_resource_context_all(
+    current_connection: Option<&StoredConnection>,
+    all_connections: Vec<StoredConnection>,
+    ai_access_levels: &AiAccessLevels,
+) -> ResourceContext {
+    let mut ctx = ResourceContext::new();
+    let mut current_id: Option<ResourceId> = None;
+
+    for conn in all_connections {
+        let Some(resource) = connection_to_resource_ref(&conn, ai_access_levels) else {
+            continue;
+        };
+        if let (Some(current), Some(conn_id)) = (current_connection, &conn.id) {
+            if current.id == Some(*conn_id) {
+                current_id = Some(resource.id.clone());
+            }
+        }
+        ctx = ctx.with_resource(resource);
+    }
+
+    if let Some(id) = current_id {
+        ctx.current = Some(id);
+    }
+
+    ctx
+}
+
+/// 从所有连接构建 Agent 视图所需的资源池与 `@` 提及项。
+pub fn build_agent_context_all(
+    current_connection: Option<&StoredConnection>,
+    connections: &[StoredConnection],
+    ai_access_levels: &AiAccessLevels,
+) -> (ResourceContext, Vec<MentionItem>) {
+    (
+        build_resource_context_all(current_connection, connections.to_vec(), ai_access_levels),
+        build_mentions_from_connections(connections, ai_access_levels),
+    )
+}
+
+/// 从所有连接构建工作台模式所需的资源池、`@` 提及项与可添加资源 catalog。
+pub fn build_workbench_agent_context(
+    connections: &[StoredConnection],
+    ai_access_levels: &AiAccessLevels,
+) -> (ResourceContext, Vec<MentionItem>, Vec<ResourceRef>) {
+    let (resources, mentions) =
+        build_agent_context_all(connections.first(), connections, ai_access_levels);
+    let catalog = build_resource_catalog(connections, ai_access_levels);
+    (resources, mentions, catalog)
+}
+
+/// 从所有连接构建工作台资源状态:catalog 全量可见,scope 初始为空。
+pub fn build_workbench_resource_state(
+    connections: &[StoredConnection],
+    ai_access_levels: &AiAccessLevels,
+) -> (AgentResourceScope, ResourceCatalog, Vec<MentionItem>) {
+    let catalog = ResourceCatalog::new(build_resource_catalog(connections, ai_access_levels));
+    let mentions = build_mentions_from_connections(connections, ai_access_levels);
+    (AgentResourceScope::empty(), catalog, mentions)
+}
+
+/// 从当前连接和全量连接构建侧边栏资源状态。
+pub fn build_sidebar_resource_state(
+    current_connection: &StoredConnection,
+    connections: &[StoredConnection],
+    reason: DefaultTargetReason,
+    ai_access_levels: &AiAccessLevels,
+) -> (AgentResourceScope, ResourceCatalog, Vec<MentionItem>) {
+    let catalog_connections = if connections.is_empty() {
+        vec![current_connection.clone()]
+    } else {
+        connections.to_vec()
+    };
+    let catalog = ResourceCatalog::new(build_resource_catalog(
+        &catalog_connections,
+        ai_access_levels,
+    ));
+    let scope = match connection_to_resource_ref(current_connection, ai_access_levels) {
+        Some(resource) => AgentResourceScope::single_default(resource, reason),
+        None => AgentResourceScope::empty(),
+    };
+    let mentions = build_mentions_from_connections(&catalog_connections, ai_access_levels);
+    (scope, catalog, mentions)
+}
+
+/// 从单个连接构建 `@` 提及项。
+pub fn build_mentions_single(
+    connection: &StoredConnection,
+    ai_access_levels: &AiAccessLevels,
+) -> Vec<MentionItem> {
+    connection_to_mention(connection, ai_access_levels)
+        .into_iter()
+        .collect()
+}
+
+/// 从连接列表构建 `@` 提及项。
+pub fn build_mentions_from_connections(
+    connections: &[StoredConnection],
+    ai_access_levels: &AiAccessLevels,
+) -> Vec<MentionItem> {
+    connections
+        .iter()
+        .filter_map(|connection| connection_to_mention(connection, ai_access_levels))
+        .collect()
+}
+
+/// 将 StoredConnection 转换为 ResourceRef。
+///
+/// 被禁止 AI 操作的连接返回 `None`；只读连接的能力被裁剪为只读子集。
+fn connection_to_resource_ref(
+    connection: &StoredConnection,
+    ai_access_levels: &AiAccessLevels,
+) -> Option<ResourceRef> {
+    let ai_access_level = ai_access_level(ai_access_levels, connection);
+    if ai_access_level == AiAccessLevel::Denied {
+        return None;
+    }
+    let kind = connection_type_to_resource_kind(&connection.connection_type, &connection.params);
+    let label = if connection.name.is_empty() {
+        format!("连接 {:?}", connection.id)
+    } else {
+        connection.name.clone()
+    };
+
+    let mut resource = ResourceRef::new(
+        connection
+            .id
+            .map_or_else(|| "unknown".to_string(), |id| id.to_string()),
+        kind,
+        label,
+    );
+    for alias in connection_aliases(connection) {
+        resource = resource.with_alias(alias);
+    }
+    for scope in connection_scopes(connection) {
+        resource.set_scope(scope);
+    }
+    for capability in ai_access_level.narrow_capabilities(&connection_capabilities(connection)) {
+        resource = resource.with_capability(capability);
+    }
+    Some(resource)
+}
+
+fn connection_to_mention(
+    connection: &StoredConnection,
+    ai_access_levels: &AiAccessLevels,
+) -> Option<MentionItem> {
+    let resource = connection_to_resource_ref(connection, ai_access_levels)?;
+    let id = connection.id?.to_string();
+    let label = resource.label.clone();
+    let display_label = mention_display_label(&resource);
+    let detail = mention_detail(&resource);
+    let kind = resource.kind.as_str().to_string();
+    Some(MentionItem::new(id, label, detail, kind).with_display_label(display_label))
+}
+
+fn mention_display_label(resource: &ResourceRef) -> String {
+    first_visible_alias(&resource.aliases)
+        .filter(|alias| alias != &resource.label)
+        .map(|alias| format!("{} · {}", resource.label, alias))
+        .unwrap_or_else(|| resource.label.clone())
+}
+
+fn mention_detail(resource: &ResourceRef) -> String {
+    let mut parts = vec![resource.kind.as_str().to_string()];
+    parts.extend(
+        resource
+            .aliases
+            .iter()
+            .filter(|alias| visible_alias(alias))
+            .cloned(),
+    );
+    parts.extend(
+        resource
+            .scopes
+            .iter()
+            .map(|scope| format!("{}: {}", scope.label, scope.value)),
+    );
+    parts.join(" · ")
+}
+
+fn connection_capabilities(connection: &StoredConnection) -> Vec<ResourceCapability> {
+    let mut capabilities = vec![
+        ResourceCapability::ManageConnection,
+        ResourceCapability::OpenSession,
+    ];
+    capabilities.extend(match connection.connection_type {
+        ConnectionType::Database => vec![
+            ResourceCapability::DatabaseQuery,
+            ResourceCapability::DatabaseExecute,
+        ],
+        ConnectionType::SshSftp => vec![
+            ResourceCapability::List,
+            ResourceCapability::ReadFile,
+            ResourceCapability::WriteFile,
+        ],
+        ConnectionType::Redis => vec![ResourceCapability::Execute],
+        ConnectionType::MongoDB => vec![ResourceCapability::Query, ResourceCapability::Execute],
+        ConnectionType::Serial => Vec::new(),
+        _ => Vec::new(),
+    });
+    capabilities
+}
+
+fn connection_aliases(connection: &StoredConnection) -> Vec<String> {
+    let mut aliases = Vec::new();
+    if let Some(cloud_id) = connection
+        .cloud_id
+        .as_ref()
+        .filter(|value| !value.is_empty())
+    {
+        aliases.push(cloud_id.clone());
+    }
+    aliases.extend(params_aliases(&connection.params));
+    aliases
+}
+
+fn params_aliases(params: &str) -> Vec<String> {
+    let Ok(Value::Object(map)) = serde_json::from_str::<Value>(params) else {
+        return Vec::new();
+    };
+    ["host", "hostname", "path"]
+        .into_iter()
+        .filter_map(|key| string_field(&map, &[key]))
+        .filter(|value| !value.is_empty())
+        .collect()
+}
+
+fn string_field(map: &serde_json::Map<String, Value>, keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| match map.get(*key) {
+        Some(Value::String(value)) => Some(value.clone()),
+        Some(Value::Number(value)) => Some(value.to_string()),
+        _ => None,
+    })
+}
+
+fn connection_scopes(connection: &StoredConnection) -> Vec<ResourceScope> {
+    if connection.connection_type != ConnectionType::Database {
+        return Vec::new();
+    }
+    let mut scopes = Vec::new();
+    if let Some(database) = selected_database_scope(connection) {
+        scopes.push(ResourceScope::new("database", "Database", database));
+    }
+    if let Some(schema) = params_scope_field(&connection.params, "schema") {
+        scopes.push(ResourceScope::new("schema", "Schema", schema));
+    }
+    scopes
+}
+
+fn selected_database_scope(connection: &StoredConnection) -> Option<String> {
+    connection
+        .selected_databases
+        .as_ref()
+        .and_then(|items| single_selected_database(items))
+        .or_else(|| params_scope_field(&connection.params, "database"))
+}
+
+fn single_selected_database(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.starts_with('[') {
+        let parsed = serde_json::from_str::<Vec<String>>(trimmed).ok()?;
+        return (parsed.len() == 1).then(|| parsed[0].clone());
+    }
+    (!trimmed.contains(',')).then(|| trimmed.to_string())
+}
+
+fn params_scope_field(params: &str, key: &str) -> Option<String> {
+    let Ok(Value::Object(map)) = serde_json::from_str::<Value>(params) else {
+        return None;
+    };
+    string_field(&map, &[key]).filter(|value| !value.is_empty())
+}
+
+/// 将 ConnectionType 转换为 ResourceKind。
+fn connection_type_to_resource_kind(conn_type: &ConnectionType, params: &str) -> ResourceKind {
+    match conn_type {
+        ConnectionType::Database => {
+            // 从 params 解析数据库类型
+            if let Ok(Value::Object(map)) = serde_json::from_str::<Value>(params) {
+                if let Some(Value::String(db_type)) = map.get("type") {
+                    return match db_type.as_str() {
+                        "mysql" => ResourceKind::Mysql,
+                        "postgres" | "postgresql" => ResourceKind::Postgres,
+                        "sqlite" => ResourceKind::Sqlite,
+                        _ => ResourceKind::Other(db_type.clone()),
+                    };
+                }
+            }
+            ResourceKind::Other("database".into())
+        }
+        ConnectionType::Redis => ResourceKind::Redis,
+        ConnectionType::MongoDB => ResourceKind::Mongo,
+        ConnectionType::Mqtt => ResourceKind::Other("mqtt".into()),
+        ConnectionType::SshSftp => ResourceKind::Ssh,
+        ConnectionType::Ftp => ResourceKind::Other("ftp".into()),
+        ConnectionType::Serial => ResourceKind::Terminal,
+        ConnectionType::Telnet => ResourceKind::Terminal,
+        ConnectionType::PortForwarding => ResourceKind::Other("port-forwarding".into()),
+        ConnectionType::Rdp => ResourceKind::Other("rdp".into()),
+        ConnectionType::Vnc => ResourceKind::Other("vnc".into()),
+        ConnectionType::Extension => {
+            serde_json::from_str::<one_core::storage::ExtensionConnectionParams>(params)
+                .map(|params| {
+                    ResourceKind::Other(format!(
+                        "extension:{}:{}",
+                        params.extension_id, params.contribution_id
+                    ))
+                })
+                .unwrap_or_else(|_| ResourceKind::Other("extension".into()))
+        }
+        ConnectionType::All => ResourceKind::Other("all".into()),
+    }
+}

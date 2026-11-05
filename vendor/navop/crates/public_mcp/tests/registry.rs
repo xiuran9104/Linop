@@ -1,0 +1,468 @@
+use public_mcp::registry::{
+    ConnectionState, PublicMcpRegistry, RemoteOpsSessionHandle, TerminalConnectionKind,
+    TerminalControlFuture, TerminalControlSessionHandle, TerminalExecFuture,
+    TerminalExecSessionHandle, TerminalInputSessionHandle, TerminalReadSessionHandle,
+    TerminalSessionHandle, TerminalSessionSnapshot,
+};
+use public_mcp::remote_ops::{
+    RemoteCommandMode, RemoteExecRequest, RemoteExecResult, RemoteFileWriteRequest,
+    RemoteFileWriteResult, SessionDiagnosticsRequest, SessionDiagnosticsResult,
+};
+use public_mcp::terminal_control::{
+    TerminalControlAction, TerminalControlReadiness, TerminalControlRequest, TerminalControlResult,
+};
+use public_mcp::terminal_exec::{TerminalExecCompletion, TerminalExecRequest, TerminalExecResult};
+use public_mcp::terminal_read::{TerminalReadRequest, TerminalReadResult};
+use public_mcp::terminal_write_keys::{TerminalWriteKeysRequest, TerminalWriteKeysResult};
+use std::collections::BTreeMap;
+use tool_runtime::ResourceCapability;
+
+#[derive(Clone)]
+struct FakeTerminal {
+    id: String,
+    kind: TerminalConnectionKind,
+    state: ConnectionState,
+}
+
+impl TerminalSessionHandle for FakeTerminal {
+    fn snapshot(&self) -> TerminalSessionSnapshot {
+        TerminalSessionSnapshot {
+            session_id: self.id.clone(),
+            connection_id: Some(7),
+            title: format!("session {}", self.id),
+            host_label: "example.test".to_string(),
+            cwd: Some("/home/app".to_string()),
+            rows: 24,
+            cols: 80,
+            connection_kind: self.kind,
+            connection_state: self.state.clone(),
+        }
+    }
+}
+
+impl TerminalExecSessionHandle for FakeTerminal {
+    fn snapshot(&self) -> TerminalSessionSnapshot {
+        <Self as TerminalSessionHandle>::snapshot(self)
+    }
+
+    fn exec_in_terminal(
+        &self,
+        request: TerminalExecRequest,
+        _cancellation: tokio_util::sync::CancellationToken,
+    ) -> TerminalExecFuture {
+        Box::pin(async move {
+            Ok(TerminalExecResult {
+                target: request.target,
+                command: request.command,
+                submitted: request.submit,
+                completion: TerminalExecCompletion::SubmittedOnly,
+                exit_code: None,
+                output: String::new(),
+                truncated: false,
+                captured_bytes: 0,
+                discarded_bytes: 0,
+                response_truncated: false,
+                response_bytes: 0,
+                duration_ms: 0,
+                command_id: None,
+            })
+        })
+    }
+}
+
+impl TerminalControlSessionHandle for FakeTerminal {
+    fn snapshot(&self) -> TerminalSessionSnapshot {
+        <Self as TerminalSessionHandle>::snapshot(self)
+    }
+
+    fn control_terminal(
+        &self,
+        request: TerminalControlRequest,
+        _cancellation: tokio_util::sync::CancellationToken,
+    ) -> TerminalControlFuture {
+        Box::pin(async move {
+            Ok(TerminalControlResult {
+                target: request.target,
+                action: request.action,
+                sent: true,
+                readiness_before: Some(TerminalControlReadiness::CommandRunning),
+            })
+        })
+    }
+}
+
+impl TerminalReadSessionHandle for FakeTerminal {
+    fn snapshot(&self) -> TerminalSessionSnapshot {
+        <Self as TerminalSessionHandle>::snapshot(self)
+    }
+
+    fn read_terminal(&self, request: TerminalReadRequest) -> anyhow::Result<TerminalReadResult> {
+        Ok(TerminalReadResult {
+            target: request.target,
+            text: "local output".to_string(),
+            requested_lines: request.lines,
+            returned_lines: 1,
+            available_lines: 1,
+            history_size: 0,
+            screen_lines: 24,
+            columns: 80,
+            truncated: false,
+            alt_screen: false,
+            display_offset: 0,
+            cursor_row: 1,
+            cursor_column: 0,
+            selection: None,
+        })
+    }
+}
+
+impl TerminalInputSessionHandle for FakeTerminal {
+    fn snapshot(&self) -> TerminalSessionSnapshot {
+        <Self as TerminalSessionHandle>::snapshot(self)
+    }
+
+    fn write_keys(
+        &self,
+        request: TerminalWriteKeysRequest,
+    ) -> anyhow::Result<TerminalWriteKeysResult> {
+        Ok(TerminalWriteKeysResult {
+            target: request.target,
+            sent: true,
+            bytes_written: request.bytes.len(),
+        })
+    }
+}
+
+#[test]
+fn list_sessions_exposes_connected_terminal_sessions() {
+    let registry = PublicMcpRegistry::default();
+    registry.register(FakeTerminal {
+        id: "ssh-ready".to_string(),
+        kind: TerminalConnectionKind::Ssh,
+        state: ConnectionState::Connected,
+    });
+    registry.register(FakeTerminal {
+        id: "local-ready".to_string(),
+        kind: TerminalConnectionKind::Local,
+        state: ConnectionState::Connected,
+    });
+    registry.register(FakeTerminal {
+        id: "ssh-connecting".to_string(),
+        kind: TerminalConnectionKind::Ssh,
+        state: ConnectionState::Connecting,
+    });
+
+    let sessions = registry.list_sessions();
+
+    assert_eq!(2, sessions.len());
+    let ssh = sessions
+        .iter()
+        .find(|session| session.session_id == "ssh-ready")
+        .expect("ssh session should be listed");
+    assert_eq!("example.test", ssh.host_label);
+    assert_eq!(TerminalConnectionKind::Ssh, ssh.connection_kind);
+    assert!(sessions.iter().any(|s| s.session_id == "local-ready"));
+}
+
+#[test]
+fn list_sessions_can_filter_by_connection_kind() {
+    let registry = PublicMcpRegistry::default();
+    registry.register(FakeTerminal {
+        id: "ssh-ready".to_string(),
+        kind: TerminalConnectionKind::Ssh,
+        state: ConnectionState::Connected,
+    });
+    registry.register(FakeTerminal {
+        id: "local-ready".to_string(),
+        kind: TerminalConnectionKind::Local,
+        state: ConnectionState::Connected,
+    });
+
+    let sessions = registry.list_sessions_with_kind(Some(TerminalConnectionKind::Local));
+
+    assert_eq!(1, sessions.len());
+    assert_eq!("local-ready", sessions[0].session_id);
+    assert_eq!(TerminalConnectionKind::Local, sessions[0].connection_kind);
+}
+
+#[test]
+fn unregister_removes_session() {
+    let registry = PublicMcpRegistry::default();
+    registry.register(FakeTerminal {
+        id: "ssh-ready".to_string(),
+        kind: TerminalConnectionKind::Ssh,
+        state: ConnectionState::Connected,
+    });
+
+    registry.unregister("ssh-ready");
+
+    assert!(registry.list_sessions().is_empty());
+}
+
+#[test]
+fn list_sessions_reports_registered_execution_capabilities() {
+    let registry = PublicMcpRegistry::default();
+    let terminal = FakeTerminal {
+        id: "ssh-ready".to_string(),
+        kind: TerminalConnectionKind::Ssh,
+        state: ConnectionState::Connected,
+    };
+    registry.register(terminal.clone());
+
+    let sessions = registry.list_sessions();
+    assert_eq!(1, sessions.len());
+    assert!(sessions[0].capabilities.is_empty());
+
+    registry.register_terminal_exec(terminal.clone());
+    registry.register_terminal_control(terminal.clone());
+    registry.register_terminal_input(terminal.clone());
+    registry.register_remote_ops(FakeRemoteOps { terminal });
+
+    let sessions = registry.list_sessions();
+    assert_eq!(1, sessions.len());
+    assert!(
+        sessions[0]
+            .capabilities
+            .contains(&ResourceCapability::TerminalExec)
+    );
+    assert!(
+        sessions[0]
+            .capabilities
+            .contains(&ResourceCapability::TerminalControl)
+    );
+    assert!(
+        sessions[0]
+            .capabilities
+            .contains(&ResourceCapability::TerminalInput)
+    );
+    assert!(
+        sessions[0]
+            .capabilities
+            .contains(&ResourceCapability::RemoteExec)
+    );
+    assert!(
+        sessions[0]
+            .capabilities
+            .contains(&ResourceCapability::ExecCommand)
+    );
+}
+
+#[derive(Clone)]
+struct FakeRemoteOps {
+    terminal: FakeTerminal,
+}
+
+impl RemoteOpsSessionHandle for FakeRemoteOps {
+    fn snapshot(&self) -> TerminalSessionSnapshot {
+        TerminalSessionHandle::snapshot(&self.terminal)
+    }
+
+    fn exec(&self, request: RemoteExecRequest) -> anyhow::Result<RemoteExecResult> {
+        Ok(RemoteExecResult::foreground(
+            public_mcp::remote_ops::RemoteCommandStatus::Exited,
+            format!("ran: {} in {:?}", request.command, request.cwd),
+            String::new(),
+            Some(0),
+            10,
+            false,
+        ))
+    }
+
+    fn write_file(
+        &self,
+        _request: RemoteFileWriteRequest,
+    ) -> anyhow::Result<RemoteFileWriteResult> {
+        Ok(RemoteFileWriteResult {
+            path: "/tmp/x".to_string(),
+            bytes_written: 3,
+            sha256: "abc".to_string(),
+        })
+    }
+
+    fn diagnostics(
+        &self,
+        request: SessionDiagnosticsRequest,
+    ) -> anyhow::Result<SessionDiagnosticsResult> {
+        Ok(SessionDiagnosticsResult {
+            session_id: request.session_id,
+            connection_id: Some(7),
+            host_label: "example.test".to_string(),
+            cwd: Some("/home/app".to_string()),
+            rows: 24,
+            cols: 80,
+            connection_kind: TerminalConnectionKind::Ssh,
+            state: ConnectionState::Connected,
+            last_error: None,
+            recoverable: true,
+            suggested_action: None,
+        })
+    }
+}
+
+fn fake_exec_request(session: &str) -> RemoteExecRequest {
+    RemoteExecRequest {
+        session_id: session.to_string(),
+        command: "pwd".to_string(),
+        cwd: None,
+        env: BTreeMap::new(),
+        timeout_ms: None,
+        mode: RemoteCommandMode::Foreground,
+    }
+}
+
+#[test]
+fn remote_exec_accepts_connected_ssh_session() {
+    let registry = PublicMcpRegistry::default();
+    registry.register_remote_ops(FakeRemoteOps {
+        terminal: FakeTerminal {
+            id: "ssh-ready".to_string(),
+            kind: TerminalConnectionKind::Ssh,
+            state: ConnectionState::Connected,
+        },
+    });
+
+    let result = registry
+        .remote_exec("ssh-ready", fake_exec_request("ssh-ready"))
+        .expect("connected SSH session should accept remote exec");
+
+    assert_eq!(Some(0), result.exit_code);
+    assert_eq!(
+        public_mcp::remote_ops::RemoteCommandStatus::Exited,
+        result.status
+    );
+}
+
+#[test]
+fn remote_exec_rejects_local_session() {
+    let registry = PublicMcpRegistry::default();
+    registry.register_remote_ops(FakeRemoteOps {
+        terminal: FakeTerminal {
+            id: "local-ready".to_string(),
+            kind: TerminalConnectionKind::Local,
+            state: ConnectionState::Connected,
+        },
+    });
+
+    let err = registry
+        .remote_exec("local-ready", fake_exec_request("local-ready"))
+        .expect_err("local session should reject remote exec");
+
+    assert!(err.to_string().contains("exposed connected SSH session"));
+}
+
+#[tokio::test]
+async fn visible_terminal_exec_accepts_connected_local_session() {
+    let registry = PublicMcpRegistry::default();
+    let terminal = FakeTerminal {
+        id: "local-ready".to_string(),
+        kind: TerminalConnectionKind::Local,
+        state: ConnectionState::Connected,
+    };
+    registry.register_terminal_exec(terminal);
+
+    let result = registry
+        .terminal_exec(
+            "local-ready",
+            TerminalExecRequest {
+                target: "local-ready".to_string(),
+                command: "pwd".to_string(),
+                submit: true,
+                wait_for_output: false,
+                ready_timeout_ms: 0,
+                timeout_ms: Some(1_000),
+            },
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect("connected local terminal should accept visible exec");
+
+    assert_eq!("local-ready", result.target);
+    assert_eq!("pwd", result.command);
+}
+
+#[test]
+fn visible_terminal_read_accepts_connected_local_session() {
+    let registry = PublicMcpRegistry::default();
+    registry.register_terminal_read(FakeTerminal {
+        id: "local-ready".to_string(),
+        kind: TerminalConnectionKind::Local,
+        state: ConnectionState::Connected,
+    });
+
+    let result = registry
+        .terminal_read(
+            "local-ready",
+            TerminalReadRequest {
+                target: "local-ready".to_string(),
+                lines: 20,
+            },
+        )
+        .expect("connected local terminal should be readable");
+
+    assert_eq!("local output", result.text);
+}
+
+#[tokio::test]
+async fn visible_terminal_control_accepts_connected_local_session() {
+    let registry = PublicMcpRegistry::default();
+    registry.register_terminal_control(FakeTerminal {
+        id: "local-ready".to_string(),
+        kind: TerminalConnectionKind::Local,
+        state: ConnectionState::Connected,
+    });
+
+    let result = registry
+        .terminal_control(
+            "local-ready",
+            TerminalControlRequest {
+                target: "local-ready".to_string(),
+                action: TerminalControlAction::Interrupt,
+            },
+            tokio_util::sync::CancellationToken::new(),
+        )
+        .await
+        .expect("connected local terminal should accept visible control");
+
+    assert!(result.sent);
+    assert_eq!(
+        Some(TerminalControlReadiness::CommandRunning),
+        result.readiness_before
+    );
+}
+
+#[test]
+fn session_diagnostics_reports_unknown_session_error() {
+    let registry = PublicMcpRegistry::default();
+
+    let err = registry
+        .session_diagnostics(SessionDiagnosticsRequest {
+            session_id: "missing".to_string(),
+        })
+        .expect_err("unknown session should error");
+
+    assert!(
+        err.to_string()
+            .contains("unknown public MCP session: missing")
+    );
+}
+
+#[test]
+fn session_diagnostics_recovers_from_terminal_registry() {
+    let registry = PublicMcpRegistry::default();
+    registry.register(FakeTerminal {
+        id: "ssh-only-terminal".to_string(),
+        kind: TerminalConnectionKind::Ssh,
+        state: ConnectionState::Connected,
+    });
+
+    let result = registry
+        .session_diagnostics(SessionDiagnosticsRequest {
+            session_id: "ssh-only-terminal".to_string(),
+        })
+        .expect("terminal-only session should still produce diagnostics");
+
+    assert_eq!("ssh-only-terminal", result.session_id);
+    assert_eq!(ConnectionState::Connected, result.state);
+    assert_eq!(TerminalConnectionKind::Ssh, result.connection_kind);
+    assert!(result.recoverable);
+}

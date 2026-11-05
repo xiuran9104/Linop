@@ -1,0 +1,51 @@
+rust_i18n::i18n!("locales", fallback = "en");
+
+pub mod addon;
+mod ai_live_context;
+pub mod broadcast_input;
+mod broadcast_registry;
+pub mod cd_completion;
+pub mod ftp_form_window;
+pub mod highlight_presets;
+pub mod history_prompt;
+
+pub mod keys;
+pub mod public_mcp;
+pub mod public_mcp_remote_ops;
+mod quick_command_sync;
+pub mod selection_highlight_addon;
+pub mod serial_form_window;
+pub mod settings;
+pub mod sidebar;
+
+
+pub mod telnet_form_window;
+pub mod terminal_element;
+mod theme;
+mod transfer_notice;
+pub mod view;
+pub mod workspace;
+
+pub use addon::{AddonManager, HoveredLink, SearchAddon, TerminalAddon, WebLinksAddon};
+pub use ftp_form_window::{FtpFormWindow, FtpFormWindowConfig};
+pub use one_core::layout::{
+    SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, TOOLBAR_WIDTH,
+};
+pub use serial_form_window::{SerialFormWindow, SerialFormWindowConfig};
+pub use settings::{
+    TerminalHighlightRule, TerminalSettings, current_settings, init_settings, update_settings,
+};
+pub use sidebar::{SettingsPanel, SidebarPanel, TerminalSidebar, TerminalSidebarEvent};
+pub use ssh_form::{SshFormPostSaveAction, SshFormWindow, SshFormWindowConfig};
+pub use telnet_form_window::{TelnetFormWindow, TelnetFormWindowConfig};
+pub use terminal::terminal::{
+    ConnectionState, SshTerminalConfig, Terminal, TerminalConnectionKind, TerminalModelEvent,
+};
+pub use theme::{
+    DEFAULT_LINE_HEIGHT_SCALE, MAX_FONT_SIZE, MIN_FONT_SIZE, TerminalColors, TerminalTheme,
+    available_monospace_fonts, default_font_fallbacks,
+};
+pub use view::{
+    RecordingPlaybackViewConfig, SessionLogViewConfig, TerminalView, init, refresh_keybindings,
+};
+pub use workspace::{TerminalWorkspace, TerminalWorkspaceEvent};

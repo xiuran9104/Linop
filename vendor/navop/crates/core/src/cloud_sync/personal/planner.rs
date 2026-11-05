@@ -1,0 +1,365 @@
+use std::collections::{HashMap, HashSet};
+
+use crate::cloud_sync::models::CloudSyncData;
+use serde::{Deserialize, Serialize};
+
+use super::PersonalConflictType;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersonalSyncItemSnapshot {
+    pub local_id: String,
+    pub cloud_id: Option<String>,
+    pub data_type: String,
+    pub updated_at: i64,
+    pub last_synced_at: Option<i64>,
+    pub checksum: String,
+    pub team_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PersonalSyncRecordConflict {
+    /// 冲突对应的本地条目 id；`None` 表示**没有**本地对应行（例如「本地已删除、
+    /// 远端被别的设备改过」这种冲突，检测时本地行已经不存在了）。
+    pub local_id: Option<String>,
+    pub cloud_id: String,
+    pub data_type: String,
+    pub conflict_type: PersonalConflictType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct PersonalSyncCloudKey {
+    pub data_type: String,
+    pub cloud_id: String,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct PersonalSyncPlan {
+    pub to_upload: Vec<PersonalSyncItemSnapshot>,
+    pub to_update_cloud: Vec<(PersonalSyncItemSnapshot, CloudSyncData)>,
+    pub to_update_local: Vec<(CloudSyncData, PersonalSyncItemSnapshot)>,
+    pub to_download: Vec<CloudSyncData>,
+    pub to_mark_synced: Vec<PersonalSyncCloudKey>,
+    pub conflicts: Vec<PersonalSyncRecordConflict>,
+}
+
+impl PersonalSyncPlan {
+    pub fn is_empty(&self) -> bool {
+        self.to_upload.is_empty()
+            && self.to_update_cloud.is_empty()
+            && self.to_update_local.is_empty()
+            && self.to_download.is_empty()
+            && self.to_mark_synced.is_empty()
+            && self.conflicts.is_empty()
+    }
+
+    pub fn to_upload_local_ids(&self) -> Vec<&str> {
+        self.to_upload
+            .iter()
+            .map(|item| item.local_id.as_str())
+            .collect()
+    }
+
+    pub fn to_mark_synced_cloud_ids(&self) -> Vec<&str> {
+        self.to_mark_synced
+            .iter()
+            .map(|key| key.cloud_id.as_str())
+            .collect()
+    }
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct PersonalSyncPlanner;
+
+impl PersonalSyncPlanner {
+    pub fn new() -> Self {
+        Self
+    }
+
+    pub fn plan(
+        &self,
+        local_items: &[PersonalSyncItemSnapshot],
+        remote_records: &[CloudSyncData],
+        paused_record_keys: &HashSet<PersonalSyncCloudKey>,
+    ) -> PersonalSyncPlan {
+        let remote_by_cloud_id = remote_records
+            .iter()
+            .map(|record| ((record.data_type.as_str(), record.id.as_str()), record))
+            .collect::<HashMap<_, _>>();
+        let mut plan = PersonalSyncPlan::default();
+        let mut local_cloud_ids = HashSet::new();
+
+        for item in local_items.iter().filter(|item| item.team_id.is_none()) {
+            self.plan_local_item(item, &remote_by_cloud_id, paused_record_keys, &mut plan);
+            if let Some(cloud_id) = &item.cloud_id {
+                local_cloud_ids.insert((item.data_type.as_str(), cloud_id.as_str()));
+            }
+        }
+
+        for record in remote_records {
+            if !local_cloud_ids.contains(&(record.data_type.as_str(), record.id.as_str()))
+                && !paused_record_keys.contains(&PersonalSyncCloudKey {
+                    data_type: record.data_type.clone(),
+                    cloud_id: record.id.clone(),
+                })
+            {
+                plan.to_download.push(record.clone());
+            }
+        }
+
+        plan
+    }
+
+    fn plan_local_item(
+        &self,
+        item: &PersonalSyncItemSnapshot,
+        remote_by_cloud_id: &HashMap<(&str, &str), &CloudSyncData>,
+        paused_record_keys: &HashSet<PersonalSyncCloudKey>,
+        plan: &mut PersonalSyncPlan,
+    ) {
+        let Some(cloud_id) = &item.cloud_id else {
+            plan.to_upload.push(item.clone());
+            return;
+        };
+        if paused_record_keys.contains(&PersonalSyncCloudKey {
+            data_type: item.data_type.clone(),
+            cloud_id: cloud_id.clone(),
+        }) {
+            return;
+        }
+
+        match remote_by_cloud_id.get(&(item.data_type.as_str(), cloud_id.as_str())) {
+            Some(remote) => plan_existing_item(item, remote, plan),
+            None => plan.to_upload.push(item.clone()),
+        }
+    }
+}
+
+fn plan_existing_item(
+    item: &PersonalSyncItemSnapshot,
+    remote: &CloudSyncData,
+    plan: &mut PersonalSyncPlan,
+) {
+    if item.checksum == remote.checksum {
+        plan.to_mark_synced.push(PersonalSyncCloudKey {
+            data_type: remote.data_type.clone(),
+            cloud_id: remote.id.clone(),
+        });
+        return;
+    }
+
+    let last_synced = item.last_synced_at.unwrap_or(0);
+    let remote_updated = remote.updated_at / 1000;
+    let local_changed = item.updated_at > last_synced || remote_updated <= last_synced;
+    let remote_changed = remote_updated > last_synced;
+
+    match (local_changed, remote_changed) {
+        (true, true) => plan.conflicts.push(PersonalSyncRecordConflict {
+            local_id: Some(item.local_id.clone()),
+            cloud_id: remote.id.clone(),
+            data_type: remote.data_type.clone(),
+            conflict_type: PersonalConflictType::BothModified,
+        }),
+        (true, false) => plan.to_update_cloud.push((item.clone(), remote.clone())),
+        (false, true) => plan.to_update_local.push((remote.clone(), item.clone())),
+        (false, false) => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashSet;
+
+    use crate::cloud_sync::models::data_type;
+    use crate::cloud_sync::personal::test_support::test_record;
+    use crate::cloud_sync::personal::{
+        PersonalConflictType, PersonalSyncItemSnapshot, PersonalSyncPlanner,
+    };
+
+    #[test]
+    fn planner_uploads_new_local_personal_record() {
+        let local = vec![local_item("local-1", None, 200, None)];
+        let remote = Vec::new();
+
+        let plan = PersonalSyncPlanner::new().plan(&local, &remote, &HashSet::new());
+
+        assert_eq!(vec!["local-1"], plan.to_upload_local_ids());
+        assert!(plan.conflicts.is_empty());
+    }
+
+    #[test]
+    fn planner_skips_team_records() {
+        let local = vec![local_item("local-1", None, 200, Some("team-1"))];
+        let remote = Vec::new();
+
+        let plan = PersonalSyncPlanner::new().plan(&local, &remote, &HashSet::new());
+
+        assert!(plan.is_empty());
+    }
+
+    #[test]
+    fn planner_conflicts_when_both_sides_modified_with_different_checksum() {
+        let local = vec![local_item_with_sync(
+            "local-1",
+            "cloud-1",
+            300,
+            100,
+            "local-checksum",
+        )];
+        let mut remote = test_record("cloud-1", data_type::CONNECTION, 2, "remote-checksum");
+        remote.updated_at = 300_000;
+
+        let plan = PersonalSyncPlanner::new().plan(&local, &[remote], &HashSet::new());
+
+        assert_eq!(
+            PersonalConflictType::BothModified,
+            plan.conflicts[0].conflict_type
+        );
+    }
+
+    #[test]
+    fn planner_treats_matching_checksum_as_synced_even_with_different_timestamps() {
+        let local = vec![local_item_with_sync("local-1", "cloud-1", 300, 100, "same")];
+        let mut remote = test_record("cloud-1", data_type::CONNECTION, 2, "same");
+        remote.updated_at = 500_000;
+
+        let plan = PersonalSyncPlanner::new().plan(&local, &[remote], &HashSet::new());
+
+        assert!(plan.conflicts.is_empty());
+        assert_eq!(vec!["cloud-1"], plan.to_mark_synced_cloud_ids());
+    }
+
+    #[test]
+    fn planner_isolates_same_cloud_id_by_data_type() {
+        let local = vec![local_item_with_type_and_sync(
+            "local-connection",
+            "shared-cloud-id",
+            data_type::CONNECTION,
+            100,
+            100,
+            "connection-checksum",
+        )];
+        let remote = vec![
+            test_record(
+                "shared-cloud-id",
+                data_type::CONNECTION,
+                2,
+                "connection-checksum",
+            ),
+            test_record(
+                "shared-cloud-id",
+                data_type::CREDENTIAL,
+                2,
+                "credential-checksum",
+            ),
+        ];
+
+        let plan = PersonalSyncPlanner::new().plan(&local, &remote, &HashSet::new());
+
+        assert_eq!(1, plan.to_mark_synced.len());
+        assert_eq!(data_type::CONNECTION, plan.to_mark_synced[0].data_type);
+        assert_eq!("shared-cloud-id", plan.to_mark_synced[0].cloud_id);
+        assert_eq!(1, plan.to_download.len());
+        assert_eq!(data_type::CREDENTIAL, plan.to_download[0].data_type);
+        assert_eq!("shared-cloud-id", plan.to_download[0].id);
+        assert!(plan.to_upload.is_empty());
+        assert!(plan.to_update_cloud.is_empty());
+        assert!(plan.to_update_local.is_empty());
+        assert!(plan.conflicts.is_empty());
+    }
+
+    #[test]
+    fn planner_updates_local_workspace_when_only_remote_changed_after_last_sync() {
+        let local = vec![local_item_with_type_and_sync(
+            "workspace-1",
+            "cloud-workspace-1",
+            data_type::WORKSPACE,
+            100,
+            100,
+            "local-checksum",
+        )];
+        let mut remote = test_record(
+            "cloud-workspace-1",
+            data_type::WORKSPACE,
+            2,
+            "remote-checksum",
+        );
+        remote.updated_at = 300_000;
+
+        let plan = PersonalSyncPlanner::new().plan(&local, &[remote], &HashSet::new());
+
+        assert_eq!(1, plan.to_update_local.len());
+        assert!(plan.conflicts.is_empty());
+    }
+
+    #[test]
+    fn planner_uploads_local_checksum_change_even_when_timestamp_matches_last_sync() {
+        let local = vec![local_item_with_sync(
+            "local-1",
+            "cloud-1",
+            100,
+            100,
+            "local-checksum",
+        )];
+        let mut remote = test_record("cloud-1", data_type::CONNECTION, 2, "remote-checksum");
+        remote.updated_at = 100_000;
+
+        let plan = PersonalSyncPlanner::new().plan(&local, &[remote], &HashSet::new());
+
+        assert_eq!(1, plan.to_update_cloud.len());
+        assert!(plan.to_update_local.is_empty());
+        assert!(plan.conflicts.is_empty());
+    }
+
+    fn local_item(
+        local_id: &str,
+        cloud_id: Option<&str>,
+        updated_at: i64,
+        team_id: Option<&str>,
+    ) -> PersonalSyncItemSnapshot {
+        PersonalSyncItemSnapshot {
+            local_id: local_id.to_string(),
+            cloud_id: cloud_id.map(str::to_string),
+            data_type: data_type::CONNECTION.to_string(),
+            updated_at,
+            last_synced_at: None,
+            checksum: String::new(),
+            team_id: team_id.map(str::to_string),
+        }
+    }
+
+    fn local_item_with_sync(
+        local_id: &str,
+        cloud_id: &str,
+        updated_at: i64,
+        last_synced_at: i64,
+        checksum: &str,
+    ) -> PersonalSyncItemSnapshot {
+        local_item_with_type_and_sync(
+            local_id,
+            cloud_id,
+            data_type::CONNECTION,
+            updated_at,
+            last_synced_at,
+            checksum,
+        )
+    }
+
+    fn local_item_with_type_and_sync(
+        local_id: &str,
+        cloud_id: &str,
+        item_type: &str,
+        updated_at: i64,
+        last_synced_at: i64,
+        checksum: &str,
+    ) -> PersonalSyncItemSnapshot {
+        PersonalSyncItemSnapshot {
+            local_id: local_id.to_string(),
+            cloud_id: Some(cloud_id.to_string()),
+            data_type: item_type.to_string(),
+            updated_at,
+            last_synced_at: Some(last_synced_at),
+            checksum: checksum.to_string(),
+            team_id: None,
+        }
+    }
+}

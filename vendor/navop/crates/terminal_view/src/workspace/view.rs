@@ -1,0 +1,213 @@
+use std::collections::HashMap;
+
+use gpui::{App, AppContext as _, Context, Entity, Subscription, Window};
+use gpui_component::Icon;
+use one_core::storage::models::StoredConnection;
+use terminal::LocalConfig;
+use terminal::terminal::TerminalConnectionKind;
+
+use super::pane_tab_transfer::TerminalPaneTabMetadata;
+use super::resize::WorkspaceSidebarResize;
+use super::split_sizing::TerminalSplitSizing;
+use super::{TerminalPaneId, TerminalSplitTree};
+use crate::view::{
+    RecordingPlaybackViewConfig, SessionLogViewConfig, TERMINAL_TOOLS_SIDEBAR_DEFAULT_WIDTH,
+    TerminalView,
+};
+
+pub struct TerminalWorkspace {
+    pub(super) active_pane_id: TerminalPaneId,
+    pub(super) tab_active: bool,
+    pub(super) next_pane_id: u64,
+    pub(super) panes: HashMap<TerminalPaneId, Entity<TerminalView>>,
+    pub(super) split_tree: TerminalSplitTree,
+    pub(super) sidebar_panel_size: gpui::Pixels,
+    pub(super) sidebar_resizing: Option<WorkspaceSidebarResize>,
+    pub(super) workspace_bounds: gpui::Bounds<gpui::Pixels>,
+    pub(super) pane_tab_metadata: HashMap<TerminalPaneId, TerminalPaneTabMetadata>,
+    pub(super) pane_subscriptions: HashMap<TerminalPaneId, Vec<Subscription>>,
+    /// 每个拆分分组各自持有的分隔比例,切标签页/重渲染都不丢。
+    pub(super) split_sizing: TerminalSplitSizing,
+}
+
+#[derive(Clone, Debug)]
+pub enum TerminalWorkspaceEvent {
+    OpenSftp(StoredConnection),
+    /// 把临时连接保存为正式连接
+    SaveAsConnection(StoredConnection),
+}
+
+impl TerminalWorkspace {
+    pub fn new(config: LocalConfig, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_with_index(config, None, window, cx)
+    }
+
+    pub fn new_with_index(
+        config: LocalConfig,
+        tab_index: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let main = cx.new(|cx| {
+            TerminalView::new_with_index(config, tab_index, window, cx).with_workspace_pane()
+        });
+        Self::from_pane(main, window, cx)
+    }
+
+    /// 扩展声明的终端型连接:固定标题、连接图标、退出后可重启的本地进程。
+    pub fn new_launched(
+        config: LocalConfig,
+        title: String,
+        connection_icon: Option<Icon>,
+        tab_index: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let main = cx.new(|cx| {
+            TerminalView::new_launched(config, title, connection_icon, tab_index, window, cx)
+                .with_workspace_pane()
+        });
+        Self::from_pane(main, window, cx)
+    }
+
+    pub fn new_ssh(conn: StoredConnection, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_ssh_with_index(conn, None, window, cx, None, true)
+    }
+
+    pub fn new_ssh_with_index(
+        conn: StoredConnection,
+        tab_index: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        working_dir: Option<&str>,
+        sync_path_with_terminal: bool,
+    ) -> Self {
+        let main = cx.new(|cx| {
+            TerminalView::new_ssh_with_index(
+                conn,
+                tab_index,
+                window,
+                cx,
+                working_dir,
+                sync_path_with_terminal,
+            )
+            .with_workspace_pane()
+        });
+        Self::from_pane(main, window, cx)
+    }
+
+    pub fn new_serial(conn: StoredConnection, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_serial_with_index(conn, None, window, cx)
+    }
+
+    pub fn new_serial_with_index(
+        conn: StoredConnection,
+        tab_index: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let main = cx.new(|cx| {
+            TerminalView::new_serial_with_index(conn, tab_index, window, cx).with_workspace_pane()
+        });
+        Self::from_pane(main, window, cx)
+    }
+
+    pub fn new_telnet(conn: StoredConnection, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self::new_telnet_with_index(conn, None, window, cx)
+    }
+
+    pub fn new_telnet_with_index(
+        conn: StoredConnection,
+        tab_index: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let main = cx.new(|cx| {
+            TerminalView::new_telnet_with_index(conn, tab_index, window, cx).with_workspace_pane()
+        });
+        Self::from_pane(main, window, cx)
+    }
+
+    pub fn new_recording_playback(
+        config: RecordingPlaybackViewConfig,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let main = cx.new(|cx| {
+            TerminalView::new_recording_playback(config, window, cx).with_workspace_pane()
+        });
+        Self::from_pane(main, window, cx)
+    }
+
+    pub fn new_session_log(
+        config: SessionLogViewConfig,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let main =
+            cx.new(|cx| TerminalView::new_session_log(config, window, cx).with_workspace_pane());
+        Self::from_pane(main, window, cx)
+    }
+
+    pub(super) fn from_pane(
+        pane: Entity<TerminalView>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let initial_pane_id = TerminalPaneId::new(1);
+        let mut panes = HashMap::new();
+        panes.insert(initial_pane_id, pane.clone());
+        let mut pane_tab_metadata = HashMap::new();
+        pane_tab_metadata.insert(initial_pane_id, TerminalPaneTabMetadata::generated());
+        let mut this = Self {
+            active_pane_id: initial_pane_id,
+            tab_active: false,
+            next_pane_id: 2,
+            panes,
+            split_tree: TerminalSplitTree::new(initial_pane_id),
+            sidebar_panel_size: TERMINAL_TOOLS_SIDEBAR_DEFAULT_WIDTH,
+            sidebar_resizing: None,
+            workspace_bounds: gpui::Bounds::default(),
+            pane_tab_metadata,
+            pane_subscriptions: HashMap::new(),
+            split_sizing: TerminalSplitSizing::new(),
+        };
+        this.subscribe_to_pane(initial_pane_id, pane, window, cx);
+        this.set_active_pane_metric_state(cx);
+        this
+    }
+
+    pub fn connection_kind(&self, cx: &App) -> TerminalConnectionKind {
+        self.active_pane().read(cx).connection_kind(cx)
+    }
+
+    pub fn connection_id(&self, cx: &App) -> Option<i64> {
+        self.active_pane().read(cx).connection_id(cx)
+    }
+
+    pub(super) fn active_pane(&self) -> Entity<TerminalView> {
+        self.panes
+            .get(&self.active_pane_id)
+            .cloned()
+            .or_else(|| self.panes.values().next().cloned())
+            .expect("terminal workspace must contain one pane")
+    }
+
+    pub(super) fn set_tab_metric_state(&mut self, active: bool, cx: &mut Context<Self>) {
+        self.tab_active = active;
+        for pane in self.panes.values() {
+            pane.update(cx, |pane, _cx| {
+                pane.set_performance_tab_active(active);
+            });
+        }
+    }
+
+    pub(super) fn set_active_pane_metric_state(&self, cx: &mut Context<Self>) {
+        for (pane_id, pane) in &self.panes {
+            let active = *pane_id == self.active_pane_id;
+            pane.update(cx, |pane, _cx| {
+                pane.set_performance_pane_active(active);
+            });
+        }
+    }
+}

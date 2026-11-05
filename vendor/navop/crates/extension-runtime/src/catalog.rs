@@ -1,0 +1,509 @@
+#[cfg(feature = "wasm-components")]
+use std::collections::HashMap;
+use std::collections::{BTreeMap, HashSet};
+use std::path::Path;
+#[cfg(feature = "wasm-components")]
+use std::sync::Arc;
+use std::sync::{Mutex, OnceLock};
+
+#[cfg(feature = "database")]
+use db_view::extension_menu::DbTreeExtensionMenuRegistry;
+use one_core::{
+    command_registry::{CommandHandler, CommandRegistry},
+    contributions::SlotRegistry,
+};
+
+use crate::extension::manifest::{Manifest, WasmRuntimeKind};
+
+use super::registration::load_installed_composite_manifests;
+use super::types::{
+    ExtensionRuntimeError, RegisteredDocumentExporter,
+    RegisteredDocumentRenderer, RegisteredHtmlPreviewTransform, RegisteredIpcRuntimeBinding,
+    RegisteredKeybindingContribution, RegisteredRemoteFileEditorContribution,
+    RegisteredResourceConnectionContribution, RegisteredResourceWorkbenchContribution,
+    RegisteredShellViewContribution, WasmRuntimeBinding,
+};
+
+static WASM_CATALOG_LOG_KEYS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+#[derive(Debug)]
+pub struct ExtensionRuntimeCatalog {
+    pub(super) commands: CommandRegistry,
+    pub(super) wasm_runtimes: BTreeMap<String, WasmRuntimeBinding>,
+    pub(super) ipc_runtimes: BTreeMap<String, RegisteredIpcRuntimeBinding>,
+    #[cfg(feature = "database")]
+    pub(super) db_tree_menus: Vec<crate::types::RegisteredDbTreeMenuContribution>,
+    pub(super) toolbar_slots: SlotRegistry,
+    pub(super) menu_slots: SlotRegistry,
+    pub(super) keybindings: Vec<RegisteredKeybindingContribution>,
+    pub(super) html_preview_transforms: Vec<RegisteredHtmlPreviewTransform>,
+    pub(super) document_renderers: Vec<RegisteredDocumentRenderer>,
+    pub(super) document_exporters: Vec<RegisteredDocumentExporter>,
+    #[cfg(feature = "wasm-components")]
+    pub(super) document_renderer_runtimes:
+        Mutex<HashMap<String, Arc<extension_wasm::DocumentRendererRuntime>>>,
+    #[cfg(feature = "wasm-components")]
+    pub(super) document_exporter_runtimes:
+        Mutex<HashMap<String, Arc<extension_wasm::DocumentExporterRuntime>>>,
+    pub(super) remote_file_editors: Vec<RegisteredRemoteFileEditorContribution>,
+    pub(super) shell_views: BTreeMap<String, RegisteredShellViewContribution>,
+    pub(super) resource_connections: BTreeMap<String, RegisteredResourceConnectionContribution>,
+    pub(super) resource_workbenches: BTreeMap<String, RegisteredResourceWorkbenchContribution>,
+}
+
+#[derive(Debug)]
+pub struct ExtensionRuntimeCatalogLoadReport {
+    pub catalog: ExtensionRuntimeCatalog,
+    pub loaded: Vec<CompositeExtensionLoadedEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CompositeExtensionLoadedEntry {
+    pub id: String,
+    pub name: String,
+    pub version: String,
+    pub dir: std::path::PathBuf,
+    pub wasm_runtimes: Vec<String>,
+}
+
+impl ExtensionRuntimeCatalog {
+    pub fn empty() -> Self {
+        Self {
+            commands: CommandRegistry::new(),
+            wasm_runtimes: BTreeMap::new(),
+            ipc_runtimes: BTreeMap::new(),
+            #[cfg(feature = "database")]
+            db_tree_menus: Vec::new(),
+            toolbar_slots: SlotRegistry::default(),
+            menu_slots: SlotRegistry::default(),
+            keybindings: Vec::new(),
+            html_preview_transforms: Vec::new(),
+            document_renderers: Vec::new(),
+            document_exporters: Vec::new(),
+            #[cfg(feature = "wasm-components")]
+            document_renderer_runtimes: Mutex::new(HashMap::new()),
+            #[cfg(feature = "wasm-components")]
+            document_exporter_runtimes: Mutex::new(HashMap::new()),
+            remote_file_editors: Vec::new(),
+            shell_views: BTreeMap::new(),
+            resource_connections: BTreeMap::new(),
+            resource_workbenches: BTreeMap::new(),
+        }
+    }
+
+    pub fn from_manifests(manifests: Vec<Manifest>) -> Result<Self, ExtensionRuntimeError> {
+        let mut catalog = Self::empty();
+        for manifest in manifests {
+            catalog.register_manifest(manifest)?;
+        }
+        Ok(catalog)
+    }
+
+    pub fn from_installed_composite_root(root: &Path) -> Result<Self, ExtensionRuntimeError> {
+        Ok(Self::from_installed_composite_root_with_report(root)?.catalog)
+    }
+
+    pub fn from_installed_composite_root_with_report(
+        root: &Path,
+    ) -> Result<ExtensionRuntimeCatalogLoadReport, ExtensionRuntimeError> {
+        let manifests = load_installed_composite_manifests(root)?;
+        let loaded: Vec<_> = manifests
+            .iter()
+            .map(CompositeExtensionLoadedEntry::from_manifest)
+            .collect();
+        let catalog = Self::from_manifests(manifests)?;
+        let loaded_ids: Vec<_> = loaded.iter().map(|entry| entry.id.as_str()).collect();
+        let summary_key = format!("catalog:{}:{loaded_ids:?}", root.display());
+        if should_log_wasm_catalog_once(&summary_key) {
+            tracing::info!(
+                target: "extension_loader",
+                kind = "wasm",
+                root = %root.display(),
+                loaded = loaded.len(),
+                extensions = ?loaded_ids,
+                "loaded wasm composite extension catalog"
+            );
+        }
+        Ok(ExtensionRuntimeCatalogLoadReport { catalog, loaded })
+    }
+
+    #[cfg(feature = "database")]
+    pub fn db_tree_menu_registry(&self) -> DbTreeExtensionMenuRegistry {
+        let mut registry = DbTreeExtensionMenuRegistry::default();
+        for menu in &self.db_tree_menus {
+            registry.add(menu.position.clone(), menu.item.clone());
+        }
+        registry
+    }
+
+    pub fn component_permissions_for_command(
+        &self,
+        command_id: &str,
+    ) -> Result<Vec<String>, ExtensionRuntimeError> {
+        Ok(self
+            .component_binding_for_command(command_id)?
+            .permissions
+            .clone())
+    }
+
+    pub fn html_preview_transforms_for_language(
+        &self,
+        language: &str,
+    ) -> Vec<&RegisteredHtmlPreviewTransform> {
+        let language = language.to_ascii_lowercase();
+        self.html_preview_transforms
+            .iter()
+            .filter(|transform| {
+                transform
+                    .languages
+                    .iter()
+                    .any(|candidate| candidate.eq_ignore_ascii_case(&language))
+            })
+            .collect()
+    }
+
+    pub fn remote_file_editors(&self) -> &[RegisteredRemoteFileEditorContribution] {
+        &self.remote_file_editors
+    }
+
+    pub fn ipc_runtime_bindings(&self) -> impl Iterator<Item = &RegisteredIpcRuntimeBinding> {
+        self.ipc_runtimes.values()
+    }
+
+    pub fn shell_views(&self) -> impl Iterator<Item = &RegisteredShellViewContribution> {
+        self.shell_views.values()
+    }
+
+    /// 工具箱聚合的独立 shell 工具，按 title 排序。
+    ///
+    /// 成员 = 没有任何「非工具箱归属」引用的 shell 视图。三类视图必须排除：
+    ///
+    /// 1. 连接的 `shellViewId` 指向的视图（连接打开，不由工具箱打开）；
+    /// 2. 资源工作台页面的**页体**：`pages[*].renderer.viewId` 指向的视图；
+    /// 3. 声明了 `workbench` 模块的视图 —— `navop.workbench` 只在工作台挂载
+    ///    会话里可用，独立打开时宿主必然失败（"navop.workbench requires a
+    ///    borrowed resource-workbench session"）。把它列进工具箱只会产出
+    ///    「点了就报错」的假卡片。
+    ///
+    /// `surface` 不参与判定：`surface: "tab"` 的独立工具（如 dev-tools 的
+    /// `workbench`）同样要进工具箱，只有「被别的入口占用」才排除。
+    pub fn toolbox_views(&self) -> Vec<&RegisteredShellViewContribution> {
+        let connection_view_keys: HashSet<(&str, &str)> = self
+            .resource_connections()
+            .filter_map(|conn| {
+                conn.shell_view_id
+                    .as_deref()
+                    .map(|view_id| (conn.extension_id.as_str(), view_id))
+            })
+            .collect();
+        let embedded_view_keys: HashSet<(&str, &str)> = self
+            .resource_workbenches()
+            .flat_map(|workbench| {
+                workbench.pages.iter().filter_map(|page| {
+                    page.renderer
+                        .view_id
+                        .as_deref()
+                        .map(|view_id| (workbench.extension_id.as_str(), view_id))
+                })
+            })
+            .collect();
+        let mut tools: Vec<_> = self
+            .shell_views
+            .values()
+            .filter(|view| {
+                let key = (view.extension_id.as_str(), view.id.as_str());
+                if connection_view_keys.contains(&key) || embedded_view_keys.contains(&key) {
+                    return false;
+                }
+                !view
+                    .modules
+                    .contains(&crate::extension::manifest::ShellHostModule::Workbench)
+            })
+            .collect();
+        tools.sort_by(|a, b| a.title.cmp(&b.title));
+        tools
+    }
+
+    pub fn shell_view(
+        &self,
+        extension_id: &str,
+        view_id: &str,
+    ) -> Option<&RegisteredShellViewContribution> {
+        self.shell_views.get(&format!("{extension_id}::{view_id}"))
+    }
+
+    pub fn resource_connections(
+        &self,
+    ) -> impl Iterator<Item = &RegisteredResourceConnectionContribution> {
+        self.resource_connections.values()
+    }
+
+    pub fn resource_connection(
+        &self,
+        extension_id: &str,
+        connection_id: &str,
+    ) -> Option<&RegisteredResourceConnectionContribution> {
+        self.resource_connections
+            .get(&format!("{extension_id}::{connection_id}"))
+    }
+
+    pub fn resource_workbenches(
+        &self,
+    ) -> impl Iterator<Item = &RegisteredResourceWorkbenchContribution> {
+        self.resource_workbenches.values()
+    }
+
+    pub fn resource_workbench(
+        &self,
+        extension_id: &str,
+        workbench_id: &str,
+    ) -> Option<&RegisteredResourceWorkbenchContribution> {
+        self.resource_workbenches
+            .get(&format!("{extension_id}::{workbench_id}"))
+    }
+
+    pub fn resource_workbench_for_connection(
+        &self,
+        extension_id: &str,
+        connection_id: &str,
+    ) -> Option<&RegisteredResourceWorkbenchContribution> {
+        self.resource_workbenches.values().find(|workbench| {
+            workbench.extension_id == extension_id
+                && workbench
+                    .connection_ids
+                    .iter()
+                    .any(|id| id == connection_id)
+        })
+    }
+
+    pub fn document_renderer_for_kind(
+        &self,
+        block_kind: &str,
+    ) -> Option<&RegisteredDocumentRenderer> {
+        self.document_renderers
+            .iter()
+            .filter(|renderer| {
+                renderer
+                    .block_kinds
+                    .iter()
+                    .any(|kind| kind.eq_ignore_ascii_case(block_kind))
+            })
+            .max_by_key(|renderer| renderer.priority)
+    }
+
+    pub fn document_exporter_for_format(
+        &self,
+        format: &str,
+    ) -> Option<&RegisteredDocumentExporter> {
+        self.document_exporters
+            .iter()
+            .filter(|exporter| {
+                exporter
+                    .formats
+                    .iter()
+                    .any(|candidate| candidate.eq_ignore_ascii_case(format))
+            })
+            .max_by_key(|exporter| exporter.priority)
+    }
+
+    #[cfg(feature = "wasm-components")]
+    fn document_exporter_runtime(
+        &self,
+        exporter: &RegisteredDocumentExporter,
+    ) -> extension_wasm::WasmResult<Arc<extension_wasm::DocumentExporterRuntime>> {
+        let Some(binding) = self.wasm_runtimes.get(&exporter.runtime_id) else {
+            return Err(extension_wasm::WasmError::FunctionNotFound(
+                exporter.runtime_id.clone(),
+            ));
+        };
+        if binding.kind != WasmRuntimeKind::Component {
+            return Err(extension_wasm::WasmError::FunctionNotFound(
+                exporter.runtime_id.clone(),
+            ));
+        }
+        let mut runtimes = self
+            .document_exporter_runtimes
+            .lock()
+            .map_err(|error| extension_wasm::WasmError::ComponentLoad(error.to_string()))?;
+        if let Some(runtime) = runtimes.get(&exporter.runtime_id) {
+            return Ok(runtime.clone());
+        }
+        let runtime = Arc::new(
+            extension_wasm::DocumentExporterRuntime::from_file_with_config(
+                exporter.id.clone(),
+                &binding.module_path,
+                binding.config.clone(),
+            )?,
+        );
+        runtimes.insert(exporter.runtime_id.clone(), runtime.clone());
+        Ok(runtime)
+    }
+
+    #[cfg(feature = "wasm-components")]
+    pub fn prewarm_document_exporters(&self) -> extension_wasm::WasmResult<()> {
+        for exporter in &self.document_exporters {
+            self.document_exporter_runtime(exporter)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "wasm-components")]
+    pub async fn export_document(
+        &self,
+        mut request: extension_wasm::DocumentExportRequest,
+    ) -> extension_wasm::WasmResult<Option<extension_wasm::DocumentExportArtifact>> {
+        let Some(exporter) = self.document_exporter_for_format(&request.format) else {
+            return Ok(None);
+        };
+        request.exporter = exporter.id.clone();
+        let runtime = self.document_exporter_runtime(exporter)?;
+        runtime.export(request).await.map(Some)
+    }
+
+    #[cfg(feature = "wasm-components")]
+    fn document_renderer_runtime(
+        &self,
+        renderer: &RegisteredDocumentRenderer,
+    ) -> extension_wasm::WasmResult<Arc<extension_wasm::DocumentRendererRuntime>> {
+        let Some(binding) = self.wasm_runtimes.get(&renderer.runtime_id) else {
+            return Err(extension_wasm::WasmError::FunctionNotFound(
+                renderer.runtime_id.clone(),
+            ));
+        };
+        if binding.kind != WasmRuntimeKind::Component {
+            return Err(extension_wasm::WasmError::FunctionNotFound(
+                renderer.runtime_id.clone(),
+            ));
+        }
+        let mut runtimes = self
+            .document_renderer_runtimes
+            .lock()
+            .map_err(|error| extension_wasm::WasmError::ComponentLoad(error.to_string()))?;
+        if let Some(runtime) = runtimes.get(&renderer.runtime_id) {
+            return Ok(runtime.clone());
+        }
+        let runtime = Arc::new(
+            extension_wasm::DocumentRendererRuntime::from_file_with_config(
+                renderer.id.clone(),
+                &binding.module_path,
+                binding.config.clone(),
+            )?,
+        );
+        runtimes.insert(renderer.runtime_id.clone(), runtime.clone());
+        Ok(runtime)
+    }
+
+    #[cfg(feature = "wasm-components")]
+    pub fn prewarm_document_renderers(&self) -> extension_wasm::WasmResult<()> {
+        for renderer in &self.document_renderers {
+            self.document_renderer_runtime(renderer)?;
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "wasm-components")]
+    pub async fn render_document(
+        &self,
+        request: extension_wasm::DocumentRenderRequest,
+    ) -> extension_wasm::WasmResult<Option<extension_wasm::DocumentRenderArtifact>> {
+        let Some(renderer) = self.document_renderer_for_kind(&request.renderer) else {
+            return Ok(None);
+        };
+        let runtime = self.document_renderer_runtime(renderer)?;
+        runtime.render(request).await.map(Some)
+    }
+
+    #[cfg(feature = "wasm-components")]
+    pub async fn transform_html_preview(
+        &self,
+        language: &str,
+        html: &str,
+    ) -> extension_wasm::WasmResult<Option<html_preview::HtmlPreviewTransformOutput>> {
+        let Some(transform) = self
+            .html_preview_transforms_for_language(language)
+            .into_iter()
+            .next()
+        else {
+            return Ok(None);
+        };
+        let Some(binding) = self.wasm_runtimes.get(&transform.runtime_id) else {
+            return Err(extension_wasm::WasmError::FunctionNotFound(
+                transform.runtime_id.clone(),
+            ));
+        };
+        if binding.kind != WasmRuntimeKind::Component {
+            return Err(extension_wasm::WasmError::FunctionNotFound(
+                transform.runtime_id.clone(),
+            ));
+        }
+        let runtime = extension_wasm::HtmlPreviewTransformRuntime::from_file(
+            transform.id.clone(),
+            &binding.module_path,
+        )?;
+        runtime
+            .transform_html(language.to_string(), html.to_string())
+            .await
+            .map(Some)
+    }
+
+    #[cfg(not(feature = "wasm-components"))]
+    pub async fn transform_html_preview(
+        &self,
+        _language: &str,
+        _html: &str,
+    ) -> Result<Option<html_preview::HtmlPreviewTransformOutput>, ExtensionRuntimeError> {
+        Ok(None)
+    }
+
+    pub(super) fn component_binding_for_command(
+        &self,
+        command_id: &str,
+    ) -> Result<&WasmRuntimeBinding, ExtensionRuntimeError> {
+        let Some(command) = self.commands.get(command_id) else {
+            return Err(ExtensionRuntimeError::CommandNotFound {
+                command_id: command_id.to_string(),
+            });
+        };
+        let CommandHandler::Wasm { runtime_id, .. } = &command.handler else {
+            return Err(ExtensionRuntimeError::UnsupportedCommand {
+                command_id: command_id.to_string(),
+            });
+        };
+        let Some(binding) = self.wasm_runtimes.get(runtime_id) else {
+            return Err(ExtensionRuntimeError::RuntimeBindingNotFound {
+                command_id: command_id.to_string(),
+                runtime_id: runtime_id.clone(),
+            });
+        };
+        if binding.kind != WasmRuntimeKind::Component {
+            return Err(ExtensionRuntimeError::UnsupportedCommand {
+                command_id: command_id.to_string(),
+            });
+        }
+        Ok(binding)
+    }
+}
+
+fn should_log_wasm_catalog_once(key: &str) -> bool {
+    let seen = WASM_CATALOG_LOG_KEYS.get_or_init(|| Mutex::new(HashSet::new()));
+    seen.lock()
+        .map(|mut seen| seen.insert(key.to_string()))
+        .unwrap_or(true)
+}
+
+impl CompositeExtensionLoadedEntry {
+    fn from_manifest(manifest: &Manifest) -> Self {
+        Self {
+            id: manifest.id.clone(),
+            name: manifest.name.clone(),
+            version: manifest.version.clone(),
+            dir: manifest.manifest_dir.clone(),
+            wasm_runtimes: manifest
+                .runtime
+                .wasm
+                .iter()
+                .map(|runtime| format!("{}::{}", manifest.id, runtime.id))
+                .collect(),
+        }
+    }
+}

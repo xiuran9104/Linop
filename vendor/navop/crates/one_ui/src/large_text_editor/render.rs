@@ -1,0 +1,76 @@
+use super::{LargeTextEditor, LargeTextEditorTab};
+use gpui::prelude::FluentBuilder;
+use gpui::{Context, IntoElement, ParentElement, Render, Styled as _, Window};
+use gpui_component::button::Button;
+use gpui_component::h_flex;
+use gpui_component::input::Editor;
+use gpui_component::tab::{Tab, TabBar};
+use gpui_component::v_flex;
+use gpui_component::{Sizable, Size};
+use one_assets::IconName;
+use rust_i18n::t;
+
+impl Render for LargeTextEditor {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let active_tab = self.active_tab;
+        let active_index = usize::from(active_tab == LargeTextEditorTab::Json);
+
+        v_flex()
+            .size_full()
+            .child(render_tab_bar(active_index, active_tab, cx))
+            .child(
+                v_flex()
+                    .flex_1()
+                    .min_h_0()
+                    .w_full()
+                    .child(match active_tab {
+                        LargeTextEditorTab::Text => Editor::new(&self.text_editor).size_full(),
+                        LargeTextEditorTab::Json => Editor::new(&self.json_editor).size_full(),
+                    }),
+            )
+    }
+}
+
+fn render_tab_bar(
+    active_index: usize,
+    active_tab: LargeTextEditorTab,
+    cx: &mut Context<LargeTextEditor>,
+) -> impl IntoElement {
+    TabBar::new("editor-tabs")
+        .with_size(Size::Small)
+        .selected_index(active_index)
+        .child(Tab::new().label(t!("LargeTextEditor.text").to_string()))
+        .child(Tab::new().label(t!("LargeTextEditor.json").to_string()))
+        .on_click(cx.listener(|this, ix: &usize, window, cx| {
+            let tab = if *ix == 0 {
+                LargeTextEditorTab::Text
+            } else {
+                LargeTextEditorTab::Json
+            };
+            this.switch_tab(tab, window, cx);
+        }))
+        .suffix(
+            h_flex()
+                .gap_2()
+                .when(active_tab == LargeTextEditorTab::Json, |this| {
+                    this.child(
+                        Button::new("format-json")
+                            .with_size(Size::Small)
+                            .label(t!("LargeTextEditor.format").to_string())
+                            .icon(IconName::Star)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.format_json(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("minify-json")
+                            .with_size(Size::Small)
+                            .label(t!("LargeTextEditor.minify").to_string())
+                            .icon(IconName::File)
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.minify_json(window, cx);
+                            })),
+                    )
+                }),
+        )
+}

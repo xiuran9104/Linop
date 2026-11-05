@@ -1,0 +1,728 @@
+//! 把会话历史转换为模型消息。
+//! 使用 llm-connector 原生 tool_call / tool_result 协议表达工具调用与观测,
+//! 避免模型把观测文本误解为用户输入并跳过 function calling 循环。
+
+use crate::history::{HistoryItem, RuntimeHistory};
+use crate::tools::{ToolCall, ToolObservation};
+use llm_connector::types::{Message, MessageBlock, Role};
+use rust_i18n::t;
+
+/// 历史图片回灌模型时允许占用的 base64 总量。
+///
+/// 只保留最新图片直到预算耗尽，给完整请求中的 system prompt、工具定义、文本和
+/// JSON 包装预留空间，避免多轮图片历史不断累积并撑破 provider 请求体上限。
+const MODEL_HISTORY_IMAGES_BASE64_BUDGET: usize = 10 * 1024 * 1024;
+
+/// 将历史转换为消息序列(不含 system 提示,由调用方在最前面拼接)。
+pub fn history_to_messages(history: &RuntimeHistory) -> Vec<Message> {
+    let max = history.max_observation_bytes();
+    let mut messages = Vec::with_capacity(history.len());
+    let mut pending_assistant: Option<(String, String)> = None;
+    let items = history.items();
+    let budgeted_images = budgeted_history_images(items);
+    let mut index = 0;
+    while index < items.len() {
+        let item = &items[index];
+        match item {
+            HistoryItem::User { text, .. } => {
+                flush_pending_assistant(&mut messages, &mut pending_assistant);
+                let images = budgeted_images[index].as_deref().unwrap_or_default();
+                if images.is_empty() {
+                    messages.push(Message::user(text.clone()));
+                } else {
+                    messages.push(user_message_with_images(text, images));
+                }
+            }
+            HistoryItem::Assistant(text) => {
+                flush_pending_assistant(&mut messages, &mut pending_assistant);
+                push_assistant_message(&mut messages, text.clone(), String::new());
+            }
+            HistoryItem::AssistantWithReasoning { text, reasoning } => {
+                flush_pending_assistant(&mut messages, &mut pending_assistant);
+                pending_assistant = Some((text.clone(), reasoning.clone()));
+            }
+            HistoryItem::System(text) => {
+                flush_pending_assistant(&mut messages, &mut pending_assistant);
+                push_context_message(&mut messages, text.clone());
+            }
+            HistoryItem::ContextSummary {
+                text,
+                original_items,
+            } => {
+                flush_pending_assistant(&mut messages, &mut pending_assistant);
+                push_context_message(&mut messages, context_summary_text(text, *original_items));
+            }
+            HistoryItem::ToolCall(_) => {
+                let (next_index, calls, observations) = collect_tool_exchange(items, index);
+                if tool_exchange_is_complete(&calls, &observations) {
+                    for call in calls {
+                        push_assistant_tool_call_message(
+                            &mut messages,
+                            call,
+                            pending_assistant.take(),
+                        );
+                    }
+                    for obs in observations {
+                        messages.push(tool_result_message(obs, max));
+                    }
+                } else {
+                    flush_pending_assistant(&mut messages, &mut pending_assistant);
+                    push_context_message(
+                        &mut messages,
+                        incomplete_tool_exchange_text(&calls, &observations),
+                    );
+                }
+                index = next_index;
+                continue;
+            }
+            HistoryItem::Observation(obs) => {
+                flush_pending_assistant(&mut messages, &mut pending_assistant);
+                push_context_message(&mut messages, orphan_observation_text(obs));
+            }
+            // 工具声明纯 transcript 记录：模型侧由 request.tools 携带，
+            // 回灌历史时跳过（否则旧轮工具表会干扰当前轮的可用集）。
+            HistoryItem::ToolsDeclared { .. } => {}
+        }
+        index += 1;
+    }
+    flush_pending_assistant(&mut messages, &mut pending_assistant);
+    messages
+}
+
+fn budgeted_history_images(items: &[HistoryItem]) -> Vec<Option<Vec<crate::runtime::InputImage>>> {
+    let mut remaining = MODEL_HISTORY_IMAGES_BASE64_BUDGET;
+    let mut selected = vec![None; items.len()];
+
+    for (item_index, item) in items.iter().enumerate().rev() {
+        let HistoryItem::User { images, .. } = item else {
+            continue;
+        };
+        let mut kept = Vec::new();
+        for image in images.iter().rev() {
+            let encoded_len = image.data_base64.len();
+            if encoded_len <= remaining {
+                remaining -= encoded_len;
+                kept.push(image.clone());
+            }
+        }
+        if !kept.is_empty() {
+            kept.reverse();
+            selected[item_index] = Some(kept);
+        }
+    }
+
+    selected
+}
+
+fn collect_tool_exchange(
+    items: &[HistoryItem],
+    start: usize,
+) -> (usize, Vec<&ToolCall>, Vec<&ToolObservation>) {
+    let mut index = start;
+    let mut calls = Vec::new();
+    while let Some(HistoryItem::ToolCall(call)) = items.get(index) {
+        calls.push(call);
+        index += 1;
+    }
+    let mut observations = Vec::new();
+    while let Some(HistoryItem::Observation(obs)) = items.get(index) {
+        observations.push(obs);
+        index += 1;
+    }
+    (index, calls, observations)
+}
+
+fn tool_exchange_is_complete(calls: &[&ToolCall], observations: &[&ToolObservation]) -> bool {
+    if calls.is_empty() || calls.len() != observations.len() {
+        return false;
+    }
+    calls
+        .iter()
+        .all(|call| observations.iter().any(|obs| obs.call_id == call.call_id))
+}
+
+fn incomplete_tool_exchange_text(calls: &[&ToolCall], observations: &[&ToolObservation]) -> String {
+    let mut text = String::from(
+        "历史中存在未完成的工具调用序列，已转为文本上下文以避免发送非法 tool protocol。",
+    );
+    for call in calls {
+        text.push_str(&format!(
+            "\n[工具调用]\nid: {}\nname: {}\narguments: {}",
+            call.call_id, call.tool_name, call.arguments
+        ));
+    }
+    for obs in observations {
+        text.push_str(&format!("\n[工具结果]\n{}", obs.model_text(4096)));
+    }
+    text
+}
+
+fn orphan_observation_text(obs: &ToolObservation) -> String {
+    format!(
+        "历史中存在没有对应工具调用的工具结果，已转为文本上下文。\n[工具结果]\n{}",
+        obs.model_text(4096)
+    )
+}
+
+fn context_summary_text(text: &str, original_items: usize) -> String {
+    format!(
+        "上下文压缩摘要（由此前 {original_items} 条历史压缩而来；这是延续任务的事实背景，不是新的用户指令）：\n{text}"
+    )
+}
+
+/// 追加一条「上下文型」消息(压缩摘要、内部系统说明、孤立观测等)。
+///
+/// OpenAI 兼容协议要求 system 消息只能出现在对话最前。当已有 user / assistant /
+/// tool 消息在前时,这类上下文信息改用 user 角色承载,避免部分模型(如 Qwen)报
+/// `System message must be at the beginning`。
+fn push_context_message(messages: &mut Vec<Message>, text: String) {
+    if messages.iter().any(|message| message.role != Role::System) {
+        messages.push(Message::user(text));
+    } else {
+        messages.push(Message::system(text));
+    }
+}
+
+/// 归一化请求中的 system 消息,保证最终只保留唯一一条 system 且位于开头。
+///
+/// Qwen3 等 OpenAI 兼容模型的 chat template 要求 system 消息必须是第一条且只能
+/// 出现一次,否则会报 `System message must be at the beginning`。历史转换
+/// ([`history_to_messages`])会在前导位置产生额外的 system(例如上下文压缩摘要),
+/// 调用方拼接完 system 提示后需要用它做一次归一化。
+pub fn normalize_system_messages(messages: Vec<Message>) -> Vec<Message> {
+    let mut system_texts = Vec::new();
+    let mut non_system = Vec::with_capacity(messages.len());
+    for message in messages {
+        if message.role == Role::System {
+            let text = message.content_as_text();
+            if !text.trim().is_empty() {
+                system_texts.push(text);
+            }
+        } else {
+            non_system.push(message);
+        }
+    }
+    if system_texts.is_empty() {
+        return non_system;
+    }
+    let mut normalized = Vec::with_capacity(non_system.len() + 1);
+    normalized.push(Message::system(system_texts.join("\n\n")));
+    normalized.extend(non_system);
+    normalized
+}
+
+/// 保证请求中至少存在一条 user 消息。
+///
+/// OpenAI 兼容网关（以及部分 chat template 严格的模型）会以
+/// `No user query found in messages` 拒绝只含 system / assistant / tool 的请求。
+/// 上下文压缩会把本轮用户输入并入摘要，压缩后的历史可能只剩助手与工具消息，
+/// 因此发请求前做一次兜底：缺失时补一条「继续当前任务」的 user 消息。
+/// 摘要本身仍在 system 提示中，上下文不会丢失。
+pub fn ensure_user_message(messages: Vec<Message>) -> Vec<Message> {
+    if messages.iter().any(|message| message.role == Role::User) {
+        return messages;
+    }
+    let mut messages = messages;
+    messages.push(Message::user(
+        t!("AgentRuntime.continue_after_compaction").to_string(),
+    ));
+    messages
+}
+
+fn push_assistant_tool_call_message(
+    messages: &mut Vec<Message>,
+    call: &ToolCall,
+    assistant: Option<(String, String)>,
+) {
+    if assistant.is_none()
+        && let Some(message) = messages.last_mut()
+        && message.role == Role::Assistant
+        && let Some(tool_calls) = message.tool_calls.as_mut()
+    {
+        tool_calls.push(llm_tool_call(call));
+        return;
+    }
+
+    messages.push(assistant_tool_call_message(call, assistant));
+}
+
+/// 把 agent_runtime 的工具调用转为原生 assistant tool_calls 消息。
+fn assistant_tool_call_message(call: &ToolCall, assistant: Option<(String, String)>) -> Message {
+    let (text, reasoning) = assistant.unwrap_or_default();
+    Message {
+        role: Role::Assistant,
+        content: if text.is_empty() {
+            Vec::new()
+        } else {
+            vec![MessageBlock::text(text)]
+        },
+        tool_calls: Some(vec![llm_tool_call(call)]),
+        reasoning_content: (!reasoning.is_empty()).then_some(reasoning),
+        ..Default::default()
+    }
+}
+
+fn llm_tool_call(call: &ToolCall) -> llm_connector::types::ToolCall {
+    llm_connector::types::ToolCall {
+        id: call.call_id.to_string(),
+        call_type: "function".to_string(),
+        function: llm_connector::types::FunctionCall {
+            name: call.tool_name.to_string(),
+            arguments: call.arguments.to_string(),
+            thought_signature: None,
+        },
+        index: None,
+        thought_signature: None,
+    }
+}
+
+fn flush_pending_assistant(messages: &mut Vec<Message>, pending: &mut Option<(String, String)>) {
+    if let Some((text, reasoning)) = pending.take() {
+        push_assistant_message(messages, text, reasoning);
+    }
+}
+
+fn push_assistant_message(messages: &mut Vec<Message>, text: String, reasoning: String) {
+    if text.is_empty() && reasoning.is_empty() {
+        return;
+    }
+    let mut message = Message::assistant(text);
+    if !reasoning.is_empty() {
+        message.reasoning_content = Some(reasoning);
+    }
+    messages.push(message);
+}
+
+/// 把 agent_runtime 的观测转为原生 tool result 消息(Role::Tool)。
+fn tool_result_message(obs: &crate::tools::ToolObservation, max_bytes: usize) -> Message {
+    Message {
+        role: Role::Tool,
+        content: vec![MessageBlock::text(obs.model_text(max_bytes))],
+        tool_call_id: Some(obs.call_id.to_string()),
+        ..Default::default()
+    }
+}
+
+/// 构造含图片的多模态用户消息(文本块 + 各图片的 base64 块)。
+fn user_message_with_images(text: &str, images: &[crate::runtime::InputImage]) -> Message {
+    let mut blocks: Vec<MessageBlock> = Vec::with_capacity(images.len() + 1);
+    if !text.is_empty() {
+        blocks.push(MessageBlock::text(text));
+    }
+    for image in images {
+        blocks.push(MessageBlock::image_base64(
+            image.mime.clone(),
+            image.data_base64.clone(),
+        ));
+    }
+    Message::new(Role::User, blocks)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::history::{HistoryItem, RuntimeHistory};
+    use crate::ids::ToolCallId;
+    use crate::runtime::InputImage;
+    use crate::tools::{ObservationData, ToolCall, ToolName, ToolObservation};
+
+    #[test]
+    fn compacted_history_still_sends_a_user_message() {
+        let mut history = RuntimeHistory::new();
+        history.record_user("长任务目标：修复部署脚本");
+        for index in 0..20 {
+            history.record_assistant("继续处理");
+            let call = tool_call(&format!("call_{index}"), "echo");
+            let call_id = call.call_id.clone();
+            history.record_tool_call(call);
+            history.record_observation(ToolObservation::success(
+                call_id,
+                ToolName::new("echo"),
+                "echo: ok",
+                ObservationData::Text("ok".into()),
+            ));
+        }
+
+        // 本轮唯一的用户输入落在压缩前缀里，保留的尾部只剩助手与工具消息。
+        let prefix = history
+            .compaction_prefix(32)
+            .expect("history should be compactable");
+        assert!(
+            prefix
+                .iter()
+                .any(|item| matches!(item, HistoryItem::User { .. })),
+            "用户输入应落在被压缩的前缀里"
+        );
+        assert!(history.compact_old_items("之前的上下文摘要", 32));
+
+        let mut messages = vec![Message::system("主系统提示")];
+        messages.extend(history_to_messages(&history));
+        let messages = ensure_user_message(normalize_system_messages(messages));
+
+        assert!(
+            messages.iter().any(|message| message.role == Role::User),
+            "压缩后仍必须发出至少一条 user 消息，否则 OpenAI 兼容网关会报 No user query found in messages"
+        );
+    }
+
+    #[test]
+    fn agent_loop_applies_user_message_guarantee() {
+        let source = include_str!("../tasks/agent.rs");
+        assert!(
+            source.contains("ensure_user_message(normalize_system_messages(messages))"),
+            "请求构造必须经过 ensure_user_message，否则压缩后可能发出没有 user 消息的请求"
+        );
+    }
+
+    fn tool_call(id: &str, name: &str) -> ToolCall {
+        ToolCall {
+            call_id: ToolCallId::from_string(id),
+            tool_name: ToolName::new(name),
+            arguments: serde_json::json!({}),
+            resource_id: None,
+        }
+    }
+
+    #[test]
+    fn ensure_user_message_keeps_existing_user_message() {
+        let messages =
+            normalize_system_messages(vec![Message::system("主系统提示"), Message::user("你好")]);
+
+        let messages = ensure_user_message(messages);
+
+        assert_eq!(2, messages.len());
+        assert_eq!(Role::User, messages[1].role);
+        assert_eq!("你好", messages[1].content_as_text());
+    }
+
+    #[test]
+    fn plain_user_history_becomes_text_message() {
+        let mut history = RuntimeHistory::new();
+        history.record_user("你好");
+        let messages = history_to_messages(&history);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, Role::User);
+        assert_eq!(messages[0].content.len(), 1);
+        assert!(messages[0].content[0].is_text());
+    }
+
+    #[test]
+    fn assistant_reasoning_history_sends_only_visible_text_to_model() {
+        let mut history = RuntimeHistory::new();
+        history.record_assistant_with_reasoning("最终回答", "内部推理");
+        let messages = history_to_messages(&history);
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, Role::Assistant);
+        assert_eq!(messages[0].content_as_text(), "最终回答");
+        assert_eq!(messages[0].reasoning_content.as_deref(), Some("内部推理"));
+    }
+
+    #[test]
+    fn reasoning_only_history_is_sent_as_protocol_metadata() {
+        let mut history = RuntimeHistory::new();
+        history.record_assistant_with_reasoning("", "内部推理");
+        let messages = history_to_messages(&history);
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].role, Role::Assistant);
+        assert_eq!(messages[0].content_as_text(), "");
+        assert_eq!(messages[0].reasoning_content.as_deref(), Some("内部推理"));
+    }
+
+    #[test]
+    fn user_history_with_images_becomes_multimodal_message() {
+        let mut history = RuntimeHistory::new();
+        history.record_user_with_images("看这张图", vec![InputImage::new("image/png", "AAAABBBB")]);
+        let messages = history_to_messages(&history);
+        assert_eq!(messages.len(), 1);
+        let msg = &messages[0];
+        assert_eq!(msg.role, Role::User);
+        // 文本块 + 图片块。
+        assert_eq!(msg.content.len(), 2);
+        assert!(msg.content[0].is_text());
+        assert!(!msg.content[1].is_text(), "第二块应为图片块");
+    }
+
+    #[test]
+    fn historical_images_are_bounded_by_request_budget() {
+        let mut history = RuntimeHistory::new();
+        history.record_user_with_images(
+            "旧图片",
+            vec![InputImage::new(
+                "image/png",
+                "A".repeat(MODEL_HISTORY_IMAGES_BASE64_BUDGET - 16),
+            )],
+        );
+        history.record_assistant("已查看");
+        history.record_user_with_images(
+            "新图片",
+            vec![InputImage::new("image/jpeg", "B".repeat(32))],
+        );
+
+        let messages = history_to_messages(&history);
+
+        assert_eq!(
+            messages[0].content,
+            vec![MessageBlock::text("旧图片")],
+            "older images should be removed before the newest image when the request budget is full"
+        );
+        assert_eq!(
+            messages[2].content.len(),
+            2,
+            "the newest image should remain available to the model"
+        );
+    }
+
+    #[test]
+    fn context_summary_history_becomes_system_message() {
+        let mut history = RuntimeHistory::new();
+        history.record_context_summary("用户要部署 Java 项目，数据库连接已创建。", 8);
+        history.record_user("继续部署");
+
+        let messages = history_to_messages(&history);
+
+        assert_eq!(2, messages.len());
+        assert_eq!(messages[0].role, Role::System);
+        assert!(messages[0].content_as_text().contains("上下文压缩摘要"));
+        assert!(
+            messages[0]
+                .content_as_text()
+                .contains("用户要部署 Java 项目")
+        );
+        assert_eq!(messages[1].role, Role::User);
+    }
+
+    #[test]
+    fn context_summary_after_user_becomes_user_message() {
+        let mut history = RuntimeHistory::new();
+        history.record_user("先前的指令");
+        history.record_context_summary("用户要部署 Java 项目，数据库连接已创建。", 8);
+        history.record_user("继续部署");
+
+        let messages = history_to_messages(&history);
+
+        assert_eq!(3, messages.len());
+        assert_eq!(messages[0].role, Role::User);
+        assert_eq!(messages[1].role, Role::User);
+        assert!(messages[1].content_as_text().contains("上下文压缩摘要"));
+        assert_eq!(messages[2].role, Role::User);
+    }
+
+    #[test]
+    fn orphan_observation_after_assistant_becomes_user_message() {
+        let call_id = ToolCallId::from_string("call_orphan_mid");
+        let mut history = RuntimeHistory::new();
+        history.record_user("查询");
+        history.record_assistant("好的");
+        history.record_observation(ToolObservation::success(
+            call_id.clone(),
+            ToolName::new("db_query"),
+            "count success",
+            crate::tools::ObservationData::Text("1".into()),
+        ));
+
+        let messages = history_to_messages(&history);
+
+        assert_eq!(3, messages.len());
+        assert_eq!(messages[0].role, Role::User);
+        assert_eq!(messages[1].role, Role::Assistant);
+        assert_eq!(messages[2].role, Role::User);
+        assert!(messages[2].content_as_text().contains("count success"));
+    }
+
+    #[test]
+    fn normalize_system_messages_merges_leading_system_into_one() {
+        let messages = normalize_system_messages(vec![
+            Message::system("主系统提示"),
+            Message::system("上下文压缩摘要"),
+            Message::user("继续"),
+        ]);
+
+        let systems: Vec<&Message> = messages
+            .iter()
+            .filter(|message| message.role == Role::System)
+            .collect();
+        assert_eq!(1, systems.len());
+        assert_eq!(Role::System, messages[0].role);
+        assert!(systems[0].content_as_text().contains("主系统提示"));
+        assert!(systems[0].content_as_text().contains("上下文压缩摘要"));
+        assert_eq!(Role::User, messages[1].role);
+    }
+
+    #[test]
+    fn normalize_system_messages_moves_late_system_to_front() {
+        let messages = normalize_system_messages(vec![
+            Message::system("主系统提示"),
+            Message::user("你好"),
+            Message::system("迟到的系统说明"),
+        ]);
+
+        assert_eq!(2, messages.len());
+        assert_eq!(Role::System, messages[0].role);
+        assert!(messages[0].content_as_text().contains("迟到的系统说明"));
+        assert_eq!(Role::User, messages[1].role);
+    }
+
+    #[test]
+    fn normalize_system_messages_keeps_single_leading_system() {
+        let messages =
+            normalize_system_messages(vec![Message::system("主系统提示"), Message::user("你好")]);
+
+        assert_eq!(2, messages.len());
+        assert_eq!(Role::System, messages[0].role);
+        assert_eq!(Role::User, messages[1].role);
+    }
+
+    #[test]
+    fn compaction_summary_and_system_prompt_normalize_to_single_system() {
+        let mut history = RuntimeHistory::new();
+        history.record_context_summary("旧上下文摘要", 8);
+        history.record_user("继续");
+
+        let mut messages = vec![Message::system("主系统提示")];
+        messages.extend(history_to_messages(&history));
+        let messages = normalize_system_messages(messages);
+
+        let systems: Vec<&Message> = messages
+            .iter()
+            .filter(|message| message.role == Role::System)
+            .collect();
+        assert_eq!(1, systems.len());
+        assert!(systems[0].content_as_text().contains("旧上下文摘要"));
+        assert_eq!(Role::User, messages[1].role);
+    }
+
+    #[test]
+    fn history_to_messages_never_places_system_message_after_turns() {
+        let call_id = ToolCallId::from_string("call_turn_mid");
+        let mut history = RuntimeHistory::new();
+        history.record_user("第一步");
+        history.record_assistant("处理中");
+        history.record_tool_call(ToolCall {
+            call_id: call_id.clone(),
+            tool_name: ToolName::new("db_query"),
+            arguments: serde_json::json!({"sql": "select 1"}),
+            resource_id: None,
+        });
+        history.record_observation(ToolObservation::success(
+            call_id,
+            ToolName::new("db_query"),
+            "ok",
+            crate::tools::ObservationData::Text("1".into()),
+        ));
+        history.record_user("继续");
+
+        let messages = history_to_messages(&history);
+        let first_non_system = messages.iter().position(|m| m.role != Role::System);
+        let has_late_system = messages.iter().enumerate().any(|(index, m)| {
+            m.role == Role::System && first_non_system.is_some_and(|f| index > f)
+        });
+
+        assert!(
+            !has_late_system,
+            "system 消息不得出现在首个非 system 消息之后: {messages:?}"
+        );
+    }
+
+    #[test]
+    fn dangling_tool_call_history_item_becomes_system_text() {
+        let call_id = ToolCallId::from_string("call_test_1");
+        let tool_call = ToolCall {
+            call_id: call_id.clone(),
+            tool_name: ToolName::new("db_query"),
+            arguments: serde_json::json!({
+                "target": "5",
+                "database": "ai_app",
+                "sql": "SELECT COUNT(*) AS total FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'ai_app'"
+            }),
+            resource_id: None,
+        };
+
+        let mut history = RuntimeHistory::new();
+        history.record_tool_call(tool_call);
+        let messages = history_to_messages(&history);
+        assert_eq!(messages.len(), 1);
+
+        let msg = &messages[0];
+        assert_eq!(msg.role, Role::System);
+        assert!(msg.tool_calls.is_none());
+        assert!(msg.content_as_text().contains(call_id.as_str()));
+        assert!(msg.content_as_text().contains("db_query"));
+    }
+
+    #[test]
+    fn reasoning_before_dangling_tool_call_is_flushed_as_assistant_text() {
+        let call_id = ToolCallId::from_string("call_reasoning_tool");
+        let tool_call = ToolCall {
+            call_id: call_id.clone(),
+            tool_name: ToolName::new("db_query"),
+            arguments: serde_json::json!({"sql": "select 1"}),
+            resource_id: None,
+        };
+
+        let mut history = RuntimeHistory::new();
+        history.record_assistant_with_reasoning("", "需要先查库");
+        history.record_tool_call(tool_call);
+        let messages = history_to_messages(&history);
+
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].role, Role::Assistant);
+        assert_eq!(messages[0].reasoning_content.as_deref(), Some("需要先查库"));
+        assert_eq!(messages[1].role, Role::User);
+        assert!(messages[1].tool_calls.is_none());
+        assert!(messages[1].content_as_text().contains(call_id.as_str()));
+    }
+
+    #[test]
+    fn orphan_observation_history_item_becomes_system_text() {
+        let call_id = ToolCallId::from_string("call_test_2");
+        let observation = ToolObservation::success(
+            call_id,
+            ToolName::new("db_query"),
+            "count success",
+            crate::tools::ObservationData::Text("1".into()),
+        );
+        let mut history = RuntimeHistory::new();
+        history.record_observation(observation);
+        let messages = history_to_messages(&history);
+        assert_eq!(messages.len(), 1);
+
+        let msg = &messages[0];
+        assert_eq!(msg.role, Role::System);
+        assert_eq!(msg.tool_call_id, None);
+        assert!(msg.content_as_text().contains("count success"));
+    }
+
+    #[test]
+    fn tool_call_and_observation_generate_distinct_roles() {
+        let call_id = ToolCallId::from_string("call_test_3");
+        let tool_call = ToolCall {
+            call_id: call_id.clone(),
+            tool_name: ToolName::new("db_query"),
+            arguments: serde_json::json!({
+                "target": "5",
+                "database": "ai_app",
+                "sql": "SELECT COUNT(*) AS total FROM information_schema.TABLES WHERE TABLE_SCHEMA = 'ai_app'"
+            }),
+            resource_id: None,
+        };
+        let observation = ToolObservation::success(
+            call_id,
+            ToolName::new("db_query"),
+            "count success",
+            crate::tools::ObservationData::Text("1".into()),
+        );
+
+        let mut history = RuntimeHistory::new();
+        history.record_tool_call(tool_call);
+        history.record_observation(observation);
+        let messages = history_to_messages(&history);
+
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].role, Role::Assistant);
+        assert!(messages[0].tool_calls.is_some());
+        assert_eq!(messages[1].role, Role::Tool);
+        assert_eq!(messages[1].tool_call_id, Some("call_test_3".to_string()));
+    }
+}

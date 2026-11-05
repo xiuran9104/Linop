@@ -1,0 +1,57 @@
+[package]
+name = "ai_chat_view"
+version = "0.15.2"
+publish.workspace = true
+edition.workspace = true
+
+[features]
+# 默认关闭，见 crates/navop_app/Cargo.toml：宿主 WebView（Linux 的 WebKitGTK 4.1）无法随发布包
+# 提供，三个平台统一不带。所有依赖方都以 `default-features = false` 引入本 crate，
+# 需要时显式打开（`--features ai_chat_view/embedded-webview`，或 main 的
+# `--features embedded-webview`）。
+default = []
+embedded-webview = ["dep:gpui-webview", "dep:wry"]
+
+[dependencies]
+one-assets = { workspace = true }
+anyhow.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+gpui.workspace = true
+gpui-base.workspace = true
+gpui-component.workspace = true
+one-ui.workspace = true
+one-core.workspace = true
+agent_runtime = { path = "../agent_runtime" }
+tool_runtime.workspace = true
+html-preview.workspace = true
+process-util.workspace = true
+agent-client-protocol.workspace = true
+llm-connector = { workspace = true, features = ["streaming"] }
+async-trait.workspace = true
+futures.workspace = true
+smol.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+rust-i18n.workspace = true
+base64.workspace = true
+image.workspace = true
+uuid.workspace = true
+lsp-types.workspace = true
+chrono.workspace = true
+sum-tree.workspace = true
+gpui-webview = { workspace = true, optional = true }
+wry = { version = "0.53.3", package = "lb-wry", optional = true }
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+palette.workspace = true
+
+[[bin]]
+name = "fake_acp_agent"
+path = "tests/fixtures/fake_acp_agent.rs"
+test = false
+bench = false
+
+[lints]
+workspace = true

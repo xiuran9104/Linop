@@ -1,0 +1,289 @@
+use super::*;
+use db::{ExecResult, QueryColumnMeta, QueryResult, SqlErrorInfo, SqlResult};
+use db_value::{CellState, ColumnDescriptor, DbValue as TypedDbValue, ResultRow};
+use extension_component::protocol::DbValue;
+use one_core::storage::{DatabaseType, DbConnectionConfig};
+use std::sync::Arc;
+
+#[test]
+fn list_connections_requires_explicit_permission() {
+    let gateway = ExtensionDbGateway::new("ext", PermissionSet::new(["db:read:conn1"]), db_state());
+
+    let error = gateway.list_connections().unwrap_err();
+
+    assert_eq!("permission_denied", error.code);
+}
+
+#[test]
+fn list_connections_returns_sanitized_protocol_info() {
+    let mut state = db_state();
+    state.register_connection(config("conn1"));
+    let gateway =
+        ExtensionDbGateway::new("ext", PermissionSet::new(["db:connections:list"]), state);
+
+    let connections = gateway.list_connections().unwrap();
+
+    assert_eq!(1, connections.len());
+    assert_eq!("conn1", connections[0].id);
+    assert_eq!("test", connections[0].name);
+    assert_eq!("PostgreSQL", connections[0].driver);
+    assert_eq!(Some("postgres".to_string()), connections[0].database);
+}
+
+#[test]
+fn execute_request_denies_unpermitted_sql_access() {
+    let gateway = ExtensionDbGateway::new("ext", PermissionSet::new(["db:read:conn1"]), db_state());
+    let request = ExecuteSqlRequest {
+        session_id: "session".to_string(),
+        connection_id: "conn1".to_string(),
+        sql: "delete from users".to_string(),
+        options: Default::default(),
+    };
+
+    let error = futures::executor::block_on(gateway.execute(request)).unwrap_err();
+
+    assert_eq!("permission_denied", error.code);
+}
+
+#[test]
+fn schema_metadata_requires_schema_permission() {
+    let gateway = ExtensionDbGateway::new("ext", PermissionSet::new(["db:read:conn1"]), db_state());
+
+    let databases_error =
+        futures::executor::block_on(gateway.list_databases("conn1".to_string())).unwrap_err();
+    let schemas_error = futures::executor::block_on(
+        gateway.list_schemas("conn1".to_string(), "postgres".to_string()),
+    )
+    .unwrap_err();
+
+    assert_eq!("permission_denied", databases_error.code);
+    assert_eq!("permission_denied", schemas_error.code);
+}
+
+#[test]
+fn query_result_converts_to_row_batch() {
+    let batch = sql_results_to_row_batch(vec![SqlResult::Query(QueryResult {
+        sql: "select id".to_string(),
+        columns: vec!["id".to_string()],
+        column_meta: vec![QueryColumnMeta::new("id", "int").with_nullable(false)],
+        rows: vec![vec![Some("1".to_string())], vec![None]],
+        binary_cells: vec![],
+        elapsed_ms: 1,
+        ..Default::default()
+    })])
+    .unwrap();
+
+    assert_eq!("id", batch.columns[0].name);
+    assert_eq!("int", batch.columns[0].type_name);
+    assert!(!batch.columns[0].nullable);
+    assert_eq!(DbValue::Text("1".to_string()), batch.rows[0][0]);
+    assert_eq!(DbValue::Null, batch.rows[1][0]);
+}
+
+#[test]
+fn typed_batch_maps_values_without_text_flattening() {
+    let batch = db_value::ResultBatch::try_new(
+        0,
+        vec![
+            column_descriptor("data", "BYTEA", db_value::Nullability::No),
+            column_descriptor("amount", "NUMERIC", db_value::Nullability::No),
+            column_descriptor("processed", "BOOL", db_value::Nullability::No),
+            column_descriptor("extra", "JSON", db_value::Nullability::Yes),
+            column_descriptor("missing", "TEXT", db_value::Nullability::Yes),
+        ],
+        vec![ResultRow {
+            id: 0,
+            cells: vec![
+                CellState::Decoded(TypedDbValue::Binary(vec![0x00, 0xFF])),
+                CellState::Decoded(TypedDbValue::Decimal("123.4500".to_string())),
+                CellState::Decoded(TypedDbValue::Bool(true)),
+                CellState::Decoded(TypedDbValue::Json(serde_json::json!({"a": [1, 2]}))),
+                CellState::Decoded(TypedDbValue::Null),
+            ],
+        }],
+        true,
+    )
+    .unwrap();
+    let result = QueryResult::from_typed_batch("select * from t".to_string(), batch, 1)
+        .expect("from_typed_batch should succeed");
+
+    let row_batch = sql_results_to_row_batch(vec![SqlResult::Query(result)]).unwrap();
+
+    assert_eq!(DbValue::Bytes(vec![0x00, 0xFF]), row_batch.rows[0][0]);
+    assert_eq!(DbValue::Text("123.4500".to_string()), row_batch.rows[0][1]);
+    assert_eq!(DbValue::Bool(true), row_batch.rows[0][2]);
+    assert_eq!(
+        DbValue::Text("{\"a\":[1,2]}".to_string()),
+        row_batch.rows[0][3]
+    );
+    assert_eq!(DbValue::Null, row_batch.rows[0][4]);
+    assert_eq!("BYTEA", row_batch.columns[0].type_name);
+    assert!(!row_batch.columns[0].nullable);
+    assert!(row_batch.columns[3].nullable);
+}
+
+#[test]
+fn typed_batch_large_integer_exceeding_i64_falls_back_to_precise_text() {
+    let batch = db_value::ResultBatch::try_new(
+        0,
+        vec![column_descriptor(
+            "big",
+            "NUMERIC",
+            db_value::Nullability::No,
+        )],
+        vec![ResultRow {
+            id: 0,
+            cells: vec![CellState::Decoded(TypedDbValue::Integer(
+                "99999999999999999999999".to_string(),
+            ))],
+        }],
+        true,
+    )
+    .unwrap();
+    let result = QueryResult::from_typed_batch("select big".to_string(), batch, 1)
+        .expect("from_typed_batch should succeed");
+
+    let row_batch = sql_results_to_row_batch(vec![SqlResult::Query(result)]).unwrap();
+
+    assert_eq!(
+        DbValue::Text("99999999999999999999999".to_string()),
+        row_batch.rows[0][0]
+    );
+}
+
+#[test]
+fn typed_batch_undecoded_cell_falls_back_to_legacy_text() {
+    let batch = db_value::ResultBatch::try_new(
+        0,
+        vec![column_descriptor(
+            "payload",
+            "UNKNOWN",
+            db_value::Nullability::No,
+        )],
+        vec![ResultRow {
+            id: 0,
+            cells: vec![CellState::Undecoded {
+                native_type: "UNKNOWN".to_string(),
+                raw: None,
+                reason: "no codec".to_string(),
+            }],
+        }],
+        true,
+    )
+    .unwrap();
+    let result = QueryResult {
+        sql: "select payload".to_string(),
+        columns: vec!["payload".to_string()],
+        rows: vec![vec![Some("<int4[]>".to_string())]],
+        typed_batch: Some(Arc::new(batch)),
+        ..Default::default()
+    };
+
+    let batch = sql_results_to_row_batch(vec![SqlResult::Query(result)]).unwrap();
+
+    assert_eq!(batch.rows[0][0], DbValue::Text("<int4[]>".to_string()));
+}
+
+#[test]
+fn exec_and_error_results_convert_to_status_rows() {
+    let batch = sql_results_to_row_batch(vec![
+        SqlResult::Exec(ExecResult {
+            sql: "update t set id = 1".to_string(),
+            rows_affected: 2,
+            elapsed_ms: 1,
+            message: None,
+        }),
+        SqlResult::Error(SqlErrorInfo {
+            sql: "bad".to_string(),
+            message: "syntax error".to_string(),
+        }),
+    ])
+    .unwrap();
+
+    assert_eq!(2, batch.rows.len());
+    assert_eq!(DbValue::Text("ok".to_string()), batch.rows[0][1]);
+    assert_eq!(DbValue::Text("error".to_string()), batch.rows[1][1]);
+}
+
+#[test]
+fn gateway_implements_extension_db_host_trait() {
+    fn assert_host<T: ExtensionDbHost>() {}
+
+    assert_host::<ExtensionDbGateway>();
+}
+
+#[test]
+fn host_trait_execute_rejects_foreign_session_resource() {
+    let gateway =
+        ExtensionDbGateway::new("ext", PermissionSet::new(["db:admin:conn1"]), db_state());
+    let foreign_session = DbSessionResource::new("other-ext", "conn1", "session1");
+
+    let error = futures::executor::block_on(ExtensionDbHost::execute(
+        &gateway,
+        &foreign_session,
+        "select 1".to_string(),
+        Default::default(),
+    ))
+    .unwrap_err();
+
+    assert_eq!("permission_denied", error.code);
+}
+
+#[test]
+fn host_trait_execute_rejects_closed_session_resource() {
+    let gateway =
+        ExtensionDbGateway::new("ext", PermissionSet::new(["db:admin:conn1"]), db_state());
+    let mut session = DbSessionResource::new("ext", "conn1", "session1");
+    session.close();
+
+    let error = futures::executor::block_on(ExtensionDbHost::execute(
+        &gateway,
+        &session,
+        "select 1".to_string(),
+        Default::default(),
+    ))
+    .unwrap_err();
+
+    assert_eq!("invalid_resource", error.code);
+}
+
+fn db_state() -> GlobalDbState {
+    GlobalDbState::new()
+}
+
+fn column_descriptor(
+    name: &str,
+    native_type: &str,
+    nullable: db_value::Nullability,
+) -> ColumnDescriptor {
+    ColumnDescriptor {
+        id: name.to_string(),
+        label: name.to_string(),
+        native_type: native_type.to_string(),
+        logical_type: "unknown".to_string(),
+        nullable,
+        charset: None,
+        collation: None,
+        precision: None,
+        scale: None,
+    }
+}
+
+fn config(id: &str) -> DbConnectionConfig {
+    DbConnectionConfig {
+        id: id.to_string(),
+        database_type: DatabaseType::PostgreSQL,
+        name: "test".to_string(),
+        host: "localhost".to_string(),
+        port: 5432,
+        username: "user".to_string(),
+        password: "secret".to_string(),
+        credential_reference: None,
+        database: Some("postgres".to_string()),
+        service_name: None,
+        sid: None,
+        workspace_id: None,
+        proxy: None,
+        extra_params: Default::default(),
+    }
+}

@@ -1,0 +1,11 @@
+package onet:extension;
+
+world extension {
+    import db;
+    import ui;
+    import task;
+
+    export activate: func();
+    export run-action: func();
+    export deactivate: func();
+}

@@ -1,0 +1,500 @@
+//! 运行时会话历史。
+//!
+//! 记录一轮 / 多轮交互中的用户消息、助手消息、工具调用与观测结果,作为
+//! 构造模型输入的事实来源。计划(`Plan`)不进历史,而是单独保存在
+//! [`SessionState`](crate::runtime::SessionState) 中,以保持 `history -> tools`
+//! 的单向依赖。
+//!
+//! 写回模型的观测会经 [`ToolObservation::model_text`] 截断;此处通过
+//! `max_observation_bytes` 控制阈值。
+
+use crate::runtime::InputImage;
+use crate::tools::{ToolCall, ToolObservation};
+use serde::{Deserialize, Serialize};
+
+/// 历史中的单条记录。
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum HistoryItem {
+    /// 用户输入(文本 + 可选附带图片)。
+    User {
+        text: String,
+        images: Vec<InputImage>,
+    },
+    /// 助手文本回复。
+    Assistant(String),
+    /// 助手文本回复及其独立 reasoning。reasoning 只用于 UI 恢复,不回灌模型上下文。
+    AssistantWithReasoning { text: String, reasoning: String },
+    /// 系统提示 / 内部说明。
+    System(String),
+    /// 历史前缀的压缩摘要。用于保留旧上下文事实,同时避免把完整旧消息继续回灌模型。
+    ContextSummary { text: String, original_items: usize },
+    /// 一次工具调用。
+    ToolCall(ToolCall),
+    /// 工具观测结果。
+    Observation(ToolObservation),
+    /// 本轮可用的工具声明（名称快照）。纯 transcript 事实记录：
+    /// 模型侧由每轮请求的 `tools` 字段携带定义，重放/审计时从这里还原
+    /// 「当时模型看到了哪些工具」。内容变化时才记一条，不逐轮重复。
+    ToolsDeclared { names: Vec<String> },
+}
+
+impl HistoryItem {
+    /// 这条历史是否**只是**系统提示 / 内部说明。
+    ///
+    /// 这是「会话还算空白吗」的唯一判据，刻意写成**白名单**而不是黑名单：
+    /// 新增变体默认落进「不是系统提示」= 不算空白，宁可不复用也不误吞用户内容。
+    /// 见 `ai_chat_view::AgentChatView::reusable_blank_session`——那边用它决定
+    /// 「新建会话」能不能复用一张旧白纸。
+    pub fn is_system_note(&self) -> bool {
+        matches!(
+            self,
+            HistoryItem::System(_) | HistoryItem::ToolsDeclared { .. }
+        )
+    }
+}
+
+/// 默认最多保留的历史条目数。
+const DEFAULT_MAX_ITEMS: usize = 200;
+/// 默认单条观测反馈给模型时的最大字节数。
+const DEFAULT_MAX_OBSERVATION_BYTES: usize = 4096;
+
+/// 会话历史。可克隆,便于生成快照交给 Planner。
+#[derive(Clone, Debug)]
+pub struct RuntimeHistory {
+    items: Vec<HistoryItem>,
+    max_items: usize,
+    max_observation_bytes: usize,
+}
+
+impl Default for RuntimeHistory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl RuntimeHistory {
+    pub fn new() -> Self {
+        Self {
+            items: Vec::new(),
+            max_items: DEFAULT_MAX_ITEMS,
+            max_observation_bytes: DEFAULT_MAX_OBSERVATION_BYTES,
+        }
+    }
+
+    pub fn with_limits(max_items: usize, max_observation_bytes: usize) -> Self {
+        Self {
+            items: Vec::new(),
+            max_items: max_items.max(1),
+            max_observation_bytes,
+        }
+    }
+
+    /// 用既有条目构造历史(用于从持久化快照恢复),沿用默认上限并裁剪超额条目。
+    pub fn from_items(items: Vec<HistoryItem>) -> Self {
+        let mut history = Self::new();
+        history.items = items;
+        if history.items.len() > history.max_items {
+            let overflow = history.items.len() - history.max_items;
+            history.items.drain(0..overflow);
+        }
+        history
+    }
+
+    /// 写入一条记录,超出 `max_items` 时丢弃最旧的记录。
+    pub fn record(&mut self, item: HistoryItem) {
+        self.items.push(item);
+        if self.items.len() > self.max_items {
+            let overflow = self.items.len() - self.max_items;
+            self.items.drain(0..overflow);
+        }
+    }
+
+    pub fn record_user(&mut self, text: impl Into<String>) {
+        self.record(HistoryItem::User {
+            text: text.into(),
+            images: Vec::new(),
+        });
+    }
+
+    /// 写入一条带图片的用户输入。
+    pub fn record_user_with_images(&mut self, text: impl Into<String>, images: Vec<InputImage>) {
+        self.record(HistoryItem::User {
+            text: text.into(),
+            images,
+        });
+    }
+
+    pub fn record_assistant(&mut self, text: impl Into<String>) {
+        self.record(HistoryItem::Assistant(text.into()));
+    }
+
+    pub fn record_assistant_with_reasoning(
+        &mut self,
+        text: impl Into<String>,
+        reasoning: impl Into<String>,
+    ) {
+        let text = text.into();
+        let reasoning = reasoning.into();
+        if reasoning.is_empty() {
+            self.record_assistant(text);
+        } else {
+            self.record(HistoryItem::AssistantWithReasoning { text, reasoning });
+        }
+    }
+
+    pub fn record_system(&mut self, text: impl Into<String>) {
+        self.record(HistoryItem::System(text.into()));
+    }
+
+    pub fn record_context_summary(&mut self, text: impl Into<String>, original_items: usize) {
+        let text = text.into();
+        if text.trim().is_empty() {
+            return;
+        }
+        self.record(HistoryItem::ContextSummary {
+            text,
+            original_items,
+        });
+    }
+
+    pub fn record_tool_call(&mut self, call: ToolCall) {
+        self.record(HistoryItem::ToolCall(call));
+    }
+
+    pub fn record_observation(&mut self, observation: ToolObservation) {
+        self.record(HistoryItem::Observation(observation));
+    }
+
+    /// 历史里最近一次工具声明（无则空切片）。
+    pub fn last_declared_tools(&self) -> &[String] {
+        self.items
+            .iter()
+            .rev()
+            .find_map(|item| match item {
+                HistoryItem::ToolsDeclared { names } => Some(names.as_slice()),
+                _ => None,
+            })
+            .unwrap_or(&[])
+    }
+
+    /// 记录工具声明快照。与最近一次声明相同则不记（避免逐轮重复膨胀）。
+    pub fn record_tools_declared(&mut self, names: Vec<String>) {
+        if self.last_declared_tools() == names.as_slice() {
+            return;
+        }
+        self.record(HistoryItem::ToolsDeclared { names });
+    }
+
+    pub fn items(&self) -> &[HistoryItem] {
+        &self.items
+    }
+
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+
+    pub fn max_observation_bytes(&self) -> usize {
+        self.max_observation_bytes
+    }
+
+    /// 返回最近一次观测。
+    pub fn last_observation(&self) -> Option<&ToolObservation> {
+        self.items.iter().rev().find_map(|item| match item {
+            HistoryItem::Observation(obs) => Some(obs),
+            _ => None,
+        })
+    }
+
+    /// 最近一条用户输入。
+    pub fn last_user_message(&self) -> Option<&str> {
+        self.items.iter().rev().find_map(|item| match item {
+            HistoryItem::User { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+    }
+
+    pub fn compact_old_items(
+        &mut self,
+        summary: impl Into<String>,
+        keep_last_items: usize,
+    ) -> bool {
+        let summary = summary.into();
+        if summary.trim().is_empty() {
+            return false;
+        }
+        let Some(split_index) = self.compaction_split_index(keep_last_items) else {
+            return false;
+        };
+        let suffix = self.items.split_off(split_index);
+        self.items.clear();
+        self.items.push(HistoryItem::ContextSummary {
+            text: summary,
+            original_items: split_index,
+        });
+        self.items.extend(suffix);
+        true
+    }
+
+    pub fn compaction_prefix(&self, keep_last_items: usize) -> Option<Vec<HistoryItem>> {
+        let split_index = self.compaction_split_index(keep_last_items)?;
+        Some(self.items[..split_index].to_vec())
+    }
+
+    fn compaction_split_index(&self, keep_last_items: usize) -> Option<usize> {
+        if self.items.len() <= 1 {
+            return None;
+        }
+        let keep_last_items = keep_last_items.max(1).min(self.items.len() - 1);
+        let mut split_index = self.items.len() - keep_last_items;
+        split_index = self.compaction_tool_boundary(split_index);
+        (split_index > 0).then_some(split_index)
+    }
+
+    fn compaction_tool_boundary(&self, mut split_index: usize) -> usize {
+        if split_index >= self.items.len() {
+            return split_index;
+        }
+        match &self.items[split_index] {
+            HistoryItem::Observation(_) => {
+                while split_index > 0
+                    && matches!(self.items[split_index - 1], HistoryItem::Observation(_))
+                {
+                    split_index -= 1;
+                }
+                while split_index > 0
+                    && matches!(self.items[split_index - 1], HistoryItem::ToolCall(_))
+                {
+                    split_index -= 1;
+                }
+            }
+            HistoryItem::ToolCall(_) => {
+                while split_index > 0
+                    && matches!(self.items[split_index - 1], HistoryItem::ToolCall(_))
+                {
+                    split_index -= 1;
+                }
+            }
+            _ => {}
+        }
+        if split_index > 0
+            && matches!(
+                self.items[split_index],
+                HistoryItem::ToolCall(_) | HistoryItem::Observation(_)
+            )
+            && matches!(
+                self.items[split_index - 1],
+                HistoryItem::AssistantWithReasoning { .. }
+            )
+        {
+            split_index -= 1;
+        }
+        split_index
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ids::ToolCallId;
+    use crate::tools::{ObservationData, ToolName, ToolObservation};
+
+    /// 「还算空白」的判据写成白名单：只有系统提示算「没聊过」，
+    /// 用户 / 助手 / 工具调用 / 观测 / 摘要一律算聊过。见 [`HistoryItem::is_system_note`]。
+    #[test]
+    fn only_system_notes_do_not_count_as_a_conversation() {
+        assert!(HistoryItem::System("正在创建 ACP 会话".into()).is_system_note());
+        assert!(
+            !HistoryItem::User {
+                text: "hi".into(),
+                images: Vec::new(),
+            }
+            .is_system_note()
+        );
+        assert!(!HistoryItem::Assistant("hello".into()).is_system_note());
+        assert!(
+            !HistoryItem::AssistantWithReasoning {
+                text: "hello".into(),
+                reasoning: "因为".into(),
+            }
+            .is_system_note()
+        );
+        assert!(
+            !HistoryItem::ContextSummary {
+                text: "摘要".into(),
+                original_items: 3,
+            }
+            .is_system_note()
+        );
+    }
+
+    /// 工具声明：变化才记，重复去重；且不算「聊过」（is_system_note）。
+    #[test]
+    fn tools_declared_records_only_changes() {
+        let mut history = RuntimeHistory::new();
+        history.record_tools_declared(vec!["echo".into(), "read_file".into()]);
+        history.record_tools_declared(vec!["echo".into(), "read_file".into()]); // 相同 → 不记
+        history.record_tools_declared(vec!["echo".into()]); // 变化 → 记
+
+        let declared: Vec<_> = history
+            .items()
+            .iter()
+            .filter_map(|item| match item {
+                HistoryItem::ToolsDeclared { names } => Some(names.clone()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(2, declared.len(), "相同快照不重复记录");
+        assert_eq!(vec!["echo".to_string()], declared[1]);
+        assert_eq!(history.last_declared_tools(), ["echo".to_string()]);
+        assert!(HistoryItem::ToolsDeclared { names: Vec::new() }.is_system_note());
+    }
+
+    #[test]
+    fn evicts_oldest_when_over_capacity() {
+        let mut history = RuntimeHistory::with_limits(2, 1024);
+        history.record_user("a");
+        history.record_user("b");
+        history.record_user("c");
+        assert_eq!(history.len(), 2);
+        assert_eq!(history.last_user_message(), Some("c"));
+    }
+
+    #[test]
+    fn finds_last_observation() {
+        let mut history = RuntimeHistory::new();
+        history.record_user("hi");
+        history.record_observation(ToolObservation::success(
+            ToolCallId::from_string("call_1"),
+            ToolName::new("echo"),
+            "ok",
+            ObservationData::Text("done".into()),
+        ));
+        assert!(history.last_observation().is_some());
+        assert_eq!(history.last_observation().unwrap().summary, "ok");
+    }
+
+    #[test]
+    fn compact_old_items_replaces_prefix_with_context_summary() {
+        let mut history = RuntimeHistory::new();
+        history.record_user("old user");
+        history.record_assistant("old answer");
+        history.record_user("recent user");
+        history.record_assistant("recent answer");
+
+        assert!(history.compact_old_items("compressed facts", 2));
+
+        assert_eq!(3, history.items().len());
+        match &history.items()[0] {
+            HistoryItem::ContextSummary {
+                text,
+                original_items,
+            } => {
+                assert_eq!("compressed facts", text);
+                assert_eq!(2, *original_items);
+            }
+            other => panic!("expected context summary, got {other:?}"),
+        }
+        assert!(matches!(history.items()[1], HistoryItem::User { .. }));
+        assert!(matches!(history.items()[2], HistoryItem::Assistant(_)));
+    }
+
+    #[test]
+    fn compact_old_items_keeps_tool_call_with_observation_suffix() {
+        let call = ToolCall {
+            call_id: ToolCallId::from_string("call_keep"),
+            tool_name: ToolName::new("ssh.exec"),
+            arguments: serde_json::json!({"command": "pwd"}),
+            resource_id: None,
+        };
+        let observation = ToolObservation::success(
+            ToolCallId::from_string("call_keep"),
+            ToolName::new("ssh.exec"),
+            "ok",
+            ObservationData::Text("/srv/app".into()),
+        );
+        let mut history = RuntimeHistory::new();
+        history.record_user("old user");
+        history.record_tool_call(call);
+        history.record_observation(observation);
+        history.record_user("recent user");
+
+        assert!(history.compact_old_items("compressed facts", 2));
+
+        assert_eq!(4, history.items().len());
+        assert!(matches!(
+            history.items()[0],
+            HistoryItem::ContextSummary { .. }
+        ));
+        assert!(matches!(history.items()[1], HistoryItem::ToolCall(_)));
+        assert!(matches!(history.items()[2], HistoryItem::Observation(_)));
+        assert!(matches!(history.items()[3], HistoryItem::User { .. }));
+    }
+
+    #[test]
+    fn compact_old_items_keeps_parallel_tool_group_together() {
+        let first = ToolCall {
+            call_id: ToolCallId::from_string("call_a"),
+            tool_name: ToolName::new("echo"),
+            arguments: serde_json::json!({"text": "a"}),
+            resource_id: None,
+        };
+        let second = ToolCall {
+            call_id: ToolCallId::from_string("call_b"),
+            tool_name: ToolName::new("echo"),
+            arguments: serde_json::json!({"text": "b"}),
+            resource_id: None,
+        };
+        let first_observation = ToolObservation::success(
+            ToolCallId::from_string("call_a"),
+            ToolName::new("echo"),
+            "a",
+            ObservationData::Text("a".into()),
+        );
+        let second_observation = ToolObservation::success(
+            ToolCallId::from_string("call_b"),
+            ToolName::new("echo"),
+            "b",
+            ObservationData::Text("b".into()),
+        );
+        let mut history = RuntimeHistory::new();
+        history.record_user("old user");
+        history.record_tool_call(first);
+        history.record_tool_call(second);
+        history.record_observation(first_observation);
+        history.record_observation(second_observation);
+        history.record_user("recent user");
+
+        assert!(history.compact_old_items("compressed facts", 3));
+
+        assert_eq!(6, history.items().len());
+        assert!(matches!(
+            history.items()[0],
+            HistoryItem::ContextSummary { .. }
+        ));
+        assert!(matches!(history.items()[1], HistoryItem::ToolCall(_)));
+        assert!(matches!(history.items()[2], HistoryItem::ToolCall(_)));
+        assert!(matches!(history.items()[3], HistoryItem::Observation(_)));
+        assert!(matches!(history.items()[4], HistoryItem::Observation(_)));
+        assert!(matches!(history.items()[5], HistoryItem::User { .. }));
+    }
+
+    #[test]
+    fn compact_old_items_keeps_at_least_one_recent_item_for_short_large_history() {
+        let mut history = RuntimeHistory::new();
+        history.record_user("very large old context");
+        history.record_user("recent user");
+
+        assert!(history.compact_old_items("compressed facts", 32));
+
+        assert_eq!(2, history.items().len());
+        assert!(matches!(
+            history.items()[0],
+            HistoryItem::ContextSummary { .. }
+        ));
+        assert!(matches!(history.items()[1], HistoryItem::User { .. }));
+    }
+}

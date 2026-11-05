@@ -1,0 +1,1637 @@
+_version: 2
+
+AgentChat:
+  acp_tool_mode_update_failed:
+    en: "Could not update ACP tool permission: %{error}"
+    zh-CN: "ACP 工具权限更新失败：%{error}"
+    zh-HK: "ACP 工具權限更新失敗：%{error}"
+  public_mcp_permission_denied:
+    en: "Public MCP denied this operation. Set MCP Permission Profile to Confirm or Auto."
+    zh-CN: "Public MCP 拒绝了此操作，请在“设置 → MCP → 权限档位”中选择确认模式或自动模式。"
+    zh-HK: "Public MCP 拒絕了此操作，請在「設定 → MCP → 權限檔位」中選擇確認模式或自動模式。"
+
+AgentUi:
+  acp_authentication_failed:
+    en: ACP Agent authentication failed
+    zh-CN: ACP Agent 鉴权失败
+    zh-HK: ACP Agent 驗證失敗
+  acp_authentication_timeout:
+    en: ACP Agent authentication timed out
+    zh-CN: ACP Agent 鉴权超时
+    zh-HK: ACP Agent 驗證逾時
+  acp_connection_closed:
+    en: ACP connection closed
+    zh-CN: ACP 连接已结束
+    zh-HK: ACP 連線已結束
+  acp_connection_timeout:
+    en: ACP Agent connection timed out
+    zh-CN: ACP Agent 连接超时
+    zh-HK: ACP Agent 連線逾時
+  acp_continuing_response:
+    en: "%{name} is continuing the response…"
+    zh-CN: "%{name} 正在继续响应…"
+    zh-HK: "%{name} 正在繼續回應…"
+  acp_empty_response_detail:
+    en: The request completed normally, but no text, reasoning, tool call, or plan update was received
+    zh-CN: 请求正常结束，但没有收到文本、推理、工具调用或计划更新
+    zh-HK: 請求正常結束，但沒有收到文字、推理、工具呼叫或計劃更新
+  acp_empty_response_summary:
+    en: ACP Agent returned no content
+    zh-CN: ACP Agent 没有返回任何内容
+    zh-HK: ACP Agent 沒有傳回任何內容
+  acp_external_managed:
+    en: This conversation is run by the external agent; its history stays there.
+    zh-CN: 这轮对话归外部 Agent 执行，历史也留在它那边。
+    zh-HK: 這輪對話由外部 Agent 執行，歷史也留在它那邊。
+  acp_agent_unavailable:
+    en: The external agent %{name} is unavailable right now, so this conversation cannot be reopened.
+    zh-CN: 外部 Agent %{name} 当前不可用，这条对话暂时接不回来。
+    zh-HK: 外部 Agent %{name} 目前無法使用，這條對話暫時接不回來。
+  acp_not_connected:
+    en: ACP agent is not connected
+    zh-CN: ACP Agent 未连接
+    zh-HK: ACP Agent 尚未連線
+  acp_non_text_content:
+    en: "[Non-text ACP content]"
+    zh-CN: "[非文本 ACP 内容]"
+    zh-HK: "[非文字 ACP 內容]"
+  acp_not_ready:
+    en: ACP Agent is not ready (the process may have exited)
+    zh-CN: ACP Agent 未就绪（进程可能已退出）
+    zh-HK: ACP Agent 尚未就緒（程序可能已退出）
+  acp_permission_request:
+    en: ACP Permission Request
+    zh-CN: ACP 权限请求
+    zh-HK: ACP 權限請求
+  acp_prompt_failed:
+    en: ACP request failed
+    zh-CN: ACP 请求失败
+    zh-HK: ACP 請求失敗
+  acp_prompt_timeout:
+    en: ACP request timed out
+    zh-CN: ACP 请求超时
+    zh-HK: ACP 請求逾時
+  acp_prompt_timeout_detail:
+    en: No output and no tool running for %{seconds} seconds
+    zh-CN: 连续 %{seconds} 秒既没有输出、也没有工具在运行
+    zh-HK: 連續 %{seconds} 秒既沒有輸出、也沒有工具在運行
+  acp_request_failed:
+    en: ACP request failed
+    zh-CN: ACP 请求失败
+    zh-HK: ACP 請求失敗
+  acp_required_environment_variables:
+    en: "Required environment variables: %{names}"
+    zh-CN: "需要环境变量：%{names}"
+    zh-HK: "需要環境變數：%{names}"
+  acp_reconnecting:
+    en: "ACP agent disconnected, reconnecting (%{attempt}/%{max})…"
+    zh-CN: "ACP Agent 已断开，正在重连（%{attempt}/%{max}）…"
+    zh-HK: "ACP Agent 已中斷，正在重新連線（%{attempt}/%{max}）…"
+  acp_reconnect_exhausted:
+    en: ACP agent disconnected and could not be reconnected
+    zh-CN: ACP Agent 已断开，且无法自动重连
+    zh-HK: ACP Agent 已中斷，且無法自動重新連線
+  acp_responding:
+    en: "%{name} is responding…"
+    zh-CN: "%{name} 正在响应…"
+    zh-HK: "%{name} 正在回應…"
+  acp_session_external:
+    en: External session
+    zh-CN: 外部会话
+    zh-HK: 外部工作階段
+  acp_session_list_failed:
+    en: "Could not load the session list: %{error}"
+    zh-CN: "会话列表加载失败：%{error}"
+    zh-HK: "工作階段清單載入失敗：%{error}"
+  acp_session_listing:
+    en: Loading sessions…
+    zh-CN: 正在加载会话…
+    zh-HK: 正在載入工作階段…
+  acp_session_open_failed:
+    en: "Could not open the session: %{error}"
+    zh-CN: "打开会话失败：%{error}"
+    zh-HK: "開啟工作階段失敗：%{error}"
+  acp_session_opening:
+    en: "Opening the %{name} session…"
+    zh-CN: "正在打开 %{name} 会话…"
+    zh-HK: "正在開啟 %{name} 工作階段…"
+  acp_session_refresh:
+    en: Refresh sessions
+    zh-CN: 刷新会话列表
+    zh-HK: 重新整理工作階段清單
+  acp_sessions_empty:
+    en: This agent reports no sessions yet
+    zh-CN: 该 Agent 暂无历史会话
+    zh-HK: 該 Agent 尚無歷史工作階段
+  acp_sessions_section:
+    en: External sessions
+    zh-CN: 外部会话
+    zh-HK: 外部工作階段
+  acp_session_restarted:
+    en: "Could not reopen the previous session with %{name}; a new empty session was created and the earlier context is no longer available"
+    zh-CN: "未能接上与 %{name} 此前的会话，已新建一个空会话；此前的上下文不再可用"
+    zh-HK: "未能接上與 %{name} 先前的工作階段，已新增一個空白工作階段；先前的上下文不再可用"
+  acp_session_resumed_without_history:
+    en: "Reconnected to the previous session with %{name}. It kept the context but does not replay history, so the earlier conversation is not shown here"
+    zh-CN: "已接上与 %{name} 此前的会话：它保留了上下文，但不回放历史，所以这里看不到之前的对话"
+    zh-HK: "已接上與 %{name} 先前的工作階段：它保留了上下文，但不會回放歷史，所以這裡看不到先前的對話"
+  acp_image_not_supported:
+    en: This ACP Agent does not support image prompts
+    zh-CN: 当前 ACP Agent 不支持图片输入
+    zh-HK: 目前 ACP Agent 不支援圖片輸入
+  acp_safety_confirmation_notice:
+    en: "%{summary}\n\nSafety Confirmation (Manual Confirmation) is enabled. After allowing this ACP permission request, the actual tool execution still requires a second approval in the safety confirmation dialog. To avoid the second approval, change the MCP permission mode to Auto."
+    zh-CN: "%{summary}\n\n当前已开启“安全确认（手动确认）”模式。允许本次 ACP 权限请求后，实际工具执行还需要在弹出的安全确认窗口中进行二次审批；如不需要二次审批，可将 MCP 权限模式切换为“自动执行”。"
+    zh-HK: "%{summary}\n\n目前已啟用「安全確認（手動確認）」模式。允許這次 ACP 權限請求後，實際工具執行仍需在安全確認視窗中再次審批；如不需要二次審批，可將 MCP 權限模式切換為「自動執行」。"
+  acp_session:
+    en: ACP Session
+    zh-CN: ACP 会话
+    zh-HK: ACP 工作階段
+  acp_input_placeholder:
+    en: Send a message to the agent…
+    zh-CN: 给 Agent 发消息…
+    zh-HK: 給 Agent 傳訊息…
+  acp_mode_empty:
+    en: This agent declares no session modes
+    zh-CN: 这个 Agent 没有声明会话模式
+    zh-HK: 這個 Agent 沒有宣告工作階段模式
+  acp_session_creation_failed:
+    en: Failed to create ACP session
+    zh-CN: ACP 会话创建失败
+    zh-HK: ACP 工作階段建立失敗
+  acp_tool_request:
+    en: "ACP Agent requests permission to run tool: %{tool}"
+    zh-CN: "ACP Agent 请求执行工具：%{tool}"
+    zh-HK: "ACP Agent 請求執行工具：%{tool}"
+  acp_steer_sent:
+    en: Message sent while a turn is running (steer); it will join the current turn
+    zh-CN: 消息已插入正在进行的轮次（插话），将并入当前轮处理
+    zh-HK: 訊息已插入正在進行的輪次（插話），將併入當前輪處理
+  local_steer_sent:
+    en: Message sent while the agent is working (steer); it will join the current turn before the next step
+    zh-CN: 消息已插入正在运行的任务（插话），将在下一步前生效
+    zh-HK: 訊息已插入正在執行的任務（插話），將於下一步前生效
+  acp_unsupported_auth_method:
+    en: "ACP Agent does not support authentication method %{method}"
+    zh-CN: "ACP Agent 不支持鉴权方式 %{method}"
+    zh-HK: "ACP Agent 不支援驗證方式 %{method}"
+  acp_missing_credentials:
+    en: ACP Agent has no available credentials
+    zh-CN: ACP Agent 缺少可用凭证
+    zh-HK: ACP Agent 缺少可用憑證
+  action_read:
+    en: Read
+    zh-CN: 读取
+    zh-HK: 讀取
+  action_edit:
+    en: Edit
+    zh-CN: 编辑
+    zh-HK: 編輯
+  action_delete:
+    en: Delete
+    zh-CN: 删除
+    zh-HK: 刪除
+  action_move:
+    en: Move
+    zh-CN: 移动
+    zh-HK: 移動
+  action_search:
+    en: Search
+    zh-CN: 搜索
+    zh-HK: 搜尋
+  action_execute:
+    en: Run
+    zh-CN: 执行
+    zh-HK: 執行
+  action_think:
+    en: Think
+    zh-CN: 思考
+    zh-HK: 思考
+  action_fetch:
+    en: Fetch
+    zh-CN: 获取
+    zh-HK: 取得
+  action_switch_mode:
+    en: Switch mode
+    zh-CN: 切换模式
+    zh-HK: 切換模式
+  all:
+    en: All
+    zh-CN: 全部
+    zh-HK: 全部
+  allowed:
+    en: Allowed
+    zh-CN: 已允许
+    zh-HK: 已允許
+  approval_failed:
+    en: "Tool approval failed: %{error}"
+    zh-CN: "工具审批失败：%{error}"
+    zh-HK: "工具審批失敗：%{error}"
+  approved:
+    en: Approved
+    zh-CN: 已批准
+    zh-HK: 已批准
+  archived:
+    en: Archived
+    zh-CN: 已归档
+    zh-HK: 已封存
+  archived_tasks:
+    en: Archived Tasks
+    zh-CN: 已归档任务
+    zh-HK: 已封存工作
+  ask_ai:
+    en: Ask AI
+    zh-CN: 询问 AI
+    zh-HK: 詢問 AI
+  ask_mode:
+    en: Ask
+    zh-CN: 问答
+    zh-HK: 問答
+  ask_mode_hint:
+    en: Answer directly
+    zh-CN: 直接问答
+    zh-HK: 直接問答
+  attach_images:
+    en: Attach images
+    zh-CN: 附加图片
+    zh-HK: 附加圖片
+  attachment_count:
+    en: "%{count} attachment(s)"
+    zh-CN: "%{count} 个附件"
+    zh-HK: "%{count} 個附件"
+  queue_for_next_turn:
+    en: Queue for next turn
+    zh-CN: 发送到下一轮
+    zh-HK: 傳送到下一輪
+  queued_for_next_turn:
+    en: "Queued for next turn (%{count})"
+    zh-CN: "下一轮带入（%{count}）"
+    zh-HK: "下一輪帶入（%{count}）"
+  edit_queued_item:
+    en: Edit and pull back into the composer
+    zh-CN: 编辑（拉回输入框）
+    zh-HK: 編輯（拉回輸入框）
+  empty_hint:
+    en: Ask a question, paste an error, or pick a starter below.
+    zh-CN: 直接提问、贴一段报错，或者从下面挑一句开始。
+    zh-HK: 直接提問、貼一段錯誤，或者從下面挑一句開始。
+  empty_starter_improve:
+    en: Find one thing in the code worth improving
+    zh-CN: 找一处值得改进的代码
+    zh-HK: 找一處值得改進的程式碼
+  empty_starter_overview:
+    en: Walk me through how this project is organized
+    zh-CN: 讲讲这个项目是怎么组织的
+    zh-HK: 講講這個專案是怎麼組織的
+  empty_starter_tests:
+    en: Add tests for what I just changed
+    zh-CN: 给刚改的地方补测试
+    zh-HK: 給剛改的地方補測試
+  empty_starter_capabilities:
+    en: What can you do for me?
+    zh-CN: 你能帮我做什么？
+    zh-HK: 你能幫我做什麼？
+  empty_starter_plan:
+    en: Break this request into steps before we start
+    zh-CN: 先把这件事拆成几步再动手
+    zh-HK: 先將這件事拆成幾步再動手
+  empty_starter_troubleshoot:
+    en: Explain this error and how I should troubleshoot it
+    zh-CN: 解释这段报错，告诉我该怎么排查
+    zh-HK: 解釋這段報錯，告訴我該怎麼排查
+  palette_placeholder:
+    en: Type a command or session name
+    zh-CN: 输入命令或会话名
+    zh-HK: 輸入指令或會話名
+  palette_new_session:
+    en: New session
+    zh-CN: 新建会话
+    zh-HK: 新增會話
+  palette_find:
+    en: Search in this session
+    zh-CN: 在本会话内搜索
+    zh-HK: 在本會話內搜尋
+  palette_usage_history:
+    en: Usage history
+    zh-CN: 用量历史
+    zh-HK: 用量歷史
+  palette_show_archived:
+    en: Show archived sessions
+    zh-CN: 显示已归档会话
+    zh-HK: 顯示已封存會話
+  palette_hide_archived:
+    en: Hide archived sessions
+    zh-CN: 隐藏已归档会话
+    zh-HK: 隱藏已封存會話
+  palette_empty:
+    en: No matching command
+    zh-CN: 没有匹配的命令
+    zh-HK: 沒有符合的指令
+  palette_hint:
+    en: "↑↓ select · Enter to run · esc to close"
+    zh-CN: "↑↓ 选择 · 回车执行 · esc 关闭"
+    zh-HK: "↑↓ 選擇 · 回車執行 · esc 關閉"
+  empty_title:
+    en: What should we work on?
+    zh-CN: 想做点什么？
+    zh-HK: 想做點什麼？
+  elicitation_heading:
+    en: Agent question
+    zh-CN: Agent 提问
+    zh-HK: Agent 提問
+  elicitation_submit:
+    en: Send answer
+    zh-CN: 提交回答
+    zh-HK: 提交回答
+  elicitation_decline:
+    en: Decline
+    zh-CN: 拒绝回答
+    zh-HK: 拒絕回答
+  elicitation_cancel:
+    en: Cancel
+    zh-CN: 取消
+    zh-HK: 取消
+  elicitation_open_url:
+    en: Open link
+    zh-CN: 打开链接
+    zh-HK: 開啟連結
+  elicitation_required:
+    en: "\"%{field}\" is required"
+    zh-CN: "「%{field}」是必填项"
+    zh-HK: "「%{field}」是必填項"
+  elicitation_not_integer:
+    en: "\"%{field}\" must be a whole number"
+    zh-CN: "「%{field}」需要是整数"
+    zh-HK: "「%{field}」需要是整數"
+  elicitation_not_number:
+    en: "\"%{field}\" must be a number"
+    zh-CN: "「%{field}」需要是数字"
+    zh-HK: "「%{field}」需要是數字"
+  elicitation_format:
+    en: "Format: %{format}"
+    zh-CN: "格式：%{format}"
+    zh-HK: "格式：%{format}"
+  elicitation_unsupported_mode:
+    en: "This agent asked in a way this version does not support (%{mode})."
+    zh-CN: "Agent 使用了当前版本不支持的提问方式（%{mode}）。"
+    zh-HK: "Agent 使用了目前版本不支援的提問方式（%{mode}）。"
+  elicitation_unsupported_field:
+    en: "%{kind} fields are not supported yet"
+    zh-CN: "暂不支持 %{kind} 类型的字段"
+    zh-HK: "暫不支援 %{kind} 類型的欄位"
+  remove_queued_item:
+    en: Remove from queue
+    zh-CN: 从队列删除
+    zh-HK: 從佇列刪除
+  auto:
+    en: Auto
+    zh-CN: 自动
+    zh-HK: 自動
+  auto_mode:
+    en: Auto Mode
+    zh-CN: 自动模式
+    zh-HK: 自動模式
+  auto_mode_hint:
+    en: Answer, plan, or call tools as needed
+    zh-CN: 按需回答、规划或调用工具
+    zh-HK: 視需要回答、規劃或呼叫工具
+  available_to_add:
+    en: Available
+    zh-CN: 可添加
+    zh-HK: 可加入
+  built_in_agent:
+    en: Built-in Agent
+    zh-CN: 内置 Agent
+    zh-HK: 內建 Agent
+  agent_probing:
+    en: Checking agent...
+    zh-CN: 正在检测 Agent…
+    zh-HK: 正在檢測 Agent…
+  agent_probe_failed:
+    en: "Unavailable: %{error}"
+    zh-CN: "无法使用：%{error}"
+    zh-HK: "無法使用：%{error}"
+  agent_model_count:
+    en: "%{count} models"
+    zh-CN: "%{count} 个模型"
+    zh-HK: "%{count} 個模型"
+  agent_login_required:
+    en: Login required
+    zh-CN: 需要登录
+    zh-HK: 需要登入
+  awaiting_approval:
+    en: Awaiting approval
+    zh-CN: 等待审批
+    zh-HK: 等待審批
+  batch_tool_confirmation:
+    en: Batch Tool Execution Confirmation
+    zh-CN: 批量工具执行确认
+    zh-HK: 批次工具執行確認
+  cancel:
+    en: Cancel
+    zh-CN: 取消
+    zh-HK: 取消
+  cancelled:
+    en: Cancelled
+    zh-CN: 已取消
+    zh-HK: 已取消
+  choose_images:
+    en: Choose Images
+    zh-CN: 选择图片
+    zh-HK: 選擇圖片
+  choose_skill_directory:
+    en: Choose Skill Directory
+    zh-CN: 选择 Skill 目录
+    zh-HK: 選擇 Skill 目錄
+  close:
+    en: Close
+    zh-CN: 关闭
+    zh-HK: 關閉
+  close_panel:
+    en: Close panel
+    zh-CN: 关闭面板
+    zh-HK: 關閉面板
+  close_session:
+    en: Close Session
+    zh-CN: 关闭会话
+    zh-HK: 關閉工作階段
+  close_sidebar:
+    en: Close sidebar
+    zh-CN: 关闭侧边栏
+    zh-HK: 關閉側邊欄
+  collapse_capabilities:
+    en: Collapse capabilities
+    zh-CN: 折叠能力区
+    zh-HK: 收合能力區
+  collapse_details:
+    en: Collapse details
+    zh-CN: 收起详情
+    zh-HK: 收起詳情
+  collapse_reasoning:
+    en: Collapse reasoning
+    zh-CN: 收起思考
+    zh-HK: 收起思考
+  commands:
+    en: Commands
+    zh-CN: 命令
+    zh-HK: 命令
+  completed:
+    en: Complete
+    zh-CN: 完成
+    zh-HK: 完成
+  completed_state:
+    en: Completed
+    zh-CN: 已完成
+    zh-HK: 已完成
+  configuration:
+    en: Config
+    zh-CN: 配置
+    zh-HK: 設定
+  connect_acp_failed:
+    en: Failed to connect ACP Agent
+    zh-CN: 连接 ACP Agent 失败
+    zh-HK: 連線 ACP Agent 失敗
+  connecting:
+    en: Connecting
+    zh-CN: 连接中
+    zh-HK: 連線中
+  context_boundary_to_acp:
+    en: "Local model context is not carried over to %{name}; the agent uses its own session context"
+    zh-CN: "本地模型的上下文不会带到 %{name}：agent 使用它自己的会话上下文"
+    zh-HK: "本地模型的上下文不會帶到 %{name}：agent 使用它自己的工作階段上下文"
+  context_boundary_to_local:
+    en: "Switched back to the local model. The conversation with %{name} stays on the agent side and is not part of the local model's context; switch back to that agent to continue it"
+    zh-CN: "已切回本地模型：与 %{name} 的对话留在 agent 一侧，不进入本地模型的上下文；切回该 agent 可以继续"
+    zh-HK: "已切回本地模型：與 %{name} 的對話留在 agent 一側，不會進入本地模型的上下文；切回該 agent 可以繼續"
+  context_summary:
+    en: Context summary
+    zh-CN: 上下文摘要
+    zh-HK: 上下文摘要
+  context_compacted:
+    en: Conversation compacted
+    zh-CN: 对话已压缩
+    zh-HK: 對話已壓縮
+  context_compacted_items:
+    en: "%{count} items"
+    zh-CN: "%{count} 条历史"
+    zh-HK: "%{count} 筆歷史"
+  copy_code:
+    en: Copy code
+    zh-CN: 复制代码
+    zh-HK: 複製程式碼
+  transcript_selection_count:
+    en: "%{count} selected"
+    zh-CN: "已选 %{count} 条"
+    zh-HK: "已選 %{count} 條"
+  copy:
+    en: Copy
+    zh-CN: 复制
+    zh-HK: 複製
+  copy_message:
+    en: Copy message
+    zh-CN: 复制消息
+    zh-HK: 複製訊息
+  create_acp_session_failed:
+    en: "Failed to create a new ACP session: %{error}"
+    zh-CN: "创建 ACP 新会话失败：%{error}"
+    zh-HK: "建立 ACP 新工作階段失敗：%{error}"
+  creating_acp_session:
+    en: Creating a new ACP session...
+    zh-CN: 正在创建 ACP 新会话…
+    zh-HK: 正在建立 ACP 新工作階段…
+  current:
+    en: Current
+    zh-CN: 当前
+    zh-HK: 目前
+  current_agent_task:
+    en: Current Agent Task
+    zh-CN: 当前 Agent 任务
+    zh-HK: 目前 Agent 工作
+  current_connection:
+    en: Current Connection
+    zh-CN: 当前连接
+    zh-HK: 目前連線
+  current_runtime:
+    en: Current Runtime
+    zh-CN: 当前 Runtime
+    zh-HK: 目前 Runtime
+  default:
+    en: Default
+    zh-CN: 默认
+    zh-HK: 預設
+  default_target:
+    en: Default Target
+    zh-CN: 默认目标
+    zh-HK: 預設目標
+  execution_plan:
+    en: Execution Plan
+    zh-CN: 执行计划
+    zh-HK: 執行計劃
+  delete:
+    en: Delete
+    zh-CN: 删除
+    zh-HK: 刪除
+  delete_session:
+    en: Delete Session
+    zh-CN: 删除会话
+    zh-HK: 刪除工作階段
+  delete_session_confirm:
+    en: "Delete session “%{name}”? This action cannot be undone."
+    zh-CN: "确定删除会话“%{name}”？此操作不可撤销。"
+    zh-HK: "確定刪除工作階段「%{name}」？此操作無法復原。"
+  enter_new_session_name:
+    en: Enter a new session name
+    zh-CN: 输入新的会话名称
+    zh-HK: 輸入新的工作階段名稱
+  execute:
+    en: Execute
+    zh-CN: 执行
+    zh-HK: 執行
+  expand_details:
+    en: Expand details
+    zh-CN: 展开详情
+    zh-HK: 展開詳情
+  expand_reasoning:
+    en: Expand reasoning
+    zh-CN: 展开思考
+    zh-HK: 展開思考
+  failed:
+    en: Failed
+    zh-CN: 失败
+    zh-HK: 失敗
+  fixed_runtime:
+    en: Fixed runtime
+    zh-CN: 固定运行时
+    zh-HK: 固定執行階段
+  history:
+    en: History
+    zh-CN: 历史记录
+    zh-HK: 歷史記錄
+  history_description:
+    en: Number of history messages to include
+    zh-CN: 携带的历史消息数
+    zh-HK: 包含的歷史訊息數
+  history_tasks:
+    en: History
+    zh-CN: 历史任务
+    zh-HK: 歷史工作
+  import_skill:
+    en: Import Skill
+    zh-CN: 导入技能
+    zh-HK: 匯入技能
+  import_skill_failed:
+    en: "Failed to import Skill: %{error}"
+    zh-CN: "导入 Skill 失败：%{error}"
+    zh-HK: "匯入 Skill 失敗：%{error}"
+  in_progress:
+    en: In Progress
+    zh-CN: 进行中
+    zh-HK: 進行中
+  input:
+    en: Input
+    zh-CN: 输入
+    zh-HK: 輸入
+  input_placeholder:
+    en: Describe a goal. Type @ to reference resources…
+    zh-CN: 描述目标，输入 @ 引用资源…
+    zh-HK: 描述目標，輸入 @ 引用資源…
+  invalid_chart_card:
+    en: Invalid chart-json card
+    zh-CN: 无效 chart-json 卡片
+    zh-HK: 無效的 chart-json 卡片
+  joined:
+    en: Added
+    zh-CN: 已加入
+    zh-HK: 已加入
+  json_card_example:
+    en: JSON Card (Example)
+    zh-CN: JSON 卡片（示例）
+    zh-HK: JSON 卡片（範例）
+  logging_in:
+    en: "Logging in to %{name}"
+    zh-CN: "正在登录 %{name}"
+    zh-HK: "正在登入 %{name}"
+  load_session:
+    en: Load Session
+    zh-CN: 加载会话
+    zh-HK: 載入工作階段
+  login_method:
+    en: "Log in (%{method})"
+    zh-CN: "登录（%{method}）"
+    zh-HK: "登入（%{method}）"
+  login_required:
+    en: "%{name} requires login"
+    zh-CN: "%{name} 需要登录"
+    zh-HK: "%{name} 需要登入"
+  list_sessions:
+    en: List Sessions
+    zh-CN: 会话列表
+    zh-HK: 工作階段列表
+  manual:
+    en: Manual
+    zh-CN: 手动
+    zh-HK: 手動
+  manual_confirmation:
+    en: Manual Confirmation
+    zh-CN: 手动确认
+    zh-HK: 手動確認
+  matching_resources:
+    en: "%{count} resource(s) matched"
+    zh-CN: "匹配到 %{count} 个资源"
+    zh-HK: "符合 %{count} 個資源"
+  max_tokens:
+    en: Maximum Tokens
+    zh-CN: 最大 Token
+    zh-HK: 最大 Token
+  max_tokens_description:
+    en: Token limit for each response
+    zh-CN: 单次回复 Token 上限
+    zh-HK: 每次回覆的 Token 上限
+  mode:
+    en: Mode
+    zh-CN: 模式
+    zh-HK: 模式
+  model_settings:
+    en: Model Settings
+    zh-CN: 模型设置
+    zh-HK: 模型設定
+  more_options:
+    en: More Options
+    zh-CN: 更多选项
+    zh-HK: 更多選項
+  move_to:
+    en: Move to
+    zh-CN: 移动到
+    zh-HK: 移動到
+  new_conversation:
+    en: New Conversation
+    zh-CN: 新建对话
+    zh-HK: 新增對話
+  new_task:
+    en: New Task
+    zh-CN: 新建任务
+    zh-HK: 新增工作
+  no_agents:
+    en: No Agents Available
+    zh-CN: 无可用 Agent
+    zh-HK: 沒有可用的 Agent
+  no_archived_sessions:
+    en: No archived sessions
+    zh-CN: 暂无已归档会话
+    zh-HK: 暫無已封存工作階段
+  no_connection:
+    en: No Connection
+    zh-CN: 无连接
+    zh-HK: 沒有連線
+  no_default_target:
+    en: No default target
+    zh-CN: 无默认目标
+    zh-HK: 沒有預設目標
+  no_history_sessions:
+    en: No session history
+    zh-CN: 暂无历史会话
+    zh-HK: 暫無歷史工作階段
+  no_matching_resources:
+    en: No matching resources
+    zh-CN: 未匹配到资源
+    zh-HK: 找不到符合的資源
+  no_matching_models:
+    en: No matching models
+    zh-CN: 未匹配到模型
+    zh-HK: 找不到符合的模型
+  no_model_config:
+    en: No model configuration is available
+    zh-CN: 没有可用模型配置
+    zh-HK: 沒有可用的模型設定
+  model_switch_failed:
+    en: "Could not switch model: %{error}"
+    zh-CN: "模型切换失败：%{error}"
+    zh-HK: "模型切換失敗：%{error}"
+  no_plan:
+    en: No plan yet
+    zh-CN: 暂无计划
+    zh-HK: 暫無計劃
+  no_skills:
+    en: No Skills
+    zh-CN: 暂无 Skill
+    zh-HK: 暫無 Skill
+  no_subagents:
+    en: No subagents
+    zh-CN: 暂无子代理
+    zh-HK: 暫無子代理
+  no_tag_source:
+    en: No tag resource source is available
+    zh-CN: 暂无标签资源来源
+    zh-HK: 暫無標籤資源來源
+  no_workspace_source:
+    en: No workspace resource source is available
+    zh-CN: 暂无工作区资源来源
+    zh-HK: 暫無工作區資源來源
+  official_model:
+    en: Official Model
+    zh-CN: 正式模型
+    zh-HK: 正式模型
+  diff_new_file:
+    en: New file
+    zh-CN: 新文件
+    zh-HK: 新檔案
+  diff_unknown_file:
+    en: Unknown file
+    zh-CN: 未知文件
+    zh-HK: 未知檔案
+  diff_rows_hidden:
+    en: "%{count} more line(s)"
+    zh-CN: "还有 %{count} 行"
+    zh-HK: "還有 %{count} 行"
+  open_in_review:
+    en: Open in Review
+    zh-CN: 在 Review 中打开
+    zh-HK: 在 Review 中開啟
+  subagent_open_detail:
+    en: View reasoning
+    zh-CN: 查看推理过程
+    zh-HK: 檢視推理過程
+  subagent_detail_hint:
+    en: Subagent replay — full reasoning is available once the subagent finishes.
+    zh-CN: 子代理回放 · 推理过程在子代理结束后完整可得
+    zh-HK: 子代理回放 · 推理過程於子代理結束後完整可得
+  subagent_detail_empty:
+    en: Open a subagent card to review its reasoning.
+    zh-CN: 点开一张子代理卡片即可查看它的推理过程
+    zh-HK: 點開一張子代理卡片即可檢視它的推理過程
+  subagent_detail_loading:
+    en: Loading the subagent transcript…
+    zh-CN: 正在载入子代理记录…
+    zh-HK: 正在載入子代理記錄…
+  subagent_detail_failed:
+    en: "Could not load the subagent transcript: %{error}"
+    zh-CN: 无法载入子代理记录：%{error}
+    zh-HK: 無法載入子代理記錄：%{error}
+  open_sidebar:
+    en: Open sidebar
+    zh-CN: 打开侧边栏
+    zh-HK: 開啟側邊欄
+  output:
+    en: Output
+    zh-CN: 输出
+    zh-HK: 輸出
+  pasted_image:
+    en: Pasted image
+    zh-CN: 粘贴的图片
+    zh-HK: 貼上的圖片
+  panel_options:
+    en: Panel Options
+    zh-CN: 面板选项
+    zh-HK: 面板選項
+  pending:
+    en: Pending
+    zh-CN: 待执行
+    zh-HK: 待執行
+  pending_confirmation:
+    en: Awaiting Confirmation
+    zh-CN: 待确认
+    zh-HK: 待確認
+  pending_input:
+    en: Pending Input
+    zh-CN: 待执行入参
+    zh-HK: 待執行輸入參數
+  pending_tools:
+    en: "Tools · %{count} pending"
+    zh-CN: "工具 · %{count} 个待执行"
+    zh-HK: "工具 · %{count} 個待執行"
+  plan:
+    en: Plan
+    zh-CN: 计划
+    zh-HK: 計劃
+  plan_mode:
+    en: Plan
+    zh-CN: 计划
+    zh-HK: 計劃
+  plan_mode_hint:
+    en: Plan before execution
+    zh-CN: 先规划再执行
+    zh-HK: 先規劃再執行
+  plan_todo:
+    en: Plan Todo
+    zh-CN: 计划 Todo
+    zh-HK: 計劃 Todo
+  progress:
+    en: "Progress: %{value}"
+    zh-CN: "进展：%{value}"
+    zh-HK: "進度：%{value}"
+  public_mcp_safety_confirmation:
+    en: "Safety Confirmation is enabled, so actual tool execution still requires approval after ACP authorization.\n\nTo avoid the second approval, change the MCP permission mode to Auto.\n\n%{summary}"
+    zh-CN: "设置中已开启“安全确认”，因此 ACP 授权后，实际工具执行仍需再次审批。\n\n如不需要二次审批，可将 MCP 权限模式修改为“自动执行”。\n\n%{summary}"
+    zh-HK: "設定中已啟用「安全確認」，因此 ACP 授權後，實際工具執行仍需再次審批。\n\n如不需要二次審批，可將 MCP 權限模式改為「自動執行」。\n\n%{summary}"
+  purpose:
+    en: "Purpose: %{value}"
+    zh-CN: "用途：%{value}"
+    zh-HK: "用途：%{value}"
+  purpose_markdown:
+    en: "**Purpose**\n\n%{value}"
+    zh-CN: "**用途**\n\n%{value}"
+    zh-HK: "**用途**\n\n%{value}"
+  readonly:
+    en: Read Only
+    zh-CN: 只读
+    zh-HK: 唯讀
+  reasoning_process:
+    en: Reasoning
+    zh-CN: 思考过程
+    zh-HK: 思考過程
+  reject:
+    en: Reject
+    zh-CN: 拒绝
+    zh-HK: 拒絕
+  rejected:
+    en: Rejected
+    zh-CN: 已拒绝
+    zh-HK: 已拒絕
+  remove_from_sidebar:
+    en: Remove from Sidebar
+    zh-CN: 从侧边栏移除
+    zh-HK: 從側邊欄移除
+  rename_session:
+    en: Rename Session
+    zh-CN: 重命名会话
+    zh-HK: 重新命名工作階段
+  request_details:
+    en: Request Details
+    zh-CN: 请求详情
+    zh-HK: 請求詳情
+  resource_pool:
+    en: Resource Pool
+    zh-CN: 资源池
+    zh-HK: 資源池
+  resource_pool_count:
+    en: "Resource Pool · %{count}"
+    zh-CN: "资源池 · %{count}"
+    zh-HK: "資源池 · %{count}"
+  resource_pool_empty:
+    en: Resource pool is empty
+    zh-CN: 资源池为空
+    zh-HK: 資源池是空的
+  resume:
+    en: Resume
+    zh-CN: 恢复
+    zh-HK: 恢復
+  response_mode:
+    en: Response Mode
+    zh-CN: 响应模式
+    zh-HK: 回應模式
+  restore_turn:
+    en: Back to here
+    zh-CN: 回到这一轮
+    zh-HK: 回到這一輪
+  risk:
+    en: Risk
+    zh-CN: 风险
+    zh-HK: 風險
+  run_failed:
+    en: "Run failed: %{error}"
+    zh-CN: "运行失败：%{error}"
+    zh-HK: "執行失敗：%{error}"
+  running:
+    en: Running…
+    zh-CN: 执行中…
+    zh-HK: 執行中…
+  save:
+    en: Save
+    zh-CN: 保存
+    zh-HK: 儲存
+  scope:
+    en: Scope
+    zh-CN: 作用域
+    zh-HK: 作用域
+  search_branch:
+    en: Search branches…
+    zh-CN: 搜索分支…
+    zh-HK: 搜尋分支…
+  search_model:
+    en: Search models…
+    zh-CN: 搜索模型…
+    zh-HK: 搜尋模型…
+  search_targets:
+    en: Search targets…
+    zh-CN: 搜索目标…
+    zh-HK: 搜尋目標…
+  select_model:
+    en: Select Model
+    zh-CN: 选择模型
+    zh-HK: 選擇模型
+  selected_option:
+    en: "Selected: %{option}"
+    zh-CN: "已选择：%{option}"
+    zh-HK: "已選擇：%{option}"
+  send:
+    en: Send
+    zh-CN: 发送
+    zh-HK: 傳送
+  session_name:
+    en: Session name
+    zh-CN: 会话名称
+    zh-HK: 工作階段名稱
+  settings_apply_later:
+    en: Settings apply to subsequent requests
+    zh-CN: 设置会应用到后续请求
+    zh-HK: 設定會套用到後續請求
+  sql_card_renderer_required:
+    en: "[SQL result card requires a business renderer]"
+    zh-CN: "[SQL 结果卡片需要业务渲染器]"
+    zh-HK: "[SQL 結果卡片需要業務轉譯器]"
+  starting_agent:
+    en: "Starting %{name}"
+    zh-CN: "正在启动 %{name}"
+    zh-HK: "正在啟動 %{name}"
+  stop:
+    en: Stop
+    zh-CN: 停止
+    zh-HK: 停止
+  stop_failed:
+    en: "Failed to stop: %{error}"
+    zh-CN: "停止失败：%{error}"
+    zh-HK: "停止失敗：%{error}"
+  acp_stop_settled_locally:
+    en: Stopped locally — the agent never confirmed the cancel, so this turn is no longer waited on.
+    zh-CN: 已按本地停止处理：agent 没有确认取消，这一轮不再等待。
+    zh-HK: 已按本地停止處理：agent 沒有確認取消，這一輪不再等待。
+  subagent_count:
+    en: "Subagents · %{count}"
+    zh-CN: "子代理 · %{count}"
+    zh-HK: "子代理 · %{count}"
+  subagent_name:
+    en: "Subagent · %{name}"
+    zh-CN: "子代理 · %{name}"
+    zh-HK: "子代理 · %{name}"
+  subagents:
+    en: Subagents
+    zh-CN: 子代理
+    zh-HK: 子代理
+  switch_database_hint:
+    en: To switch databases, click the target database in the database sidebar.
+    zh-CN: 如需切换数据库，请在数据库侧边栏中点击目标数据库。
+    zh-HK: 如需切換資料庫，請在資料庫側邊欄中點擊目標資料庫。
+  tag:
+    en: Tag
+    zh-CN: 标签
+    zh-HK: 標籤
+  target:
+    en: Target
+    zh-CN: 目标
+    zh-HK: 目標
+  task_cancelled:
+    en: Task cancelled
+    zh-CN: 任务已取消
+    zh-HK: 工作已取消
+  task_failed:
+    en: "Task execution failed: %{error}"
+    zh-CN: "任务执行失败：%{error}"
+    zh-HK: "工作執行失敗：%{error}"
+  task_failed_warning:
+    en: "⚠️ Task failed: %{error}"
+    zh-CN: "⚠️ 任务失败：%{error}"
+    zh-HK: "⚠️ 工作失敗：%{error}"
+  temperature:
+    en: Temperature
+    zh-CN: 温度
+    zh-HK: 溫度
+  temperature_description:
+    en: Controls output randomness
+    zh-CN: 控制输出随机性
+    zh-HK: 控制輸出隨機性
+  terminal_execution:
+    en: Terminal Execution
+    zh-CN: 终端执行
+    zh-HK: 終端機執行
+  terminal_execution_confirmation:
+    en: Terminal Execution Confirmation
+    zh-CN: 终端执行确认
+    zh-HK: 終端機執行確認
+  thinking:
+    en: Thinking...
+    zh-CN: 思考中...
+    zh-HK: 思考中...
+  tool:
+    en: Tool
+    zh-CN: 工具
+    zh-HK: 工具
+  tool_confirmation:
+    en: Tool Execution Confirmation
+    zh-CN: 工具执行确认
+    zh-HK: 工具執行確認
+  tool_execution_confirmation:
+    en: Tool Execution Confirmation
+    zh-CN: 工具执行确认
+    zh-HK: 工具執行確認
+  tool_block_edit:
+    en: "%{count} file(s) changed"
+    zh-CN: "改 %{count} 个文件"
+    zh-HK: "改 %{count} 個檔案"
+  tool_block_delete:
+    en: "%{count} file(s) deleted"
+    zh-CN: "删 %{count} 个文件"
+    zh-HK: "刪 %{count} 個檔案"
+  tool_block_move:
+    en: "%{count} file(s) moved"
+    zh-CN: "移动 %{count} 个文件"
+    zh-HK: "移動 %{count} 個檔案"
+  tool_block_read:
+    en: "%{count} file(s) read"
+    zh-CN: "读 %{count} 个文件"
+    zh-HK: "讀 %{count} 個檔案"
+  tool_block_search:
+    en: "%{count} search(es)"
+    zh-CN: "%{count} 次搜索"
+    zh-HK: "%{count} 次搜尋"
+  tool_block_fetch:
+    en: "%{count} fetch(es)"
+    zh-CN: "%{count} 次抓取"
+    zh-HK: "%{count} 次抓取"
+  tool_block_execute:
+    en: "%{count} command(s)"
+    zh-CN: "%{count} 个命令"
+    zh-HK: "%{count} 個命令"
+  tool_block_think:
+    en: "%{count} reasoning round(s)"
+    zh-CN: "%{count} 次思考"
+    zh-HK: "%{count} 次思考"
+  tool_block_switch_mode:
+    en: "%{count} mode switch(es)"
+    zh-CN: "%{count} 次切换"
+    zh-HK: "%{count} 次切換"
+  tool_block_invocations:
+    en: "%{count} call(s)"
+    zh-CN: "%{count} 次调用"
+    zh-HK: "%{count} 次調用"
+  tool_block_other:
+    en: "%{count} × %{name}"
+    zh-CN: "%{count} 次 %{name}"
+    zh-HK: "%{count} 次 %{name}"
+  tool_block_separator:
+    en: ", "
+    zh-CN: "，"
+    zh-HK: "，"
+  tool_results_count:
+    en: "%{target} · %{count} tool result(s)"
+    zh-CN: "%{target} · %{count} 个工具结果"
+    zh-HK: "%{target} · %{count} 個工具結果"
+  truncated_suffix:
+    en: … (truncated)
+    zh-CN: …（已截断）
+    zh-HK: …（已截斷）
+  process_running:
+    en: "Working · %{count} step(s)"
+    zh-CN: "工作中 · %{count} 步"
+    zh-HK: "工作中 · %{count} 步"
+  process_done:
+    en: "Worked · %{count} step(s)"
+    zh-CN: "已完成 · %{count} 步"
+    zh-HK: "已完成 · %{count} 步"
+  process_done_timed:
+    en: "Worked %{seconds}s · %{count} step(s)"
+    zh-CN: "用时 %{seconds}s · %{count} 步"
+    zh-HK: "用時 %{seconds}s · %{count} 步"
+  process_empty:
+    en: Process
+    zh-CN: 执行过程
+    zh-HK: 執行過程
+  turn_changed_files:
+    en: "%{count} file(s) changed"
+    zh-CN: "本轮改动 %{count} 个文件"
+    zh-HK: "本輪改動 %{count} 個檔案"
+  turn_review_changes:
+    en: Review changes
+    zh-CN: 查看改动
+    zh-HK: 查看改動
+  turn_show_more_files:
+    en: "Show %{count} more file(s)"
+    zh-CN: "再显示 %{count} 个文件"
+    zh-HK: "再顯示 %{count} 個檔案"
+  turn_hide_more_files:
+    en: Hide the file list
+    zh-CN: 收起文件列表
+    zh-HK: 收起檔案列表
+  turn_showing_first_files:
+    en: "Only the first %{count}/%{total} shown"
+    zh-CN: "只显示前 %{count}/%{total} 个"
+    zh-HK: "只顯示前 %{count}/%{total} 個"
+  turn_started_at:
+    en: "Started %{time}"
+    zh-CN: "开始于 %{time}"
+    zh-HK: "開始於 %{time}"
+  turn_role_you:
+    en: You
+    zh-CN: 你
+    zh-HK: 你
+  turn_state_running:
+    en: Running
+    zh-CN: 进行中
+    zh-HK: 進行中
+  turn_state_done:
+    en: Done
+    zh-CN: 本轮完成
+    zh-HK: 本輪完成
+  turn_state_failed:
+    en: This turn failed
+    zh-CN: 本轮失败
+    zh-HK: 本輪失敗
+  turn_state_cancelled:
+    en: This turn was cancelled
+    zh-CN: 本轮已取消
+    zh-HK: 本輪已取消
+  turn_state_pending_decision:
+    en: Waiting for your decision
+    zh-CN: 等待你的决策
+    zh-HK: 等待你的決策
+  turn_no_answer:
+    en: This turn produced no answer.
+    zh-CN: 本轮没有产出回答。
+    zh-HK: 本輪沒有產出回答。
+  scroll_to_latest:
+    en: Jump to latest
+    zh-CN: 回到最新
+    zh-HK: 回到最新
+  turn_foot_hint_system:
+    en: This turn ended with the system notice above.
+    zh-CN: 本轮以上方系统提示收尾。
+    zh-HK: 本輪以上方系統提示收尾。
+  undo:
+    en: Undo
+    zh-CN: 撤销
+    zh-HK: 復原
+  unparseable_agent_card:
+    en: "[Could not parse Agent card] %{content}"
+    zh-CN: "[无法解析的 Agent 卡片] %{content}"
+    zh-HK: "[無法解析的 Agent 卡片] %{content}"
+  unregistered_card:
+    en: "[Unregistered card: %{kind}]"
+    zh-CN: "[未注册卡片：%{kind}]"
+    zh-HK: "[未註冊卡片：%{kind}]"
+  updated:
+    en: Updated
+    zh-CN: 更新
+    zh-HK: 更新
+  usage:
+    en: Usage
+    zh-CN: 用量
+    zh-HK: 用量
+  usage_cost:
+    en: Cost
+    zh-CN: 费用
+    zh-HK: 費用
+  usage_history_daily:
+    en: Peak context per day
+    zh-CN: 每天峰值占用
+    zh-HK: 每日峰值佔用
+  usage_history_empty:
+    en: No usage recorded yet. Numbers show up after an agent turn reports usage.
+    zh-CN: 还没有用量记录。等某一轮跑完后 agent 报出计量才会有数。
+    zh-HK: 尚未有用量記錄。等某一輪跑完後 agent 報出計量才會有數。
+  usage_history_empty_short:
+    en: No data in this window
+    zh-CN: 这段时间没有数据
+    zh-HK: 這段時間沒有資料
+  usage_history_peak:
+    en: Peak
+    zh-CN: 峰值
+    zh-HK: 峰值
+  usage_history_open:
+    en: View history
+    zh-CN: 查看历史
+    zh-HK: 查看歷史
+  usage_history_per_session:
+    en: Per session
+    zh-CN: 按会话
+    zh-HK: 按工作階段
+  usage_history_range:
+    en: Last 14 days
+    zh-CN: 最近 14 天
+    zh-HK: 最近 14 天
+  usage_history_samples:
+    en: Samples
+    zh-CN: 采样次数
+    zh-HK: 採樣次數
+  usage_history_sessions:
+    en: Sessions
+    zh-CN: 会话数
+    zh-HK: 工作階段數
+  usage_limit:
+    en: Limit
+    zh-CN: 上限
+    zh-HK: 上限
+  usage_remaining:
+    en: Remaining
+    zh-CN: 剩余
+    zh-HK: 剩餘
+  usage_title:
+    en: Context usage
+    zh-CN: 上下文用量
+    zh-HK: 上下文用量
+  usage_used:
+    en: Used
+    zh-CN: 已用
+    zh-HK: 已用
+  usage_unknown:
+    en: Unknown
+    zh-CN: 未知
+    zh-HK: 未知
+  workspace:
+    en: Workspace
+    zh-CN: 工作区
+    zh-HK: 工作區
+  composer_pick_workspace:
+    en: Pick workspace
+    zh-CN: 选择工作区
+    zh-HK: 選擇工作區
+  composer_browse_workspace:
+    en: Choose another folder…
+    zh-CN: 选择其它目录…
+    zh-HK: 選擇其他目錄…
+  composer_workspace_empty:
+    en: No workspace has been opened yet
+    zh-CN: 还没有打开过工作区
+    zh-HK: 還沒有開啟過工作區
+  composer_branch:
+    en: Branch
+    zh-CN: 分支
+    zh-HK: 分支
+  composer_branch_empty:
+    en: This workspace is not a Git repository
+    zh-CN: 当前工作区不是 Git 仓库
+    zh-HK: 目前工作區不是 Git 倉庫
+  composer_branch_remote:
+    en: Remote
+    zh-CN: 远程分支
+    zh-HK: 遠端分支
+  composer_worktree:
+    en: Worktree
+    zh-CN: Worktree
+    zh-HK: Worktree
+  composer_worktree_hint:
+    en: Run this session in its own Git worktree
+    zh-CN: 在独立的 Git worktree 中运行本会话
+    zh-HK: 在獨立的 Git worktree 中執行本工作階段
+  composer_worktree_pending:
+    en: Creates the Git worktree when you send the first message
+    zh-CN: 发送第一条消息时才创建 Git worktree
+    zh-HK: 傳送第一則訊息時才建立 Git worktree
+  composer_permission:
+    en: Permission
+    zh-CN: 权限
+    zh-HK: 權限
+  history_truncated:
+    en: "%{count} earlier messages were dropped to stay within the transcript budget."
+    zh-CN: "已裁断 %{count} 条更早的消息以控制转录体积。"
+    zh-HK: "已裁斷 %{count} 則較早訊息以控制轉錄體積。"
+  time_just_now:
+    en: just now
+    zh-CN: 刚刚
+    zh-HK: 剛剛
+  time_minutes_ago:
+    en: "%{count} minutes ago"
+    zh-CN: "%{count} 分钟前"
+    zh-HK: "%{count} 分鐘前"
+  time_hours_ago:
+    en: "%{count} hours ago"
+    zh-CN: "%{count} 小时前"
+    zh-HK: "%{count} 小時前"
+  time_days_ago:
+    en: "%{count} days ago"
+    zh-CN: "%{count} 天前"
+    zh-HK: "%{count} 天前"
+  time_weeks_ago:
+    en: "%{count} weeks ago"
+    zh-CN: "%{count} 周前"
+    zh-HK: "%{count} 週前"
+  date_today:
+    en: Today
+    zh-CN: 今天
+    zh-HK: 今天
+  date_yesterday:
+    en: Yesterday
+    zh-CN: 昨天
+    zh-HK: 昨天
+  date_this_week:
+    en: Previous 7 days
+    zh-CN: 最近 7 天
+    zh-HK: 最近 7 天
+  date_this_month:
+    en: This month
+    zh-CN: 本月
+    zh-HK: 本月
+  date_this_year:
+    en: This year
+    zh-CN: 今年
+    zh-HK: 今年
+  date_earlier:
+    en: Earlier
+    zh-CN: 更早
+    zh-HK: 更早
+  workbench:
+    en: AI Workbench
+    zh-CN: AI 工作台
+    zh-HK: AI 工作台
+  ai_chat:
+    en: AI Chat
+    zh-CN: AI 对话
+    zh-HK: AI 對話
+  decision_show_details:
+    en: Show details
+    zh-CN: 显示详情
+    zh-HK: 顯示詳情
+  decision_hide_details:
+    en: Hide details
+    zh-CN: 隐藏详情
+    zh-HK: 隱藏詳情
+  decision_authority_local:
+    en: Local tool
+    zh-CN: 本地工具
+    zh-HK: 本機工具
+  decision_authority_acp:
+    en: ACP permission
+    zh-CN: ACP 权限
+    zh-HK: ACP 權限
+  decision_authority_public_mcp:
+    en: Public MCP
+    zh-CN: Public MCP
+    zh-HK: Public MCP
+  decision_authority_note:
+    en: "This is the %{authority} authorization scope; allowing it does not grant the others."
+    zh-CN: "这是 %{authority} 授权域；允许它不会一并授权其他来源。"
+    zh-HK: "這是 %{authority} 授權域；允許它不會一併授權其他來源。"
+  decision_request_id:
+    en: "request_id %{id}"
+    zh-CN: "request_id %{id}"
+    zh-HK: "request_id %{id}"
+  find_in_transcript:
+    en: Find in conversation
+    zh-CN: 在会话中查找
+    zh-HK: 在會話中查找
+  findbar_placeholder:
+    en: Find in conversation
+    zh-CN: 在会话中查找
+    zh-HK: 在會話中查找
+  findbar_no_results:
+    en: No results
+    zh-CN: 无结果
+    zh-HK: 無結果
+  findbar_hint:
+    en: Enter for next · Shift+Enter for previous
+    zh-CN: 回车找下一条 · Shift+回车找上一条
+    zh-HK: 回車找下一條 · Shift+回車找上一條
+  findbar_truncated:
+    en: "Showing the first %{max} matches only"
+    zh-CN: "仅显示前 %{max} 处匹配"
+    zh-HK: "僅顯示前 %{max} 處匹配"
+  session_switcher_hint:
+    en: Tab / ↑↓ to choose · Enter or release the modifier to switch · Esc to cancel
+    zh-CN: Tab / ↑↓ 选择 · 回车或松开修饰键切换 · Esc 取消
+    zh-HK: Tab / ↑↓ 選擇 · 回車或放開修飾鍵切換 · Esc 取消
+  session_switcher_current:
+    en: current
+    zh-CN: 当前
+    zh-HK: 目前
+
+HtmlPreview:
+  copy_html:
+    en: Copy HTML
+    zh-CN: 复制 HTML
+    zh-HK: 複製 HTML
+  download_html:
+    en: Download HTML
+    zh-CN: 下载 HTML
+    zh-HK: 下載 HTML
+  open_browser:
+    en: Open in browser
+    zh-CN: 在浏览器打开
+    zh-HK: 在瀏覽器打開
+  open_dialog:
+    en: Open preview
+    zh-CN: 弹出预览
+    zh-HK: 彈出預覽
+  dialog_title:
+    en: HTML Preview
+    zh-CN: HTML 预览
+    zh-HK: HTML 預覽
+  dialog_opened:
+    en: Preview dialog opened
+    zh-CN: 已打开预览弹窗
+    zh-HK: 已打開預覽彈窗
+  browser_opened:
+    en: Opened in browser
+    zh-CN: 已在浏览器打开
+    zh-HK: 已在瀏覽器打開
+  browser_open_failed:
+    en: Failed to open browser
+    zh-CN: 打开浏览器失败
+    zh-HK: 打開瀏覽器失敗
+  downloaded:
+    en: "Downloaded to Downloads/%{filename}"
+    zh-CN: "已下载到 Downloads/%{filename}"
+    zh-HK: "已下載到 Downloads/%{filename}"
+  download_failed:
+    en: Download failed
+    zh-CN: 下载失败
+    zh-HK: 下載失敗
+  webview_unavailable:
+    en: HTML preview webview could not be created. Source view is still available.
+    zh-CN: 无法创建 HTML 预览 webview，已保留源码视图。
+    zh-HK: 無法建立 HTML 預覽 webview，已保留源碼視圖。
+  webview_create_failed:
+    en: "Failed to create HTML preview webview: %{error}"
+    zh-CN: "创建 HTML 预览 webview 失败: %{error}"
+    zh-HK: "建立 HTML 預覽 webview 失敗: %{error}"
+
+Workbench:
+  archive_conversation:
+    en: Archive conversation
+    zh-CN: 归档会话
+    zh-HK: 封存工作階段
+  show_active_conversations:
+    en: Show active conversations
+    zh-CN: 显示活跃会话
+    zh-HK: 顯示活躍工作階段
+  show_archived_conversations:
+    en: Show archived conversations
+    zh-CN: 显示已归档会话
+    zh-HK: 顯示已封存工作階段
+  choose_workspace:
+    en: Choose workspace
+    zh-CN: 选择工作区
+    zh-HK: 選擇工作區
+  panel_chat:
+    en: AI Chat
+    zh-CN: AI 对话
+    zh-HK: AI 對話
+  panel_review:
+    en: Review
+    zh-CN: 审阅
+    zh-HK: 審閱
+  panel_files:
+    en: Files
+    zh-CN: 文件
+    zh-HK: 檔案
+  panel_terminal:
+    en: Terminal
+    zh-CN: 终端
+    zh-HK: 終端
+  panel_subagent:
+    en: Subagent reasoning
+    zh-CN: 子代理推理
+    zh-HK: 子代理推理
+  panel_unavailable:
+    en: This panel is not available in the current build.
+    zh-CN: 此面板在当前构建不可用。
+    zh-HK: 此面板在目前組建不可用。
+  sessions:
+    en: Sessions
+    zh-CN: 会话
+    zh-HK: 工作階段
+  collapse_nav:
+    en: Collapse session list
+    zh-CN: 收起会话栏
+    zh-HK: 收起工作階段列
+  expand_nav:
+    en: Expand session list
+    zh-CN: 展开会话栏
+    zh-HK: 展開工作階段列
+  close_panel:
+    en: Close panel
+    zh-CN: 关闭面板
+    zh-HK: 關閉面板
+  move_to:
+    en: "Move to %{placement}"
+    zh-CN: "移动到%{placement}"
+    zh-HK: "移動到%{placement}"
+  placement_left:
+    en: left
+    zh-CN: 左侧
+    zh-HK: 左側
+  placement_right:
+    en: right
+    zh-CN: 右侧
+    zh-HK: 右側
+  placement_bottom:
+    en: bottom
+    zh-CN: 底部
+    zh-HK: 底部
+  placement_center:
+    en: center
+    zh-CN: 中心区
+    zh-HK: 中央區
+  pin_right:
+    en: "Dock %{panel} to the right group"
+    zh-CN: "把%{panel}并入右侧标签组"
+    zh-HK: "把%{panel}併入右側標籤群組"
+  workspace_menu:
+    en: "Workspace actions"
+    zh-CN: "工作区操作"
+    zh-HK: "工作區操作"
+  ws_menu_reveal:
+    en: "Reveal in File Manager"
+    zh-CN: "在文件管理器中显示"
+    zh-HK: "在檔案管理器中顯示"
+  ws_menu_archive_inactive:
+    en: "Archive inactive (%{count})"
+    zh-CN: "归档不活跃对话 (%{count})"
+    zh-HK: "歸檔不活躍對話 (%{count})"
+  ws_menu_remove:
+    en: "Remove"
+    zh-CN: "移除"
+    zh-HK: "移除"
+  close_tab:
+    en: "Close %{panel} tab"
+    zh-CN: "关闭「%{panel}」标签"
+    zh-HK: "關閉「%{panel}」標籤"
+  add_tab:
+    en: New tab
+    zh-CN: 新建页签
+    zh-HK: 新增頁籤
+  picker_title:
+    en: Add a panel
+    zh-CN: 添加面板
+    zh-HK: 新增面板
+  picker_hint:
+    en: Choose a panel to open in the current tab.
+    zh-CN: 选择一个面板，在当前页签打开。
+    zh-HK: 選擇一個面板，在當前頁籤開啟。
+  tab_instance:
+    en: "%{panel} %{ordinal}"
+    zh-CN: "%{panel} %{ordinal}"
+    zh-HK: "%{panel} %{ordinal}"
+  picker_multi_hint:
+    en: Opens a new one
+    zh-CN: 每次新建
+    zh-HK: 每次新建
+  no_matching_sessions:
+    en: No conversations match the search.
+    zh-CN: 没有匹配的会话。
+    zh-HK: 沒有符合的會話。
+  session_count:
+    en: "%{count} sessions"
+    zh-CN: "%{count} 个会话"
+    zh-HK: "%{count} 個會話"
+  workspace_ungrouped:
+    en: Ungrouped
+    zh-CN: 未分组
+    zh-HK: 未分組
+  new_chat_in_workspace:
+    en: "New conversation in %{workspace}"
+    zh-CN: "在「%{workspace}」新建对话"
+    zh-HK: "在「%{workspace}」新建對話"
+  expand_right_sidebar:
+    en: "Expand sidebar"
+    zh-CN: "展开侧边栏"
+    zh-HK: "展開側邊欄"
+  collapse_right_sidebar:
+    en: "Collapse sidebar"
+    zh-CN: "收起侧边栏"
+    zh-HK: "收起側邊欄"
+  maximize_right_sidebar:
+    en: "Maximize sidebar"
+    zh-CN: "放大占满"
+    zh-HK: "放大佔滿"
+  restore_right_sidebar:
+    en: "Restore sidebar"
+    zh-CN: "还原侧边栏"
+    zh-HK: "還原側邊欄"

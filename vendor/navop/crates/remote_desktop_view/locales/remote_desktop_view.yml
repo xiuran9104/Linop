@@ -1,0 +1,356 @@
+_version: 2
+
+RemoteDesktop:
+  status_waiting_layout:
+    en: Waiting for layout
+    zh-CN: 等待窗口布局
+    zh-HK: 等待視窗版面配置
+  status_connecting:
+    en: Connecting
+    zh-CN: 连接中
+    zh-HK: 連線中
+  status_connected:
+    en: Connected
+    zh-CN: 已连接
+    zh-HK: 已連線
+  reconnect_notification:
+    en: "%{protocol} disconnected: %{reason}. Reconnecting in %{seconds}s"
+    zh-CN: "%{protocol} 连接已断开：%{reason}。将在 %{seconds} 秒后重新连接"
+    zh-HK: "%{protocol} 連線已中斷：%{reason}。將於 %{seconds} 秒後重新連線"
+  reconnect_notification_immediate:
+    en: "%{protocol} disconnected: %{reason}. Reconnecting"
+    zh-CN: "%{protocol} 连接已断开：%{reason}。正在重新连接"
+    zh-HK: "%{protocol} 連線已中斷：%{reason}。正在重新連線"
+  reconnect_notification_manual:
+    en: "Reconnecting %{protocol} session"
+    zh-CN: "正在重新连接 %{protocol} 会话"
+    zh-HK: "正在重新連線 %{protocol} 工作階段"
+  reconnect_reason_display_update:
+    en: display update error
+    zh-CN: 显示更新错误
+    zh-HK: 顯示更新錯誤
+  reconnect_reason_session_error:
+    en: session error
+    zh-CN: 会话错误
+    zh-HK: 工作階段錯誤
+  reconnect_reason_connection_lost:
+    en: connection lost
+    zh-CN: 连接丢失
+    zh-HK: 連線遺失
+  failure_authentication:
+    en: Authentication failed. Check the username, password, and domain.
+    zh-CN: 身份验证失败，请检查用户名、密码和域。
+    zh-HK: 身份驗證失敗，請檢查使用者名稱、密碼和網域。
+  failure_host_unreachable:
+    en: Unable to connect to the remote host. Check the address, port, and network.
+    zh-CN: 无法连接远程主机，请检查主机地址、端口和网络。
+    zh-HK: 無法連線遠端主機，請檢查主機地址、連接埠和網路。
+  failure_server_ended:
+    en: The remote server ended the session.
+    zh-CN: 远程服务器已结束当前会话。
+    zh-HK: 遠端伺服器已結束目前的工作階段。
+  failure_generic:
+    en: Remote desktop connection failed. Check the connection settings and try again.
+    zh-CN: 远程桌面连接失败，请检查连接配置后重试。
+    zh-HK: 遠端桌面連線失敗，請檢查連線設定後重試。
+  native_proxy_unsupported:
+    en: Windows native RDP does not support the configured SOCKS/HTTP proxy yet. Use the IronRDP backend instead.
+    zh-CN: Windows 原生 RDP 暂不支持已配置的 SOCKS/HTTP 代理，请改用 IronRDP 后端。
+    zh-HK: Windows 原生 RDP 暫不支援已設定的 SOCKS/HTTP 代理，請改用 IronRDP 後端。
+  native_shared_folders_unsupported:
+    en: Windows native RDP does not support selected shared folders yet. Use the IronRDP backend instead.
+    zh-CN: Windows 原生 RDP 暂不支持已选择的共享文件夹，请改用 IronRDP 后端。
+    zh-HK: Windows 原生 RDP 暫不支援已選取的共用資料夾，請改用 IronRDP 後端。
+  native_fatal_error:
+    en: Windows native RDP encountered a fatal error and disconnected.
+    zh-CN: Windows 原生 RDP 遇到严重错误并已断开连接。
+    zh-HK: Windows 原生 RDP 遇到嚴重錯誤並已中斷連線。
+  native_logon_error_bad_credentials:
+    en: Windows native RDP sign-in failed. Check the username, password, and domain.
+    zh-CN: Windows 原生 RDP 登录失败，请检查用户名、密码和域。
+    zh-HK: Windows 原生 RDP 登入失敗，請檢查使用者名稱、密碼和網域。
+  native_logon_error_password_change_required:
+    en: Windows native RDP requires the account password to be changed before sign-in.
+    zh-CN: Windows 原生 RDP 要求先更改账户密码，然后才能登录。
+    zh-HK: Windows 原生 RDP 要求先變更帳戶密碼，然後才能登入。
+  native_logon_error_generic:
+    en: The remote server rejected the Windows native RDP sign-in.
+    zh-CN: 远程服务器拒绝了 Windows 原生 RDP 登录。
+    zh-HK: 遠端伺服器拒絕了 Windows 原生 RDP 登入。
+  native_disconnected_authentication:
+    en: Windows native RDP disconnected because authentication failed.
+    zh-CN: Windows 原生 RDP 因身份验证失败而断开连接。
+    zh-HK: Windows 原生 RDP 因身份驗證失敗而中斷連線。
+  native_disconnected_security:
+    en: Windows native RDP disconnected because the certificate or security negotiation failed.
+    zh-CN: Windows 原生 RDP 因证书或安全协商失败而断开连接。
+    zh-HK: Windows 原生 RDP 因憑證或安全性協商失敗而中斷連線。
+  native_disconnected_gateway:
+    en: Windows native RDP disconnected because the Remote Desktop Gateway failed.
+    zh-CN: Windows 原生 RDP 因远程桌面网关失败而断开连接。
+    zh-HK: Windows 原生 RDP 因遠端桌面閘道失敗而中斷連線。
+  native_disconnected_server_policy:
+    en: Windows native RDP was disconnected by remote server policy.
+    zh-CN: Windows 原生 RDP 已被远程服务器策略断开。
+    zh-HK: Windows 原生 RDP 已被遠端伺服器原則中斷。
+  native_disconnected_network:
+    en: Windows native RDP disconnected because the network connection was lost.
+    zh-CN: Windows 原生 RDP 因网络连接丢失而断开。
+    zh-HK: Windows 原生 RDP 因網路連線遺失而中斷。
+  native_disconnected_native_unavailable:
+    en: Windows native RDP disconnected because the Windows RDP component became unavailable.
+    zh-CN: Windows 原生 RDP 因 Windows RDP 组件不可用而断开连接。
+    zh-HK: Windows 原生 RDP 因 Windows RDP 元件不可用而中斷連線。
+  native_disconnected_unknown:
+    en: Windows native RDP disconnected unexpectedly.
+    zh-CN: Windows 原生 RDP 意外断开连接。
+    zh-HK: Windows 原生 RDP 意外中斷連線。
+  backend_selecting:
+    en: Selecting
+    zh-CN: 正在选择
+    zh-HK: 正在選擇
+  backend_ironrdp:
+    en: IronRDP
+    zh-CN: IronRDP
+    zh-HK: IronRDP
+  backend_windows_native:
+    en: Windows native RDP (MSTSC)
+    zh-CN: Windows 原生 RDP（MSTSC）
+    zh-HK: Windows 原生 RDP（MSTSC）
+  fallback_reason:
+    en: "Fallback reason: %{reason}"
+    zh-CN: "回退原因：%{reason}"
+    zh-HK: "回退原因：%{reason}"
+  fallback_feature_disabled:
+    en: Native RDP is disabled in this build
+    zh-CN: 当前构建未启用原生 RDP
+    zh-HK: 目前版本未啟用原生 RDP
+  fallback_unsupported_platform:
+    en: Native RDP is unavailable on this platform
+    zh-CN: 当前平台不支持原生 RDP
+    zh-HK: 目前平台不支援原生 RDP
+  fallback_probe_reported_unavailable:
+    en: Windows reported that native RDP is unavailable
+    zh-CN: Windows 报告原生 RDP 不可用
+    zh-HK: Windows 回報原生 RDP 不可用
+  fallback_class_not_registered:
+    en: The Windows RDP component is not registered
+    zh-CN: Windows RDP 组件未注册
+    zh-HK: Windows RDP 元件未註冊
+  fallback_required_interface_missing:
+    en: The Windows RDP component is missing a required interface
+    zh-CN: Windows RDP 组件缺少必需接口
+    zh-HK: Windows RDP 元件缺少必要介面
+  fallback_shared_folders_unsupported:
+    en: Windows native RDP does not support selected shared folders
+    zh-CN: Windows 原生 RDP 不支持已选择的共享文件夹
+    zh-HK: Windows 原生 RDP 不支援已選取的共用資料夾
+  use_canvas:
+    en: Retry with IronRDP
+    zh-CN: 使用 IronRDP 重试
+    zh-HK: 使用 IronRDP 重試
+  copy_diagnostic:
+    en: Copy diagnostics
+    zh-CN: 复制诊断
+    zh-HK: 複製診斷
+  session_taken_over_notification:
+    en: Another user connected to the remote server. This RDP session was disconnected and the tab was closed.
+    zh-CN: 另一位用户已连接到远程服务器，当前 RDP 会话已断开，页签已自动关闭。
+    zh-HK: 另一位使用者已連線至遠端伺服器，目前的 RDP 工作階段已中斷，頁籤已自動關閉。
+  vnc_clipboard_ascii_only:
+    en: VNC clipboard currently supports ASCII text only
+    zh-CN: VNC 剪贴板当前仅支持 ASCII 文本
+    zh-HK: VNC 剪貼簿目前僅支援 ASCII 文字
+  clipboard_files_received:
+    en: "Received %{count} item(s) from the remote clipboard"
+    zh-CN: "已从远端剪贴板接收 %{count} 个项目"
+    zh-HK: "已從遠端剪貼簿接收 %{count} 個項目"
+  clipboard_transfer_failed:
+    en: Remote clipboard file transfer failed
+    zh-CN: 远端剪贴板文件传输失败
+    zh-HK: 遠端剪貼簿檔案傳輸失敗
+  clipboard_install_failed:
+    en: Could not place the received files on the system clipboard
+    zh-CN: 无法将接收的文件写入系统剪贴板
+    zh-HK: 無法將接收的檔案寫入系統剪貼簿
+  clipboard_files_invalid:
+    en: Rejected unsafe remote clipboard files
+    zh-CN: 已拒绝不安全的远端剪贴板文件
+    zh-HK: 已拒絕不安全的遠端剪貼簿檔案
+  provider_version_too_old:
+    en: "%{protocol} provider version %{installed} is too old. Please update the provider to %{required} or newer."
+    zh-CN: "%{protocol} 扩展版本 %{installed} 过低，请更新到 %{required} 或更高版本。"
+    zh-HK: "%{protocol} 擴展版本 %{installed} 過低，請更新到 %{required} 或更高版本。"
+  provider_version_invalid:
+    en: "%{protocol} provider version %{installed} is invalid. Please update the provider to %{required} or newer."
+    zh-CN: "%{protocol} 扩展版本 %{installed} 无效，请更新到 %{required} 或更高版本。"
+    zh-HK: "%{protocol} 擴展版本 %{installed} 無效，請更新到 %{required} 或更高版本。"
+
+
+# 远程桌面连接表单
+RemoteDesktopForm:
+  title_new:
+    en: "New %{protocol} Connection"
+    zh-CN: "新建 %{protocol} 连接"
+    zh-HK: "新建 %{protocol} 連線"
+  title_edit:
+    en: "Edit %{protocol} Connection"
+    zh-CN: "编辑 %{protocol} 连接"
+    zh-HK: "編輯 %{protocol} 連線"
+  label_name:
+    en: Name
+    zh-CN: 名称
+    zh-HK: 名稱
+  label_host:
+    en: Host
+    zh-CN: 主机
+    zh-HK: 主機
+  label_port:
+    en: Port
+    zh-CN: 端口
+    zh-HK: 連接埠
+  label_username:
+    en: Username
+    zh-CN: 用户名
+    zh-HK: 用戶名
+  label_password:
+    en: Password
+    zh-CN: 密码
+    zh-HK: 密碼
+  label_domain:
+    en: Domain
+    zh-CN: 域
+    zh-HK: 網域
+  label_proxy:
+    en: Proxy
+    zh-CN: 代理
+    zh-HK: 代理
+  label_proxy_type:
+    en: Proxy type
+    zh-CN: 代理类型
+    zh-HK: 代理類型
+  label_proxy_host:
+    en: Proxy host
+    zh-CN: 代理主机
+    zh-HK: 代理主機
+  label_proxy_port:
+    en: Proxy port
+    zh-CN: 代理端口
+    zh-HK: 代理端口
+  label_proxy_username:
+    en: Proxy username
+    zh-CN: 代理用户名
+    zh-HK: 代理使用者名稱
+  label_proxy_password:
+    en: Proxy password
+    zh-CN: 代理密码
+    zh-HK: 代理密碼
+  label_workspace:
+    en: Group
+    zh-CN: 分组
+    zh-HK: 分組
+  label_read_only:
+    en: Read only
+    zh-CN: 只读
+    zh-HK: 唯讀
+  label_audio_playback:
+    en: Play remote audio
+    zh-CN: 播放远端音频
+    zh-HK: 播放遠端音訊
+  label_egfx:
+    en: Graphics pipeline (EGFX)
+    zh-CN: 图形管线（EGFX）
+    zh-HK: 圖形管線（EGFX）
+  egfx_auto:
+    en: Auto
+    zh-CN: 自动
+    zh-HK: 自動
+  egfx_always:
+    en: Always on
+    zh-CN: 总是开启
+    zh-HK: 總是開啟
+  egfx_never:
+    en: Never
+    zh-CN: 从不开启
+    zh-HK: 從不開啟
+  label_backend_preference:
+    en: RDP backend
+    zh-CN: RDP 后端
+    zh-HK: RDP 後端
+  backend_windows_native:
+    en: Windows native RDP (MSTSC)
+    zh-CN: Windows 原生 RDP（MSTSC）
+    zh-HK: Windows 原生 RDP（MSTSC）
+  backend_windows_native_status:
+    en: In progress
+    zh-CN: 正在实现中
+    zh-HK: 正在實現中
+  backend_ironrdp:
+    en: IronRDP
+    zh-CN: IronRDP
+    zh-HK: IronRDP
+  placeholder_name:
+    en: Windows Server
+    zh-CN: Windows 服务器
+    zh-HK: Windows 伺服器
+  placeholder_password:
+    en: Password
+    zh-CN: 密码
+    zh-HK: 密碼
+  placeholder_domain:
+    en: Optional domain
+    zh-CN: 可选域
+    zh-HK: 可選網域
+  host_required:
+    en: Host is required
+    zh-CN: 请输入主机地址
+    zh-HK: 請輸入主機地址
+  invalid_number:
+    en: "%{field} is invalid"
+    zh-CN: "%{field} 无效"
+    zh-HK: "%{field} 無效"
+  proxy_invalid:
+    en: "Invalid proxy field: %{field}"
+    zh-CN: "代理配置无效：%{field}"
+    zh-HK: "代理設定無效：%{field}"
+  test_connection:
+    en: Test Connection
+    zh-CN: 测试连接
+    zh-HK: 測試連線
+  testing_connection:
+    en: Testing...
+    zh-CN: 正在测试…
+    zh-HK: 正在測試…
+  credentials_valid:
+    en: "RDP port is reachable (credentials are verified when connecting)"
+    zh-CN: RDP 端口可达（凭据将在实际连接时验证）
+    zh-HK: RDP 連接埠可達（憑據將在實際連線時驗證）
+  native_reachable:
+    en: "Host is reachable (native RDP connects without a pre-check of credentials)"
+    zh-CN: 主机可达（原生 RDP 模式无需安装插件，凭据在连接时验证）
+    zh-HK: 主機可達（原生 RDP 模式無需安裝插件，憑據在連線時驗證）
+    
+# 连接表单通用字段
+ConnectionForm:
+  cloud_sync:
+    en: Cloud Sync
+    zh-CN: 云端同步
+    zh-HK: 雲端同步
+  cloud_sync_desc:
+    en: Sync this connection across devices
+    zh-CN: 在多设备间同步此连接
+    zh-HK: 在多設備間同步此連線
+  
+Common:
+  none:
+    en: None
+    zh-CN: 无
+    zh-HK: 無
+  ok:
+    en: OK
+    zh-CN: 好
+    zh-HK: 好
+  cancel:
+    en: Cancel
+    zh-CN: 取消
+    zh-HK: 取消
