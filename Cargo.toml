@@ -7,8 +7,6 @@ members = [
     "crates/linop-term",
     "crates/linop-monitor",
     "crates/linop-cast",
-    "crates/linop-db",
-    "crates/linop-redis",
     "crates/linop-telnet",
     "crates/linop-i18n",
     "crates/linop-theme",
@@ -31,8 +29,6 @@ linop-sftp = { path = "crates/linop-sftp" }
 linop-term = { path = "crates/linop-term" }
 linop-monitor = { path = "crates/linop-monitor" }
 linop-cast = { path = "crates/linop-cast" }
-linop-db = { path = "crates/linop-db" }
-linop-redis = { path = "crates/linop-redis" }
 linop-telnet = { path = "crates/linop-telnet" }
 linop-i18n = { path = "crates/linop-i18n" }
 linop-theme = { path = "crates/linop-theme" }
@@ -46,7 +42,6 @@ crossterm = "0.29"
 vt100 = "0.18"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-rusqlite = { version = "0.41", features = ["bundled"] }
 aes-gcm = "0.10"
 argon2 = "0.5"
 getrandom = "0.2"

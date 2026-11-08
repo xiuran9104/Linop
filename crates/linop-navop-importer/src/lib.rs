@@ -420,11 +420,12 @@ mod pure_api {
         serde_json::to_string(&descriptor).expect("descriptor serializes")
     }
 
+    // 供外部(native 测试/宿主)复用;crate 内部未必全部使用。
+    #[allow(unused_imports)]
     pub use super::{EXTENSION_ID, IMPORTER_ID, SOURCE_LABEL, build_records, parse_connections};
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-#[allow(unused_imports)]
 use serde_json as _;
 
 #[allow(unused)]

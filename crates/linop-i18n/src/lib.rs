@@ -8,8 +8,9 @@ use std::fmt;
 use std::str::FromStr;
 
 /// 界面语言。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Lang {
+    #[default]
     En,
     ZhCn,
     ZhTw,
@@ -70,11 +71,24 @@ impl fmt::Display for Lang {
     }
 }
 
-impl Default for Lang {
-    fn default() -> Self {
-        Lang::En
-    }
-}
+/// 全部目录键(测试遍历 + 补全检查)。
+#[rustfmt::skip]
+pub const ALL_KEYS: &[&str] = &[
+    "app.title",
+    "action.connect", "action.disconnect", "action.refresh",
+    "action.export", "action.import", "action.apply", "action.open",
+    "state.connected", "state.connecting", "state.disconnected", "state.error",
+    "side.sessions", "side.ssh", "side.telnet",
+    "panel.terminal", "panel.settings", "panel.sync", "panel.empty",
+    "term.input_hint", "term.send",
+    "settings.language", "settings.theme",
+    "theme.dark", "theme.light", "theme.nord",
+    "sync.title", "sync.desc", "sync.passphrase", "sync.passphrase_short",
+    "sync.path", "sync.exported", "sync.imported",
+    "sync.wrong_passphrase", "sync.bad_format", "sync.corrupt",
+    "sync.mode", "sync.mode.skip", "sync.mode.replace", "sync.files_none",
+    "ssh.auth_failed", "ssh.connect_failed",
+];
 
 /// 目录:`key → (en, zh-CN, zh-TW)`。空串表示该语言缺译(回退英文)。
 fn entry(key: &str) -> Option<(&'static str, &'static str, &'static str)> {
@@ -95,13 +109,11 @@ fn entry(key: &str) -> Option<(&'static str, &'static str, &'static str)> {
         // --- 侧栏 ---
         "side.sessions" => ("Sessions", "会话", "會話"),
         "side.ssh" => ("SSH", "SSH 连接", "SSH 連線"),
-        "side.databases" => ("Databases", "数据库", "資料庫"),
         "side.telnet" => ("Telnet", "Telnet", "Telnet"),
         // --- 面板 ---
         "panel.terminal" => ("Terminal", "终端", "終端"),
         "panel.settings" => ("Settings", "设置", "設定"),
         "panel.sync" => ("Sync", "同步", "同步"),
-        "panel.sqlite" => ("SQLite Browser", "SQLite 浏览", "SQLite 瀏覽"),
         "panel.empty" => (
             "Open a connection from the sidebar",
             "从侧栏打开一个连接",
@@ -152,10 +164,6 @@ fn entry(key: &str) -> Option<(&'static str, &'static str, &'static str)> {
             "沒有可打包的設定",
         ),
         // --- 数据库 ---
-        "db.tables" => ("Tables", "表", "資料表"),
-        "db.no_tables" => ("No tables", "没有表", "沒有資料表"),
-        "db.error" => ("Database error", "数据库错误", "資料庫錯誤"),
-        "db.rows" => ("rows", "行", "列"),
         // --- 错误 ---
         "ssh.auth_failed" => ("Authentication failed", "认证失败", "認證失敗"),
         "ssh.connect_failed" => ("Connection failed", "连接失败", "連線失敗"),
@@ -214,23 +222,3 @@ mod tests {
         }
     }
 }
-
-/// 全部目录键(测试遍历 + 补全检查)。
-#[rustfmt::skip]
-pub const ALL_KEYS: &[&str] = &[
-    "app.title",
-    "action.connect", "action.disconnect", "action.refresh",
-    "action.export", "action.import", "action.apply", "action.open",
-    "state.connected", "state.connecting", "state.disconnected", "state.error",
-    "side.sessions", "side.ssh", "side.databases", "side.telnet",
-    "panel.terminal", "panel.settings", "panel.sync", "panel.sqlite", "panel.empty",
-    "term.input_hint", "term.send",
-    "settings.language", "settings.theme",
-    "theme.dark", "theme.light", "theme.nord",
-    "sync.title", "sync.desc", "sync.passphrase", "sync.passphrase_short",
-    "sync.path", "sync.exported", "sync.imported",
-    "sync.wrong_passphrase", "sync.bad_format", "sync.corrupt",
-    "sync.mode", "sync.mode.skip", "sync.mode.replace", "sync.files_none",
-    "db.tables", "db.no_tables", "db.error", "db.rows",
-    "ssh.auth_failed", "ssh.connect_failed",
-];

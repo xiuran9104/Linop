@@ -11,10 +11,8 @@ use std::time::Duration;
 
 use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use linop_cast::{Cast, CastWriter};
-use linop_core::{Auth, Connection, PortForward, Registry};
-use linop_db::{QueryResult, SqliteDb, StmtOutcome};
+use linop_core::{Auth, Connection, Registry};
 use linop_monitor::ResourceSample;
-use linop_redis::{KeyInfo as RedisKeyInfo, KeyValue, RedisClient};
 use linop_sftp::{Entry, Sftp};
 use linop_ssh::{KnownHosts, KnownHostsPolicy, LocalForward, Session, ShellReader, ShellWriter};
 use linop_telnet::{TelnetClient, TelnetEvent};
@@ -116,14 +114,6 @@ pub enum DialogAction {
     ImportProfiles(Vec<Connection>),
     /// 回放指定 .cast 文件(picker 上执行,输入路径)。
     OpenReplay,
-    /// 在数据库浏览中执行 SQL(输入框,Enter 执行)。
-    RunSql,
-    /// 删除一个 Redis 键(浏览模式内,带确认)。
-    DeleteRedisKey {
-        name: String,
-    },
-    /// 删除一个数据库 profile(picker 上执行,带确认)。
-    DeleteDbProfile(String),
     /// 删除一个 Telnet profile(picker 上执行,带确认)。
     DeleteTelnetProfile(String),
 }
@@ -136,8 +126,8 @@ impl DialogAction {
             DialogAction::DeleteRemote { .. } | DialogAction::DeleteLocal { .. }
         ) && !matches!(
             self,
-            DialogAction::ImportProfiles(_) | DialogAction::DeleteDbProfile(_)
-        ) && !matches!(self, DialogAction::DeleteTelnetProfile(_))
+            DialogAction::ImportProfiles(_) | DialogAction::DeleteTelnetProfile(_)
+        )
     }
 }
 
@@ -261,10 +251,6 @@ pub enum Mode {
     Session,
     /// 回放一段 .cast 录制(不属于任何会话)。
     Replay,
-    /// 浏览一个数据库(SQLite):表列表 / 数据网格 / SQL 结果。
-    DbBrowse,
-    /// 浏览一个 Redis:键列表 / 值视图。
-    RedisBrowse,
     /// 交互式 Telnet 终端(单会话)。
     Telnet,
 }
@@ -367,78 +353,22 @@ pub struct SessionState {
     pub status: String,
 }
 
-/// 数据库浏览状态:连接 + 当前视图(表列表或数据网格)。
-pub struct DbBrowser {
-    pub profile: linop_core::DbProfile,
-    /// 连接共享给阻塞线程执行 SQL(Mutex:rusqlite Connection 非.Sync()。
-    db: std::sync::Arc<std::sync::Mutex<SqliteDb>>,
-    pub tables: Vec<linop_db::TableInfo>,
-    pub view: DbView,
-    /// 表列表选中行。
-    pub sel: usize,
-    /// 底部状态消息。
-    pub status: String,
+/// 进行中的录制:写入器与目标文件。
+pub struct Recording {
+    writer: CastWriter,
+    path: PathBuf,
 }
 
-impl DbBrowser {
-    /// 克隆共享句柄给阻塞线程。
-    fn db_handle(&self) -> std::sync::Arc<std::sync::Mutex<SqliteDb>> {
-        self.db.clone()
-    }
-}
-
-/// 数据库当前展示的视图。
-pub enum DbView {
-    /// 表/视图列表。
-    Tables,
-    /// 数据网格:来源(表名或 SQL)与结果。
-    Data {
-        title: String,
-        result: QueryResult,
-        page: usize,
-    },
-}
-
-/// Redis 浏览状态。
-pub struct RedisBrowser {
-    pub profile: linop_core::DbProfile,
-    /// 同步客户端共享给阻塞线程(Mutex:命令即发即收)。
-    client: std::sync::Arc<std::sync::Mutex<RedisClient>>,
-    /// 经跳板机建立的隧道(直连时为 None);浏览期间必须存活。
-    tunnel: Option<RedisTunnel>,
-    pub keys: Vec<RedisKeyInfo>,
-    pub view: RedisView,
-    pub sel: usize,
-    pub status: String,
-}
-
-/// Redis 当前展示的视图。
-pub enum RedisView {
-    /// 键列表。
-    Keys,
-    /// 某个键的值。
-    Value {
-        key: String,
-        kind: String,
-        value: KeyValue,
-    },
-}
-
-/// 一条存活的数据库隧道:SSH 会话 + 本地转发。
-/// 停止顺序:先转发后 SSH(转发依赖会话)。
-pub struct RedisTunnel {
-    ssh: Session,
-    forward: LocalForward,
-}
-
-impl RedisTunnel {
-    fn stop(self) {
-        self.forward.stop();
-        let ssh = self.ssh;
-        tokio::spawn(async move {
-            let _ = capped(TEARDOWN_TIMEOUT_SECS, ssh.disconnect()).await;
-        });
-    }
+/// 回放状态:cast 事件按原始时间间隔喂进独立终端。
+pub struct ReplayState {
+    pub path: PathBuf,
+    pub cast: Cast,
+    /// 下一个待应用事件的下标。
+    pub cursor: usize,
+    pub term: Terminal,
+    pub playing: bool,
+    /// 播放调度任务;暂停/回退/退出时取消。
+    pub task: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// 一个活动的 Telnet 会话。读循环跑在 std 线程上(阻塞 poll +
@@ -460,42 +390,6 @@ impl TelnetSession {
         self.shutdown
             .store(true, std::sync::atomic::Ordering::Relaxed);
     }
-}
-
-impl RedisBrowser {
-    fn client(&self) -> std::sync::Arc<std::sync::Mutex<RedisClient>> {
-        self.client.clone()
-    }
-
-    /// SCAN 占位用的名字列表。
-    fn keys_names(&self) -> Vec<String> {
-        self.keys.iter().map(|k| k.name.clone()).collect()
-    }
-
-    /// 选中键的 (名称, 类型)。
-    fn picked(&self) -> Option<(String, String)> {
-        self.keys
-            .get(self.sel)
-            .map(|k| (k.name.clone(), k.kind.clone()))
-    }
-}
-
-/// 进行中的录制:写入器与目标文件。
-pub struct Recording {
-    writer: CastWriter,
-    path: PathBuf,
-}
-
-/// 回放状态:cast 事件按原始时间间隔喂进独立终端。
-pub struct ReplayState {
-    pub path: PathBuf,
-    pub cast: Cast,
-    /// 下一个待应用事件的下标。
-    pub cursor: usize,
-    pub term: Terminal,
-    pub playing: bool,
-    /// 播放调度任务;暂停/回退/退出时取消。
-    pub task: Option<tokio::task::JoinHandle<()>>,
 }
 
 /// 一次后台传输的进度状态。
@@ -529,8 +423,6 @@ impl ActiveTransfer {
 
 pub struct App {
     pub registry: Registry,
-    /// 数据库 profile 注册表(databases.toml)。
-    pub db_registry: linop_core::DbRegistry,
     /// Telnet profile 注册表(telnet.toml)。
     pub telnet_registry: linop_core::TelnetRegistry,
     pub picker_sel: usize,
@@ -549,10 +441,6 @@ pub struct App {
     pub shell_area: Option<(u16, u16)>,
     /// 打开中的录制回放(与 Mode::Replay 对应)。
     pub replay: Option<ReplayState>,
-    /// 打开中的数据库浏览(与 Mode::DbBrowse 对应)。
-    pub db: Option<DbBrowser>,
-    /// 打开中的 Redis 浏览(与 Mode::RedisBrowse 对应)。
-    pub redis: Option<RedisBrowser>,
     /// 打开中的 Telnet 会话(与 Mode::Telnet 对应;单会话)。
     pub telnet: Option<TelnetSession>,
 }
@@ -561,7 +449,6 @@ impl App {
     pub fn new(registry: Registry) -> Self {
         Self {
             registry,
-            db_registry: linop_core::DbRegistry::new(),
             telnet_registry: linop_core::TelnetRegistry::new(),
             picker_sel: 0,
             notice: String::new(),
@@ -573,8 +460,6 @@ impl App {
             form: None,
             shell_area: None,
             replay: None,
-            db: None,
-            redis: None,
             telnet: None,
         }
     }
@@ -585,32 +470,15 @@ impl App {
 
     /// picker 统一选择域总长:在线会话数 + 连接 profile 数。
     fn picker_len(&self) -> usize {
-        self.sessions.len()
-            + self.connections().len()
-            + self.db_registry.profiles().len()
-            + self.telnet_registry.profiles().len()
+        self.sessions.len() + self.connections().len() + self.telnet_registry.profiles().len()
     }
 
-    /// 数据库段起始下标(picker 四段布局)。
-    fn db_section_start(&self) -> usize {
+    /// Telnet 段起始下标(picker 三段布局:会话 / SSH / Telnet)。
+    fn telnet_section_start(&self) -> usize {
         self.sessions.len() + self.connections().len()
     }
 
-    /// Telnet 段起始下标。
-    fn telnet_section_start(&self) -> usize {
-        self.db_section_start() + self.db_registry.profiles().len()
-    }
-
-    /// picker 光标当前落到的数据库 profile(仅第三段有效)。
-    fn picked_db(&self) -> Option<&linop_core::DbProfile> {
-        let idx = self.picker_sel.checked_sub(self.db_section_start())?;
-        if idx >= self.db_registry.profiles().len() {
-            return None;
-        }
-        self.db_registry.profiles().get(idx)
-    }
-
-    /// picker 光标当前落到的 Telnet profile(仅第四段有效)。
+    /// picker 光标当前落到的 Telnet profile。
     fn picked_telnet(&self) -> Option<&linop_core::TelnetProfile> {
         let idx = self.picker_sel.checked_sub(self.telnet_section_start())?;
         self.telnet_registry.profiles().get(idx)
@@ -872,16 +740,6 @@ impl App {
                                 DialogAction::DeleteProfile(conn.name.clone()),
                             ));
                         }
-                    } else if let Some(db) = self.picked_db().cloned() {
-                        // 数据库行:删除 profile(确认,不动数据库文件)。
-                        self.dialog = Some(new_dialog(
-                            "删除数据库配置",
-                            &format!(
-                                "移除数据库配置 {}?(仅删条目,不动文件)Enter 确认 / Esc 取消",
-                                db.name
-                            ),
-                            DialogAction::DeleteDbProfile(db.name.clone()),
-                        ));
                     } else if let Some(telnet) = self.picked_telnet().cloned() {
                         // Telnet 行:删除 profile(确认)。
                         self.dialog = Some(new_dialog(
@@ -945,11 +803,7 @@ impl App {
                         return true;
                     }
                     // 数据库 / Telnet 行:打开对应模式。
-                    if self.picker_sel >= self.db_section_start() {
-                        if let Some(db) = self.picked_db().cloned() {
-                            self.open_db(db).await;
-                            return true;
-                        }
+                    if self.picker_sel >= self.telnet_section_start() {
                         if let Some(telnet) = self.picked_telnet().cloned() {
                             self.open_telnet(telnet, tx).await;
                         }
@@ -1020,17 +874,15 @@ impl App {
                     }
                 }
                 KeyCode::Char('r') => {
-                    let db = linop_core::DbRegistry::load_default();
                     let telnet = linop_core::TelnetRegistry::load_default();
-                    match (Registry::load_default(), db, telnet) {
-                        (Ok(reg), Ok(dbs), Ok(tels)) => {
+                    match (Registry::load_default(), telnet) {
+                        (Ok(reg), Ok(tels)) => {
                             self.registry = reg;
-                            self.db_registry = dbs;
                             self.telnet_registry = tels;
                             self.picker_sel = 0;
-                            self.notice = "已重新加载连接 / 数据库 / Telnet 列表".into();
+                            self.notice = "已重新加载连接 / Telnet 列表".into();
                         }
-                        (Err(e), _, _) | (_, Err(e), _) | (_, _, Err(e)) => {
+                        (Err(e), _) | (_, Err(e)) => {
                             self.notice = format!("重新加载失败:{e}");
                         }
                     }
@@ -1042,8 +894,6 @@ impl App {
                 self.mode = Mode::Picker;
             }
             Mode::Replay => self.replay_key(key, tx).await,
-            Mode::DbBrowse => self.db_key(key, tx).await,
-            Mode::RedisBrowse => self.redis_key(key, tx).await,
             Mode::Telnet => self.telnet_key(key, tx).await,
             Mode::Session => {
                 if key.modifiers.contains(KeyModifiers::CONTROL)
@@ -1271,21 +1121,6 @@ impl App {
             }
             return;
         }
-        // 删除数据库 profile:作用于 picker。
-        if let (KeyCode::Enter, DialogAction::DeleteDbProfile(name)) = (&key.code, &dialog.action) {
-            let name = name.clone();
-            match self.db_registry.remove(&name) {
-                Ok(_) => {
-                    match self.db_registry.save(linop_core::default_databases_path()) {
-                        Ok(()) => self.notice = format!("已移除数据库配置 {name}(文件未动)"),
-                        Err(e) => self.notice = format!("移除失败(未保存):{e}"),
-                    }
-                    self.picker_sel = self.picker_sel.min(self.picker_len().saturating_sub(1));
-                }
-                Err(e) => self.notice = format!("移除失败:{e}"),
-            }
-            return;
-        }
         // 删除 Telnet profile:作用于 picker。
         if let (KeyCode::Enter, DialogAction::DeleteTelnetProfile(name)) =
             (&key.code, &dialog.action)
@@ -1300,66 +1135,6 @@ impl App {
                     self.picker_sel = self.picker_sel.min(self.picker_len().saturating_sub(1));
                 }
                 Err(e) => self.notice = format!("移除失败:{e}"),
-            }
-            return;
-        }
-        // 删除 Redis 键:在 Redis 浏览模式内执行。
-        if let (KeyCode::Enter, DialogAction::DeleteRedisKey { name }) = (&key.code, &dialog.action)
-        {
-            let name = name.clone();
-            if self.mode == Mode::RedisBrowse && self.redis.is_some() {
-                let target = name.clone();
-                let deleted = self.redis_call(move |client| client.del(&target)).await;
-                match deleted {
-                    Ok(true) => {
-                        if let Some(browser) = self.redis.as_mut() {
-                            let mut names = browser.keys_names();
-                            names.retain(|k| k != &name);
-                            let client = browser.client();
-                            match refresh_redis_keys(client, names).await {
-                                Ok(infos) => {
-                                    browser.keys = infos;
-                                    browser.sel =
-                                        browser.sel.min(browser.keys.len().saturating_sub(1));
-                                    browser.status = format!("已删除 {name}");
-                                }
-                                Err(msg) => browser.status = msg,
-                            }
-                        }
-                    }
-                    Ok(false) => {
-                        if let Some(browser) = self.redis.as_mut() {
-                            browser.status = format!("{name} 已不存在");
-                        }
-                    }
-                    Err(msg) => {
-                        dialog.error = msg;
-                        self.dialog = Some(dialog);
-                        return;
-                    }
-                }
-            }
-            return;
-        }
-        // SQL 对话框:在数据库浏览模式内执行。
-        if let (KeyCode::Enter, DialogAction::RunSql) = (&key.code, &dialog.action) {
-            let sql = dialog.input.trim().to_string();
-            if sql.is_empty() {
-                dialog.error = "SQL 不能为空,Esc 取消".into();
-                self.dialog = Some(dialog);
-            } else if self.mode == Mode::DbBrowse && self.db.is_some() {
-                let outcome = self.run_sql_blocking(&sql).await;
-                // 错误保留对话框就地显示;成功关闭对话框并进入结果网格。
-                match &outcome {
-                    Err(msg) => {
-                        dialog.error = msg.clone();
-                        self.dialog = Some(dialog);
-                    }
-                    Ok(_) => apply_query(self, sql, outcome),
-                }
-            } else {
-                dialog.error = "数据库未打开(内部状态异常)".into();
-                self.dialog = Some(dialog);
             }
             return;
         }
@@ -1488,9 +1263,6 @@ impl App {
             | DialogAction::DeleteProfile(_)
             | DialogAction::ImportProfiles(_)
             | DialogAction::OpenReplay
-            | DialogAction::RunSql
-            | DialogAction::DeleteDbProfile(_)
-            | DialogAction::DeleteRedisKey { .. }
             | DialogAction::DeleteTelnetProfile(_) => {
                 // 已在 handle_dialog_key 里先行处理,不会走到这里。
                 return Err("内部错误:picker 对话框不应进入会话执行".to_string());
@@ -1780,400 +1552,6 @@ impl App {
                     }
                     Err(e) => s.status = format!("开始录制失败:{e}"),
                 }
-            }
-        }
-    }
-
-    /// 打开数据库浏览:按驱动分派(SQLite / Redis)。
-    async fn open_db(&mut self, profile: linop_core::DbProfile) {
-        match profile.driver {
-            linop_core::DbDriver::Sqlite => self.open_sqlite(profile).await,
-            linop_core::DbDriver::Redis => self.open_redis(profile).await,
-        }
-    }
-
-    /// 打开 SQLite 浏览:加载数据库并列出表;失败停留在列表并提示。
-    async fn open_sqlite(&mut self, profile: linop_core::DbProfile) {
-        let path = profile.path.clone();
-        let task = tokio::task::spawn_blocking(move || {
-            let db = SqliteDb::open(&path)?;
-            let tables = db.tables()?;
-            Ok::<_, linop_db::DbError>((db, tables))
-        });
-        let outcome =
-            match tokio::time::timeout(Duration::from_secs(SFTP_META_TIMEOUT_SECS), task).await {
-                Ok(Ok(work)) => work,
-                Ok(Err(join)) => Err(linop_db::DbError::Query(format!("后台任务失败:{join}"))),
-                Err(_) => Err(linop_db::DbError::Query("打开数据库超时".into())),
-            };
-        match outcome {
-            Ok((db, tables)) => {
-                let name = profile.name.clone();
-                self.db = Some(DbBrowser {
-                    profile,
-                    db: std::sync::Arc::new(std::sync::Mutex::new(db)),
-                    tables,
-                    view: DbView::Tables,
-                    sel: 0,
-                    status: format!("已打开 {name}(Enter 看数据 · s 执行 SQL)"),
-                });
-                self.mode = Mode::DbBrowse;
-            }
-            Err(e) => self.notice = format!("打开数据库失败:{e}"),
-        }
-    }
-
-    /// 数据库浏览按键:表列表与数据网格两个视图分别处理。
-    async fn db_key(&mut self, key: KeyEvent, _tx: &mpsc::UnboundedSender<AppEvent>) {
-        if self.db.is_none() {
-            self.mode = Mode::Picker;
-            return;
-        }
-        let in_tables = matches!(self.db.as_ref().unwrap().view, DbView::Tables);
-        if in_tables {
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => {
-                    self.db = None;
-                    self.mode = Mode::Picker;
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    if let Some(db) = self.db.as_mut()
-                        && !db.tables.is_empty()
-                    {
-                        let len = db.tables.len();
-                        db.sel = (db.sel + len - 1) % len;
-                    }
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if let Some(db) = self.db.as_mut()
-                        && !db.tables.is_empty()
-                    {
-                        let len = db.tables.len();
-                        db.sel = (db.sel + 1) % len;
-                    }
-                }
-                // 刷新表列表(DDL 后结构可能变化)。
-                KeyCode::Char('r') => {
-                    if let Some(db) = self.db.as_mut() {
-                        let status = refresh_tables(db);
-                        db.status = status;
-                    }
-                }
-                // 进入表数据网格(SELECT * 该表)。
-                KeyCode::Enter => {
-                    let sql = self.db.as_ref().and_then(|db| {
-                        db.tables
-                            .get(db.sel)
-                            .map(|t| format!("SELECT * FROM \"{}\"", t.name.replace('"', "\"\"")))
-                    });
-                    let Some(sql) = sql else { return };
-                    let outcome = self.run_sql_blocking(&sql).await;
-                    apply_query(self, sql, outcome);
-                }
-                // 打开 SQL 输入框。
-                KeyCode::Char('s') => {
-                    self.dialog = Some(Dialog {
-                        title: "执行 SQL".to_string(),
-                        prompt: "SQL(单条语句,Enter 执行):".to_string(),
-                        input: String::new(),
-                        action: DialogAction::RunSql,
-                        error: String::new(),
-                        status: String::new(),
-                        secret: false,
-                    });
-                }
-                _ => {}
-            }
-        } else {
-            match key.code {
-                // 返回表列表。
-                KeyCode::Backspace | KeyCode::Esc | KeyCode::Char('q') => {
-                    if let Some(db) = self.db.as_mut() {
-                        db.view = DbView::Tables;
-                    }
-                }
-                // 重新执行当前视图来源(title 即原 SQL)。
-                KeyCode::Char('r') => {
-                    let sql = match self.db.as_ref().unwrap().view {
-                        DbView::Data { ref title, .. } => title.clone(),
-                        DbView::Tables => return,
-                    };
-                    let outcome = self.run_sql_blocking(&sql).await;
-                    apply_query(self, sql, outcome);
-                }
-                // 翻页。
-                KeyCode::Left | KeyCode::PageUp | KeyCode::Right | KeyCode::PageDown => {
-                    if let Some(db) = self.db.as_mut()
-                        && let DbView::Data { result, page, .. } = &mut db.view
-                    {
-                        let page_size = 20usize;
-                        let total_pages = result.rows.len().div_ceil(page_size).max(1);
-                        match key.code {
-                            KeyCode::Left | KeyCode::PageUp => {
-                                *page = page.saturating_sub(1);
-                            }
-                            _ => {
-                                if *page + 1 < total_pages {
-                                    *page += 1;
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    /// 在阻塞线程上执行 SQL(超时上限防大查询冻结事件循环)。
-    async fn run_sql_blocking(&mut self, sql: &str) -> std::result::Result<StmtOutcome, String> {
-        let handle = self.db.as_ref().expect("db_key 保证已打开").db_handle();
-        let sql = sql.to_string();
-        let task = tokio::task::spawn_blocking(move || {
-            handle
-                .lock()
-                .map_err(|_| linop_db::DbError::Query("数据库连接锁中毒".into()))
-                .and_then(|db| db.run(&sql))
-        });
-        match tokio::time::timeout(Duration::from_secs(SFTP_META_TIMEOUT_SECS), task).await {
-            Ok(Ok(outcome)) => outcome.map_err(|e| e.to_string()),
-            Ok(Err(join)) => Err(format!("后台任务失败:{join}")),
-            Err(_) => Err("SQL 执行超时".to_string()),
-        }
-    }
-
-    /// 关闭 Redis 浏览:先拆隧道(转发 → SSH),再清状态。
-    fn close_redis(&mut self) {
-        if let Some(browser) = self.redis.take()
-            && let Some(tunnel) = browser.tunnel
-        {
-            tunnel.stop();
-        }
-        self.mode = Mode::Picker;
-    }
-
-    /// 按 profile.via 建隧道:返回 (Redis 端点, 隧道)。
-    /// 直连时端点即 profile 本身;隧道为 None。
-    async fn open_db_tunnel(
-        &mut self,
-        profile: &linop_core::DbProfile,
-    ) -> Result<(String, Option<RedisTunnel>), String> {
-        let Some(via) = profile.via.clone() else {
-            return Ok((profile.redis_endpoint(), None));
-        };
-        let Some(jump) = self.registry.get(&via).cloned() else {
-            return Err(format!("跳板连接 {via} 不存在(检查 connections.toml)"));
-        };
-        let policy = KnownHostsPolicy::TrustOnFirstUse(KnownHosts::load_default());
-        let ssh = capped(
-            CONNECT_TIMEOUT_SECS,
-            Session::connect_profile(&jump, policy),
-        )
-        .await
-        .map_err(|msg| format!("连接跳板 {via} 失败:{msg}"))?;
-        let rule = PortForward::new(
-            0,
-            profile.host.clone().unwrap_or_default(),
-            profile.port.unwrap_or(6379),
-        );
-        let forward = ssh
-            .open_local_forward(&rule)
-            .await
-            .map_err(|e| format!("跳板 {via} 上建立转发失败:{e}"))?;
-        let endpoint = forward.local_addr.to_string();
-        Ok((endpoint, Some(RedisTunnel { ssh, forward })))
-    }
-
-    /// 打开 Redis 浏览:连接 + AUTH + 首轮 SCAN。
-    /// profile 指定 `via` 时先经该 SSH 跳板建立本地隧道再连。
-    async fn open_redis(&mut self, profile: linop_core::DbProfile) {
-        let (endpoint, tunnel) = match self.open_db_tunnel(&profile).await {
-            Ok(pair) => pair,
-            Err(msg) => {
-                self.notice = msg;
-                return;
-            }
-        };
-        let password = profile.password.clone();
-        let task = tokio::task::spawn_blocking(move || {
-            let mut client = RedisClient::connect(&endpoint, password.as_deref())?;
-            let keys = client.scan_keys(linop_redis::SCAN_BATCH)?;
-            Ok::<_, linop_redis::RedisError>((client, keys))
-        });
-        let outcome =
-            match tokio::time::timeout(Duration::from_secs(SFTP_META_TIMEOUT_SECS), task).await {
-                Ok(Ok(work)) => work,
-                Ok(Err(join)) => Err(linop_redis::RedisError::Io(std::io::Error::other(format!(
-                    "后台任务失败:{join}"
-                )))),
-                Err(_) => Err(linop_redis::RedisError::Io(std::io::Error::other(
-                    "连接超时",
-                ))),
-            };
-        match outcome {
-            Ok((client, keys)) => {
-                let mut browser = RedisBrowser {
-                    profile,
-                    client: std::sync::Arc::new(std::sync::Mutex::new(client)),
-                    tunnel,
-                    keys: keys
-                        .into_iter()
-                        .map(|name| RedisKeyInfo {
-                            name,
-                            kind: String::new(),
-                            len: -1,
-                            ttl_secs: -1,
-                        })
-                        .collect(),
-                    view: RedisView::Keys,
-                    sel: 0,
-                    status: String::new(),
-                };
-                // SCAN 到的键可能已过期:补齐概要。
-                let client = browser.client();
-                let names = browser.keys_names();
-                match refresh_redis_keys(client, names).await {
-                    Ok(infos) => {
-                        browser.keys = infos;
-                        browser.sel = 0;
-                        browser.status =
-                            format!("{} 个键 · Enter 看值 · x 删除 · r 重扫", browser.keys.len());
-                        self.redis = Some(browser);
-                        self.mode = Mode::RedisBrowse;
-                    }
-                    Err(msg) => self.notice = format!("Redis 键信息读取失败:{msg}"),
-                }
-            }
-            Err(e) => self.notice = format!("连接 Redis 失败:{e}"),
-        }
-    }
-
-    /// 在阻塞线程上跑一个 Redis 命令(超时上限防慢服务器冻结事件循环)。
-    async fn redis_call<T, F>(&self, f: F) -> Result<T, String>
-    where
-        T: Send + 'static,
-        F: FnOnce(&mut RedisClient) -> Result<T, linop_redis::RedisError> + Send + 'static,
-    {
-        let client = self.redis.as_ref().expect("redis_key 保证已打开").client();
-        let task = tokio::task::spawn_blocking(move || {
-            let mut client = client.lock().map_err(|_| "连接锁中毒".to_string())?;
-            f(&mut client).map_err(|e| e.to_string())
-        });
-        match tokio::time::timeout(Duration::from_secs(SFTP_META_TIMEOUT_SECS), task).await {
-            Ok(Ok(value)) => value,
-            Ok(Err(join)) => Err(format!("后台任务失败:{join}")),
-            Err(_) => Err("Redis 命令超时".to_string()),
-        }
-    }
-
-    /// Redis 浏览按键:键列表与值视图。
-    async fn redis_key(&mut self, key: KeyEvent, _tx: &mpsc::UnboundedSender<AppEvent>) {
-        if self.redis.is_none() {
-            self.mode = Mode::Picker;
-            return;
-        }
-        let in_keys = matches!(self.redis.as_ref().unwrap().view, RedisView::Keys);
-        if in_keys {
-            match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => {
-                    self.close_redis();
-                }
-                KeyCode::Up | KeyCode::Char('k') => {
-                    if let Some(browser) = self.redis.as_mut()
-                        && !browser.keys.is_empty()
-                    {
-                        let len = browser.keys.len();
-                        browser.sel = (browser.sel + len - 1) % len;
-                    }
-                }
-                KeyCode::Down | KeyCode::Char('j') => {
-                    if let Some(browser) = self.redis.as_mut()
-                        && !browser.keys.is_empty()
-                    {
-                        let len = browser.keys.len();
-                        browser.sel = (browser.sel + 1) % len;
-                    }
-                }
-                // 重扫键空间。
-                KeyCode::Char('r') => {
-                    let names = self
-                        .redis_call(|client| client.scan_keys(linop_redis::SCAN_BATCH))
-                        .await;
-                    match names {
-                        Ok(names) => {
-                            if let Some(browser) = self.redis.as_mut() {
-                                browser.keys = names
-                                    .into_iter()
-                                    .map(|name| RedisKeyInfo {
-                                        name,
-                                        kind: String::new(),
-                                        len: -1,
-                                        ttl_secs: -1,
-                                    })
-                                    .collect();
-                                browser.sel = 0;
-                                let client = browser.client();
-                                let names = browser.keys_names();
-                                match refresh_redis_keys(client, names).await {
-                                    Ok(infos) => {
-                                        browser.status = format!("已重扫:{} 个键", infos.len());
-                                        browser.keys = infos;
-                                    }
-                                    Err(msg) => browser.status = msg,
-                                }
-                            }
-                        }
-                        Err(msg) => {
-                            if let Some(browser) = self.redis.as_mut() {
-                                browser.status = format!("重扫失败:{msg}");
-                            }
-                        }
-                    }
-                }
-                // 查看选中键的值。
-                KeyCode::Enter => {
-                    let picked = self.redis.as_ref().unwrap().picked();
-                    let Some((name, kind)) = picked else { return };
-                    let key = name.clone();
-                    let value_kind = kind.clone();
-                    let value = self
-                        .redis_call(move |client| client.key_value(&name, &value_kind))
-                        .await;
-                    match value {
-                        Ok(value) => {
-                            if let Some(browser) = self.redis.as_mut() {
-                                browser.view = RedisView::Value { key, kind, value };
-                            }
-                        }
-                        Err(msg) => {
-                            if let Some(browser) = self.redis.as_mut() {
-                                browser.status = format!("读取键失败:{msg}");
-                            }
-                        }
-                    }
-                }
-                // 删除选中键(确认)。
-                KeyCode::Char('x') => {
-                    let picked = self.redis.as_ref().unwrap().picked();
-                    if let Some((name, _)) = picked {
-                        self.dialog = Some(new_dialog(
-                            "删除键",
-                            &format!("删除键 {name}?Enter 确认 / Esc 取消"),
-                            DialogAction::DeleteRedisKey { name },
-                        ));
-                    }
-                }
-                _ => {}
-            }
-        } else {
-            match key.code {
-                // 返回键列表。
-                KeyCode::Backspace | KeyCode::Esc | KeyCode::Char('q') => {
-                    if let Some(browser) = self.redis.as_mut() {
-                        browser.view = RedisView::Keys;
-                    }
-                }
-                _ => {}
             }
         }
     }
@@ -2626,71 +2004,6 @@ impl SessionState {
         let source = self.files.local_cwd.join(&entry.name);
         let remote_abs = remote_absolute(self.sftp.cwd(), &entry.name);
         self.spawn_transfer("上传", entry.name, remote_abs, source, true, tx);
-    }
-}
-
-/// 拉取键概要(重扫与删除后刷新共用)。
-/// 必须走 spawn_blocking:隧道数据面(转发 accept 循环、SSH 会话)挂在
-/// 事件循环的 runtime 上,主线程同步等待会饿死它们 → 死锁。
-async fn refresh_redis_keys(
-    client: std::sync::Arc<std::sync::Mutex<RedisClient>>,
-    names: Vec<String>,
-) -> Result<Vec<RedisKeyInfo>, String> {
-    let task = tokio::task::spawn_blocking(move || {
-        let mut client = client.lock().map_err(|_| "连接锁中毒".to_string())?;
-        client.key_infos(&names).map_err(|e| e.to_string())
-    });
-    match tokio::time::timeout(Duration::from_secs(SFTP_META_TIMEOUT_SECS), task).await {
-        Ok(Ok(Ok(infos))) => Ok(infos),
-        Ok(Ok(Err(msg))) => Err(msg),
-        Ok(Err(join)) => Err(format!("后台任务失败:{join}")),
-        Err(_) => Err("Redis 命令超时".to_string()),
-    }
-}
-
-/// 刷新数据库表列表(DDL 后)。
-fn refresh_tables(db: &mut DbBrowser) -> String {
-    let handle = db.db_handle();
-    let tables = handle
-        .lock()
-        .map_err(|e| e.to_string())
-        .and_then(|db| db.tables().map_err(|e| e.to_string()));
-    match tables {
-        Ok(tables) => {
-            let count = tables.len();
-            db.tables = tables;
-            db.sel = db.sel.min(count.saturating_sub(1));
-            format!("已刷新:{count} 张表/视图")
-        }
-        Err(e) => format!("刷新失败:{e}"),
-    }
-}
-
-/// 应用 SQL 结果:Rows → 数据网格;Exec → 状态栏消息。
-fn apply_query(app: &mut App, title: String, outcome: std::result::Result<StmtOutcome, String>) {
-    let Some(db) = app.db.as_mut() else { return };
-    match outcome {
-        Ok(StmtOutcome::Rows(result)) => {
-            let rows = result.rows.len();
-            let truncated = result.truncated;
-            db.view = DbView::Data {
-                title,
-                result,
-                page: 0,
-            };
-            db.status = if truncated {
-                format!("{rows}+ 行(已达行数上限)")
-            } else {
-                format!("{rows} 行")
-            };
-        }
-        Ok(StmtOutcome::Exec(exec)) => {
-            db.status = format!("影响 {} 行", exec.rows_affected);
-            refresh_tables(db);
-        }
-        Err(msg) => {
-            db.status = format!("SQL 失败:{msg}");
-        }
     }
 }
 

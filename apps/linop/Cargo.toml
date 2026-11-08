@@ -16,8 +16,6 @@ linop-sftp = { workspace = true }
 linop-term = { workspace = true }
 linop-monitor = { workspace = true }
 linop-cast = { workspace = true }
-linop-db = { workspace = true }
-linop-redis = { workspace = true }
 linop-telnet = { workspace = true }
 tokio = { workspace = true }
 ratatui = { workspace = true }
@@ -29,4 +27,3 @@ dirs = { workspace = true }
 linop-testsupport = { path = "../../crates/linop-testsupport" }
 tempfile = "3"
 unicode-width = "0.2"
-rusqlite = { workspace = true }
