@@ -6,11 +6,13 @@ cd "$(dirname "$0")/.."
 
 NAME=linop-gui
 IMAGE=linop-build:1
-GUI=/home/xiuran/Linop/gui
+REPO=/home/xiuran/Linop
 
 case "${1:-start}" in
   build)
-    docker run --rm -v "$GUI":/home/xiuran/Linop/gui \
+    # gui workspace 依赖根仓库(crates/linop-dbx 路径依赖 + vendor/dbx patch),
+    # 需挂载整个仓库而非仅 gui/。
+    docker run --rm -v "$REPO":/home/xiuran/Linop \
       -v /home/xiuran/.cargo/registry:/usr/local/cargo/registry \
       -v /home/xiuran/.cargo/git:/usr/local/cargo/git \
       "$IMAGE" bash -c "cd /home/xiuran/Linop/gui && cargo build -p linop --release"
@@ -18,7 +20,7 @@ case "${1:-start}" in
   start)
     docker rm -f "$NAME" 2>/dev/null || true
     docker run -d --name "$NAME" \
-      -v "$GUI":/home/xiuran/Linop/gui \
+      -v "$REPO":/home/xiuran/Linop \
       -v /tmp/.X11-unix:/tmp/.X11-unix \
       -v /mnt/wslg:/mnt/wslg \
       --device /dev/dri \
