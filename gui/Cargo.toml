@@ -45,6 +45,7 @@ members = [
     "crates/one-assets",
     "tools/gpui-rdp-smoke",
     "tools/windows-rdp-probe",
+    "crates/dbx_view",
     "crates/linop_app",
     "apps/linop",
     "apps/linop-shell",
@@ -221,7 +222,7 @@ tiberius = { version = "0.12.3", default-features = false, features = ["chrono",
 oracle = {version = "0.6.3", features = ["chrono"]}
 once_cell = "1.21"
 proptest = "1.4"
-mysql_async = { version = "0.36.1", features = ["rustls-tls"] }
+mysql_async = { git = "file:///home/xiuran/Linop/vendor/dbx/git-forks/mysql_async.git", rev = "0c621e0248f2c75563b90b3d04628afae539ba40" }
 mysql_common = "0.35.5"
 tokio-postgres = { version = "0.7.15",features = ["with-serde_json-1", "with-chrono-0_4", "with-uuid-1"] }
 tokio-postgres-rustls = "0.13.0"
@@ -370,6 +371,51 @@ xml5ever = { opt-level = 3 }
 # 全套 gpui-pre-* shim（pub use gpui_fast::* 转发）。gpui-pre fork 不再参与
 # 解析；gpui-kit 的 ^0.3.10 与 linop 的 ^0.3.99 均由 0.3.126 shim 满足。
 [patch.crates-io]
+# The offline Win7 / Server 2012 R2 bundle links the WebView2 SDK 1.0.902.49
+# loader. Loaders >= 1.0.1054.31 import EventSetInformation, which Win7 and
+# Server 2012 R2 do not provide. Keep that loader in the source tree instead of
+# swapping a file inside the cargo registry, because a registry swap bypasses
+# compile caches and once shipped a binary linked against the wrong loader.
+webview2-com-sys = { path = "../vendor/dbx/vendor/webview2-com-sys" }
+# Offline signed update restoration and checked Windows installer launch.
+tauri-plugin-updater = { path = "../vendor/dbx/vendor/tauri-plugin-updater" }
+# Tauri 2.11 uses ctor 0.8, which excludes Rust's win7 vendor. This vendors
+# upstream rust-ctor#443 until tauri-utils moves to ctor 1.x.
+ctor = { path = "../vendor/dbx/vendor/ctor" }
+# rumqttc 0.24 hardcodes MQTT 3.1.1; this patch adds MQTT 3.1 CONNECT encoding.
+rumqttc = { path = "../vendor/dbx/vendor/rumqttc" }
+# Keep two small upstream crates on Win7-compatible API calls. Their current
+# Windows bindings otherwise import COMBASE or WinRT APIs unavailable on Win7.
+dirs-sys = { path = "../vendor/dbx/vendor/dirs-sys" }
+pageant = { path = "../vendor/dbx/vendor/pageant" }
+# Wry 0.55 probes and creates WebView2 with a null browser folder. Pass the
+# bundled Fixed Runtime path explicitly so Windows 7 does not fall back to an
+# unavailable system Runtime. The vendored copy also intercepts the WebView2
+# F6 "Focus Next Pane" accelerator to prevent a black screen on frameless
+# Overlay-titlebar windows, and registers a ProcessFailed handler that
+# auto-recovers the webview when the renderer process fails while the host
+# process stays alive (black screen after an overnight idle session, see
+# vendor/wry/src/webview2/mod.rs). Recovery is layered by process kind
+# (browser exit is fatal, GPU exits are self-healed by WebView2) and bounded
+# by a cooldown plus a maximum reload budget. It also re-owns clipboard
+# writes performed by the WebView2 browser process on the host window so
+# copies show up in Windows Clipboard History / Win+V
+# (MicrosoftEdge/WebView2Feedback#5650, see
+# vendor/wry/src/webview2/clipboard_history.rs).
+wry = { path = "../vendor/dbx/vendor/wry" }
+tokio-postgres = { git = "file:///home/xiuran/Linop/vendor/dbx/git-forks/tokio-postgres-gaussdb.git", rev = "ff64ab59190e427e09fcd187974bdaf088e4f129" }
+postgres-types = { git = "file:///home/xiuran/Linop/vendor/dbx/git-forks/tokio-postgres-gaussdb.git", rev = "ff64ab59190e427e09fcd187974bdaf088e4f129" }
+postgres-protocol = { git = "file:///home/xiuran/Linop/vendor/dbx/git-forks/tokio-postgres-gaussdb.git", rev = "ff64ab59190e427e09fcd187974bdaf088e4f129" }
+# Temporary compatibility patches for deprecated sha256_password accounts and
+# rustls dangerous-mode connections to legacy certificates. Remove after upstream support lands.
+mysql_async = { git = "file:///home/xiuran/Linop/vendor/dbx/git-forks/mysql_async.git", rev = "0c621e0248f2c75563b90b3d04628afae539ba40" }
+# Preserve readable SQL Server result sets when a row contains an unpaired
+# UTF-16 surrogate, or varchar/text bytes that are invalid in the column's
+# collation (replaced with U+FFFD, no BOM sniffing). Remove after the behavior
+# is available in upstream tiberius.
+tiberius = { path = "../vendor/dbx/vendor/tiberius" }
+
+# navop(gpui)fork 全系 —— 上一轮合并 patch 段时被误覆盖,恢复
 gpui-pre                = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
 gpui-pre-apple          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
 gpui-pre-bench-metrics          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
@@ -404,7 +450,7 @@ gpui-fast-wgpu          = { git = "https://github.com/feigeCode/gpui-fast.git", 
 gpui-fast-windows          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
 # <<< local gpui patch <<<
 
-# linop 全量 gpui-fast 后，整套 gpui-fast-* 都进编译图；同名源已在上面
+# navop 全量 gpui-fast 后，整套 gpui-fast-* 都进编译图；同名源已在上面
 # [patch.crates-io] 块内统一钉到 release/v0.1.12，此处不再重复声明。
 
 # Legacy devices (e.g. Huawei VRP gear) put redundant leading `0x00` bytes in the
@@ -421,8 +467,7 @@ ssh-encoding = { git = "https://github.com/feigeCode/SSH.git", tag = "ssh-encodi
 # crypto 模块）要求 `rsa ^0.10.0-rc.19`，两者无法同时满足。rsa rc.18→rc.19
 # 仅伴随 pkcs1 rc.4→rc.5 的泛型化（`RsaPrivateKeyRef<'a>` 别名保持
 # `try_from(&[u8])`/`as_bytes()` 旧用法），russh 源码零改动即兼容。Fork of
-# warp-tech/russh carrying tag `v0.65.0-linop.1`（仅改两行版本钉 + 删 CI
+# warp-tech/russh carrying tag `v0.65.0-navop.1`（仅改两行版本钉 + 删 CI
 # workflows）；等 russh 上游跟进 rc.19 后可删除。
 # 验证：cargo check -p ssh 与 crates/ssh 全量测试（含 legacy hostkey 回归）。
-russh = { git = "file:///home/xiuran/Linop/gui/vendor/russh-bare.git", rev = "ba8c9d1fae687ddd8a7dcd334e2012420b6195c7" }
-
+russh = { git = "https://github.com/feigeCode/russh.git", tag = "v0.65.0-navop.1" }

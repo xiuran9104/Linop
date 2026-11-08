@@ -13,7 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use log::warn;
 use rusqlite::{
-    params, params_from_iter, types::Value, Connection, DatabaseName, OpenFlags, OptionalExtension, ToSql, Transaction,
+    params, params_from_iter, types::Value, Connection, OpenFlags, OptionalExtension, ToSql, Transaction,
     TransactionBehavior,
 };
 use serde::{Deserialize, Serialize};
@@ -252,7 +252,7 @@ pub fn maybe_import_user_data_db(
 
     std::fs::create_dir_all(target_data_dir).map_err(|e| format!("Failed to create data dir: {e}"))?;
     source_conn
-        .backup(DatabaseName::Main, &target_db_path, None)
+        .backup(rusqlite::MAIN_DB, &target_db_path, None)
         .map_err(|e| format!("Failed to import user data db: {e}"))?;
 
     Ok(DataDbImportResult::Imported)
@@ -2411,7 +2411,7 @@ impl Storage {
         self.with_conn(move |_conn| {
             let source =
                 Connection::open_with_flags(&backup, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(|e| e.to_string())?;
-            source.backup(DatabaseName::Main, &live, None).map_err(|e| e.to_string())
+            source.backup(rusqlite::MAIN_DB, &live, None).map_err(|e| e.to_string())
         })
         .await
     }
@@ -2522,7 +2522,7 @@ impl Storage {
             let backup_db = root.join(STORAGE_DB_FILE_NAME);
             let backup_db_for_sqlite = backup_db.clone();
             self.with_conn(move |conn| {
-                conn.backup(DatabaseName::Main, &backup_db_for_sqlite, None).map_err(|e| e.to_string())
+                conn.backup(rusqlite::MAIN_DB, &backup_db_for_sqlite, None).map_err(|e| e.to_string())
             })
             .await?;
             for name in [
@@ -6820,7 +6820,7 @@ impl Storage {
                     pending_confirmation_json,
                     fifo_category,
                     run.pending_input,
-                    run.max_seq,
+                    run.max_seq.map(|v| v as i64),
                     run.created_at,
                     run.updated_at,
                 ],
@@ -6889,7 +6889,7 @@ impl Storage {
                     pending_confirmation_json,
                     fifo_category,
                     run.pending_input,
-                    run.max_seq,
+                    run.max_seq.map(|v| v as i64),
                     run.created_at,
                     run.updated_at,
                 ],
@@ -6928,7 +6928,7 @@ impl Storage {
                         pending_confirmation_json,
                         fifo_category,
                         pending_input,
-                        row.get::<_, Option<u64>>(10)?,
+                        row.get::<_, Option<i64>>(10)?.map(|v| v as u64),
                         row.get::<_, String>(11)?,
                         row.get::<_, String>(12)?,
                     ))
@@ -9273,7 +9273,12 @@ impl Storage {
         let key = key.to_string();
         self.with_conn(move |conn| {
             conn.prepare("SELECT version FROM state_store WHERE key = ?1")
-                .and_then(|mut stmt| stmt.query_row(params![key], |row| row.get(0)).optional())
+                .and_then(|mut stmt| {
+                    stmt.query_row(params![key], |row| {
+                        row.get::<_, i64>(0).map(|v| v as u64)
+                    })
+                    .optional()
+                })
                 .map_err(|e| e.to_string())
         })
         .await
@@ -9292,7 +9297,12 @@ impl Storage {
         self.with_conn(move |conn| {
             let current: Option<u64> = conn
                 .prepare("SELECT version FROM state_store WHERE key = ?1")
-                .and_then(|mut stmt| stmt.query_row(params![&key], |row| row.get(0)).optional())
+                .and_then(|mut stmt| {
+                    stmt.query_row(params![&key], |row| {
+                        row.get::<_, i64>(0).map(|v| v as u64)
+                    })
+                    .optional()
+                })
                 .map_err(|e| e.to_string())?;
 
             match (current, expected_version) {
@@ -9307,7 +9317,7 @@ impl Storage {
                 (Some(v), Some(expected)) if v == expected => {
                     conn.execute(
                         "UPDATE state_store SET value = ?1, content_type = ?2, version = version + 1 WHERE key = ?3 AND version = ?4",
-                        params![new_value, content_type, key, expected],
+                        params![new_value, content_type, key, expected as i64],
                     )
                     .map(|rows| rows > 0)
                     .map_err(|e| e.to_string())

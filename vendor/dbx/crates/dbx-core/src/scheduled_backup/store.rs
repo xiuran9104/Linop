@@ -60,7 +60,7 @@ fn insert_job(
     trigger: &str,
     time_zone: Option<String>,
 ) -> Result<BackupRun, String> {
-    let count: usize = conn
+    let count: i64 = conn
         .query_row("SELECT COUNT(*) FROM runs WHERE state IN ('queued','running')", [], |r| r.get(0))
         .map_err(sql_error)?;
     if count >= 100 {
@@ -279,7 +279,7 @@ impl BackupStore {
                 if !schedule.enabled {
                     continue;
                 }
-                let pending: usize = tx
+                let pending: i64 = tx
                     .query_row("SELECT COUNT(*) FROM runs WHERE state IN ('queued','running')", [], |r| r.get(0))
                     .map_err(sql_error)?;
                 if pending >= 100 {

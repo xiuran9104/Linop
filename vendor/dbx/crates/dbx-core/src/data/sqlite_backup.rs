@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-use rusqlite::DatabaseName;
 
 use crate::db::sqlite::{is_memory_database_path, SqliteHandle};
 use crate::path_utils::expand_tilde;
@@ -26,7 +25,7 @@ pub async fn backup_sqlite_database(pool: SqliteHandle, options: SqliteBackupOpt
     }
     tokio::task::spawn_blocking(move || {
         pool.with_connection(|conn| {
-            conn.backup(DatabaseName::Main, &temp, None).map_err(|e| format!("SQLite backup failed: {e}"))
+            conn.backup(rusqlite::MAIN_DB, &temp, None).map_err(|e| format!("SQLite backup failed: {e}"))
         })?;
         replace_backup_file(&temp, &destination)
     })
@@ -52,7 +51,7 @@ pub async fn restore_sqlite_database(pool: SqliteHandle, source_path: &str) -> R
     let source = PathBuf::from(expand_tilde(src));
     tokio::task::spawn_blocking(move || {
         pool.with_connection(|conn| {
-            conn.restore(DatabaseName::Main, &source, None::<fn(_)>).map_err(|e| format!("SQLite restore failed: {e}"))
+            conn.restore(rusqlite::MAIN_DB, &source, None::<fn(_)>).map_err(|e| format!("SQLite restore failed: {e}"))
         })
     })
     .await

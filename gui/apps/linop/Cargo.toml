@@ -16,6 +16,7 @@ shell-plugins = ["linop_app/shell-plugins"]
 
 [dependencies]
 linop_app = { path = "../../crates/linop_app", default-features = false, features = ["shell"] }
+dbx_view = { path = "../../crates/dbx_view" }
 domain_api = { workspace = true }
 gpui = { workspace = true }
 anyhow = { workspace = true }

@@ -136,6 +136,12 @@ Linop 自研部分(`crates/linop-*`、`apps/linop` TUI)与 navop 源码相互独
 vendored 于 `vendor/dbx/`,与 navop 同法本地化(gaussdb/mysql_async fork
 改 `file://` bare 仓库,patch 上移至根 workspace)。
 
+- **GPUI 原生数据库面板已接线**:`gui/crates/dbx_view` —— 数据域重新落座
+  (但数据层换成 DBX):`ConnectionType::Database/Redis` 的连接打开入口
+  指向 `DbxPanel`(连接选择 + 表列表 + SQL 执行 + 结果网格,GPUI 原生,
+  走 `one_core::gpui_tokio` 桥在 tokio 线程池执行 dbx 查询);rusqlite
+  已统一到 0.38(navop/dbx 对齐,libsqlite3-sys links 冲突消失),
+  迁移点:DatabaseName→MAIN_DB、u64/usize 绑定→i64
 - **GUI 抽出为顶层 `gui/`**:GPUI 桌面壳整体移出 vendor,**navop 名字全树清除**
   (目录/包名/资源/身份串:apps/linop、linop_app、linop_runtime、linop-shell);
   **数据库域整体删除**(db/db_view/db-value/redis/mongodb/er_flow/runtime_database/

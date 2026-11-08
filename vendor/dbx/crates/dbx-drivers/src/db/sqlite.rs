@@ -1755,6 +1755,7 @@ fn sqlite_completion_tables(
     let mut params: Vec<&dyn rusqlite::ToSql> =
         type_filters.iter().map(|value| value as &dyn rusqlite::ToSql).collect();
     params.push(&pattern);
+    let limit = limit as i64; // rusqlite 0.38:usize 不再实现 ToSql
     params.push(&limit);
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
     let rows = stmt
