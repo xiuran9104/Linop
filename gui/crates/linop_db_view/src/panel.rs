@@ -7,15 +7,14 @@ use gpui::{
     Render, SharedString, StatefulInteractiveElement, Styled, Window, div,
     prelude::FluentBuilder as _, px,
 };
-use gpui_component::InteractiveElementExt as _;
 use gpui_component::{
-    ActiveTheme, Disableable, Sizable, StyledExt as _, button::Button, h_flex, input::Input,
+    ActiveTheme, Disableable, Sizable, button::Button, h_flex, input::Input,
     input::InputState, v_flex,
 };
 use linop_core::DbProfile;
 use one_core::gpui_tokio::Tokio;
 use one_ui::{Column, EditTableDelegate, EditTableState};
-use one_core::tab_container::{TabContent, TabContentEvent, TabOpenMode};
+use one_core::tab_container::{TabContent, TabContentEvent};
 use gpui::EventEmitter;
 
 use crate::{DbxRuntime, default_store_path};
@@ -135,7 +134,7 @@ impl TabContent for DbxPanel {
 }
 
 impl Focusable for DbxPanel {
-    fn focus_handle(&self, cx: &gpui::App) -> gpui::FocusHandle {
+    fn focus_handle(&self, _cx: &gpui::App) -> gpui::FocusHandle {
         self.focus.clone()
     }
 }
@@ -145,7 +144,7 @@ impl DbxPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let sql_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("SQL(Enter 执行)"));
-        let mut this = Self {
+        let this = Self {
             kind: "sql",
             focus: cx.focus_handle(),
             runtime: None,
@@ -232,7 +231,7 @@ impl DbxPanel {
         self.run_sql(window, cx);
     }
 
-    fn run_sql(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn run_sql(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let Some(runtime) = self.runtime.clone() else { return };
         let Some(name) = self.selected.clone() else { return };
         let sql = self.sql_input.read(cx).value().to_string();
@@ -289,7 +288,7 @@ impl DbxPanel {
     }
 
     /// 保存连接表单:写 databases.toml + 会话内注入。
-    fn save_form(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn save_form(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let Some(form) = &self.form else { return };
         let read = |e: &gpui::Entity<InputState>| e.read(cx).value().trim().to_string();
         let (name, driver, host, port, user, password, database) = (
@@ -337,11 +336,9 @@ impl DbxPanel {
         self.form = None;
         self.status = format!("已保存 {name}");
         let Some(runtime) = self.runtime.clone() else { return };
-        let name2 = name.clone();
         let profile2 = profile.clone();
         let task = Tokio::spawn(cx, async move {
             runtime
-                .0
                 .add_profile(profile2)
                 .await
                 .map_err(|e| e.to_string())?;
@@ -349,7 +346,7 @@ impl DbxPanel {
         });
         cx.spawn(async move |this, cx| {
             let outcome = task.await;
-            let _ = this.update(cx, |panel, cx| match outcome {
+            let _ = this.update(cx, |panel, _cx| match outcome {
                 Ok(Ok(())) => {
                     panel.selected = Some(name);
                     panel.profiles.push(profile);

@@ -5,8 +5,8 @@ pub mod panel;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use domain_api::{ConnectionOpener, Domain, DomainId, DomainRegistry, HomeContext};
-use gpui::{App, AppContext};
+use domain_api::{ConnectionOpener, Domain, DomainId, DomainRegistry};
+use gpui::AppContext;
 use linop_core::DbRegistry;
 use one_core::storage::ConnectionType;
 
@@ -46,6 +46,16 @@ impl DbxRuntime {
             .to_vec();
         let runtime = Self::open_with(default_store_path(), profiles.clone()).await?;
         Ok((runtime, profiles))
+    }
+
+    /// 会话内追加连接(via 跳板从 connections.toml 解析)。
+    pub async fn add_profile(&self, profile: linop_core::DbProfile) -> anyhow::Result<()> {
+        let conns = linop_core::Registry::load_default()
+            .map_err(|e| anyhow::anyhow!("connections.toml 加载失败(via 隧道需要):{e}"))?;
+        self.0
+            .add_profile(profile, &conns)
+            .await
+            .map_err(|e| anyhow::anyhow!("{}", e))
     }
 }
 

@@ -7901,6 +7901,7 @@ dependencies = [
  "linop-core",
  "linop-db-core",
  "linop-db-types",
+ "linop-ssh",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -7917,6 +7918,17 @@ dependencies = [
  "linop_app",
  "shell_domain",
  "winresource",
+]
+
+[[package]]
+name = "linop-ssh"
+version = "0.1.0"
+dependencies = [
+ "dirs 7.0.0",
+ "linop-core",
+ "russh",
+ "thiserror 2.0.21",
+ "tokio",
 ]
 
 [[package]]
