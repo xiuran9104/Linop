@@ -51,7 +51,7 @@
 ## Execution Evidence
 
 - Base: `origin/main` at `eeab128d7`; isolated branch `codex/redis-prefix-refresh-13028`.
-- Claim: `/claim` accepted by dbx-bot; assignee is `caichangqing1120`.
+- Claim: `/claim` accepted by linop-db-bot; assignee is `caichangqing1120`.
 - Pre-flight: frontend-only change, existing issue is the requirement source, no SE review gate applies. Current checkout's unrelated untracked files are untouched.
 - Baseline: original subtree component suite passed 12/12. Initial feature regressions failed because the node action was missing. Cached-search and unrelated-subtree-cursor regressions also reproduced failures before their fixes.
 - Task 1: focused suite passed 29/29, including 17 new cases. No commit made: user authorization covers implementation and claim, not Git delivery.
@@ -62,7 +62,7 @@
 - Format: both changed source files pass oxfmt; whole-source check reports the unchanged baseline `apps/desktop/src/components/mqtt/__tests__/MqttAdminConsolePublishTopic.spec.ts`. Its working-tree blob and HEAD blob both equal `3a10f0fdcc1a7a6d1aa4e0805fd4b38f97840bcf`; unrelated formatting was not changed.
 - Lint passed with existing repository warnings. Connection-type generation validation and offline i18n dry-run passed; no new locale keys or lockfile changes.
 - Browser: actual RedisKeyBrowser and existing components/styles, HTTP boundary mocked with controlled Redis data. Verified expired removal, new key display, preserved expanded sibling, context-menu refresh and bounded explicit continuation. Captured 1440x900 light, 820x800 dark, 390x844 narrow, and continuation screenshots under the task visualization directory. Final DOM check: refreshed key present, expired key absent, sibling present, zero alerts; browser console had zero errors.
-- Browser cleanup: owned Playwright session `dbx13028` closed, its daemon/process absent; Vite stopped, temporary preview sources removed, browser logs moved to `/tmp/dbx-13028-browser-logs`. User-owned browser sessions were not touched.
+- Browser cleanup: owned Playwright session `dbx13028` closed, its daemon/process absent; Vite stopped, temporary preview sources removed, browser logs moved to `/tmp/linop-db-13028-browser-logs`. User-owned browser sessions were not touched.
 - Not covered: Windows desktop runtime and a live Redis server; backend API and server code are unchanged. Redis SCAN remains non-snapshot under external concurrent writes.
 - Initial delivery checkpoint: issue remained open and assigned to `caichangqing1120`; local changes retained on `codex/redis-prefix-refresh-13028`. No commit, push, PR, release or issue closure had been performed.
 - Delivery authorization: user subsequently confirmed committing, pushing to `caichangqing1120/dbx` and creating a PR targeting `t8y2/dbx:main`. Merge, release and worktree cleanup remain out of scope.

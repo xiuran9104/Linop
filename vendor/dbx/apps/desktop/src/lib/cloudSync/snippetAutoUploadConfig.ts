@@ -3,8 +3,8 @@ import { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet } from
 
 export const SNIPPET_AUTO_UPLOAD_CONFIG_CHANGED_EVENT = "dbx:snippet-auto-upload-config-changed";
 export const SNIPPET_LAST_UPLOAD_CHANGED_EVENT = "dbx:snippet-last-upload-changed";
-export const SNIPPET_AUTO_UPLOAD_SELECTION_STORAGE_KEY_PREFIX = "dbx-snippet-auto-upload-selection-";
-const SNIPPET_LAST_UPLOAD_STORAGE_KEY_PREFIX = "dbx-snippet-last-upload-";
+export const SNIPPET_AUTO_UPLOAD_SELECTION_STORAGE_KEY_PREFIX = "linop-db-snippet-auto-upload-selection-";
+const SNIPPET_LAST_UPLOAD_STORAGE_KEY_PREFIX = "linop-db-snippet-last-upload-";
 export const DEFAULT_SNIPPET_AUTO_UPLOAD_INTERVAL_MINUTES = 30;
 export const MAX_SNIPPET_AUTO_UPLOAD_INTERVAL_MINUTES = 1440;
 
@@ -50,12 +50,12 @@ function snippetScope(provider: SnippetProvider, instanceUrl?: string): string {
 }
 
 function preferenceKey(kind: "enabled" | "interval", provider: SnippetProvider, instanceUrl?: string): string {
-  return `dbx-snippet-auto-upload-${kind}-${snippetScope(provider, instanceUrl)}`;
+  return `linop-db-snippet-auto-upload-${kind}-${snippetScope(provider, instanceUrl)}`;
 }
 
 export function readSnippetAutoUploadConfig(): SnippetAutoUploadConfig {
-  const provider = normalizedProvider(safeLocalStorageGet("dbx-snippet-provider"));
-  const instanceUrl = safeLocalStorageGet("dbx-gitlab-instance-url")?.trim().replace(/\/$/, "") || "https://gitlab.com";
+  const provider = normalizedProvider(safeLocalStorageGet("linop-db-snippet-provider"));
+  const instanceUrl = safeLocalStorageGet("linop-db-gitlab-instance-url")?.trim().replace(/\/$/, "") || "https://gitlab.com";
   return {
     provider,
     instanceUrl: provider === "gitlab" ? instanceUrl : undefined,
@@ -91,7 +91,7 @@ export function writeSnippetAutoUploadSelection(provider: SnippetProvider, insta
 }
 
 export function snippetRemoteContentHashKey(provider: SnippetProvider, instanceUrl: string | undefined, snippetId: string): string {
-  return `dbx-snippet-auto-upload-remote-hash-${snippetScope(provider, instanceUrl)}-${encodeURIComponent(snippetId.trim())}`;
+  return `linop-db-snippet-auto-upload-remote-hash-${snippetScope(provider, instanceUrl)}-${encodeURIComponent(snippetId.trim())}`;
 }
 
 export function readSnippetRemoteContentHash(provider: SnippetProvider, instanceUrl: string | undefined, snippetId: string): string | undefined {

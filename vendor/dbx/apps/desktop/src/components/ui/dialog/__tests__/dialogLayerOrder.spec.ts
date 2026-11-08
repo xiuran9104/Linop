@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 
 const mountedApps: Array<{ unmount: () => void; host: HTMLElement }> = [];
 const mountedStyles: HTMLStyleElement[] = [];
-const floatingLayerRule = readFileSync(resolve(process.cwd(), "apps/desktop/src/styles/globals.css"), "utf8").match(/\[data-dbx-floating-layer\]\s*\{[^}]+\}/)?.[0];
+const floatingLayerRule = readFileSync(resolve(process.cwd(), "apps/desktop/src/styles/globals.css"), "utf8").match(/\[data-linop-db-floating-layer\]\s*\{[^}]+\}/)?.[0];
 
 if (!floatingLayerRule) {
   throw new Error("globals.css is missing the floating layer z-index rule");
@@ -221,8 +221,8 @@ describe("dialog layer order", () => {
 
     state.transferOpen = false;
     await flush();
-    expect(document.documentElement.style.getPropertyValue("--dbx-dialog-top-z-index")).toBe("50");
-    expect(document.documentElement.style.getPropertyValue("--dbx-floating-layer-z-index")).toBe("51");
+    expect(document.documentElement.style.getPropertyValue("--linop-db-dialog-top-z-index")).toBe("50");
+    expect(document.documentElement.style.getPropertyValue("--linop-db-floating-layer-z-index")).toBe("51");
 
     state.transferOpen = true;
     await flush();
@@ -274,9 +274,9 @@ describe("dialog layer order", () => {
     const selectContent = document.body.querySelector<HTMLElement>('[data-slot="select-content"]');
     const popperWrapper = document.body.querySelector<HTMLElement>("[data-reka-popper-content-wrapper]");
     expect(selectContent).not.toBeNull();
-    expect(popperWrapper?.hasAttribute("data-dbx-floating-layer")).toBe(true);
-    expect(selectContent?.className).toContain("z-(--dbx-floating-layer-z-index)");
-    expect(Number(document.documentElement.style.getPropertyValue("--dbx-floating-layer-z-index"))).toBe(dialog.zIndex + 1);
+    expect(popperWrapper?.hasAttribute("data-linop-db-floating-layer")).toBe(true);
+    expect(selectContent?.className).toContain("z-(--linop-db-floating-layer-z-index)");
+    expect(Number(document.documentElement.style.getPropertyValue("--linop-db-floating-layer-z-index"))).toBe(dialog.zIndex + 1);
     expect(getComputedStyle(popperWrapper!).zIndex).toContain(String(dialog.zIndex + 1));
   });
 
@@ -313,7 +313,7 @@ describe("dialog layer order", () => {
     await flush();
 
     const popperWrapper = document.body.querySelector<HTMLElement>("[data-reka-popper-content-wrapper]");
-    expect(popperWrapper?.style.getPropertyValue("--dbx-floating-content-z-index")).toBe("80");
+    expect(popperWrapper?.style.getPropertyValue("--linop-db-floating-content-z-index")).toBe("80");
     expect(getComputedStyle(popperWrapper!).zIndex).toContain("80");
   });
 });

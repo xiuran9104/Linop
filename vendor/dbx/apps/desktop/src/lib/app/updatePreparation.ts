@@ -4,7 +4,7 @@ import { uuid } from "@/lib/common/utils";
 
 const blockers = new Set<() => string | undefined>();
 let barrierDepth = 0;
-export const UPDATE_RESTORE_KEY = "dbx-update-restore-tabs";
+export const UPDATE_RESTORE_KEY = "linop-db-update-restore-tabs";
 
 /** Why the installer was held back — a block never installs anything. */
 export type UpdatePreparationBlockCode = "not_ready" | "tasks" | "drafts" | "config" | "config_busy" | "window_operation" | "busy" | "cancelled" | "timeout" | "windows_changed";

@@ -40,7 +40,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          BRANCH="app/dbx-${VERSION}"
+          BRANCH="app/linop-db-${VERSION}"
           git checkout -b "${BRANCH}"
           git add "${APP_DIR}"
 

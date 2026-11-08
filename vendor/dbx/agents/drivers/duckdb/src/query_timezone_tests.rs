@@ -17,7 +17,7 @@ struct ExtensionRepository {
 
 impl ExtensionRepository {
     fn new() -> Self {
-        let directory = std::env::temp_dir().join(format!("dbx-duckdb-timezone-{}", uuid::Uuid::new_v4()));
+        let directory = std::env::temp_dir().join(format!("linop-db-duckdb-timezone-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let listener = (20000..21000)
             .find_map(|port| TcpListener::bind(("127.0.0.1", port)).ok())

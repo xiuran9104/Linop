@@ -36,7 +36,7 @@ function watchConnectionTypes(server: ViteDevServer) {
 
 export function connectionTypesPlugin(): Plugin {
   return {
-    name: "dbx-connection-types",
+    name: "linop-db-connection-types",
     configResolved: syncConnectionTypes,
     configureServer: watchConnectionTypes,
   };

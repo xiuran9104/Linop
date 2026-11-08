@@ -53,9 +53,9 @@ describe("zookeeper lazy key tree", () => {
   it("keeps an exact focused Key without children as a leaf", () => {
     const state = createLazyKvKeyTreeState("", "relative");
 
-    replaceLazyKvFocusedRoot(state, { key: "dbx-demo/locks/persistent", numChildren: 0, valueSize: 12, hasValue: true }, [], null);
+    replaceLazyKvFocusedRoot(state, { key: "linop-db-demo/locks/persistent", numChildren: 0, valueSize: 12, hasValue: true }, [], null);
 
-    const leaf = state.nodeByKey.get("dbx-demo/locks/persistent");
+    const leaf = state.nodeByKey.get("linop-db-demo/locks/persistent");
     expect(leaf?.hasChildren).toBe(false);
     expect(leaf?.hasValue).toBe(true);
     expect(leaf?.label).toBe("persistent");

@@ -16,7 +16,7 @@ const DEFAULT_SCHEMA_DIFF_METADATA_CONCURRENCY = 6;
  * request per (connection, database) and turns anything that still has to wait
  * after `METADATA_POOL_ACQUIRE_TIMEOUT` (5s) into
  * `DBX metadata pool is busy; please retry`
- * (crates/dbx-core/src/connection/mod.rs). Fanning out further cannot add
+ * (crates/linop-db-core/src/connection/mod.rs). Fanning out further cannot add
  * throughput because the backend serializes those same requests anyway; it
  * only builds a queue that is guaranteed to time out.
  *

@@ -22,7 +22,7 @@ describe("foreign key checks option", () => {
 
   it("wraps disable / enable with save, set and restore of the session value", () => {
     expect(foreignKeyChecksPreview("TRUNCATE TABLE `a`;\nTRUNCATE TABLE `b`;", "disable", "mysql")).toBe(
-      ["SET @dbx_saved_foreign_key_checks = @@SESSION.FOREIGN_KEY_CHECKS;", "SET FOREIGN_KEY_CHECKS = 0;", "TRUNCATE TABLE `a`;", "TRUNCATE TABLE `b`;", "SET FOREIGN_KEY_CHECKS = @dbx_saved_foreign_key_checks;"].join("\n"),
+      ["SET @linop_db_saved_foreign_key_checks = @@SESSION.FOREIGN_KEY_CHECKS;", "SET FOREIGN_KEY_CHECKS = 0;", "TRUNCATE TABLE `a`;", "TRUNCATE TABLE `b`;", "SET FOREIGN_KEY_CHECKS = @linop_db_saved_foreign_key_checks;"].join("\n"),
     );
     expect(foreignKeyChecksScript(["DELETE FROM `a`"], "enable", "mysql")).toContain("SET FOREIGN_KEY_CHECKS = 1;");
     expect(foreignKeyChecksPreview("TRUNCATE a", "disable", "postgres")).toBe("TRUNCATE a");
@@ -52,7 +52,7 @@ describe("foreign key checks option", () => {
     );
 
     expect(execute).toHaveBeenCalledTimes(4);
-    expect(calls).toEqual(["SET @dbx_saved_foreign_key_checks = @@SESSION.FOREIGN_KEY_CHECKS", "SET FOREIGN_KEY_CHECKS = 0", "DROP TABLE `a`;\nDROP TABLE `b`;", "SET FOREIGN_KEY_CHECKS = @dbx_saved_foreign_key_checks"]);
+    expect(calls).toEqual(["SET @linop_db_saved_foreign_key_checks = @@SESSION.FOREIGN_KEY_CHECKS", "SET FOREIGN_KEY_CHECKS = 0", "DROP TABLE `a`;\nDROP TABLE `b`;", "SET FOREIGN_KEY_CHECKS = @linop_db_saved_foreign_key_checks"]);
     expect(progress).toEqual([1, 2]);
     expect(results.map((r) => r.statement_index)).toEqual([0, 1]);
 
@@ -73,7 +73,7 @@ describe("foreign key checks option", () => {
       close: vi.fn(),
     };
     await expect(runForeignKeyChecksBatch(["DROP TABLE `a`"], "disable", executor)).rejects.toThrow("Failed to set FOREIGN_KEY_CHECKS: denied");
-    expect(calls).toEqual(["SET @dbx_saved_foreign_key_checks = @@SESSION.FOREIGN_KEY_CHECKS", "SET FOREIGN_KEY_CHECKS = 0", "SET FOREIGN_KEY_CHECKS = @dbx_saved_foreign_key_checks"]);
+    expect(calls).toEqual(["SET @linop_db_saved_foreign_key_checks = @@SESSION.FOREIGN_KEY_CHECKS", "SET FOREIGN_KEY_CHECKS = 0", "SET FOREIGN_KEY_CHECKS = @linop_db_saved_foreign_key_checks"]);
     expect(executor.close).toHaveBeenCalledOnce();
   });
 

@@ -8,7 +8,7 @@ import { connectionTypesPlugin } from "./viteConnectionTypesPlugin.ts";
 
 const repoRoot = path.resolve(__dirname, "../..");
 const normalizedRepoRoot = repoRoot.replaceAll(path.sep, "/");
-const assetsDir = path.join(repoRoot, "crates/dbx-core/assets");
+const assetsDir = path.join(repoRoot, "crates/linop-db-core/assets");
 const fontPath = path.join(__dirname, "public/fonts/geist-latin-wght-normal.woff2");
 
 function sha256(buffer: Buffer | string): string {
@@ -69,7 +69,7 @@ function cssImportsOf(file: string, seen: Set<string>): void {
  */
 function exportBundlePlugin() {
   return {
-    name: "dbx-docs-export",
+    name: "linop-db-docs-export",
     // Vite's own `vite:css-post` creates the stylesheet asset in its
     // generateBundle, and it runs after normal user plugins. Without `post`
     // this hook fires while the CSS does not exist yet and the `@font-face`
@@ -139,7 +139,7 @@ function exportBundlePlugin() {
 export default defineConfig({
   root: __dirname,
   // The app's public/ holds the font files this build inlines. Left on, Vite
-  // would copy all of them into crates/dbx-core/assets beside the bundle.
+  // would copy all of them into crates/linop-db-core/assets beside the bundle.
   publicDir: false,
   plugins: [connectionTypesPlugin(), vue(), tailwindcss(), exportBundlePlugin()],
   resolve: { alias: { "@": path.resolve(__dirname, "src") } },

@@ -27,7 +27,7 @@ function value<T>(req: IDBRequest<T>): Promise<T> {
   });
 }
 async function open() {
-  return value(indexedDB.open("dbx-nacos-replace-history", 1));
+  return value(indexedDB.open("linop-db-nacos-replace-history", 1));
 }
 async function stored() {
   const db = await open();
@@ -122,7 +122,7 @@ describe("encrypted local Nacos history storage", () => {
     expect(await getNacosReplaceHistory("one", "main")).toBeDefined();
   });
   it("reports a database open error", async () => {
-    await value(indexedDB.open("dbx-nacos-replace-history", 2)).then((db) => db.close());
+    await value(indexedDB.open("linop-db-nacos-replace-history", 2)).then((db) => db.close());
     await expect(listNacosReplaceHistory("main")).rejects.toThrow("nacos-history-storage-failed");
   });
 });

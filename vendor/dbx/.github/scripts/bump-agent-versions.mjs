@@ -61,7 +61,7 @@ const nativeDriverDirectories = {
   etcd2: "etcd2-go",
 };
 const crateNativeDriverDirectories = {
-  "sqlite-worker": "crates/dbx-sqlite-worker",
+  "sqlite-worker": "crates/linop-db-sqlite-worker",
 };
 const nativeDriverModules = new Set(["cassandra", "duckdb", "hive", "argo", "oracle", "oracle-oci", "xugu", "kingbase", "iotdb", "neo4j", "nebula", "vastbase", "rabbitmq", "rocketmq", "zookeeper", "tdengine", "etcd", "etcd2", "sqlite-worker"]);
 const nativeDriverSharedPaths = {
@@ -132,7 +132,7 @@ export function evaluateAgentVersionBump({ versions, prevVersions = versions, ch
   }
 
   if (skipBump) {
-    logs.push("Skipping automatic module version bump for migrated first release; versions.json was carried over from dbx-agents.");
+    logs.push("Skipping automatic module version bump for migrated first release; versions.json was carried over from linop-db-agents.");
     for (const { moduleName, module } of resolvedModules) {
       changedModules.push(moduleName);
       if (module.javaBuild) javaModules.push(moduleName);

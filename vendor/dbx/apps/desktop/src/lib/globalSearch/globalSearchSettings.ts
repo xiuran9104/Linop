@@ -3,8 +3,8 @@ import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStor
 import { getSqlFileFolderPaths } from "@/lib/sqlFile/sqlFileFolders";
 import * as api from "@/lib/backend/api";
 
-const ROOTS_STORAGE_KEY = "dbx-global-search-roots";
-const EXTENSIONS_STORAGE_KEY = "dbx-global-search-extensions";
+const ROOTS_STORAGE_KEY = "linop-db-global-search-roots";
+const EXTENSIONS_STORAGE_KEY = "linop-db-global-search-extensions";
 export const DEFAULT_GLOBAL_SEARCH_EXTENSIONS = ["sql"];
 
 /**

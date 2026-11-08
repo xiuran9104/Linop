@@ -6,8 +6,8 @@ export interface CustomBasemapConfig {
   maxZoom: number;
 }
 
-export const CUSTOM_BASEMAP_SESSION_KEY = "dbx-layer-preview-custom-basemap";
-export const BASEMAP_SELECTION_SESSION_KEY = "dbx-layer-preview-selected-basemap";
+export const CUSTOM_BASEMAP_SESSION_KEY = "linop-db-layer-preview-custom-basemap";
+export const BASEMAP_SELECTION_SESSION_KEY = "linop-db-layer-preview-selected-basemap";
 export const DEFAULT_CUSTOM_BASEMAP_NAME = "Custom basemap";
 
 const BASEMAP_ID_PATTERN = /^[a-z0-9-]{1,50}$/;

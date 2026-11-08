@@ -13,7 +13,7 @@ function installBridge(channel) {
   });
   let initialized = false;
   const readyTimer = setInterval(() => {
-    if (!initialized) parent.postMessage({ source: "dbx-plugin", version: 1, channel, type: "ready" }, "*");
+    if (!initialized) parent.postMessage({ source: "linop-db-plugin", version: 1, channel, type: "ready" }, "*");
   }, 200);
   const encode = (input) => {
     const data = input instanceof Uint8Array ? input : new Uint8Array(input);
@@ -87,7 +87,7 @@ function installBridge(channel) {
         reject(new Error("Mock host request timed out"));
       }, 310000);
       pending.set(id, { resolve, reject, timer });
-      parent.postMessage({ source: "dbx-plugin", version: 1, channel, type: "request", id, method, params }, "*");
+      parent.postMessage({ source: "linop-db-plugin", version: 1, channel, type: "request", id, method, params }, "*");
     });
   const listen = (kind, callback) => {
     listeners[kind].add(callback);
@@ -165,7 +165,7 @@ function installBridge(channel) {
   });
   addEventListener("message", (event) => {
     const m = event.data;
-    if (event.source !== parent || m?.source !== "dbx-host" || m.channel !== channel || m.version !== 1) return;
+    if (event.source !== parent || m?.source !== "linop-db-host" || m.channel !== channel || m.version !== 1) return;
     if (m.type === "init") {
       contributionId = m.contributionId;
       initialized = true;
@@ -175,27 +175,27 @@ function installBridge(channel) {
       applyTheme(m.theme);
       resolveReady(context);
       for (const fn of listeners.init) fn(context);
-      dispatchEvent(new CustomEvent("dbx-plugin-init", { detail: m }));
+      dispatchEvent(new CustomEvent("linop-db-plugin-init", { detail: m }));
     }
     if (m.type === "context") {
       context = m.context || {};
       for (const fn of listeners.context) fn(context);
-      dispatchEvent(new CustomEvent("dbx-plugin-context", { detail: context }));
+      dispatchEvent(new CustomEvent("linop-db-plugin-context", { detail: context }));
     }
     if (m.type === "env") {
       locale = m.locale || locale;
       applyTheme(m.theme);
       for (const fn of listeners.event) fn(m);
-      dispatchEvent(new CustomEvent("dbx-plugin-env", { detail: m }));
+      dispatchEvent(new CustomEvent("linop-db-plugin-env", { detail: m }));
     }
     if (m.type === "event") {
       for (const fn of listeners.event) fn(m);
-      dispatchEvent(new CustomEvent("dbx-plugin-event", { detail: m }));
+      dispatchEvent(new CustomEvent("linop-db-plugin-event", { detail: m }));
     }
     if (m.type === "binary") {
       const payload = { channel: m.binaryChannel, data: decode(m.dataBase64) };
       for (const fn of listeners.binary) fn(payload);
-      dispatchEvent(new CustomEvent("dbx-plugin-binary", { detail: payload }));
+      dispatchEvent(new CustomEvent("linop-db-plugin-binary", { detail: payload }));
     }
     if (m.type === "response") {
       const waiter = pending.get(m.id);

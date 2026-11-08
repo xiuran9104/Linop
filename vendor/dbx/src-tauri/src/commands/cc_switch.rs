@@ -3,7 +3,7 @@ use std::{path::PathBuf, sync::Arc};
 use tauri::{AppHandle, Manager};
 
 use super::connection::AppState;
-pub use dbx_core::cc_switch::CcSwitchImportResult;
+pub use linop_db_core::cc_switch::CcSwitchImportResult;
 
 fn cc_switch_config_paths(home_dir: &std::path::Path) -> (PathBuf, PathBuf) {
     let config_dir = home_dir.join(".cc-switch");
@@ -18,8 +18,8 @@ pub async fn load_cc_switch_ai_configs(
     if state
         .plugins
         .find_capability_for_plugin(
-            dbx_core::cc_switch::CC_SWITCH_PLUGIN_ID,
-            dbx_core::cc_switch::CC_SWITCH_PLUGIN_CAPABILITY,
+            linop_db_core::cc_switch::CC_SWITCH_PLUGIN_ID,
+            linop_db_core::cc_switch::CC_SWITCH_PLUGIN_CAPABILITY,
         )?
         .is_none()
     {
@@ -30,9 +30,9 @@ pub async fn load_cc_switch_ai_configs(
     state
         .plugins
         .invoke_capability_for_plugin(
-            dbx_core::cc_switch::CC_SWITCH_PLUGIN_ID,
-            dbx_core::cc_switch::CC_SWITCH_PLUGIN_CAPABILITY,
-            dbx_core::cc_switch::CC_SWITCH_IMPORT_METHOD,
+            linop_db_core::cc_switch::CC_SWITCH_PLUGIN_ID,
+            linop_db_core::cc_switch::CC_SWITCH_PLUGIN_CAPABILITY,
+            linop_db_core::cc_switch::CC_SWITCH_IMPORT_METHOD,
             serde_json::json!({
                 "databasePath": database_path,
                 "settingsPath": settings_path,
@@ -63,8 +63,8 @@ pub async fn load_magpie_ai_configs(
     if state
         .plugins
         .find_capability_for_plugin(
-            dbx_core::cc_switch::CC_SWITCH_PLUGIN_ID,
-            dbx_core::cc_switch::CC_SWITCH_PLUGIN_CAPABILITY,
+            linop_db_core::cc_switch::CC_SWITCH_PLUGIN_ID,
+            linop_db_core::cc_switch::CC_SWITCH_PLUGIN_CAPABILITY,
         )?
         .is_none()
     {
@@ -79,9 +79,9 @@ pub async fn load_magpie_ai_configs(
     state
         .plugins
         .invoke_capability_for_plugin(
-            dbx_core::cc_switch::CC_SWITCH_PLUGIN_ID,
-            dbx_core::cc_switch::CC_SWITCH_PLUGIN_CAPABILITY,
-            dbx_core::cc_switch::MAGPIE_IMPORT_METHOD,
+            linop_db_core::cc_switch::CC_SWITCH_PLUGIN_ID,
+            linop_db_core::cc_switch::CC_SWITCH_PLUGIN_CAPABILITY,
+            linop_db_core::cc_switch::MAGPIE_IMPORT_METHOD,
             serde_json::json!({ "configPath": config_path }),
         )
         .await

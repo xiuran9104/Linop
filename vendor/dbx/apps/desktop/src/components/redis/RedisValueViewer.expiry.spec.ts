@@ -89,8 +89,8 @@ afterEach(() => {
     unmount();
     host.remove();
   }
-  localStorage.removeItem("dbx-redis-auto-refresh-enabled-v2");
-  localStorage.removeItem("dbx-redis-auto-refresh-interval-seconds-v2");
+  localStorage.removeItem("linop-db-redis-auto-refresh-enabled-v2");
+  localStorage.removeItem("linop-db-redis-auto-refresh-interval-seconds-v2");
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -366,8 +366,8 @@ describe("RedisValueViewer expiry saving", () => {
 
   it("polls the full value at the configured interval and reports it to the parent", async () => {
     vi.useFakeTimers();
-    localStorage.setItem("dbx-redis-auto-refresh-enabled-v2", "true");
-    localStorage.setItem("dbx-redis-auto-refresh-interval-seconds-v2", "5");
+    localStorage.setItem("linop-db-redis-auto-refresh-enabled-v2", "true");
+    localStorage.setItem("linop-db-redis-auto-refresh-interval-seconds-v2", "5");
     mocks.redisGetValue.mockResolvedValueOnce(stringValue("dmFsdWU=", 60)).mockResolvedValueOnce(stringValue("cmVmcmVzaGVk", 45));
     const loaded = vi.fn();
 
@@ -388,8 +388,8 @@ describe("RedisValueViewer expiry saving", () => {
 
   it("pauses automatic value polling while a collection member is open", async () => {
     vi.useFakeTimers();
-    localStorage.setItem("dbx-redis-auto-refresh-enabled-v2", "true");
-    localStorage.setItem("dbx-redis-auto-refresh-interval-seconds-v2", "1");
+    localStorage.setItem("linop-db-redis-auto-refresh-enabled-v2", "true");
+    localStorage.setItem("linop-db-redis-auto-refresh-interval-seconds-v2", "1");
     mocks.redisGetValue.mockResolvedValue(listValue());
 
     mountViewer(vi.fn());
@@ -414,8 +414,8 @@ describe("RedisValueViewer expiry saving", () => {
 
   it("keeps polling when the loaded TTL starts at zero", async () => {
     vi.useFakeTimers();
-    localStorage.setItem("dbx-redis-auto-refresh-enabled-v2", "true");
-    localStorage.setItem("dbx-redis-auto-refresh-interval-seconds-v2", "1");
+    localStorage.setItem("linop-db-redis-auto-refresh-enabled-v2", "true");
+    localStorage.setItem("linop-db-redis-auto-refresh-interval-seconds-v2", "1");
     mocks.redisGetValue.mockResolvedValueOnce(stringValue("dmFsdWU=", 0)).mockResolvedValueOnce(stringValue("dmFsdWU=", 30));
 
     mountViewer(vi.fn());
@@ -429,8 +429,8 @@ describe("RedisValueViewer expiry saving", () => {
 
   it("stops auto-refresh after a full-value polling error", async () => {
     vi.useFakeTimers();
-    localStorage.setItem("dbx-redis-auto-refresh-enabled-v2", "true");
-    localStorage.setItem("dbx-redis-auto-refresh-interval-seconds-v2", "1");
+    localStorage.setItem("linop-db-redis-auto-refresh-enabled-v2", "true");
+    localStorage.setItem("linop-db-redis-auto-refresh-interval-seconds-v2", "1");
     mocks.redisGetValue.mockResolvedValueOnce(stringValue("dmFsdWU=", 60)).mockRejectedValueOnce(new Error("network unavailable"));
 
     mountViewer(vi.fn());
@@ -446,8 +446,8 @@ describe("RedisValueViewer expiry saving", () => {
 
   it("keeps polling after an external PERSIST and picks up a later TTL", async () => {
     vi.useFakeTimers();
-    localStorage.setItem("dbx-redis-auto-refresh-enabled-v2", "true");
-    localStorage.setItem("dbx-redis-auto-refresh-interval-seconds-v2", "1");
+    localStorage.setItem("linop-db-redis-auto-refresh-enabled-v2", "true");
+    localStorage.setItem("linop-db-redis-auto-refresh-interval-seconds-v2", "1");
     mocks.redisGetValue.mockResolvedValueOnce(stringValue("dmFsdWU=", 60)).mockResolvedValueOnce(stringValue("dmFsdWU=", -1)).mockResolvedValueOnce(stringValue("dmFsdWU=", 30));
 
     mountViewer(vi.fn());
@@ -465,8 +465,8 @@ describe("RedisValueViewer expiry saving", () => {
 
   it("pauses polling while the document is hidden and resumes when visible", async () => {
     vi.useFakeTimers();
-    localStorage.setItem("dbx-redis-auto-refresh-enabled-v2", "true");
-    localStorage.setItem("dbx-redis-auto-refresh-interval-seconds-v2", "1");
+    localStorage.setItem("linop-db-redis-auto-refresh-enabled-v2", "true");
+    localStorage.setItem("linop-db-redis-auto-refresh-interval-seconds-v2", "1");
     mocks.redisGetValue.mockResolvedValue(stringValue("dmFsdWU=", 45));
     let visibilityState: DocumentVisibilityState = "visible";
     vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibilityState);
@@ -509,8 +509,8 @@ describe("RedisValueViewer expiry saving", () => {
 
   it("pauses polling while deactivated and resumes from the saved setting", async () => {
     vi.useFakeTimers();
-    localStorage.setItem("dbx-redis-auto-refresh-enabled-v2", "true");
-    localStorage.setItem("dbx-redis-auto-refresh-interval-seconds-v2", "1");
+    localStorage.setItem("linop-db-redis-auto-refresh-enabled-v2", "true");
+    localStorage.setItem("linop-db-redis-auto-refresh-interval-seconds-v2", "1");
     mocks.redisGetValue.mockResolvedValue(stringValue("dmFsdWU=", 45));
 
     const viewer = mountKeepAliveViewer();
@@ -529,8 +529,8 @@ describe("RedisValueViewer expiry saving", () => {
 
   it("pauses value polling while a value draft is unsaved", async () => {
     vi.useFakeTimers();
-    localStorage.setItem("dbx-redis-auto-refresh-enabled-v2", "true");
-    localStorage.setItem("dbx-redis-auto-refresh-interval-seconds-v2", "1");
+    localStorage.setItem("linop-db-redis-auto-refresh-enabled-v2", "true");
+    localStorage.setItem("linop-db-redis-auto-refresh-interval-seconds-v2", "1");
     mocks.redisGetValue.mockResolvedValueOnce(stringValue("dmFsdWU=", 60));
     const deleted = vi.fn();
 
@@ -547,8 +547,8 @@ describe("RedisValueViewer expiry saving", () => {
 
   it("ignores a missing-key response when a draft is created during value polling", async () => {
     vi.useFakeTimers();
-    localStorage.setItem("dbx-redis-auto-refresh-enabled-v2", "true");
-    localStorage.setItem("dbx-redis-auto-refresh-interval-seconds-v2", "1");
+    localStorage.setItem("linop-db-redis-auto-refresh-enabled-v2", "true");
+    localStorage.setItem("linop-db-redis-auto-refresh-interval-seconds-v2", "1");
     mocks.redisGetValue.mockResolvedValueOnce(stringValue("dmFsdWU=", 60));
     const valueRequest = deferred<ReturnType<typeof missingValue>>();
     mocks.redisGetValue.mockReturnValueOnce(valueRequest.promise);

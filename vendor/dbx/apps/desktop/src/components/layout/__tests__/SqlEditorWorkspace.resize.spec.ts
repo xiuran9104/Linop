@@ -19,7 +19,7 @@ describe("workspace real Splitpanes drag lifecycle", () => {
     vi.useFakeTimers();
     frames = [];
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => frames.push(callback));
-    localStorage.removeItem("dbx-shared-results-pane-size");
+    localStorage.removeItem("linop-db-shared-results-pane-size");
   });
 
   afterEach(() => {
@@ -109,15 +109,15 @@ describe("workspace real Splitpanes drag lifecycle", () => {
     expect(isPanelResizing.value).toBe(false);
     expect(resync).toHaveBeenCalledTimes(1);
     const sizes = [...store.sizes];
-    const resultSize = localStorage.getItem("dbx-shared-results-pane-size");
+    const resultSize = localStorage.getItem("linop-db-shared-results-pane-size");
     if (layout === "shared") expect(Number(resultSize)).toBeCloseTo(40);
     else expect(sizes).toEqual([60, 40]);
     await flushFrames();
     expect(isPanelResizing.value).toBe(false);
-    expect(document.body.classList.contains("dbx-is-resizing")).toBe(false);
+    expect(document.body.classList.contains("linop-db-is-resizing")).toBe(false);
     expect(resync).toHaveBeenCalledTimes(1);
     expect(store.sizes).toEqual(sizes);
-    expect(localStorage.getItem("dbx-shared-results-pane-size")).toBe(resultSize);
+    expect(localStorage.getItem("linop-db-shared-results-pane-size")).toBe(resultSize);
   });
 
   it("ignores the first queued frame when released before any frame runs", async () => {
@@ -127,7 +127,7 @@ describe("workspace real Splitpanes drag lifecycle", () => {
     document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
     await flushFrames();
     expect(isPanelResizing.value).toBe(false);
-    expect(document.body.classList.contains("dbx-is-resizing")).toBe(false);
+    expect(document.body.classList.contains("linop-db-is-resizing")).toBe(false);
   });
 
   it.each(["pointerup", "pointercancel", "blur", "unmount"])("cleans up on %s", async (eventName) => {
@@ -146,7 +146,7 @@ describe("workspace real Splitpanes drag lifecycle", () => {
     expect(isPanelResizing.value).toBe(false);
     await flushFrames();
     expect(isPanelResizing.value).toBe(false);
-    expect(document.body.classList.contains("dbx-is-resizing")).toBe(false);
+    expect(document.body.classList.contains("linop-db-is-resizing")).toBe(false);
     expect(resync).toHaveBeenCalledTimes(1);
   });
 

@@ -212,7 +212,7 @@ describe("SendMessagePanel post-send browsing", () => {
       expect(panel.querySelector('[data-testid="message-browser"]')?.classList.contains("message-browser")).toBe(true);
       expect(panel.querySelector('[data-testid="message-browser"]')?.classList.contains("is-monitoring")).toBe(false);
       await loadMessages(panel);
-      expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expectedTopic(system), "__dbx_kafka_viewer__", 20, system === "kafka" ? { startPosition: "latest" } : {});
+      expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expectedTopic(system), "__linop_db_kafka_viewer__", 20, system === "kafka" ? { startPosition: "latest" } : {});
       expect(panel.textContent).toContain("existing message");
 
       await sendMessage(panel, "new message");
@@ -229,7 +229,7 @@ describe("SendMessagePanel post-send browsing", () => {
     if (!startPosition) throw new Error("Kafka start position select not found");
     await setSelectValue(startPosition, "earliest");
     await loadMessages(panel);
-    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expectedTopic("kafka"), "__dbx_kafka_viewer__", 20, { startPosition: "earliest" });
+    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expectedTopic("kafka"), "__linop_db_kafka_viewer__", 20, { startPosition: "earliest" });
 
     await setSelectValue(startPosition, "offset");
     const partitionInput = panel.querySelector<HTMLInputElement>('[data-testid="kafka-peek-partition"]');
@@ -245,7 +245,7 @@ describe("SendMessagePanel post-send browsing", () => {
     expect(backend.mqPeekMessages).toHaveBeenCalledTimes(1);
 
     await loadMessages(panel);
-    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expectedTopic("kafka"), "__dbx_kafka_viewer__", 20, { startPosition: "offset", partition: 2, offset: 17 });
+    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expectedTopic("kafka"), "__linop_db_kafka_viewer__", 20, { startPosition: "offset", partition: 2, offset: 17 });
   });
 
   it("keeps Kafka's result limit within the supported range", async () => {
@@ -257,13 +257,13 @@ describe("SendMessagePanel post-send browsing", () => {
     await loadMessages(panel);
 
     expect(countInput.value).toBe("100");
-    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expectedTopic("kafka"), "__dbx_kafka_viewer__", 100, { startPosition: "latest" });
+    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expectedTopic("kafka"), "__linop_db_kafka_viewer__", 100, { startPosition: "latest" });
 
     await setInputValue(countInput, "");
     await loadMessages(panel);
 
     expect(countInput.value).toBe("20");
-    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expectedTopic("kafka"), "__dbx_kafka_viewer__", 20, { startPosition: "latest" });
+    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expectedTopic("kafka"), "__linop_db_kafka_viewer__", 20, { startPosition: "latest" });
   });
 
   it("does not request Kafka offset mode without an offset", async () => {
@@ -280,7 +280,7 @@ describe("SendMessagePanel post-send browsing", () => {
     if (!offsetInput) throw new Error("Kafka offset input not found");
     await setInputValue(offsetInput, "17");
     await loadMessages(panel);
-    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expectedTopic("kafka"), "__dbx_kafka_viewer__", 20, { startPosition: "offset", offset: 17 });
+    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expectedTopic("kafka"), "__linop_db_kafka_viewer__", 20, { startPosition: "offset", offset: 17 });
   });
 
   it("clears Kafka results and validation errors when the start position changes", async () => {
@@ -317,7 +317,7 @@ describe("SendMessagePanel post-send browsing", () => {
     await setSelectValue(startPosition, "latest");
     await loadMessages(panel);
 
-    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expectedTopic("kafka"), "__dbx_kafka_viewer__", 20, { startPosition: "latest", partition: 2 });
+    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expectedTopic("kafka"), "__linop_db_kafka_viewer__", 20, { startPosition: "latest", partition: 2 });
     await setSelectValue(startPosition, "offset");
     const restoredOffsetInput = panel.querySelector<HTMLInputElement>('[data-testid="kafka-peek-offset"]');
     expect(restoredOffsetInput?.value).toBe("17");
@@ -335,6 +335,6 @@ describe("SendMessagePanel post-send browsing", () => {
     await setInputValue(offsetInput, "17");
 
     await loadMessages(panel);
-    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expectedTopic("rabbitmq"), "__dbx_kafka_viewer__", 20, { partition: 2, offset: 17 });
+    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expectedTopic("rabbitmq"), "__linop_db_kafka_viewer__", 20, { partition: 2, offset: 17 });
   });
 });

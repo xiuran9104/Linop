@@ -27,7 +27,7 @@ describe("Windows offline installer template", () => {
     expect(template).not.toContain('!if "${INSTALLWEBVIEW2MODE}" != "fixedRuntime"');
     expect(template).toContain("${If} ${IsWin7}");
     expect(template).toContain("${OrIf} ${IsWin2012R2}");
-    expect(template).toContain('MessageBox MB_ICONSTOP|MB_YESNO|MB_DEFBUTTON1 "$(dbxWin7InstallerRequired)" IDYES dbx_open_win7_installer');
+    expect(template).toContain('MessageBox MB_ICONSTOP|MB_YESNO|MB_DEFBUTTON1 "$(dbxWin7InstallerRequired)" IDYES linop_db_open_win7_installer');
     expect(template).toContain("https://dl.dbxio.com/releases/v${VERSION}/DBX_${VERSION}_x64-win7-server2012r2-offline-setup.exe?v=${VERSION}");
     expect(template).toContain("SetErrorLevel 1633");
     expect(template).toContain("${OrIf} $PassiveMode = 1");

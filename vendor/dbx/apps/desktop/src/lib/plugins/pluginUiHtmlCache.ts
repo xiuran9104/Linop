@@ -51,7 +51,7 @@ export function clearPluginUiHtmlCache(): void {
 /** Base URL for packaged plugin UI resources on desktop hosts. */
 export function pluginUiAssetBaseUrl(pluginId: string, entryDirectory = ""): string | undefined {
   if (!isTauriRuntime()) return undefined;
-  const origin = location.protocol === "http:" || location.protocol === "https:" ? `${location.protocol}//dbx-plugin.localhost/${pluginId}/` : `dbx-plugin://localhost/${pluginId}/`;
+  const origin = location.protocol === "http:" || location.protocol === "https:" ? `${location.protocol}//linop-db-plugin.localhost/${pluginId}/` : `linop-db-plugin://localhost/${pluginId}/`;
   return entryDirectory ? `${origin}${entryDirectory}/` : origin;
 }
 
@@ -65,7 +65,7 @@ function pluginUiAssetUrl(pluginId: string, path: string, source: string): strin
       .join("/"),
     baseUrl,
   );
-  const sourceUrl = new URL(source.trim(), "https://dbx-plugin.invalid/");
+  const sourceUrl = new URL(source.trim(), "https://linop-db-plugin.invalid/");
   assetUrl.search = sourceUrl.search;
   assetUrl.hash = sourceUrl.hash;
   return assetUrl.href;
@@ -75,8 +75,8 @@ function localUiAssetPath(source: string): string | undefined {
   const trimmed = source.trim();
   if (!trimmed || /^(?:blob:|data:|https?:|\/\/)/i.test(trimmed)) return undefined;
   try {
-    const resolved = new URL(trimmed, "https://dbx-plugin.invalid/");
-    if (resolved.origin !== "https://dbx-plugin.invalid") return undefined;
+    const resolved = new URL(trimmed, "https://linop-db-plugin.invalid/");
+    if (resolved.origin !== "https://linop-db-plugin.invalid") return undefined;
     const path = decodeURIComponent(resolved.pathname).replace(/^\/+/, "");
     if (!path || path.split("/").some((segment) => segment === "..")) return undefined;
     return path;

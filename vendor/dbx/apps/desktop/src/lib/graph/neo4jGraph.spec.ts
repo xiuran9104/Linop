@@ -23,7 +23,7 @@ describe("Neo4j graph adapter", () => {
         { owner: "", name: "name", type: "string", value: "before" },
       ],
     };
-    const result = extractGraphCells({ columns: ["nested"], rows: [[{ __dbx_graph_cell: "neo4j-v1", kind: "map", display: "before", nodes: [binaryNode], edges: [], displayParts: ['{"node":', { nodeId: "n" }, "}"] }]] as unknown as QueryResult["rows"], affected_rows: 0, execution_time_ms: 0 });
+    const result = extractGraphCells({ columns: ["nested"], rows: [[{ __linop_db_graph_cell: "neo4j-v1", kind: "map", display: "before", nodes: [binaryNode], edges: [], displayParts: ['{"node":', { nodeId: "n" }, "}"] }]] as unknown as QueryResult["rows"], affected_rows: 0, execution_time_ms: 0 });
     applyNeo4jGraphPropertyToResult(result, binaryNode, binaryNode.properties[1], { ...binaryNode.properties[1], value: "after" });
     expect(JSON.parse(String(result.rows[0][0])).node.properties).toEqual({ bytes: '\u0000binary"\\text', name: "after" });
   });
@@ -36,7 +36,7 @@ describe("Neo4j graph adapter", () => {
         { owner: "", name: "age", type: "int", value: "9007199254740993" },
       ],
     };
-    const result = extractGraphCells({ columns: ["n"], rows: [[{ __dbx_graph_cell: "neo4j-v1", kind: "vertex", display: "before", nodes: [binaryNode], edges: [] }]] as unknown as QueryResult["rows"], affected_rows: 0, execution_time_ms: 0 });
+    const result = extractGraphCells({ columns: ["n"], rows: [[{ __linop_db_graph_cell: "neo4j-v1", kind: "vertex", display: "before", nodes: [binaryNode], edges: [] }]] as unknown as QueryResult["rows"], affected_rows: 0, execution_time_ms: 0 });
     applyNeo4jGraphPropertyToResult(result, binaryNode, binaryNode.properties[1], { ...binaryNode.properties[1], value: "9007199254740994" });
     expect(result.rows[0][0]).toContain('"bytes":["0","34","255"]');
     expect(result.rows[0][0]).toContain('"age":9007199254740994');
@@ -44,7 +44,7 @@ describe("Neo4j graph adapter", () => {
   it("updates nested graph references without parsing or rounding scalar JSON tokens", () => {
     const result = extractGraphCells({
       columns: ["nested"],
-      rows: [[{ __dbx_graph_cell: "neo4j-v1", kind: "map", display: "before", nodes: [structuredClone(node)], edges: [structuredClone(edge)], displayParts: ['{"count":9007199254740997,"node":', { nodeId: "n" }, ',"edge":', { edgeId: "r" }, "}"] }]] as unknown as QueryResult["rows"],
+      rows: [[{ __linop_db_graph_cell: "neo4j-v1", kind: "map", display: "before", nodes: [structuredClone(node)], edges: [structuredClone(edge)], displayParts: ['{"count":9007199254740997,"node":', { nodeId: "n" }, ',"edge":', { edgeId: "r" }, "}"] }]] as unknown as QueryResult["rows"],
       affected_rows: 0,
       execution_time_ms: 0,
     });
@@ -71,9 +71,9 @@ describe("Neo4j graph adapter", () => {
   });
 
   it("keeps scalar results unchanged and refreshes direct graph cells after updates", () => {
-    const result = extractGraphCells({ columns: ["n", "count"], rows: [[{ __dbx_graph_cell: "neo4j-v1", kind: "vertex", display: "before", nodes: [structuredClone(node)], edges: [] }, "12"]] as unknown as QueryResult["rows"], affected_rows: 0, execution_time_ms: 0 });
+    const result = extractGraphCells({ columns: ["n", "count"], rows: [[{ __linop_db_graph_cell: "neo4j-v1", kind: "vertex", display: "before", nodes: [structuredClone(node)], edges: [] }, "12"]] as unknown as QueryResult["rows"], affected_rows: 0, execution_time_ms: 0 });
     expect(result.rows).toEqual([["before", "12"]]);
-    const updated = graphPropertyFromUpdateResult({ columns: ["dbx_value"], rows: [["9007199254740994"]], affected_rows: 0, execution_time_ms: 0 }, node.properties[0]);
+    const updated = graphPropertyFromUpdateResult({ columns: ["linop_db_value"], rows: [["9007199254740994"]], affected_rows: 0, execution_time_ms: 0 }, node.properties[0]);
     applyNeo4jGraphPropertyToResult(result, node, node.properties[0], updated);
     expect(result.rows[0][0]).toBe('(:Person {"age":9007199254740994})');
     expect(result.graph_data?.nodes[0].properties[0].value).toBe("9007199254740994");

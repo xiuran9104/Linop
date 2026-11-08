@@ -1,6 +1,6 @@
 const UNSAFE_WORDS = new Set(["CREATE", "INSERT", "MERGE", "SET", "REMOVE", "DELETE", "DETACH", "DROP", "ALTER", "RENAME", "GRANT", "REVOKE", "DENY", "CALL", "FOREACH", "LOAD", "START", "STOP", "TERMINATE"]);
 
-// Keep parity with dbx-sql-core/cypher_read_only.rs. `--` must remain an edge.
+// Keep parity with linop-db-sql-core/cypher_read_only.rs. `--` must remain an edge.
 export function isProvenReadOnlyCypher(source: string): boolean {
   // Neo4j expands Unicode escapes before lexing, including inside comments.
   if (source.includes("\\u")) return false;

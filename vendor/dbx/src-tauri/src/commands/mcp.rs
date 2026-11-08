@@ -24,11 +24,11 @@ pub(crate) fn cleanup_mcp_installation_temp_files() {
     }
 }
 
-const MCP_PACKAGE_NAME: &str = "@dbx-app/mcp-server";
-const MCP_LATEST_URL: &str = "https://registry.npmjs.org/@dbx-app%2fmcp-server/latest";
-const MCP_UNINSTALL_COMMAND: &str = "npm uninstall -g @dbx-app/mcp-server";
-const MCP_PNPM_UNINSTALL_COMMAND: &str = "pnpm remove -g @dbx-app/mcp-server";
-const MCP_BUN_UNINSTALL_COMMAND: &str = "bun remove -g @dbx-app/mcp-server";
+const MCP_PACKAGE_NAME: &str = "@linop-db-app/mcp-server";
+const MCP_LATEST_URL: &str = "https://registry.npmjs.org/@linop-db-app%2fmcp-server/latest";
+const MCP_UNINSTALL_COMMAND: &str = "npm uninstall -g @linop-db-app/mcp-server";
+const MCP_PNPM_UNINSTALL_COMMAND: &str = "pnpm remove -g @linop-db-app/mcp-server";
+const MCP_BUN_UNINSTALL_COMMAND: &str = "bun remove -g @linop-db-app/mcp-server";
 const MCP_MIN_NODE_VERSION: NodeVersion = NodeVersion { major: 18, minor: 18, patch: 0 };
 const MCP_MIN_NODE_VERSION_REQUIREMENT: &str = ">=18.18.0";
 const SHELL_COMMAND_MARKER: &str = "__DBX_MCP_COMMAND_OUTPUT_START__";
@@ -204,7 +204,7 @@ impl NodeRuntime {
                     &[
                         OsString::from("add"),
                         OsString::from("-g"),
-                        OsString::from("@dbx-app/mcp-server@latest"),
+                        OsString::from("@linop-db-app/mcp-server@latest"),
                         OsString::from("--global-dir"),
                         global_dir,
                     ],
@@ -221,7 +221,7 @@ impl NodeRuntime {
             Some(McpPackageManager::Bun { command_path: Some(command_path), bun_install, .. }) => {
                 run_package_manager_command(
                     command_path,
-                    &[OsString::from("add"), OsString::from("-g"), OsString::from("@dbx-app/mcp-server@latest")],
+                    &[OsString::from("add"), OsString::from("-g"), OsString::from("@linop-db-app/mcp-server@latest")],
                     &self.node_launcher_path,
                     ("BUN_INSTALL", bun_install),
                 )
@@ -237,7 +237,7 @@ impl NodeRuntime {
                 MCP_PACKAGE_NAME,
                 launcher_dir.display()
             )),
-            _ => self.npm_output(&["install", "-g", "@dbx-app/mcp-server@latest"]),
+            _ => self.npm_output(&["install", "-g", "@linop-db-app/mcp-server@latest"]),
         }
     }
 
@@ -322,7 +322,7 @@ pub async fn check_mcp_server_status(app: AppHandle) -> Result<McpServerStatus, 
             .version
             .as_deref()
             .zip(latest_version.as_deref())
-            .is_some_and(|(current, latest)| dbx_core::update::is_newer_version(latest, current));
+            .is_some_and(|(current, latest)| linop_db_core::update::is_newer_version(latest, current));
         return Ok(McpServerStatus {
             installed: true,
             installation_source: Some(native.source().to_string()),
@@ -349,7 +349,7 @@ pub async fn check_mcp_server_status(app: AppHandle) -> Result<McpServerStatus, 
     let update_available = current_version
         .as_deref()
         .zip(latest_version.as_deref())
-        .is_some_and(|(current, latest)| dbx_core::update::is_newer_version(latest, current));
+        .is_some_and(|(current, latest)| linop_db_core::update::is_newer_version(latest, current));
     let error = mcp_status_installation_error(installation);
 
     Ok(McpServerStatus {
@@ -377,7 +377,7 @@ pub async fn check_mcp_server_status(app: AppHandle) -> Result<McpServerStatus, 
     })
 }
 
-/// Whether a background `dbx-mcp` launch can read the DBX encryption key.
+/// Whether a background `linop-db-mcp` launch can read the DBX encryption key.
 /// Kept apart from `check_mcp_server_status` so the frequent update-badge
 /// polling does not spawn a probe process.
 #[tauri::command]
@@ -450,7 +450,7 @@ fn install_or_update_npm_mcp_server_sync(runtime: NodeRuntime) -> Result<String,
             installed.npm_root.display()
         )
     })?;
-    Ok(format!("Successfully installed @dbx-app/mcp-server@{}", installation.package_version))
+    Ok(format!("Successfully installed @linop-db-app/mcp-server@{}", installation.package_version))
 }
 
 #[tauri::command]
@@ -491,9 +491,9 @@ fn uninstall_npm_mcp_server_sync() -> Result<String, String> {
 }
 
 async fn fetch_latest_mcp_version() -> Result<String, String> {
-    let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(10)).user_agent("dbx-mcp-status-checker");
+    let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(10)).user_agent("linop-db-mcp-status-checker");
     let proxy_url =
-        tauri::async_runtime::spawn_blocking(dbx_core::update::system_proxy_url).await.map_err(|e| e.to_string())?;
+        tauri::async_runtime::spawn_blocking(linop_db_core::update::system_proxy_url).await.map_err(|e| e.to_string())?;
     if let Some(proxy_url) = proxy_url {
         let proxy = reqwest::Proxy::all(&proxy_url).map_err(|e| format!("Invalid system proxy URL: {e}"))?;
         builder = builder.proxy(proxy);
@@ -565,7 +565,7 @@ fn resolve_mise_mcp_command(
     }
 
     let shim_path = canonical_runtime_path(shim_path)?;
-    let script_path = resolve_mise_command("dbx-mcp-server").and_then(|path| canonical_runtime_path(&path))?;
+    let script_path = resolve_mise_command("linop-db-mcp-server").and_then(|path| canonical_runtime_path(&path))?;
     if script_path == shim_path {
         return None;
     }
@@ -978,7 +978,7 @@ fn npm_output(node_path: &Path, npm_cli_path: &Path, args: &[&str]) -> Result<Co
     let mut command_args = Vec::with_capacity(args.len() + 1);
     command_args.push(npm_cli_path.as_os_str().to_os_string());
     command_args.extend(args.iter().map(|arg| OsString::from(*arg)));
-    let mut command = dbx_core::process::new_std_command(node_path);
+    let mut command = linop_db_core::process::new_std_command(node_path);
     command.args(&command_args);
     if let Some(node_dir) = node_path.parent() {
         let mut paths = vec![node_dir.to_path_buf()];
@@ -998,7 +998,7 @@ fn run_package_manager_command(
     node_launcher_path: &Path,
     package_home_env: (&str, &Path),
 ) -> Result<CommandOutput, String> {
-    let mut command = dbx_core::process::new_std_command(command_path);
+    let mut command = linop_db_core::process::new_std_command(command_path);
     command.args(args);
     let mut paths = command_path.parent().into_iter().map(Path::to_path_buf).collect::<Vec<_>>();
     if let Some(node_dir) = node_launcher_path.parent() {
@@ -1039,7 +1039,7 @@ fn mcp_package(package_root: &Path) -> Option<McpPackage> {
     let entry = match value.get("bin")? {
         serde_json::Value::String(entry) => entry.as_str(),
         serde_json::Value::Object(entries) => {
-            entries.get("dbx-mcp-server").or_else(|| entries.get("mcp-server"))?.as_str()?
+            entries.get("linop-db-mcp-server").or_else(|| entries.get("mcp-server"))?.as_str()?
         }
         _ => return None,
     };
@@ -1090,7 +1090,7 @@ fn mcp_package_supports_node(package: &McpPackage, node_version: NodeVersion) ->
 }
 
 fn mcp_package_from_command_dir(dir: &Path) -> Option<LocatedMcpPackage> {
-    ["dbx-mcp-server", "mcp-server"].into_iter().find_map(|command| {
+    ["linop-db-mcp-server", "mcp-server"].into_iter().find_map(|command| {
         command_file_names(command).into_iter().map(|name| dir.join(name)).find_map(|path| {
             if !path.is_file() {
                 return None;
@@ -1181,7 +1181,7 @@ fn bun_package_manager(package_root: &Path, launcher_dir: &Path) -> Option<McpPa
 }
 
 /// Returns the `node_modules` directory when `package_root` sits directly inside a
-/// bun global install (`<...>/install/global/node_modules/@dbx-app/mcp-server`).
+/// bun global install (`<...>/install/global/node_modules/@linop-db-app/mcp-server`).
 fn bun_global_modules_root(package_root: &Path) -> Option<PathBuf> {
     let node_modules = package_root
         .ancestors()
@@ -1203,7 +1203,7 @@ fn bun_global_node_modules(bun_install: &Path) -> PathBuf {
     bun_install.join("install").join("global").join("node_modules")
 }
 
-/// Windows bun bins are native `.exe` shims (`<bun_install>/bin/dbx-mcp-server.exe`)
+/// Windows bun bins are native `.exe` shims (`<bun_install>/bin/linop-db-mcp-server.exe`)
 /// that cannot be resolved back to a node script, so `mcp_package_from_command_path`
 /// would otherwise drop the whole detection before reaching bun attribution. Probe
 /// bun's global `node_modules` layout directly so such an `.exe` launcher still
@@ -1333,17 +1333,17 @@ fn mcp_native_binary_path_for(
 
 fn mcp_native_package() -> Option<(&'static str, &'static str)> {
     if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
-        Some(("@dbx-app/mcp-darwin-arm64", "dbx-mcp"))
+        Some(("@linop-db-app/mcp-darwin-arm64", "linop-db-mcp"))
     } else if cfg!(all(target_os = "macos", target_arch = "x86_64")) {
-        Some(("@dbx-app/mcp-darwin-x64", "dbx-mcp"))
+        Some(("@linop-db-app/mcp-darwin-x64", "linop-db-mcp"))
     } else if cfg!(all(target_os = "linux", target_arch = "aarch64")) {
-        Some(("@dbx-app/mcp-linux-arm64-gnu", "dbx-mcp"))
+        Some(("@linop-db-app/mcp-linux-arm64-gnu", "linop-db-mcp"))
     } else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-        Some(("@dbx-app/mcp-linux-x64-gnu", "dbx-mcp"))
+        Some(("@linop-db-app/mcp-linux-x64-gnu", "linop-db-mcp"))
     } else if cfg!(all(target_os = "windows", target_arch = "aarch64")) {
-        Some(("@dbx-app/mcp-win32-arm64", "dbx-mcp.exe"))
+        Some(("@linop-db-app/mcp-win32-arm64", "linop-db-mcp.exe"))
     } else if cfg!(all(target_os = "windows", target_arch = "x86_64")) {
-        Some(("@dbx-app/mcp-win32-x64", "dbx-mcp.exe"))
+        Some(("@linop-db-app/mcp-win32-x64", "linop-db-mcp.exe"))
     } else {
         None
     }
@@ -1366,13 +1366,13 @@ fn npm_prefix_from_root(npm_root: &Path) -> PathBuf {
 
 #[cfg(not(windows))]
 fn mcp_bin_path(npm_prefix: &Path) -> Option<PathBuf> {
-    let path = npm_prefix.join("bin").join("dbx-mcp-server");
+    let path = npm_prefix.join("bin").join("linop-db-mcp-server");
     path.is_file().then_some(path)
 }
 
 #[cfg(windows)]
 fn mcp_bin_path(npm_prefix: &Path) -> Option<PathBuf> {
-    ["dbx-mcp-server.cmd", "dbx-mcp-server.exe", "dbx-mcp-server.bat", "dbx-mcp-server"]
+    ["linop-db-mcp-server.cmd", "linop-db-mcp-server.exe", "linop-db-mcp-server.bat", "linop-db-mcp-server"]
         .into_iter()
         .map(|name| npm_prefix.join(name))
         .find(|path| path.is_file())
@@ -1409,7 +1409,7 @@ pub(crate) fn locate_command(command: &str) -> Option<String> {
 }
 
 fn locate_mcp_bin() -> Option<PathBuf> {
-    locate_command("dbx-mcp-server").map(PathBuf::from)
+    locate_command("linop-db-mcp-server").map(PathBuf::from)
 }
 
 #[cfg(windows)]
@@ -1490,7 +1490,7 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let mut cmd = dbx_core::process::new_std_command(command);
+    let mut cmd = linop_db_core::process::new_std_command(command);
     cmd.args(args);
     command_output_from_process(cmd)
 }
@@ -1582,7 +1582,7 @@ fn run_command_through_user_shell(command: &str, args: &[&str]) -> Result<Comman
 
 #[cfg(not(windows))]
 fn run_user_shell_command(shell: &str, args: &[String]) -> Result<CommandOutput, String> {
-    let mut command = dbx_core::process::new_std_command(shell);
+    let mut command = linop_db_core::process::new_std_command(shell);
     command.args(args);
     #[cfg(target_os = "linux")]
     {
@@ -1620,9 +1620,9 @@ fn user_shell_invocation_args(script: &str) -> (String, Vec<String>) {
 #[cfg(not(windows))]
 fn bash_login_script(script: &str) -> String {
     format!(
-        "for dbx_profile in ~/.bash_profile ~/.bash_login ~/.profile ~/.bashrc; do \
-         [ -r \"$dbx_profile\" ] && . \"$dbx_profile\"; \
-         done; unset dbx_profile; {script}"
+        "for linop_db_profile in ~/.bash_profile ~/.bash_login ~/.profile ~/.bashrc; do \
+         [ -r \"$linop_db_profile\" ] && . \"$linop_db_profile\"; \
+         done; unset linop_db_profile; {script}"
     )
 }
 
@@ -1677,9 +1677,9 @@ mod tests {
     use super::{shell_command_script, shell_quote};
     use std::path::PathBuf;
 
-    const PNPM_10_27_POSIX_SHIM: &str = include_str!("../../tests/fixtures/pnpm/10.27.0/dbx-mcp-server");
-    const PNPM_10_27_CMD_SHIM: &str = include_str!("../../tests/fixtures/pnpm/10.27.0/dbx-mcp-server.cmd");
-    const PNPM_10_27_POWERSHELL_SHIM: &str = include_str!("../../tests/fixtures/pnpm/10.27.0/dbx-mcp-server.ps1");
+    const PNPM_10_27_POSIX_SHIM: &str = include_str!("../../tests/fixtures/pnpm/10.27.0/linop-db-mcp-server");
+    const PNPM_10_27_CMD_SHIM: &str = include_str!("../../tests/fixtures/pnpm/10.27.0/linop-db-mcp-server.cmd");
+    const PNPM_10_27_POWERSHELL_SHIM: &str = include_str!("../../tests/fixtures/pnpm/10.27.0/linop-db-mcp-server.ps1");
 
     struct PnpmFixture {
         root: PathBuf,
@@ -1708,29 +1708,29 @@ mod tests {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("dbx-pnpm-10-27-fixture-{}-{nonce}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("linop-db-pnpm-10-27-fixture-{}-{nonce}", std::process::id()));
         let pnpm_home = root.join("pnpm-home");
         let launcher_path = pnpm_home.join(launcher_name);
         let pnpm_path = pnpm_home.join(if cfg!(windows) { "pnpm.cmd" } else { "pnpm" });
         let global_dir = root.join("global").join("5");
         let package_root = global_dir
             .join(".pnpm")
-            .join("@dbx-app+mcp-server@0.4.71")
+            .join("@linop-db-app+mcp-server@0.4.71")
             .join("node_modules")
-            .join("@dbx-app")
+            .join("@linop-db-app")
             .join("mcp-server");
-        let script_path = package_root.join("bin").join("dbx-mcp-server.js");
+        let script_path = package_root.join("bin").join("linop-db-mcp-server.js");
 
         std::fs::create_dir_all(script_path.parent().unwrap()).unwrap();
         std::fs::create_dir_all(&pnpm_home).unwrap();
         std::fs::write(&launcher_path, launcher).unwrap();
         std::fs::write(&pnpm_path, "pnpm 10.27.0 fixture\n").unwrap();
-        std::fs::write(&script_path, "// @dbx-app/mcp-server fixture\n").unwrap();
-        std::fs::write(global_dir.join("package.json"), r#"{"dependencies":{"@dbx-app/mcp-server":"^0.4.71"}}"#)
+        std::fs::write(&script_path, "// @linop-db-app/mcp-server fixture\n").unwrap();
+        std::fs::write(global_dir.join("package.json"), r#"{"dependencies":{"@linop-db-app/mcp-server":"^0.4.71"}}"#)
             .unwrap();
         std::fs::write(
             package_root.join("package.json"),
-            r#"{"name":"@dbx-app/mcp-server","version":"0.4.71","bin":{"dbx-mcp-server":"bin/dbx-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
+            r#"{"name":"@linop-db-app/mcp-server","version":"0.4.71","bin":{"linop-db-mcp-server":"bin/linop-db-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
         )
         .unwrap();
 
@@ -1759,22 +1759,22 @@ mod tests {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("dbx-bun-fixture-{}-{nonce}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("linop-db-bun-fixture-{}-{nonce}", std::process::id()));
         let bun_install = root.join(".bun");
         let bin_dir = bun_install.join("bin");
         let launcher_path = bin_dir.join(launcher_name);
         let bun_path = bin_dir.join(if cfg!(windows) { "bun.exe" } else { "bun" });
         let global_modules_root = bun_install.join("install").join("global").join("node_modules");
-        let package_root = global_modules_root.join("@dbx-app").join("mcp-server");
-        let script_path = package_root.join("bin").join("dbx-mcp-server.js");
+        let package_root = global_modules_root.join("@linop-db-app").join("mcp-server");
+        let script_path = package_root.join("bin").join("linop-db-mcp-server.js");
 
         std::fs::create_dir_all(script_path.parent().unwrap()).unwrap();
         std::fs::create_dir_all(&bin_dir).unwrap();
         std::fs::write(&bun_path, "bun 1.2.0 fixture\n").unwrap();
-        std::fs::write(&script_path, "// @dbx-app/mcp-server fixture\n").unwrap();
+        std::fs::write(&script_path, "// @linop-db-app/mcp-server fixture\n").unwrap();
         std::fs::write(
             package_root.join("package.json"),
-            r#"{"name":"@dbx-app/mcp-server","version":"0.4.71","bin":{"dbx-mcp-server":"bin/dbx-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
+            r#"{"name":"@linop-db-app/mcp-server","version":"0.4.71","bin":{"linop-db-mcp-server":"bin/linop-db-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
         )
         .unwrap();
 
@@ -1835,10 +1835,10 @@ mod tests {
     #[cfg(not(windows))]
     #[test]
     fn shell_command_script_marks_command_output_after_startup_noise() {
-        let script = shell_command_script("npm", &["list", "-g", "@dbx-app/mcp-server", "--json"]);
+        let script = shell_command_script("npm", &["list", "-g", "@linop-db-app/mcp-server", "--json"]);
 
         assert!(script.contains(SHELL_COMMAND_MARKER));
-        assert!(script.contains("'@dbx-app/mcp-server'"));
+        assert!(script.contains("'@linop-db-app/mcp-server'"));
     }
 
     #[cfg(not(windows))]
@@ -1869,7 +1869,7 @@ mod tests {
 
     #[test]
     fn reported_global_root_can_be_resolved_before_it_exists() {
-        let path = std::env::temp_dir().join(format!("dbx-mcp-missing-root-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("linop-db-mcp-missing-root-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
 
         assert_eq!(normalized_reported_path(&path), Some(path));
@@ -1895,7 +1895,7 @@ mod tests {
     #[test]
     fn incompatible_runtime_cannot_win_with_shared_mcp_package() {
         let shared_npm_root = "/runtime/shared/node_modules";
-        let shared_script = "/runtime/shared/node_modules/@dbx-app/mcp-server/dist/index.js";
+        let shared_script = "/runtime/shared/node_modules/@linop-db-app/mcp-server/dist/index.js";
         let old_runtime =
             runtime_with_version_and_root("/runtime/node-18", shared_npm_root, Some(shared_script), "v18.17.1");
         let compatible_runtime =
@@ -1934,13 +1934,13 @@ mod tests {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("dbx-mcp-package-test-{}-{nonce}", std::process::id()));
-        let current_entry = dir.join("bin").join("dbx-mcp-server.js");
+        let dir = std::env::temp_dir().join(format!("linop-db-mcp-package-test-{}-{nonce}", std::process::id()));
+        let current_entry = dir.join("bin").join("linop-db-mcp-server.js");
         std::fs::create_dir_all(current_entry.parent().unwrap()).unwrap();
         std::fs::write(&current_entry, "// native launcher\n").unwrap();
         std::fs::write(
             dir.join("package.json"),
-            r#"{"name":"@dbx-app/mcp-server","version":"0.4.38","bin":{"dbx-mcp-server":"bin/dbx-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
+            r#"{"name":"@linop-db-app/mcp-server","version":"0.4.38","bin":{"linop-db-mcp-server":"bin/linop-db-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
         )
         .unwrap();
 
@@ -1954,7 +1954,7 @@ mod tests {
         std::fs::write(&legacy_entry, "// legacy server\n").unwrap();
         std::fs::write(
             dir.join("package.json"),
-            r#"{"name":"@dbx-app/mcp-server","version":"0.4.32","bin":{"dbx-mcp-server":"dist/index.js"},"engines":{"node":">=22.13.0"}}"#,
+            r#"{"name":"@linop-db-app/mcp-server","version":"0.4.32","bin":{"linop-db-mcp-server":"dist/index.js"},"engines":{"node":">=22.13.0"}}"#,
         )
         .unwrap();
 
@@ -1971,9 +1971,9 @@ mod tests {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("dbx-mcp-script-entry-test-{}-{nonce}", std::process::id()));
-        let package_root = dir.join("@dbx-app").join("mcp-server");
-        let declared_entry = package_root.join("bin").join("dbx-mcp-server.js");
+        let dir = std::env::temp_dir().join(format!("linop-db-mcp-script-entry-test-{}-{nonce}", std::process::id()));
+        let package_root = dir.join("@linop-db-app").join("mcp-server");
+        let declared_entry = package_root.join("bin").join("linop-db-mcp-server.js");
         let undeclared_entry = package_root.join("bin").join("other.js");
 
         std::fs::create_dir_all(declared_entry.parent().unwrap()).unwrap();
@@ -1981,7 +1981,7 @@ mod tests {
         std::fs::write(&undeclared_entry, "// undeclared entry\n").unwrap();
         std::fs::write(
             package_root.join("package.json"),
-            r#"{"name":"@dbx-app/mcp-server","version":"0.4.44","bin":{"dbx-mcp-server":"bin/dbx-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
+            r#"{"name":"@linop-db-app/mcp-server","version":"0.4.44","bin":{"linop-db-mcp-server":"bin/linop-db-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
         )
         .unwrap();
 
@@ -2013,17 +2013,17 @@ mod tests {
 
     #[test]
     fn parses_real_pnpm_10_27_posix_global_shim() {
-        assert_real_pnpm_launcher("dbx-mcp-server", PNPM_10_27_POSIX_SHIM);
+        assert_real_pnpm_launcher("linop-db-mcp-server", PNPM_10_27_POSIX_SHIM);
     }
 
     #[test]
     fn parses_real_pnpm_10_27_windows_cmd_global_shim() {
-        assert_real_pnpm_launcher("dbx-mcp-server.cmd", PNPM_10_27_CMD_SHIM);
+        assert_real_pnpm_launcher("linop-db-mcp-server.cmd", PNPM_10_27_CMD_SHIM);
     }
 
     #[test]
     fn parses_real_pnpm_10_27_windows_powershell_global_shim() {
-        assert_real_pnpm_launcher("dbx-mcp-server.ps1", PNPM_10_27_POWERSHELL_SHIM);
+        assert_real_pnpm_launcher("linop-db-mcp-server.ps1", PNPM_10_27_POWERSHELL_SHIM);
     }
 
     #[cfg(not(windows))]
@@ -2031,7 +2031,7 @@ mod tests {
     fn bun_global_shim_is_attributed_to_bun() {
         use std::os::unix::fs::symlink;
 
-        let fixture = bun_fixture("dbx-mcp-server");
+        let fixture = bun_fixture("linop-db-mcp-server");
         symlink(&fixture.script_path, &fixture.launcher_path).unwrap();
 
         let located = mcp_package_from_command_path(&fixture.launcher_path).unwrap();
@@ -2051,7 +2051,7 @@ mod tests {
 
     #[test]
     fn bun_package_manager_recognizes_the_global_layout() {
-        let fixture = bun_fixture("dbx-mcp-server");
+        let fixture = bun_fixture("linop-db-mcp-server");
         let manager = bun_package_manager(&fixture.package_root, &fixture.bun_install.join("bin")).unwrap();
         assert!(matches!(
             manager,
@@ -2068,7 +2068,7 @@ mod tests {
 
     #[test]
     fn bun_windows_exe_shim_resolves_through_the_global_layout() {
-        let fixture = bun_fixture("dbx-mcp-server.exe");
+        let fixture = bun_fixture("linop-db-mcp-server.exe");
         std::fs::write(&fixture.launcher_path, "native exe shim fixture\n").unwrap();
 
         assert!(node_script_from_launcher(&fixture.launcher_path).is_none());
@@ -2099,8 +2099,8 @@ mod tests {
 
     #[test]
     fn bun_exe_shim_outside_a_bun_bin_directory_is_ignored() {
-        let fixture = bun_fixture("dbx-mcp-server.exe");
-        let stray = fixture.root.join("dbx-mcp-server.exe");
+        let fixture = bun_fixture("linop-db-mcp-server.exe");
+        let stray = fixture.root.join("linop-db-mcp-server.exe");
         std::fs::write(&stray, "native exe shim fixture\n").unwrap();
 
         assert!(mcp_package_from_command_path(&stray).is_none());
@@ -2109,9 +2109,9 @@ mod tests {
     #[test]
     fn bun_installation_reports_bun_update_and_uninstall_commands() {
         let installation = McpInstallation {
-            package_root: PathBuf::from("/bun/install/global/node_modules/@dbx-app/mcp-server"),
+            package_root: PathBuf::from("/bun/install/global/node_modules/@linop-db-app/mcp-server"),
             launcher_path: None,
-            script_path: PathBuf::from("/bun/install/global/node_modules/@dbx-app/mcp-server/bin/dbx-mcp-server.js"),
+            script_path: PathBuf::from("/bun/install/global/node_modules/@linop-db-app/mcp-server/bin/linop-db-mcp-server.js"),
             node_path: PathBuf::from("/node"),
             node_version: "v24.16.0".to_string(),
             package_version: "0.4.71".to_string(),
@@ -2129,9 +2129,9 @@ mod tests {
     #[test]
     fn bun_without_an_executable_disables_update_and_uninstall() {
         let installation = McpInstallation {
-            package_root: PathBuf::from("/bun/install/global/node_modules/@dbx-app/mcp-server"),
+            package_root: PathBuf::from("/bun/install/global/node_modules/@linop-db-app/mcp-server"),
             launcher_path: None,
-            script_path: PathBuf::from("/bun/install/global/node_modules/@dbx-app/mcp-server/bin/dbx-mcp-server.js"),
+            script_path: PathBuf::from("/bun/install/global/node_modules/@linop-db-app/mcp-server/bin/linop-db-mcp-server.js"),
             node_path: PathBuf::from("/node"),
             node_version: "v24.16.0".to_string(),
             package_version: "0.4.71".to_string(),
@@ -2155,7 +2155,7 @@ mod tests {
         let installation = McpInstallation {
             package_root: global_modules_root.join(MCP_PACKAGE_NAME),
             launcher_path: None,
-            script_path: global_modules_root.join(MCP_PACKAGE_NAME).join("bin").join("dbx-mcp-server.js"),
+            script_path: global_modules_root.join(MCP_PACKAGE_NAME).join("bin").join("linop-db-mcp-server.js"),
             node_path: PathBuf::from("/node"),
             node_version: "v24.16.0".to_string(),
             package_version: "0.4.71".to_string(),
@@ -2189,17 +2189,17 @@ mod tests {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("dbx-bun-native-fixture-{}-{nonce}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("linop-db-bun-native-fixture-{}-{nonce}", std::process::id()));
         let global_modules_root = root.join("install").join("global").join("node_modules");
         let package_root = global_modules_root.join(MCP_PACKAGE_NAME);
-        let native_package_root = global_modules_root.join("@dbx-app").join("mcp-native");
-        let native_binary = native_package_root.join("bin").join("dbx-mcp");
+        let native_package_root = global_modules_root.join("@linop-db-app").join("mcp-native");
+        let native_binary = native_package_root.join("bin").join("linop-db-mcp");
         std::fs::create_dir_all(package_root.join("bin")).unwrap();
         std::fs::create_dir_all(native_binary.parent().unwrap()).unwrap();
-        std::fs::write(package_root.join("bin").join("dbx-mcp-server.js"), "// entry\n").unwrap();
+        std::fs::write(package_root.join("bin").join("linop-db-mcp-server.js"), "// entry\n").unwrap();
         std::fs::write(
             native_package_root.join("package.json"),
-            r#"{"name":"@dbx-app/mcp-native","version":"0.4.71"}"#,
+            r#"{"name":"@linop-db-app/mcp-native","version":"0.4.71"}"#,
         )
         .unwrap();
         std::fs::write(&native_binary, "native\n").unwrap();
@@ -2215,8 +2215,8 @@ mod tests {
             &package_root,
             &manager,
             "0.4.71",
-            "@dbx-app/mcp-native",
-            "dbx-mcp",
+            "@linop-db-app/mcp-native",
+            "linop-db-mcp",
         );
 
         assert_eq!(resolved, canonical_runtime_path(&native_binary));
@@ -2228,9 +2228,9 @@ mod tests {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("dbx-mcp-unrecognized-shim-{}-{nonce}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("linop-db-mcp-unrecognized-shim-{}-{nonce}", std::process::id()));
         let target = root.join("target.js");
-        let launcher = root.join("dbx-mcp-server");
+        let launcher = root.join("linop-db-mcp-server");
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(&target, "// untrusted target\n").unwrap();
         std::fs::write(&launcher, format!("#!/bin/sh\nexit 1\n# cmd-shim-target={}\n", target.display())).unwrap();
@@ -2245,17 +2245,17 @@ mod tests {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("dbx-mcp-native-package-test-{}-{nonce}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("linop-db-mcp-native-package-test-{}-{nonce}", std::process::id()));
         let npm_root = dir.join("node_modules");
-        let package_root = npm_root.join("@dbx-app").join("mcp-server");
-        let package_name = "@dbx-app/mcp-win32-x64";
-        let binary_name = "dbx-mcp.exe";
+        let package_root = npm_root.join("@linop-db-app").join("mcp-server");
+        let package_name = "@linop-db-app/mcp-win32-x64";
+        let binary_name = "linop-db-mcp.exe";
         let nested_binary = package_root.join("node_modules").join(package_name).join("bin").join(binary_name);
         std::fs::create_dir_all(nested_binary.parent().unwrap()).unwrap();
         std::fs::write(&nested_binary, "nested binary").unwrap();
         std::fs::write(
             nested_binary.parent().unwrap().parent().unwrap().join("package.json"),
-            r#"{"name":"@dbx-app/mcp-win32-x64","version":"0.4.71"}"#,
+            r#"{"name":"@linop-db-app/mcp-win32-x64","version":"0.4.71"}"#,
         )
         .unwrap();
 
@@ -2277,7 +2277,7 @@ mod tests {
         std::fs::write(&hoisted_binary, "hoisted binary").unwrap();
         std::fs::write(
             hoisted_binary.parent().unwrap().parent().unwrap().join("package.json"),
-            r#"{"name":"@dbx-app/mcp-win32-x64","version":"0.4.71"}"#,
+            r#"{"name":"@linop-db-app/mcp-win32-x64","version":"0.4.71"}"#,
         )
         .unwrap();
 
@@ -2310,7 +2310,7 @@ mod tests {
 
     #[test]
     fn mcp_command_binds_script_to_the_installation_node() {
-        let script_path = "/runtime/node-24-root/@dbx-app/mcp-server/dist/index.js";
+        let script_path = "/runtime/node-24-root/@linop-db-app/mcp-server/dist/index.js";
         let installed = runtime("/runtime/node-24", Some(script_path));
 
         let command = mcp_command_for_runtime(&installed).unwrap();
@@ -2327,16 +2327,16 @@ mod tests {
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let dir = std::env::temp_dir().join(format!("dbx mise shim test {} {nonce}", std::process::id()));
         let shim_dir = dir.join("mise").join("shims");
-        let shim_path = shim_dir.join("dbx-mcp-server.exe");
+        let shim_path = shim_dir.join("linop-db-mcp-server.exe");
         let node_path = dir.join("mise").join("installs").join("node").join("22.23.1").join("node.exe");
         let package_root = dir
             .join("mise")
             .join("installs")
             .join("npm-db-server")
             .join("node_modules")
-            .join("@dbx-app")
+            .join("@linop-db-app")
             .join("mcp-server");
-        let script_path = package_root.join("bin").join("dbx-mcp-server.js");
+        let script_path = package_root.join("bin").join("linop-db-mcp-server.js");
 
         std::fs::create_dir_all(&shim_dir).unwrap();
         std::fs::create_dir_all(node_path.parent().unwrap()).unwrap();
@@ -2346,7 +2346,7 @@ mod tests {
         std::fs::write(&script_path, "// declared MCP entry\n").unwrap();
         std::fs::write(
             package_root.join("package.json"),
-            r#"{"name":"@dbx-app/mcp-server","version":"0.4.44","bin":{"dbx-mcp-server":"bin/dbx-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
+            r#"{"name":"@linop-db-app/mcp-server","version":"0.4.44","bin":{"linop-db-mcp-server":"bin/linop-db-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
         )
         .unwrap();
 
@@ -2362,7 +2362,7 @@ mod tests {
 
         let command = resolve_mise_mcp_command(Some(&compatible_runtime), Some(&shim_path), |command| match command {
             "node" => Some(node_path.clone()),
-            "dbx-mcp-server" => Some(script_path.clone()),
+            "linop-db-mcp-server" => Some(script_path.clone()),
             _ => None,
         })
         .unwrap();
@@ -2374,7 +2374,7 @@ mod tests {
         std::fs::write(&wrong_node, "wrong node runtime\n").unwrap();
         assert!(resolve_mise_mcp_command(Some(&compatible_runtime), Some(&shim_path), |command| match command {
             "node" => Some(wrong_node.clone()),
-            "dbx-mcp-server" => Some(script_path.clone()),
+            "linop-db-mcp-server" => Some(script_path.clone()),
             _ => None,
         })
         .is_none());
@@ -2387,7 +2387,7 @@ mod tests {
         );
         assert!(resolve_mise_mcp_command(Some(&old_runtime), Some(&shim_path), |command| match command {
             "node" => Some(node_path.clone()),
-            "dbx-mcp-server" => Some(script_path.clone()),
+            "linop-db-mcp-server" => Some(script_path.clone()),
             _ => None,
         })
         .is_none());
@@ -2397,13 +2397,13 @@ mod tests {
         std::fs::write(&unrelated_script, "// not the declared entry\n").unwrap();
         assert!(resolve_mise_mcp_command(Some(&compatible_runtime), Some(&shim_path), |command| match command {
             "node" => Some(node_path.clone()),
-            "dbx-mcp-server" => Some(unrelated_script.clone()),
+            "linop-db-mcp-server" => Some(unrelated_script.clone()),
             _ => None,
         })
         .is_none());
 
         let ordinary_bin = dir.join("bin");
-        let ordinary_shim = ordinary_bin.join("dbx-mcp-server.exe");
+        let ordinary_shim = ordinary_bin.join("linop-db-mcp-server.exe");
         std::fs::create_dir_all(&ordinary_bin).unwrap();
         std::fs::write(&ordinary_shim, "ordinary native shim\n").unwrap();
         let resolver_calls = Cell::new(0);
@@ -2416,12 +2416,12 @@ mod tests {
 
         std::fs::write(
             package_root.join("package.json"),
-            r#"{"name":"@dbx-app/mcp-server","version":"0.4.44","bin":{"dbx-mcp-server":"bin/dbx-mcp-server.js"},"engines":{"node":">=23.0.0"}}"#,
+            r#"{"name":"@linop-db-app/mcp-server","version":"0.4.44","bin":{"linop-db-mcp-server":"bin/linop-db-mcp-server.js"},"engines":{"node":">=23.0.0"}}"#,
         )
         .unwrap();
         assert!(resolve_mise_mcp_command(Some(&compatible_runtime), Some(&shim_path), |command| match command {
             "node" => Some(node_path.clone()),
-            "dbx-mcp-server" => Some(script_path.clone()),
+            "linop-db-mcp-server" => Some(script_path.clone()),
             _ => None,
         })
         .is_none());
@@ -2434,28 +2434,28 @@ mod tests {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("dbx-pnpm-local-fixture-{}-{nonce}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("linop-db-pnpm-local-fixture-{}-{nonce}", std::process::id()));
         let node_modules = root.join("project").join("node_modules");
         let launcher_dir = node_modules.join(".bin");
-        let launcher_path = launcher_dir.join("dbx-mcp-server");
-        let package_relative = ".pnpm/@dbx-app+mcp-server@0.4.71/node_modules/@dbx-app/mcp-server";
+        let launcher_path = launcher_dir.join("linop-db-mcp-server");
+        let package_relative = ".pnpm/@linop-db-app+mcp-server@0.4.71/node_modules/@linop-db-app/mcp-server";
         let package_root = node_modules.join(package_relative);
-        let script_path = package_root.join("bin").join("dbx-mcp-server.js");
+        let script_path = package_root.join("bin").join("linop-db-mcp-server.js");
         std::fs::create_dir_all(script_path.parent().unwrap()).unwrap();
         std::fs::create_dir_all(&launcher_dir).unwrap();
         std::fs::write(&script_path, "// local MCP fixture\n").unwrap();
         std::fs::write(
             package_root.join("package.json"),
-            r#"{"name":"@dbx-app/mcp-server","version":"0.4.71","bin":{"dbx-mcp-server":"bin/dbx-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
+            r#"{"name":"@linop-db-app/mcp-server","version":"0.4.71","bin":{"linop-db-mcp-server":"bin/linop-db-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
         )
         .unwrap();
-        std::fs::write(node_modules.join("package.json"), r#"{"dependencies":{"@dbx-app/mcp-server":"^0.4.71"}}"#)
+        std::fs::write(node_modules.join("package.json"), r#"{"dependencies":{"@linop-db-app/mcp-server":"^0.4.71"}}"#)
             .unwrap();
         std::fs::write(launcher_dir.join(if cfg!(windows) { "pnpm.cmd" } else { "pnpm" }), "pnpm fixture\n").unwrap();
         std::fs::write(
             &launcher_path,
             format!(
-                "#!/bin/sh\nbasedir=$(dirname \"$0\")\nexec node \"$basedir/../{package_relative}/bin/dbx-mcp-server.js\" \"$@\"\n"
+                "#!/bin/sh\nbasedir=$(dirname \"$0\")\nexec node \"$basedir/../{package_relative}/bin/linop-db-mcp-server.js\" \"$@\"\n"
             ),
         )
         .unwrap();
@@ -2473,7 +2473,7 @@ mod tests {
 
     #[test]
     fn mcp_command_rejects_script_outside_installation_package_root() {
-        let installed = runtime("/runtime/node-24", Some("/outside/@dbx-app/mcp-server/dist/index.js"));
+        let installed = runtime("/runtime/node-24", Some("/outside/@linop-db-app/mcp-server/dist/index.js"));
 
         assert!(mcp_command_for_runtime(&installed).is_none());
     }
@@ -2483,15 +2483,15 @@ mod tests {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("dbx-mcp-npm-regression-{}-{nonce}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("linop-db-mcp-npm-regression-{}-{nonce}", std::process::id()));
         let npm_root = root.join("lib").join("node_modules");
         let package_root = npm_root.join(MCP_PACKAGE_NAME);
-        let script_path = package_root.join("bin").join("dbx-mcp-server.js");
+        let script_path = package_root.join("bin").join("linop-db-mcp-server.js");
         std::fs::create_dir_all(script_path.parent().unwrap()).unwrap();
         std::fs::write(&script_path, "// npm global MCP\n").unwrap();
         std::fs::write(
             package_root.join("package.json"),
-            r#"{"name":"@dbx-app/mcp-server","version":"0.4.65","bin":{"dbx-mcp-server":"bin/dbx-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
+            r#"{"name":"@linop-db-app/mcp-server","version":"0.4.65","bin":{"linop-db-mcp-server":"bin/linop-db-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
         )
         .unwrap();
         let located = super::LocatedMcpPackage {
@@ -2520,7 +2520,7 @@ mod tests {
 
     #[test]
     fn split_pnpm_installation_is_shared_by_status_launch_update_and_uninstall() {
-        let fixture = pnpm_fixture("dbx-mcp-server", PNPM_10_27_POSIX_SHIM);
+        let fixture = pnpm_fixture("linop-db-mcp-server", PNPM_10_27_POSIX_SHIM);
         let node_prefix = fixture.root.join("selected-node-runtime");
         let node_path = node_prefix.join(if cfg!(windows) { "node.exe" } else { "bin/node" });
         let npm_root = node_prefix.join("lib").join("node_modules");
@@ -2577,7 +2577,7 @@ mod tests {
 
     #[test]
     fn split_pnpm_without_verified_pnpm_disables_update_and_uninstall() {
-        let fixture = pnpm_fixture("dbx-mcp-server", PNPM_10_27_POSIX_SHIM);
+        let fixture = pnpm_fixture("linop-db-mcp-server", PNPM_10_27_POSIX_SHIM);
         std::fs::remove_file(&fixture.pnpm_path).unwrap();
         let located = mcp_package_from_command_path(&fixture.launcher_path).unwrap();
         let installation = bind_mcp_installation(
@@ -2602,22 +2602,22 @@ mod tests {
         let incompatible = runtime_with_version_and_root(
             "/runtime/node-18",
             "/runtime/node-18-root",
-            Some("/runtime/node-18-root/bin/dbx-mcp-server"),
+            Some("/runtime/node-18-root/bin/linop-db-mcp-server"),
             "v18.17.1",
         );
 
         let command =
-            resolve_managed_mcp_command(Some(&incompatible), || Some(PathBuf::from("/path/bin/dbx-mcp-server")));
+            resolve_managed_mcp_command(Some(&incompatible), || Some(PathBuf::from("/path/bin/linop-db-mcp-server")));
 
         assert!(command.is_none());
     }
 
     #[test]
     fn path_shim_rejects_wrong_package_identity() {
-        let fixture = pnpm_fixture("dbx-mcp-server", PNPM_10_27_POSIX_SHIM);
+        let fixture = pnpm_fixture("linop-db-mcp-server", PNPM_10_27_POSIX_SHIM);
         std::fs::write(
             fixture.package_root.join("package.json"),
-            r#"{"name":"untrusted-package","version":"0.4.71","bin":{"dbx-mcp-server":"bin/dbx-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
+            r#"{"name":"untrusted-package","version":"0.4.71","bin":{"linop-db-mcp-server":"bin/linop-db-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
         )
         .unwrap();
 
@@ -2626,10 +2626,10 @@ mod tests {
 
     #[test]
     fn path_shim_rejects_package_bin_outside_package_root() {
-        let fixture = pnpm_fixture("dbx-mcp-server", PNPM_10_27_POSIX_SHIM);
+        let fixture = pnpm_fixture("linop-db-mcp-server", PNPM_10_27_POSIX_SHIM);
         std::fs::write(
             fixture.package_root.join("package.json"),
-            r#"{"name":"@dbx-app/mcp-server","version":"0.4.71","bin":{"dbx-mcp-server":"../../outside.js"},"engines":{"node":">=18.18.0"}}"#,
+            r#"{"name":"@linop-db-app/mcp-server","version":"0.4.71","bin":{"linop-db-mcp-server":"../../outside.js"},"engines":{"node":">=18.18.0"}}"#,
         )
         .unwrap();
 
@@ -2638,10 +2638,10 @@ mod tests {
 
     #[test]
     fn path_shim_rejects_incompatible_node_engine() {
-        let fixture = pnpm_fixture("dbx-mcp-server", PNPM_10_27_POSIX_SHIM);
+        let fixture = pnpm_fixture("linop-db-mcp-server", PNPM_10_27_POSIX_SHIM);
         std::fs::write(
             fixture.package_root.join("package.json"),
-            r#"{"name":"@dbx-app/mcp-server","version":"0.4.71","bin":{"dbx-mcp-server":"bin/dbx-mcp-server.js"},"engines":{"node":">=25.0.0"}}"#,
+            r#"{"name":"@linop-db-app/mcp-server","version":"0.4.71","bin":{"linop-db-mcp-server":"bin/linop-db-mcp-server.js"},"engines":{"node":">=25.0.0"}}"#,
         )
         .unwrap();
         let located = mcp_package_from_command_path(&fixture.launcher_path).unwrap();
@@ -2674,11 +2674,11 @@ mod tests {
         use std::time::{SystemTime, UNIX_EPOCH};
 
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let dir = std::env::temp_dir().join(format!("dbx-mcp-runtime-test-{}-{nonce}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("linop-db-mcp-runtime-test-{}-{nonce}", std::process::id()));
         let prefix = dir.join("prefix");
         let npm_root = prefix.join("lib").join("node_modules");
         let package_root = npm_root.join(super::MCP_PACKAGE_NAME);
-        let script_path = package_root.join("bin").join("dbx-mcp-server.js");
+        let script_path = package_root.join("bin").join("linop-db-mcp-server.js");
         let node_path = dir.join("node-v24");
         let node_alias = dir.join("node");
         let npm_cli_path = dir.join("npm");
@@ -2689,7 +2689,7 @@ mod tests {
         std::fs::write(&script_path, "// fake mcp server\n").unwrap();
         std::fs::write(
             package_root.join("package.json"),
-            r#"{"name":"@dbx-app/mcp-server","version":"0.4.38","bin":{"dbx-mcp-server":"bin/dbx-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
+            r#"{"name":"@linop-db-app/mcp-server","version":"0.4.38","bin":{"linop-db-mcp-server":"bin/linop-db-mcp-server.js"},"engines":{"node":">=18.18.0"}}"#,
         )
         .unwrap();
         let node_script = format!(
@@ -2733,7 +2733,7 @@ mod tests {
         let canonical_npm_cli = canonical_runtime_path(&npm_cli_path).unwrap();
         assert!(calls
             .lines()
-            .any(|line| line == format!("{} install -g @dbx-app/mcp-server@latest", canonical_npm_cli.display())));
+            .any(|line| line == format!("{} install -g @linop-db-app/mcp-server@latest", canonical_npm_cli.display())));
         assert!(!calls.contains("--registry"));
         assert!(calls.contains(&format!("PATH={}", canonical_runtime_path(&dir).unwrap().display())));
 
@@ -2744,7 +2744,7 @@ mod tests {
     #[test]
     fn runtime_probe_resolves_pnpm_global_shims_and_update_command() {
         use std::os::unix::fs::{symlink, PermissionsExt};
-        let fixture = pnpm_fixture("dbx-mcp-server", PNPM_10_27_POSIX_SHIM);
+        let fixture = pnpm_fixture("linop-db-mcp-server", PNPM_10_27_POSIX_SHIM);
         let bin_dir = fixture.root.join("selected-node-runtime").join("bin");
         let npm_root = fixture.root.join("selected-node-runtime").join("lib").join("node_modules");
         let npm_prefix = fixture.root.join("selected-node-runtime");
@@ -2814,7 +2814,7 @@ mod tests {
         let pnpm_log = std::fs::read_to_string(&pnpm_log_path).unwrap();
         // `add ...@latest` (not `update -g`) so an exact pin in the pnpm global
         // manifest cannot keep re-installing the version that is already there.
-        assert!(pnpm_log.contains("ARGS=add -g @dbx-app/mcp-server@latest --global-dir"));
+        assert!(pnpm_log.contains("ARGS=add -g @linop-db-app/mcp-server@latest --global-dir"));
         assert!(pnpm_log.contains(global_dir.to_string_lossy().as_ref()));
         assert!(!pnpm_log.contains("--registry"));
         assert!(pnpm_log.contains(&format!("PNPM_HOME={}", pnpm_home.display())));
@@ -2824,7 +2824,7 @@ mod tests {
         let uninstall_output = probed.uninstall().unwrap();
         assert!(uninstall_output.success);
         let pnpm_log = std::fs::read_to_string(&pnpm_log_path).unwrap();
-        assert!(pnpm_log.contains("ARGS=remove -g @dbx-app/mcp-server --global-dir"));
+        assert!(pnpm_log.contains("ARGS=remove -g @linop-db-app/mcp-server --global-dir"));
         assert!(pnpm_log.contains(global_dir.to_string_lossy().as_ref()));
         assert!(pnpm_log.contains(&format!("PNPM_HOME={}", pnpm_home.display())));
         assert!(pnpm_log.contains(&format!("PATH={}", pnpm_home.display())));
@@ -2833,7 +2833,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn windows_command_lookup_prefers_cmd_over_extensionless_shim() {
-        let dir = std::env::temp_dir().join(format!("dbx-mcp-command-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("linop-db-mcp-command-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let extensionless = dir.join("codex");
         let cmd = dir.join("codex.cmd");
@@ -2852,7 +2852,7 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn windows_command_lookup_rejects_extensionless_only_shim() {
-        let dir = std::env::temp_dir().join(format!("dbx-mcp-command-extensionless-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("linop-db-mcp-command-extensionless-test-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let extensionless = dir.join("codex");
         std::fs::write(&extensionless, "#!/bin/sh\n").unwrap();

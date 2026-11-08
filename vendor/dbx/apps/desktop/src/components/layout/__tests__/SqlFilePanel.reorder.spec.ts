@@ -183,7 +183,7 @@ describe("SqlFilePanel drag sorting", () => {
     expect(getSqlFileOrder()).toEqual({});
   });
 
-  it.each(["dbx-sql-file-manual-order", "dbx-sql-file-sort-order"])("keeps the previous order and reports a failure when saving %s fails", async (failedKey) => {
+  it.each(["linop-db-sql-file-manual-order", "linop-db-sql-file-sort-order"])("keeps the previous order and reports a failure when saving %s fails", async (failedKey) => {
     const previous = { "/sql": ["/sql/c.sql", "/sql/b.sql", "/sql/a.sql"] };
     saveSqlFileOrder(previous);
     const host = await mountPanel();

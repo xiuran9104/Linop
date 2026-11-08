@@ -8,7 +8,7 @@ describe("effectiveRedisDatabaseIndex", () => {
     expect(effectiveRedisDatabaseIndex(" 15 ")).toBe("15");
   });
 
-  it("falls back to db 0 for dirty values, mirroring dbx-core redis_database_index()", () => {
+  it("falls back to db 0 for dirty values, mirroring linop-db-core redis_database_index()", () => {
     expect(effectiveRedisDatabaseIndex("0 --tls --insecure")).toBe("0");
     expect(effectiveRedisDatabaseIndex("3 --foo")).toBe("0");
     expect(effectiveRedisDatabaseIndex("mydb")).toBe("0");

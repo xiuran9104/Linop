@@ -74,7 +74,7 @@ export function elasticsearchClearIndexPreview(index: string): string {
   return `POST /${index}/_delete_by_query?conflicts=proceed&refresh=true\n{ "query": { "match_all": {} } }`;
 }
 
-export const ELASTICSEARCH_INDEX_CLEARED_EVENT = "dbx-elasticsearch-index-cleared";
+export const ELASTICSEARCH_INDEX_CLEARED_EVENT = "linop-db-elasticsearch-index-cleared";
 
 export interface ElasticsearchIndexClearedDetail {
   connectionId: string;

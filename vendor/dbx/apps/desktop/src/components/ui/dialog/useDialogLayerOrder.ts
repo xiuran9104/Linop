@@ -2,8 +2,8 @@ import { injectDialogRootContext, useForwardExpose } from "reka-ui";
 import { computed, onBeforeUnmount, onUpdated, ref, watch, watchPostEffect, type Ref } from "vue";
 
 const BASE_DIALOG_Z_INDEX = 50;
-const DIALOG_TOP_Z_INDEX_VAR = "--dbx-dialog-top-z-index";
-const FLOATING_LAYER_Z_INDEX_VAR = "--dbx-floating-layer-z-index";
+const DIALOG_TOP_Z_INDEX_VAR = "--linop-db-dialog-top-z-index";
+const FLOATING_LAYER_Z_INDEX_VAR = "--linop-db-floating-layer-z-index";
 
 const activeDialogLayers = new Map<symbol, Ref<number>>();
 const topDialogZIndex = ref(BASE_DIALOG_Z_INDEX);
@@ -53,7 +53,7 @@ export function useFloatingLayerOrder() {
     const contentZIndex = Number.parseInt(getComputedStyle(contentElement).zIndex, 10);
     const wrapperZIndex = Number.parseInt(wrapper.style.zIndex, 10);
     const preservedZIndex = Math.max(Number.isFinite(contentZIndex) ? contentZIndex : 0, Number.isFinite(wrapperZIndex) ? wrapperZIndex : 0);
-    wrapper.style.setProperty("--dbx-floating-content-z-index", String(preservedZIndex));
+    wrapper.style.setProperty("--linop-db-floating-content-z-index", String(preservedZIndex));
     wrapper.dataset.dbxFloatingLayer = "";
   }
 

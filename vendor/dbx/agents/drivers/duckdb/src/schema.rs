@@ -599,11 +599,11 @@ fn duckdb_completion_like_pattern(request: &db::CompletionAssistantRequest) -> S
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dbx_core::models::connection::DatabaseType;
+    use linop_db_core::models::connection::DatabaseType;
     #[test]
     fn duckdb_list_databases_includes_attached_database() {
         let unique = uuid::Uuid::new_v4();
-        let path = std::env::temp_dir().join(format!("dbx-attached-{unique}.duckdb"));
+        let path = std::env::temp_dir().join(format!("linop-db-attached-{unique}.duckdb"));
         let _ = std::fs::remove_file(&path);
         let con = duckdb::Connection::open_in_memory().unwrap();
 
@@ -619,7 +619,7 @@ mod tests {
     #[test]
     fn duckdb_query_tables_filters_by_attached_database() {
         let unique = uuid::Uuid::new_v4();
-        let path = std::env::temp_dir().join(format!("dbx-attached-tables-{unique}.duckdb"));
+        let path = std::env::temp_dir().join(format!("linop-db-attached-tables-{unique}.duckdb"));
         let _ = std::fs::remove_file(&path);
         let con = duckdb::Connection::open_in_memory().unwrap();
 
@@ -761,7 +761,7 @@ mod tests {
     #[test]
     fn duckdb_table_ddl_filters_by_database_schema_and_table_name() {
         let unique = uuid::Uuid::new_v4();
-        let path = std::env::temp_dir().join(format!("dbx-attached-ddl-{unique}.duckdb"));
+        let path = std::env::temp_dir().join(format!("linop-db-attached-ddl-{unique}.duckdb"));
         let _ = std::fs::remove_file(&path);
         let con = duckdb::Connection::open_in_memory().unwrap();
 
@@ -894,10 +894,10 @@ mod tests {
         let edited_source = source.replace("SELECT 1", "SELECT 2");
         assert_ne!(edited_source, source);
 
-        let statements = dbx_core::object_source_sql::build_executable_object_source_statements(
-            dbx_core::object_source_sql::EditableObjectSourceSqlInput {
+        let statements = linop_db_core::object_source_sql::build_executable_object_source_statements(
+            linop_db_core::object_source_sql::EditableObjectSourceSqlInput {
                 database_type: DatabaseType::DuckDb,
-                object_type: dbx_core::db::ObjectSourceKind::View,
+                object_type: linop_db_core::db::ObjectSourceKind::View,
                 schema: Some("main".to_string()),
                 name: "active_orders".to_string(),
                 source: edited_source,

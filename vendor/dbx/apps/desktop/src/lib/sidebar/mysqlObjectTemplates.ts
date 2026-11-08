@@ -77,7 +77,7 @@ CREATE TRIGGER ${qualifiedDatabase}.${quoteMysqlIdentifier(name)}
 BEFORE INSERT ON ${qualifiedDatabase}.${quoteMysqlIdentifier(tableName || "table_name")}
 FOR EACH ROW
 BEGIN
-  SET @dbx_trigger_placeholder = 1;
+  SET @linop_db_trigger_placeholder = 1;
 END$$
 
 DELIMITER ;`,

@@ -299,7 +299,7 @@ function escapedTextLiteral(value: string, databaseType: DatabaseType, targetTyp
   }
   const isAsciiControl = (character: string) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127;
   if (POSTGRES_TYPES.has(databaseType) && Array.from(value).some((character) => character === "\\" || isAsciiControl(character))) {
-    // Match dbx-sql-core/value_literals.rs. E strings are independent of
+    // Match linop-db-sql-core/value_literals.rs. E strings are independent of
     // standard_conforming_strings, including quotes following a backslash.
     const pgEscaped = Array.from(value, (character) => {
       if (character === "\\") return "\\\\";

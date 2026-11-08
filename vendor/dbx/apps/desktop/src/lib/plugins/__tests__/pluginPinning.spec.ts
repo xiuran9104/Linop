@@ -48,10 +48,10 @@ describe("pinned plugin storage", () => {
   });
 
   it("tolerates corrupted stored values", () => {
-    localStorage.setItem("dbx-plugin-pinned-ids", "{not json");
+    localStorage.setItem("linop-db-plugin-pinned-ids", "{not json");
     expect(loadPinnedPluginIds()).toEqual([]);
-    localStorage.setItem("dbx-plugin-pinned-ids", JSON.stringify([1, "ok", null]));
+    localStorage.setItem("linop-db-plugin-pinned-ids", JSON.stringify([1, "ok", null]));
     expect(loadPinnedPluginIds()).toEqual(["ok"]);
-    localStorage.removeItem("dbx-plugin-pinned-ids");
+    localStorage.removeItem("linop-db-plugin-pinned-ids");
   });
 });

@@ -19,26 +19,26 @@ beforeEach(() => {
 
 describe("Tauri appearance persistence", () => {
   it("gives durable backend values precedence over stale WebView storage", async () => {
-    window.localStorage.setItem("dbx-locale", "en");
-    window.localStorage.setItem("dbx-theme", "light");
-    window.localStorage.setItem("dbx-theme-palette", "pearl");
+    window.localStorage.setItem("linop-db-locale", "en");
+    window.localStorage.setItem("linop-db-theme", "light");
+    window.localStorage.setItem("linop-db-theme-palette", "pearl");
     invoke.mockResolvedValueOnce({ locale: "zh-CN", themeMode: "dark", themePalette: "cobalt", cornerStyle: "small" });
 
     const { hydrateAppAppearance } = await loadAppearance();
     await hydrateAppAppearance();
 
-    expect(window.localStorage.getItem("dbx-locale")).toBe("zh-CN");
-    expect(window.localStorage.getItem("dbx-theme")).toBe("dark");
-    expect(window.localStorage.getItem("dbx-theme-palette")).toBe("cobalt");
-    expect(window.localStorage.getItem("dbx-corner-style")).toBe("small");
+    expect(window.localStorage.getItem("linop-db-locale")).toBe("zh-CN");
+    expect(window.localStorage.getItem("linop-db-theme")).toBe("dark");
+    expect(window.localStorage.getItem("linop-db-theme-palette")).toBe("cobalt");
+    expect(window.localStorage.getItem("linop-db-corner-style")).toBe("small");
     expect(invoke).toHaveBeenCalledWith("load_app_appearance_settings", undefined);
     expect(invoke).toHaveBeenCalledTimes(1);
   });
 
   it("migrates legacy WebView values when the durable record is empty", async () => {
-    window.localStorage.setItem("dbx-locale", "ja");
-    window.localStorage.setItem("dbx-theme", "system");
-    window.localStorage.setItem("dbx-theme-palette", "sage");
+    window.localStorage.setItem("linop-db-locale", "ja");
+    window.localStorage.setItem("linop-db-theme", "system");
+    window.localStorage.setItem("linop-db-theme-palette", "sage");
     invoke.mockResolvedValueOnce({});
     invoke.mockResolvedValueOnce(undefined);
 
@@ -49,7 +49,7 @@ describe("Tauri appearance persistence", () => {
     expect(invoke).toHaveBeenNthCalledWith(2, "update_app_appearance_settings", {
       patch: { locale: "ja", themeMode: "system", themePalette: "sage" },
     });
-    expect(window.localStorage.getItem("dbx-theme-palette")).toBe("sage");
+    expect(window.localStorage.getItem("linop-db-theme-palette")).toBe("sage");
   });
 
   it("persists explicit choices while leaving the caller synchronous", async () => {
@@ -61,9 +61,9 @@ describe("Tauri appearance persistence", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(window.localStorage.getItem("dbx-theme")).toBe("dark");
-    expect(window.localStorage.getItem("dbx-theme-palette")).toBe("graphite");
-    expect(window.localStorage.getItem("dbx-locale")).toBe("ko");
+    expect(window.localStorage.getItem("linop-db-theme")).toBe("dark");
+    expect(window.localStorage.getItem("linop-db-theme-palette")).toBe("graphite");
+    expect(window.localStorage.getItem("linop-db-locale")).toBe("ko");
     expect(invoke).toHaveBeenNthCalledWith(1, "update_app_appearance_settings", {
       patch: { themeMode: "dark", themePalette: "graphite" },
     });

@@ -408,7 +408,7 @@ describe("TableStructureEditor column name whitespace", () => {
   // Metadata-backed names must stay byte-exact: MySQL keeps leading spaces in a
   // backtick-quoted identifier, so rewriting a name the user never touched would
   // turn every unrelated edit into a bogus rename
-  // (see crates/dbx-core/tests/live_mysql_column_name_whitespace.rs, #9654).
+  // (see crates/linop-db-core/tests/live_mysql_column_name_whitespace.rs, #9654).
   it("leaves an untouched metadata column name byte-exact", async () => {
     const draft = draftWithColumns([{ name: "  content1", originalName: "  content1" }]);
     draft.columns[0]!.comment = "leading space kept";

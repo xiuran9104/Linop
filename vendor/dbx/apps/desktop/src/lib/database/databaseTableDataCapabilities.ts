@@ -280,7 +280,7 @@ const DATABASE_CAPABILITY_OVERRIDES: Partial<Record<DatabaseType, Partial<Databa
   },
   salesforce: {
     // SOQL has no DML. A grid save becomes one `DBX SALESFORCE DML` pseudo-command
-    // per record (built by dbx-sql) which the driver turns into a REST call:
+    // per record (built by linop-db-sql) which the driver turns into a REST call:
     // PATCH /sobjects/{object}/{id}, POST /sobjects/{object}, DELETE /sobjects/{object}/{id}.
     // Row identity is the `Id` column (the driver marks it is_primary_key), so both
     // update and delete require it. REST has no transactions: records are written

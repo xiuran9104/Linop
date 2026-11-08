@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex, OnceLock},
 };
 
-use dbx_core::storage::{
+use linop_db_core::storage::{
     AppAppearanceSettings, AppAppearanceSettingsPatch, DesktopSettings, McpGlobalPolicy, McpGlobalPolicyState,
 };
 use tauri::{AppHandle, Manager, State, Window};
@@ -131,7 +131,7 @@ pub async fn set_promoted_build(
     promoted_build: State<'_, PromotedBuildState>,
     build_version: String,
 ) -> Result<(), String> {
-    let normalize = dbx_platform::version::normalize_version;
+    let normalize = linop_db_platform::version::normalize_version;
     let build_version = normalize(&build_version);
     // A report about some other build says nothing about this one: the renderer
     // can still hold a marker from before an upgrade. Ignore it rather than
@@ -252,24 +252,24 @@ pub async fn load_mcp_global_policy(state: State<'_, Arc<AppState>>) -> Result<M
 }
 
 #[tauri::command]
-pub fn load_mcp_tool_catalog() -> dbx_core::mcp_catalog::McpToolCatalog {
-    dbx_mcp::DbxMcpServer::tool_catalog()
+pub fn load_mcp_tool_catalog() -> linop_db_core::mcp_catalog::McpToolCatalog {
+    linop_db_mcp::DbxMcpServer::tool_catalog()
 }
 
 /// Plugin cards of the MCP capability tab (probes plugin sidecars).
 #[tauri::command]
 pub async fn list_plugin_mcp_views(
     state: State<'_, Arc<AppState>>,
-) -> Result<Vec<dbx_core::plugin_mcp::PluginMcpView>, String> {
-    dbx_core::plugin_mcp::list_plugin_views(state.inner()).await
+) -> Result<Vec<linop_db_core::plugin_mcp::PluginMcpView>, String> {
+    linop_db_core::plugin_mcp::list_plugin_views(state.inner()).await
 }
 
 #[tauri::command]
 pub async fn load_plugin_mcp_view(
     state: State<'_, Arc<AppState>>,
     plugin_id: String,
-) -> Result<dbx_core::plugin_mcp::PluginMcpView, String> {
-    dbx_core::plugin_mcp::plugin_view_for(state.inner(), &plugin_id).await
+) -> Result<linop_db_core::plugin_mcp::PluginMcpView, String> {
+    linop_db_core::plugin_mcp::plugin_view_for(state.inner(), &plugin_id).await
 }
 
 #[tauri::command]
@@ -292,7 +292,7 @@ pub async fn list_mcp_plugin_scopes(
         .ok_or_else(|| "This plugin does not declare a scope list method.".to_string())?;
     let policy = state.storage.load_enforced_mcp_policy().await?.policy();
     let group_paths = match state.storage.load_sidebar_layout().await? {
-        Some(layout) => dbx_core::mcp_policy::connection_group_paths(&layout)
+        Some(layout) => linop_db_core::mcp_policy::connection_group_paths(&layout)
             .map_err(|error| format!("MCP_POLICY_UNAVAILABLE: {error}"))?,
         None => std::collections::HashMap::new(),
     };
@@ -306,7 +306,7 @@ pub async fn list_mcp_plugin_scopes(
     if connection.plugin_id.as_deref() != Some(plugin_id.as_str()) {
         return Err("CONNECTION_OUT_OF_SCOPE: connection is not owned by this plugin.".to_string());
     }
-    if !dbx_core::mcp_policy::policy_allows_connection(&policy, group_paths.get(&connection.id), &connection.id) {
+    if !linop_db_core::mcp_policy::policy_allows_connection(&policy, group_paths.get(&connection.id), &connection.id) {
         return Err("CONNECTION_OUT_OF_SCOPE: connection is not allowed by DBX MCP settings.".to_string());
     }
     let value = state
@@ -333,16 +333,16 @@ pub async fn list_mcp_plugin_scopes(
 pub async fn save_plugin_mcp_grant(
     state: State<'_, Arc<AppState>>,
     plugin_id: String,
-    grant: dbx_core::storage::PluginMcpGrant,
+    grant: linop_db_core::storage::PluginMcpGrant,
     approve_current: bool,
-) -> Result<dbx_core::plugin_mcp::PluginMcpView, String> {
-    dbx_core::plugin_mcp::save_plugin_grant(state.inner(), &plugin_id, grant, approve_current).await
+) -> Result<linop_db_core::plugin_mcp::PluginMcpView, String> {
+    linop_db_core::plugin_mcp::save_plugin_grant(state.inner(), &plugin_id, grant, approve_current).await
 }
 
 #[tauri::command]
 pub async fn load_mcp_access_policy(
     state: State<'_, Arc<AppState>>,
-) -> Result<dbx_core::mcp_access::McpAccessPolicy, String> {
+) -> Result<linop_db_core::mcp_access::McpAccessPolicy, String> {
     state.storage.load_mcp_access_policy().await
 }
 
@@ -352,11 +352,11 @@ pub async fn set_mcp_plugin_scope_rule(
     connection_id: String,
     kind: String,
     value: Option<String>,
-    rule: Option<dbx_core::mcp_access::McpAccessRule>,
-    sub_scope: Option<dbx_core::mcp_access::McpSubScopeMode>,
-) -> Result<dbx_core::mcp_access::McpAccessPolicy, String> {
+    rule: Option<linop_db_core::mcp_access::McpAccessRule>,
+    sub_scope: Option<linop_db_core::mcp_access::McpSubScopeMode>,
+) -> Result<linop_db_core::mcp_access::McpAccessPolicy, String> {
     let access =
-        dbx_core::plugin_mcp::set_scope_rule(&state, &connection_id, &kind, value.as_deref(), rule, sub_scope).await?;
+        linop_db_core::plugin_mcp::set_scope_rule(&state, &connection_id, &kind, value.as_deref(), rule, sub_scope).await?;
     super::mcp_bridge::clear_mcp_sql_approvals();
     Ok(access)
 }
@@ -630,7 +630,7 @@ fn default_agent_store_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(if data_dir_resolution.uses_custom_data_dir() {
         data_dir_resolution.data_dir.join("agents")
     } else {
-        dbx_core::connection::default_agent_dir()
+        linop_db_core::connection::default_agent_dir()
     })
 }
 

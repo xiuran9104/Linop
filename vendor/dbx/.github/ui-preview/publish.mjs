@@ -12,8 +12,8 @@
 // rest of the description as the author wrote it.
 //
 // lane: "rust" when the diff reaches the backend (crates/, plugins/,
-// src-tauri/) — then CI builds dbx-web from the PR; anything else builds
-// only the frontend and runs it against the released dbx-web.
+// src-tauri/) — then CI builds linop-db-web from the PR; anything else builds
+// only the frontend and runs it against the released linop-db-web.
 //
 // env: GITHUB_TOKEN, GITHUB_REPOSITORY, PR, OUT_DIR, RECORD_RESULT, RUN_URL
 import { execFileSync } from "node:child_process";
@@ -21,8 +21,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-const BEGIN = "<!-- dbx-ui-preview:begin -->";
-const END = "<!-- dbx-ui-preview:end -->";
+const BEGIN = "<!-- linop-db-ui-preview:begin -->";
+const END = "<!-- linop-db-ui-preview:end -->";
 const BRANCH = "ui-previews";
 const repo = process.env.GITHUB_REPOSITORY;
 const pr = Number(process.env.PR);
@@ -68,7 +68,7 @@ async function setBlock(inner) {
 }
 
 const short = (sha) => sha.slice(0, 7);
-const head = (sha) => `---\n### 🎬 界面预览\n<sub>CI 用这个 PR 的前端构建并真实运行 dbx（沙盒环境，dbx-web 后端 + 本地 SQLite 种子数据），按改动自动操作、截图和录屏 · <code>${short(sha)}</code>${runURL ? ` · [运行记录](${runURL})` : ""}</sub>\n`;
+const head = (sha) => `---\n### 🎬 界面预览\n<sub>CI 用这个 PR 的前端构建并真实运行 dbx（沙盒环境，linop-db-web 后端 + 本地 SQLite 种子数据），按改动自动操作、截图和录屏 · <code>${short(sha)}</code>${runURL ? ` · [运行记录](${runURL})` : ""}</sub>\n`;
 
 async function detect() {
   const p = await gh(`/repos/${repo}/pulls/${pr}`);

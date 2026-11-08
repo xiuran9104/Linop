@@ -5,7 +5,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 package_source="$repo_root/deploy/fnos/package"
 output_dir="${DBX_FNOS_OUTPUT_DIR:-$repo_root/dist/fnos}"
 fnpack_version="1.2.3"
-scratch_root="$(mktemp -d "${TMPDIR:-/tmp}/dbx-fnos-build.XXXXXX")"
+scratch_root="$(mktemp -d "${TMPDIR:-/tmp}/linop-db-fnos-build.XXXXXX")"
 
 cleanup() {
   if [[ -d "$scratch_root" ]]; then
@@ -16,7 +16,7 @@ trap cleanup EXIT
 
 read_package_version() {
   sed -nE 's/^version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' \
-    "$repo_root/crates/dbx-web/Cargo.toml" | head -n 1
+    "$repo_root/crates/linop-db-web/Cargo.toml" | head -n 1
 }
 
 version="${DBX_FNOS_VERSION:-$(read_package_version)}"

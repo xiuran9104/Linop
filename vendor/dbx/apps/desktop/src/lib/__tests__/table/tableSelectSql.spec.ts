@@ -149,7 +149,7 @@ describe("qualifyTableReferencesInSql — SQL Server three-part names (#9262)", 
 
   it("leaves already database-qualified and three-part names alone", () => {
     expect(qualifyTableReferencesInSql("SELECT * FROM [other].[dbo].[gen_table]", options)).toBe("SELECT * FROM [other].[dbo].[gen_table]");
-    expect(qualifyTableReferencesInSql("SELECT * FROM [dbx_test].[dbo].[gen_table]", options)).toBe("SELECT * FROM [dbx_test].[dbo].[gen_table]");
+    expect(qualifyTableReferencesInSql("SELECT * FROM [linop_db_test].[dbo].[gen_table]", options)).toBe("SELECT * FROM [linop_db_test].[dbo].[gen_table]");
   });
 
   it("leaves schema-less names alone because `db.table` is not a SQL Server reference", () => {
@@ -308,11 +308,11 @@ describe("quoteTableIdentifier", () => {
     expect(quoteTableIdentifierIfNeeded("oceanbase-oracle", "ORDER")).toBe('"ORDER"');
     expect(quoteTableIdentifierIfNeeded("dameng", "DBX_TEST")).toBe("DBX_TEST");
     expect(quoteTableIdentifierIfNeeded("dameng", "order detail")).toBe('"order detail"');
-    expect(quoteTableIdentifierIfNeeded("postgres", "dbx_test")).toBe("dbx_test");
+    expect(quoteTableIdentifierIfNeeded("postgres", "linop_db_test")).toBe("linop_db_test");
     expect(quoteTableIdentifierIfNeeded("postgres", "Order")).toBe('"Order"');
-    expect(quoteTableIdentifierIfNeeded("mysql", "dbx_test")).toBe("dbx_test");
+    expect(quoteTableIdentifierIfNeeded("mysql", "linop_db_test")).toBe("linop_db_test");
     expect(quoteTableIdentifierIfNeeded("mysql", "order")).toBe("`order`");
-    expect(quoteTableIdentifierIfNeeded("clickhouse", "dbx_test")).toBe("dbx_test");
+    expect(quoteTableIdentifierIfNeeded("clickhouse", "linop_db_test")).toBe("linop_db_test");
     expect(quoteTableIdentifierIfNeeded("clickhouse", "Order_Test")).toBe("Order_Test");
     expect(quoteTableIdentifierIfNeeded("clickhouse", "order")).toBe("`order`");
     expect(quoteTableIdentifierIfNeeded("clickhouse", "prewhere")).toBe("`prewhere`");

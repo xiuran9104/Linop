@@ -1,6 +1,6 @@
 /**
  * Read/write classification for CouchDB REST requests.
- * Mirrors `classify_couchdb_query_risk` in `crates/dbx-sql-core/src/query_execution_sql.rs`.
+ * Mirrors `classify_couchdb_query_risk` in `crates/linop-db-sql-core/src/query_execution_sql.rs`.
  */
 
 export type CouchDbRequestRisk = "read" | "write" | "dangerous";

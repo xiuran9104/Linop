@@ -19,13 +19,13 @@ describe("mq exchanges/bindings tauri API", () => {
 
   it("invokes mq_list_exchanges with the namespace ref", async () => {
     const { mqListExchanges } = await import("@/lib/backend/mq-tauri");
-    mocks.invoke.mockResolvedValue([{ name: "dbx-events", type: "topic", durable: true, autoDelete: false, internal: false }]);
+    mocks.invoke.mockResolvedValue([{ name: "linop-db-events", type: "topic", durable: true, autoDelete: false, internal: false }]);
 
     const result = await mqListExchanges("conn-1", NS);
 
     expect(mocks.invoke).toHaveBeenCalledWith("mq_list_exchanges", { connectionId: "conn-1", ns: NS });
     expect(result).toHaveLength(1);
-    expect(result[0]?.name).toBe("dbx-events");
+    expect(result[0]?.name).toBe("linop-db-events");
   });
 
   it("invokes the bounded exchange and topic list commands with pagination", async () => {
@@ -44,12 +44,12 @@ describe("mq exchanges/bindings tauri API", () => {
     const { mqCreateExchange } = await import("@/lib/backend/mq-tauri");
     mocks.invoke.mockResolvedValue(undefined);
 
-    await mqCreateExchange("conn-1", NS, { name: "dbx-events", type: "topic", durable: true, autoDelete: false });
+    await mqCreateExchange("conn-1", NS, { name: "linop-db-events", type: "topic", durable: true, autoDelete: false });
 
     expect(mocks.invoke).toHaveBeenCalledWith("mq_create_exchange", {
       connectionId: "conn-1",
       ns: NS,
-      name: "dbx-events",
+      name: "linop-db-events",
       exchangeType: "topic",
       durable: true,
       autoDelete: false,
@@ -60,17 +60,17 @@ describe("mq exchanges/bindings tauri API", () => {
     const { mqDeleteExchange } = await import("@/lib/backend/mq-tauri");
     mocks.invoke.mockResolvedValue(undefined);
 
-    await mqDeleteExchange("conn-1", NS, "dbx-events");
+    await mqDeleteExchange("conn-1", NS, "linop-db-events");
 
-    expect(mocks.invoke).toHaveBeenCalledWith("mq_delete_exchange", { connectionId: "conn-1", ns: NS, name: "dbx-events" });
+    expect(mocks.invoke).toHaveBeenCalledWith("mq_delete_exchange", { connectionId: "conn-1", ns: NS, name: "linop-db-events" });
   });
 
   it("invokes mq_list_bindings with optional filters", async () => {
     const { mqListBindings } = await import("@/lib/backend/mq-tauri");
     mocks.invoke.mockResolvedValue([]);
 
-    await mqListBindings("conn-1", NS, { exchange: "dbx-events" });
-    expect(mocks.invoke).toHaveBeenCalledWith("mq_list_bindings", { connectionId: "conn-1", ns: NS, exchange: "dbx-events", queue: undefined });
+    await mqListBindings("conn-1", NS, { exchange: "linop-db-events" });
+    expect(mocks.invoke).toHaveBeenCalledWith("mq_list_bindings", { connectionId: "conn-1", ns: NS, exchange: "linop-db-events", queue: undefined });
 
     await mqListBindings("conn-1", NS);
     expect(mocks.invoke).toHaveBeenCalledWith("mq_list_bindings", { connectionId: "conn-1", ns: NS, exchange: undefined, queue: undefined });
@@ -79,7 +79,7 @@ describe("mq exchanges/bindings tauri API", () => {
   it("invokes mq_bind and mq_unbind with the binding object", async () => {
     const { mqBind, mqUnbind } = await import("@/lib/backend/mq-tauri");
     mocks.invoke.mockResolvedValue(undefined);
-    const binding = { source: "dbx-events", destination: "dbx-queue", destinationType: "queue", routingKey: "orders.*" };
+    const binding = { source: "linop-db-events", destination: "linop-db-queue", destinationType: "queue", routingKey: "orders.*" };
 
     await mqBind("conn-1", NS, binding);
     expect(mocks.invoke).toHaveBeenCalledWith("mq_bind", { connectionId: "conn-1", ns: NS, binding });
@@ -116,14 +116,14 @@ describe("mq exchanges/bindings HTTP API", () => {
     await mqListExchanges("conn-1", NS);
     expect(lastCall(fetchMock)).toEqual({ url: "/api/mq/exchanges/list", body: { connectionId: "conn-1", ns: NS } });
 
-    await mqCreateExchange("conn-1", NS, { name: "dbx-events", type: "fanout", durable: false, autoDelete: true });
+    await mqCreateExchange("conn-1", NS, { name: "linop-db-events", type: "fanout", durable: false, autoDelete: true });
     expect(lastCall(fetchMock)).toEqual({
       url: "/api/mq/exchanges/create",
-      body: { connectionId: "conn-1", ns: NS, name: "dbx-events", exchangeType: "fanout", durable: false, autoDelete: true },
+      body: { connectionId: "conn-1", ns: NS, name: "linop-db-events", exchangeType: "fanout", durable: false, autoDelete: true },
     });
 
-    await mqDeleteExchange("conn-1", NS, "dbx-events");
-    expect(lastCall(fetchMock)).toEqual({ url: "/api/mq/exchanges/delete", body: { connectionId: "conn-1", ns: NS, name: "dbx-events" } });
+    await mqDeleteExchange("conn-1", NS, "linop-db-events");
+    expect(lastCall(fetchMock)).toEqual({ url: "/api/mq/exchanges/delete", body: { connectionId: "conn-1", ns: NS, name: "linop-db-events" } });
   });
 
   it("posts bounded exchange and topic list requests", async () => {
@@ -141,10 +141,10 @@ describe("mq exchanges/bindings HTTP API", () => {
   it("posts to the bindings endpoints", async () => {
     const fetchMock = stubFetch();
     const { mqListBindings, mqBind, mqUnbind } = await import("@/lib/backend/mq-http");
-    const binding = { source: "dbx-events", destination: "dbx-queue", destinationType: "queue", routingKey: "orders.*" };
+    const binding = { source: "linop-db-events", destination: "linop-db-queue", destinationType: "queue", routingKey: "orders.*" };
 
-    await mqListBindings("conn-1", NS, { queue: "dbx-queue" });
-    expect(lastCall(fetchMock)).toEqual({ url: "/api/mq/bindings/list", body: { connectionId: "conn-1", ns: NS, exchange: undefined, queue: "dbx-queue" } });
+    await mqListBindings("conn-1", NS, { queue: "linop-db-queue" });
+    expect(lastCall(fetchMock)).toEqual({ url: "/api/mq/bindings/list", body: { connectionId: "conn-1", ns: NS, exchange: undefined, queue: "linop-db-queue" } });
 
     await mqBind("conn-1", NS, binding);
     expect(lastCall(fetchMock)).toEqual({ url: "/api/mq/bindings/bind", body: { connectionId: "conn-1", ns: NS, binding } });

@@ -331,7 +331,7 @@ const ALTER_BODY_KEYWORDS = new Set(["ADD", "ALTER", "COMMENT", "DROP", "MODIFY"
 const CLICKHOUSE_ALTER_TABLE_HEADER = /^ALTER\s+TABLE\s+(?:(?:[A-Za-z_][\w$]*|`(?:``|[^`])+`|"(?:""|[^"])+")\s*\.\s*)?(?:[A-Za-z_][\w$]*|`(?:``|[^`])+`|"(?:""|[^"])+")(?:\s+ON\s+CLUSTER\s+(?:[A-Za-z_][\w$]*|`(?:``|[^`])+`|"(?:""|[^"])+"|'(?:''|[^'])+'))?\s*$/i;
 const SET_OPERATION_KEYWORDS = new Set(["UNION", "INTERSECT", "EXCEPT", "MINUS"]);
 const SET_OPERATION_MODIFIER_KEYWORDS = new Set(["ALL", "DISTINCT"]);
-// Mirrors the backend list in dbx-core/src/sql.rs is_oracle_like_database — keep both
+// Mirrors the backend list in linop-db-core/src/sql.rs is_oracle_like_database — keep both
 // in sync. ArgoDB (Transwarp Hive/Inceptor fork) ships a PL/SQL-compatible procedure
 // language (`CREATE [OR REPLACE] PROCEDURE ... IS BEGIN ... END;`), so its statement
 // ranges must stay whole instead of splitting at every body semicolon.
@@ -340,7 +340,7 @@ const MYSQL_ROUTINE_BLOCK_DATABASES: ReadonlySet<DatabaseType> = new Set(["mysql
 // PostgreSQL/openGauss are also the connection types users pick for GaussDB/openGauss instances
 // running in Oracle (A) compatibility mode, where a routine body is written in Oracle style
 // (`CREATE PROCEDURE p AS DECLARE ... BEGIN ... END;`) and closed by a standalone `/` line.
-// Mirrors SqlDialectProfile::postgres_family in dbx-sql — keep both in sync.
+// Mirrors SqlDialectProfile::postgres_family in linop-db-sql — keep both in sync.
 const POSTGRES_FAMILY_DATABASES: ReadonlySet<DatabaseType> = new Set(["postgres", "opengauss"]);
 // Backslash escaping inside '...'/"..." strings is a MySQL-family extension; in standard SQL '\'
 // is a complete one-char string and quotes are escaped by doubling (''). Treating backslash as an
@@ -404,7 +404,7 @@ function isAsciiAlphanumeric(ch: string): boolean {
  * Delimiters inside string literals, double/backtick/bracket quoted
  * identifiers, dollar-quoted bodies (Postgres), line comments (`--`, `#`) and
  * block comments (`/* *​/`) are ignored, mirroring the backend splitter in
- * `dbx-core/src/sql.rs`. Ranges are returned as `[from, to)` offsets covering
+ * `linop-db-core/src/sql.rs`. Ranges are returned as `[from, to)` offsets covering
  * only the statement text (the trailing semicolon and inter-statement
  * whitespace are excluded so editor highlights stay tight).
  */

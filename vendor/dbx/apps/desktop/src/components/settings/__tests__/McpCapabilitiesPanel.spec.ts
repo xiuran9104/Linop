@@ -56,7 +56,7 @@ const catalog: McpToolCatalog = {
       scopeKinds: ["database"],
       tools: [
         {
-          name: "dbx_list_tables",
+          name: "linop_db_list_tables",
           access: "read",
           accessMode: "static",
           coverageKind: "capability",
@@ -67,7 +67,7 @@ const catalog: McpToolCatalog = {
             { name: "limit", valueType: "integer", required: false, default: 100, description: "Maximum rows" },
           ],
         },
-        { name: "dbx_get_routine_source", access: "read", accessMode: "static", coverageKind: "capability", databaseTypes: ["mysql"], description: "", parameters: [] },
+        { name: "linop_db_get_routine_source", access: "read", accessMode: "static", coverageKind: "capability", databaseTypes: ["mysql"], description: "", parameters: [] },
       ],
     },
     {
@@ -76,14 +76,14 @@ const catalog: McpToolCatalog = {
       resourceKinds: ["org"],
       scopeKind: "org",
       scopeKinds: ["org"],
-      tools: [{ name: "dbx_salesforce_current_user", access: "read", accessMode: "static", coverageKind: "types", databaseTypes: ["salesforce"], description: "", parameters: [] }],
+      tools: [{ name: "linop_db_salesforce_current_user", access: "read", accessMode: "static", coverageKind: "types", databaseTypes: ["salesforce"], description: "", parameters: [] }],
     },
     {
       id: "admin.connections",
       provider: "builtin:admin",
       resourceKinds: [],
       scopeKinds: [],
-      tools: [{ name: "dbx_add_connection", access: "write", accessMode: "static", coverageKind: "none", databaseTypes: [], description: "", parameters: [] }],
+      tools: [{ name: "linop_db_add_connection", access: "write", accessMode: "static", coverageKind: "none", databaseTypes: [], description: "", parameters: [] }],
     },
   ],
 };
@@ -120,9 +120,9 @@ describe("McpCapabilitiesPanel", () => {
     });
     const saveToolset = vi.fn(async () => {
       await saving;
-      await mounted.setProps({ savedToolNames: ["dbx_list_tables"] });
+      await mounted.setProps({ savedToolNames: ["linop_db_list_tables"] });
     });
-    const { mounted } = mountPanel({ allowedToolNames: ["dbx_list_tables"], savedToolNames: null, saveToolset });
+    const { mounted } = mountPanel({ allowedToolNames: ["linop_db_list_tables"], savedToolNames: null, saveToolset });
     mounted.exposed.value.openDetail("sql.schema");
     await nextTick();
     const detail = () => findOne(mounted.root, (node) => node.props["data-mcp-toolset-detail"] !== undefined);
@@ -164,9 +164,9 @@ describe("McpCapabilitiesPanel", () => {
       .fn()
       .mockRejectedValueOnce(new Error("disk full"))
       .mockImplementationOnce(async () => {
-        await mounted.setProps({ savedToolNames: ["dbx_list_tables"] });
+        await mounted.setProps({ savedToolNames: ["linop_db_list_tables"] });
       });
-    const { mounted } = mountPanel({ allowedToolNames: ["dbx_list_tables"], savedToolNames: null, saveToolset });
+    const { mounted } = mountPanel({ allowedToolNames: ["linop_db_list_tables"], savedToolNames: null, saveToolset });
     mounted.exposed.value.openDetail("sql.schema");
     await nextTick();
     const apply = () => findOne(mounted.root, (node) => node.props["data-mcp-toolset-apply"] !== undefined);
@@ -195,9 +195,9 @@ describe("McpCapabilitiesPanel", () => {
     const detail = () => findOne(mounted.root, (node) => node.props["data-mcp-toolset-detail"] !== undefined);
     const toggle = findAll(detail(), (node) => node.props["data-stub"] === "Switch")[1];
     toggle.props["onUpdate:modelValue"](false);
-    expect(setTool).toHaveBeenCalledWith("dbx_get_routine_source", false);
+    expect(setTool).toHaveBeenCalledWith("linop_db_get_routine_source", false);
     // The parent owns the shared draft and feeds the edited list back to the dialog.
-    await mounted.setProps({ allowedToolNames: ["dbx_list_tables"] });
+    await mounted.setProps({ allowedToolNames: ["linop_db_list_tables"] });
     expect(hostText(detail())).toContain("settings.mcpToolsetCloseKeepsDraft");
     if (method === "footer")
       dispatch(
@@ -243,7 +243,7 @@ describe("McpCapabilitiesPanel", () => {
   });
 
   it("scopes the list to requested toolsets and applies the enabled filter", () => {
-    const { mounted } = mountPanel({ visibleToolsetIds: ["sql.schema", "salesforce"], onlyEnabled: true, allowedToolNames: ["dbx_list_tables"] });
+    const { mounted } = mountPanel({ visibleToolsetIds: ["sql.schema", "salesforce"], onlyEnabled: true, allowedToolNames: ["linop_db_list_tables"] });
     expect(findAll(mounted.root, (node) => node.props["data-mcp-toolset"] !== undefined).map((node) => node.props["data-mcp-toolset"])).toEqual(["sql.schema"]);
     expect(hostText(card(mounted.root, "sql.schema"))).toContain('settings.mcpBrowser.enabledToolCount {"enabled":1,"total":2}');
     expect(hostText(card(mounted.root, "sql.schema"))).toContain("settings.mcpBrowser.partialEnabled");
@@ -260,7 +260,7 @@ describe("McpCapabilitiesPanel", () => {
   });
 
   it("emits toolset switches from the allowlist state", () => {
-    const { mounted, setToolset } = mountPanel({ allowedToolNames: ["dbx_list_tables"] });
+    const { mounted, setToolset } = mountPanel({ allowedToolNames: ["linop_db_list_tables"] });
     const toggle = findOne(card(mounted.root, "sql.schema"), (node) => node.props["data-stub"] === "Switch");
     expect(toggle.props["model-value"] ?? toggle.props.modelValue).toBe(true);
     const handler = toggle.props["onUpdate:modelValue"] as (value: boolean) => void;
@@ -322,7 +322,7 @@ describe("McpCapabilitiesPanel", () => {
   });
 
   it("lists every tool with its own switch and an expandable detail", async () => {
-    const { mounted, setTool } = mountPanel({ allowedToolNames: ["dbx_list_tables"] });
+    const { mounted, setTool } = mountPanel({ allowedToolNames: ["linop_db_list_tables"] });
     const opener = findAll(card(mounted.root, "sql.schema"), (node) => node.type === "button")[0];
     dispatch(opener, "click");
     await nextTick();
@@ -334,9 +334,9 @@ describe("McpCapabilitiesPanel", () => {
     const switches = findAll(detail, (node) => node.props["data-stub"] === "Switch");
     expect(switches.map((node) => node.props["model-value"] ?? node.props.modelValue)).toEqual([true, false]);
     (switches[1].props["onUpdate:modelValue"] as (value: boolean) => void)(true);
-    expect(setTool).toHaveBeenCalledWith("dbx_get_routine_source", true);
+    expect(setTool).toHaveBeenCalledWith("linop_db_get_routine_source", true);
 
-    const listTables = findOne(detail, (node) => node.props["data-mcp-tool"] === "dbx_list_tables");
+    const listTables = findOne(detail, (node) => node.props["data-mcp-tool"] === "linop_db_list_tables");
     dispatch(
       findOne(listTables, (node) => node.props["data-mcp-tool-toggle"] !== undefined),
       "click",
@@ -356,7 +356,7 @@ describe("McpCapabilitiesPanel", () => {
     const { mounted } = mountPanel();
     dispatch(findAll(card(mounted.root, "sql.schema"), (node) => node.type === "button")[0], "click");
     await nextTick();
-    const routine = findOne(mounted.root, (node) => node.props["data-mcp-tool"] === "dbx_get_routine_source");
+    const routine = findOne(mounted.root, (node) => node.props["data-mcp-tool"] === "linop_db_get_routine_source");
     dispatch(
       findOne(routine, (node) => node.props["data-mcp-tool-toggle"] !== undefined),
       "click",
@@ -403,13 +403,13 @@ describe("McpCapabilitiesPanel", () => {
 
   it("exposes detail opening for a hidden result and expands the requested tool", async () => {
     const { mounted } = mountPanel({ visibleToolsetIds: [], listHidden: true });
-    mounted.exposed.value.openDetail("sql.schema", "tools", "dbx_list_tables");
+    mounted.exposed.value.openDetail("sql.schema", "tools", "linop_db_list_tables");
     await nextTick();
     expect(findAll(mounted.root, (node) => node.props["data-mcp-capability-list"] !== undefined)).toEqual([]);
-    const tool = findOne(mounted.root, (node) => node.props["data-mcp-tool"] === "dbx_list_tables");
+    const tool = findOne(mounted.root, (node) => node.props["data-mcp-tool"] === "linop_db_list_tables");
     expect(findOne(tool, (node) => node.props["data-mcp-tool-toggle"] !== undefined).props["aria-expanded"]).toBe(true);
     expect(hostText(tool)).toContain("List tables and views for a database connection");
-    const other = findOne(mounted.root, (node) => node.props["data-mcp-tool"] === "dbx_get_routine_source");
+    const other = findOne(mounted.root, (node) => node.props["data-mcp-tool"] === "linop_db_get_routine_source");
     expect(findOne(other, (node) => node.props["data-mcp-tool-toggle"] !== undefined).props["aria-expanded"]).toBe(false);
   });
 
@@ -444,7 +444,7 @@ describe("McpCapabilitiesPanel", () => {
     document.body.append(searchTrigger);
     searchTrigger.focus();
     try {
-      mounted.exposed.value.openDetail("sql.schema", "tools", "dbx_list_tables");
+      mounted.exposed.value.openDetail("sql.schema", "tools", "linop_db_list_tables");
       await nextTick();
       searchTrigger.blur();
       const detail = findOne(mounted.root, (node) => node.props["data-mcp-toolset-detail"] !== undefined);
@@ -525,9 +525,9 @@ describe("McpCapabilitiesPanel", () => {
     const app = createApp(McpCapabilitiesPanel, { catalog, allowedToolNames: null, connections, listHidden: true });
     const panel = app.mount(container) as unknown as { openDetail: (id: string, view: string, toolName: string, trigger: HTMLElement) => void };
     try {
-      panel.openDetail("sql.schema", "tools", "dbx_get_routine_source", trigger);
+      panel.openDetail("sql.schema", "tools", "linop_db_get_routine_source", trigger);
       await nextTick();
-      const row = container.querySelector('[data-mcp-tool="dbx_get_routine_source"]');
+      const row = container.querySelector('[data-mcp-tool="linop_db_get_routine_source"]');
       const opener = row?.querySelector("[data-mcp-tool-toggle]");
       expect(row).not.toBeNull();
       expect(opener?.getAttribute("aria-expanded")).toBe("true");

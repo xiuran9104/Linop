@@ -93,7 +93,7 @@ test("handshake rejects wrong identity and missing executables terminate promptl
 
 test("handshake adopts a manifest.json rewritten on disk when the in-memory copy is stale", async (t) => {
   let sidecar;
-  const project = await mkdtemp(join(tmpdir(), "dbx-sidecar-manifest-"));
+  const project = await mkdtemp(join(tmpdir(), "linop-db-sidecar-manifest-"));
   t.after(async () => {
     await sidecar?.stop();
     await rm(project, { recursive: true, force: true });
@@ -110,7 +110,7 @@ test("handshake adopts a manifest.json rewritten on disk when the in-memory copy
 
 test("handshake still rejects when the on-disk manifest also disagrees with the sidecar", async (t) => {
   let sidecar;
-  const project = await mkdtemp(join(tmpdir(), "dbx-sidecar-manifest-"));
+  const project = await mkdtemp(join(tmpdir(), "linop-db-sidecar-manifest-"));
   t.after(async () => {
     await sidecar?.stop();
     await rm(project, { recursive: true, force: true });

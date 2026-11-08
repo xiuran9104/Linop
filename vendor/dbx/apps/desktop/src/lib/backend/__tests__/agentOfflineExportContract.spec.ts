@@ -7,7 +7,7 @@ const api = readFileSync(new URL("../api.ts", import.meta.url), "utf8");
 const driverStore = readFileSync(new URL("../../../components/config/DriverStoreDialog.vue", import.meta.url), "utf8");
 const driverStoreAgentRow = readFileSync(new URL("../../../components/config/DriverStoreAgentRow.vue", import.meta.url), "utf8");
 const tauriRegistry = readFileSync(new URL("../../../../../../src-tauri/src/lib.rs", import.meta.url), "utf8");
-const webRegistry = readFileSync(new URL("../../../../../../crates/dbx-web/src/main.rs", import.meta.url), "utf8");
+const webRegistry = readFileSync(new URL("../../../../../../crates/linop-db-web/src/main.rs", import.meta.url), "utf8");
 
 function functionBody(source: string, operation: string): string {
   const start = source.indexOf(`export async function ${operation}(`);
@@ -116,7 +116,7 @@ describe("offline Agent export transport contract", () => {
 
     const exportPackage = sourceSection(driverStore, "async function exportOfflinePackage", "\n\nfunction chooseWebOfflineZip");
     expect(exportPackage).toContain("runAgentOfflineExportAction({");
-    expect(exportPackage).toContain("defaultPath: `dbx-agents-offline-${platform}.zip`");
+    expect(exportPackage).toContain("defaultPath: `linop-db-agents-offline-${platform}.zip`");
     expect(exportPackage).toContain('filters: [{ name: "ZIP", extensions: ["zip"] }]');
 
     const success = sourceSection(exportPackage, "onSuccess:", "\n    onError:");

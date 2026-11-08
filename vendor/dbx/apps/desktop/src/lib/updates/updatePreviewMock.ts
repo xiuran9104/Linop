@@ -89,13 +89,13 @@ export function previewMcpUpdate(): McpServerStatus {
     current_version: "0.4.88",
     latest_version: "0.4.89",
     update_available: true,
-    bin_path: "/preview/bin/dbx-mcp",
+    bin_path: "/preview/bin/linop-db-mcp",
     native_bin_path: null,
-    script_path: "/preview/lib/dbx-mcp/index.js",
+    script_path: "/preview/lib/linop-db-mcp/index.js",
     data_dir: "/preview/data/mcp",
-    install_command: "npm install -g @dbx-app/mcp-server",
-    update_command: "npm update -g @dbx-app/mcp-server",
-    uninstall_command: "npm uninstall -g @dbx-app/mcp-server",
+    install_command: "npm install -g @linop-db-app/mcp-server",
+    update_command: "npm update -g @linop-db-app/mcp-server",
+    uninstall_command: "npm uninstall -g @linop-db-app/mcp-server",
     error: null,
   };
 }

@@ -7,7 +7,7 @@ describe("KV export scope", () => {
 
     expect(isKeyInKvExportScope("/dbx", scope)).toBe(true);
     expect(isKeyInKvExportScope("/dbx/app/name", scope)).toBe(true);
-    expect(isKeyInKvExportScope("/dbx-other", scope)).toBe(false);
+    expect(isKeyInKvExportScope("/linop-db-other", scope)).toBe(false);
   });
 
   it("matches only the selected key for a key export", () => {
@@ -26,6 +26,6 @@ describe("KV export scope", () => {
 
   it("compares UTF-8 and Base64 representations by their original bytes", () => {
     expect(kvValueByteIdentity({ encoding: "utf8", data: "/dbx/app" })).toBe(kvValueByteIdentity({ encoding: "base64", data: "L2RieC9hcHA=" }));
-    expect(kvValueByteIdentity({ encoding: "utf8", data: "/dbx/app" })).not.toBe(kvValueByteIdentity({ encoding: "utf8", data: "/dbx-other" }));
+    expect(kvValueByteIdentity({ encoding: "utf8", data: "/dbx/app" })).not.toBe(kvValueByteIdentity({ encoding: "utf8", data: "/linop-db-other" }));
   });
 });

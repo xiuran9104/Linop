@@ -1,6 +1,6 @@
 import type { DatabaseType } from "@/types/database";
 
-/** Mirrors `dbx_core::mcp_catalog` — the built-in MCP tool descriptor catalog. */
+/** Mirrors `linop_db_core::mcp_catalog` — the built-in MCP tool descriptor catalog. */
 export type McpAccessLevel = "read" | "write" | "full";
 export type McpAccessMode = "static" | "classified";
 export type McpCoverageKind = "none" | "allConnections" | "capability" | "types";
@@ -40,10 +40,10 @@ export interface McpToolCatalog {
   toolsets: McpToolCatalogToolset[];
 }
 
-/** Mirrors `dbx_core::storage::PluginMcpAccessLevel`. */
+/** Mirrors `linop_db_core::storage::PluginMcpAccessLevel`. */
 export type PluginMcpAccessLevel = "read" | "write" | "full";
 
-/** Mirrors `dbx_core::storage::PluginMcpGrant` — the user's external MCP decision for one plugin. */
+/** Mirrors `linop_db_core::storage::PluginMcpGrant` — the user's external MCP decision for one plugin. */
 export interface PluginMcpGrant {
   external: boolean;
   ceiling: PluginMcpAccessLevel;
@@ -71,7 +71,7 @@ export interface PluginMcpToolsetView {
   description: string | null;
 }
 
-/** Mirrors `dbx_core::plugin_mcp::PluginMcpView` — one plugin card. */
+/** Mirrors `linop_db_core::plugin_mcp::PluginMcpView` — one plugin card. */
 export interface PluginMcpView {
   pluginId: string;
   pluginName: string;
@@ -84,7 +84,7 @@ export interface PluginMcpView {
   discoveryError: string | null;
 }
 
-/** Mirrors `dbx_core::mcp_access` — the v2 access policy (plugin sub-scope rules live only here). */
+/** Mirrors `linop_db_core::mcp_access` — the v2 access policy (plugin sub-scope rules live only here). */
 export type McpAccessLevelV2 = "none" | "read" | "write" | "full";
 export type McpSubScopeMode = "all" | "selected" | "none";
 export type McpRuleTarget = { kind: "group"; id: string } | { kind: "connection"; id: string } | { kind: "scope"; connectionId: string; scope: string; value: string };

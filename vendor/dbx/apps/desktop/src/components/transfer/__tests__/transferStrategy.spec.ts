@@ -44,8 +44,8 @@ function preview(overrides: Partial<TransferOwnershipPreview> = {}): TransferOwn
     missingOwners: [],
     targetOwner: "target_user",
     rebuild: {
-      sql: 'ALTER TABLE "reporting"."orders" RENAME TO "orders__dbx_bak_123";\nCREATE TABLE "reporting"."orders" ("id" INTEGER);',
-      tables: [{ sourceTable: "Orders", targetTable: '"reporting"."orders"', backupTable: '"reporting"."orders__dbx_bak_123"' }],
+      sql: 'ALTER TABLE "reporting"."orders" RENAME TO "orders__linop_db_bak_123";\nCREATE TABLE "reporting"."orders" ("id" INTEGER);',
+      tables: [{ sourceTable: "Orders", targetTable: '"reporting"."orders"', backupTable: '"reporting"."orders__linop_db_bak_123"' }],
     },
     ...overrides,
   };
@@ -194,7 +194,7 @@ describe("transfer submission", () => {
 
     expect(previews[0]).toMatchObject({ transferId: "transfer-1", targetDatabase: "warehouse", mode: "append", tables: ["Orders"], objects: [{ objectType: "TABLE", names: ["Orders"] }], dropTargetConfirmed: false });
     expect(() => previews[0]!.tables.push("Mutated")).toThrow();
-    expect(reviewed[0]?.preview.rebuild?.sql).toBe('ALTER TABLE "reporting"."orders" RENAME TO "orders__dbx_bak_123";\nCREATE TABLE "reporting"."orders" ("id" INTEGER);');
+    expect(reviewed[0]?.preview.rebuild?.sql).toBe('ALTER TABLE "reporting"."orders" RENAME TO "orders__linop_db_bak_123";\nCREATE TABLE "reporting"."orders" ("id" INTEGER);');
     expect(executions).toEqual([]);
 
     decision.resolve(true);

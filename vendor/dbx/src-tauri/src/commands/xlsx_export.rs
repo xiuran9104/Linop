@@ -1,4 +1,4 @@
-use dbx_core::xlsx_export::{
+use linop_db_core::xlsx_export::{
     build_xlsx_workbook_multi_with_auto_filter, build_xlsx_workbook_with_auto_filter, XlsxWorksheetData,
 };
 use serde::Deserialize;

@@ -12,13 +12,13 @@ http://127.0.0.1:5173/login
 
 本次用独立 Chrome profile 打开 DBX Web，创建 5 万行 SQLite 测试库，逐项触发主要功能并采集运行内存。当前测到最占运行内存的功能是：
 
-1. 数据对比 Data Compare：优化前后端 `dbx-web` RSS 从约 213 MiB 峰值升到约 496 MiB，是原始基线中最高。
+1. 数据对比 Data Compare：优化前后端 `linop-db-web` RSS 从约 213 MiB 峰值升到约 496 MiB，是原始基线中最高。
 2. 查询图表 QueryChart：在 5 万行结果上打开图表后，前端 JS heap 升到约 109 MiB，Chrome renderer 峰值约 567 MiB。
 3. 查询结果 DataGrid：5 万行、12 列查询结果进入 DataGrid 后，前端 JS heap 约 78 MiB，Chrome renderer 约 480 MiB，后端 RSS 约 194 MiB。
 4. 驱动管理 Driver Store：DOM 节点明显增加，但 JS heap 被 GC 后下降，未表现为主要内存来源。
 5. 空数据对比对话框：只打开对话框增量很小，不是内存大头；真正占用来自执行对比。
 
-第一轮已优化 Data Compare 后端内存路径：同样 50,000 vs 49,649 行场景下，`dbx-web` RSS 峰值从 507,504 KiB 降到 239,696 KiB，下降约 53%；接口输出计数、SQL 数量和响应大小保持一致。
+第一轮已优化 Data Compare 后端内存路径：同样 50,000 vs 49,649 行场景下，`linop-db-web` RSS 峰值从 507,504 KiB 降到 239,696 KiB，下降约 53%；接口输出计数、SQL 数量和响应大小保持一致。
 
 开发服务器 Vite 本身 RSS 很高，后续一度到约 1.1-1.2 GiB。这是 dev/HMR 工具链占用，不属于某个业务功能，但会显著抬高当前机器的总内存占用。
 
@@ -28,7 +28,7 @@ http://127.0.0.1:5173/login
 
 - 前端登录接口：`/api/auth/login`
 - 初始设置接口：`/api/auth/setup`
-- 后端密码存储：`~/.dbx-web/dbx.db` 的 `app_settings.settings_json.password_hash`
+- 后端密码存储：`~/.linop-db-web/dbx.db` 的 `app_settings.settings_json.password_hash`
 - `DBX_PASSWORD` 环境变量会覆盖数据库密码，但本次没有用环境变量覆盖，而是走 `/api/auth/setup` 持久化设置。
 
 验证结果：
@@ -46,14 +46,14 @@ GET /api/auth/check with cookie -> {"authenticated":true,"required":true,"setup_
 | 组件 | 地址 / 进程 | 说明 |
 | --- | --- | --- |
 | Web 前端 | `http://127.0.0.1:5173` | 已存在的 Vite dev server |
-| Web 后端 | `target/debug/dbx-web`，端口 `4224` | 本次启动，用于 API 和认证 |
-| 测量浏览器 | Chrome 独立 profile：`/tmp/dbx-runtime-chrome-profile` | 只打开 DBX 页面，避免混入日常 Chrome tab |
+| Web 后端 | `target/debug/linop-db-web`，端口 `4224` | 本次启动，用于 API 和认证 |
+| 测量浏览器 | Chrome 独立 profile：`/tmp/linop-db-runtime-chrome-profile` | 只打开 DBX 页面，避免混入日常 Chrome tab |
 
 测试数据：
 
 | 对象 | 规模 |
 | --- | ---: |
-| SQLite 文件 | `/tmp/dbx-runtime-memory-probe.sqlite` |
+| SQLite 文件 | `/tmp/linop-db-runtime-memory-probe.sqlite` |
 | DBX 连接名 | `Runtime Memory SQLite` |
 | `runtime_probe` | 50,000 行，12 列 |
 | `runtime_probe_target` | 49,649 行，12 列 |
@@ -72,8 +72,8 @@ GET /api/auth/check with cookie -> {"authenticated":true,"required":true,"setup_
   - 独立 Chrome profile 总 RSS
   - Chrome renderer RSS
   - Vite RSS
-  - `dbx-web` RSS
-- 数据对比 API 额外用 50ms 间隔采样 `dbx-web` RSS 峰值。
+  - `linop-db-web` RSS
+- 数据对比 API 额外用 50ms 间隔采样 `linop-db-web` RSS 峰值。
 
 注意：
 
@@ -89,7 +89,7 @@ GET /api/auth/check with cookie -> {"authenticated":true,"required":true,"setup_
 - JS heap：MiB
 - RSS：KiB，括号内为约 MiB
 
-| 场景 | JS heap used | Chrome renderer RSS | Chrome profile 总 RSS | `dbx-web` RSS | Vite RSS | 备注 |
+| 场景 | JS heap used | Chrome renderer RSS | Chrome profile 总 RSS | `linop-db-web` RSS | Vite RSS | 备注 |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | 登录页 | 13.30 MiB | 未拆分 | 906,576 KiB（885 MiB） | 未启动/低 | 475,200 KiB（464 MiB） | 登录页 DOM 约 255 |
 | 登录后主界面 | 25.12 MiB | 未拆分 | 961,760 KiB（939 MiB） | 72,688 KiB（71 MiB） | 481,376 KiB（470 MiB） | 已加载连接列表 |
@@ -128,9 +128,9 @@ fetch batch size: 5000
 | 指标 | 值 |
 | --- | ---: |
 | 耗时 | 842 ms |
-| `dbx-web` RSS before | 217,904 KiB（213 MiB） |
-| `dbx-web` RSS peak | 507,504 KiB（496 MiB） |
-| `dbx-web` RSS after | 472,416 KiB（461 MiB） |
+| `linop-db-web` RSS before | 217,904 KiB（213 MiB） |
+| `linop-db-web` RSS peak | 507,504 KiB（496 MiB） |
+| `linop-db-web` RSS after | 472,416 KiB（461 MiB） |
 | 响应大小 | 10,291,638 bytes |
 | source rows | 50,000 |
 | target rows | 49,649 |
@@ -146,7 +146,7 @@ fetch batch size: 5000
 
 代码改动：
 
-- `crates/dbx-core/src/data_compare.rs`
+- `crates/linop-db-core/src/data_compare.rs`
 - 对比中间态从“每一行都转成 `HashMap<String, Value>`”改为“按列索引保存 `Vec<Value>`，只在 added/removed/modified 输出时组装 HashMap”。
 - 去掉 `prepare_data_compare` 和缺目标表路径里的 `DataCompareResult` clone。
 - 单元格比较改为借用比较，只有确认为变化时才 clone 到返回结果。
@@ -157,9 +157,9 @@ fetch batch size: 5000
 | 指标 | 优化前 | 优化后 | 变化 |
 | --- | ---: | ---: | ---: |
 | 耗时 | 842 ms | 942 ms | +100 ms |
-| `dbx-web` RSS before | 217,904 KiB（213 MiB） | 65,168 KiB（64 MiB） | 启动基线更干净 |
-| `dbx-web` RSS peak | 507,504 KiB（496 MiB） | 239,696 KiB（234 MiB） | -267,808 KiB（约 -53%） |
-| `dbx-web` RSS after | 472,416 KiB（461 MiB） | 233,840 KiB（228 MiB） | -238,576 KiB |
+| `linop-db-web` RSS before | 217,904 KiB（213 MiB） | 65,168 KiB（64 MiB） | 启动基线更干净 |
+| `linop-db-web` RSS peak | 507,504 KiB（496 MiB） | 239,696 KiB（234 MiB） | -267,808 KiB（约 -53%） |
+| `linop-db-web` RSS after | 472,416 KiB（461 MiB） | 233,840 KiB（228 MiB） | -238,576 KiB |
 | 响应大小 | 10,291,638 bytes | 10,291,638 bytes | 不变 |
 | added / removed / modified | 1,351 / 1,000 / 4,865 | 1,351 / 1,000 / 4,865 | 不变 |
 | sync statements | 7,216 | 7,216 | 不变 |

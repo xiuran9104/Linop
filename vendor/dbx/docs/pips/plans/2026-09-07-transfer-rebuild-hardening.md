@@ -42,7 +42,7 @@ expect(transferStrategyOptions('rebuild')).toEqual({ mode: 'append', dropTargetB
 
 ## Task 2: 依赖预检
 
-**Files:** `crates/dbx-core/src/transfer_rebuild.rs` and its tests.
+**Files:** `crates/linop-db-core/src/transfer_rebuild.rs` and its tests.
 
 **Interfaces:** Preserve `ensure_no_external_incoming_foreign_keys`. Add `ensure_no_external_table_dependencies(state: &AppState, target_pool_key: &str, target_database: &str, target_schema: &str, target_tables: &[String], target_database_type: DatabaseType) -> Result<(), String>` for rebuild planning and cleanup verification.
 
@@ -54,7 +54,7 @@ expect(transferStrategyOptions('rebuild')).toEqual({ mode: 'append', dropTargetB
 
 ## Task 3: 备份计划及生命周期
 
-**Files:** `crates/dbx-core/src/transfer.rs`, `transfer_rebuild.rs` integration, focused new core module if appropriate, `storage.rs`, `src-tauri/src/commands/transfer.rs`, `crates/dbx-web/src/routes/transfer.rs`.
+**Files:** `crates/linop-db-core/src/transfer.rs`, `transfer_rebuild.rs` integration, focused new core module if appropriate, `storage.rs`, `src-tauri/src/commands/transfer.rs`, `crates/linop-db-web/src/routes/transfer.rs`.
 
 **Interfaces:** Keep `rename_tables_to_backup` and `transfer_table` public signatures compatible. Add serializable recovery records with qualified source/target/backup identities, SQL, operation state and error/cancellation outcome. Ownership preview gains the optional rebuild preview from Task 1.
 
@@ -70,11 +70,11 @@ expect(transferStrategyOptions('rebuild')).toEqual({ mode: 'append', dropTargetB
 
 ## Task 4: 集成回归及审查
 
-**Files:** `crates/dbx-core/tests/live_mysql_transfer.rs`, `live_postgres_transfer.rs`, new SQLite rebuild regression tests, existing frontend behavior tests.
+**Files:** `crates/linop-db-core/tests/live_mysql_transfer.rs`, `live_postgres_transfer.rs`, new SQLite rebuild regression tests, existing frontend behavior tests.
 
 - [ ] Add regression cases for PostgreSQL SERIAL/identity ownership, shared long index prefixes, external views, MySQL cyclic FKs, SQLite external children, partial rename cancellation, failure before final cleanup, and successful cleanup.
 - [ ] Verify red before the relevant fixes, then run green against temporary PostgreSQL and MySQL servers and temporary SQLite databases.
-- [ ] Run `RUST_MIN_STACK=8388608 cargo test --offline --locked -p dbx-core --no-default-features --features sqlite-bundled --lib transfer`.
+- [ ] Run `RUST_MIN_STACK=8388608 cargo test --offline --locked -p linop-db-core --no-default-features --features sqlite-bundled --lib transfer`.
 - [ ] Run relevant frontend Vitest cases, `pnpm exec vue-tsc --noEmit --project apps/desktop/tsconfig.json`, and Rust checks for core/Web/Tauri with available local features.
 - [ ] Request an independent code review, fix actionable findings, inspect the final diff and working-tree state.
 
@@ -92,11 +92,11 @@ expect(transferStrategyOptions('rebuild')).toEqual({ mode: 'append', dropTargetB
   - New `free_backup_foreign_key_names` frees MySQL backup constraint names atomically before the deferred FK ALTERs.
   - Cleanup order: table loop → free constraint names → deferred FK ALTERs → schema objects → `drop_backup_tables` (which now breaks the backup-to-backup FK graph first, fixing "Cannot drop table ... referenced by a foreign key constraint" seen with Flowable schemas).
 - DDL planning shared: `transfer/ddl_plan.rs::prepare_table_ddl` replaces the inline block in `transfer_table_inner`; rebuild mode fails closed on incomplete columns, unreadable source DDL, and failed FK inspection.
-- Verification: 283 core transfer lib tests pass (2 prior red tests fixed); full dbx-core lib suite 5653 passed with one pre-existing environment failure (`external_driver_preview_retry_preserves_marker_truncation`, JDBC plugin timeout, reproduced on the clean baseline); `dbx-web` and Tauri `dbx` `cargo check` clean; frontend Vitest (49) and `vue-tsc` clean.
+- Verification: 283 core transfer lib tests pass (2 prior red tests fixed); full linop-db-core lib suite 5653 passed with one pre-existing environment failure (`external_driver_preview_retry_preserves_marker_truncation`, JDBC plugin timeout, reproduced on the clean baseline); `linop-db-web` and Tauri `dbx` `cargo check` clean; frontend Vitest (49) and `vue-tsc` clean.
 - Live regression (temporary Docker `postgres:16-alpine` + `mysql:8.0` on loopback ports 55432/53306, cleaned up afterwards):
   - PostgreSQL rebuild tests: 4/4 passed (`rebuilds_same_named_serial_sequence`, `rebuilds_indexes_with_shared_long_prefix`, `rebuild_rejects_target_only_view_before_any_rename`, `drop_target_rebuilds_structure_and_indexes`).
   - MySQL `drop_target` tests: 5/5 passed, including the Flowable-style `parent_child` FK, the `circular_foreign_keys` cleanup (the `ERROR 3730` scenario), and `retains_backup_on_failure`.
 - Recovery semantics (user decision "B"): `create_transfer_target_table` was extracted, and the rebuild path now creates the target table from the source DDL *before* reading the source column list. A source column-read failure therefore still leaves the empty new table + retained backup behind (drop the empty table, rename the backup back).
 - Ownership preview gains the optional rebuild plan: `TransferOwnershipPreview.rebuild` (`TransferRebuildPreview` with `sql`/`tables`/`warnings`) is built by `build_rebuild_preview` — pure planning that reuses the same resolution, backup-name derivation, dependency preflight, and DDL planning as execution, so the confirmation dialog shows the real rename/create/cleanup statements. A SQLite regression (`transfer_rebuild_preview_plans_without_executing_ddl`) verifies it plans without renaming anything.
-- Final verification: 284 core transfer lib tests, PostgreSQL rebuild 4/4, MySQL `drop_target` 5/5, `dbx-web` + Tauri `dbx` `cargo check` clean, `vue-tsc` clean.
+- Final verification: 284 core transfer lib tests, PostgreSQL rebuild 4/4, MySQL `drop_target` 5/5, `linop-db-web` + Tauri `dbx` `cargo check` clean, `vue-tsc` clean.
 - Pending: an independent review pass.

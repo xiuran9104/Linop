@@ -22,7 +22,7 @@ const VECTOR_DB_TYPES: ReadonlySet<DatabaseType> = new Set([
   "milvus",
   "weaviate",
   "chromadb",
-  // If modifying this, also update is_vector_db() in crates/dbx-core/src/ai/agent_tools.rs.
+  // If modifying this, also update is_vector_db() in crates/linop-db-core/src/ai/agent_tools.rs.
 ]);
 
 export function isVectorDbType(dbType: DatabaseType): boolean {
@@ -389,7 +389,7 @@ function attachmentSafetyInstruction(isZh: boolean): string {
 
 /**
  * @param cliProvider whether the run will be handled by a CLI provider, whose
- *   tool surface is the DBX MCP server (`dbx_*` tool names) rather than the
+ *   tool surface is the DBX MCP server (`linop_db_*` tool names) rather than the
  *   built-in registry. Only the Redis branch depends on it today; it defaults
  *   to `false`, which is what the built-in assistant uses.
  */
@@ -684,11 +684,11 @@ function buildModePromptLines(mode: AiAssistantMode, isZh: boolean, databaseType
     if (mode === "agent") {
       // The two lanes expose different Redis tool names, and naming a tool the
       // run cannot call is exactly what issue #10425 reported: the built-in
-      // assistant was told to use the MCP-only `dbx_execute_redis_command`.
+      // assistant was told to use the MCP-only `linop_db_execute_redis_command`.
       const openLine = cliProvider
         ? isZh
-          ? "你处于 Redis Agent 模式。查询或修改 Redis 数据时使用 dbx_execute_redis_command，不要生成或执行 SQL。"
-          : "You are in Redis Agent mode. Use dbx_execute_redis_command to query or modify Redis data; do not generate or execute SQL."
+          ? "你处于 Redis Agent 模式。查询或修改 Redis 数据时使用 linop_db_execute_redis_command，不要生成或执行 SQL。"
+          : "You are in Redis Agent mode. Use linop_db_execute_redis_command to query or modify Redis data; do not generate or execute SQL."
         : isZh
           ? "你处于 Redis Agent 模式。你有以下工具可用：execute_redis_command（只读）、get_current_time。用户询问 Redis 数据时必须调用 execute_redis_command 获取真实结果后再回答，不要只输出命令文本后停止，也不要生成或执行 SQL。"
           : "You are in Redis Agent mode. You have the following tools available: execute_redis_command (read-only) and get_current_time. When the user asks for Redis data you MUST call execute_redis_command to obtain real results before answering — do not stop at command text — and do not generate or execute SQL.";

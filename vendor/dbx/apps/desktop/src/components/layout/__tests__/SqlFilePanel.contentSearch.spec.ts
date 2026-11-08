@@ -283,7 +283,7 @@ describe("SqlFilePanel content search", () => {
 });
 
 it("remembers the file search mode independently of the SQL library", async () => {
-  localStorage.setItem("dbx-sql-library-search-mode", "name");
+  localStorage.setItem("linop-db-sql-library-search-mode", "name");
   const first = await mountPanel();
   await changeSearchMode(first.host, "content");
   const mountedFirst = mounted.pop()!;
@@ -291,6 +291,6 @@ it("remembers the file search mode independently of the SQL library", async () =
   mountedFirst.host.remove();
   const second = await mountPanel();
   expect(second.host.querySelector<HTMLSelectElement>("[data-search-mode]")!.value).toBe("content");
-  expect(localStorage.getItem("dbx-sql-library-search-mode")).toBe("name");
+  expect(localStorage.getItem("linop-db-sql-library-search-mode")).toBe("name");
   expect(mocks.search).not.toHaveBeenCalled();
 });

@@ -5,7 +5,7 @@ export interface McpLaunchConfig {
 }
 
 const DEFAULT_MCP_LAUNCH_CONFIG: McpLaunchConfig = {
-  command: "dbx-mcp-server",
+  command: "linop-db-mcp-server",
 };
 
 export function preferMcpNativeLaunch(config?: McpLaunchConfig, nativeBinPath?: string | null): McpLaunchConfig | undefined {

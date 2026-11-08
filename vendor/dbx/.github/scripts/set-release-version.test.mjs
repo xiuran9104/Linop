@@ -19,16 +19,16 @@ async function run(tag, root) {
 }
 
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), "dbx-release-version-"));
+  const root = await mkdtemp(join(tmpdir(), "linop-db-release-version-"));
   await mkdir(join(root, "src-tauri"), { recursive: true });
-  await mkdir(join(root, "crates/dbx-web"), { recursive: true });
+  await mkdir(join(root, "crates/linop-db-web"), { recursive: true });
   await writeFile(join(root, "package.json"), JSON.stringify({ name: "dbx", version: "0.6.59" }) + "\n");
   await writeFile(join(root, "src-tauri/tauri.conf.json"), JSON.stringify({ version: "0.6.59" }) + "\n");
   await writeFile(join(root, "src-tauri/Cargo.toml"), 'version = "0.6.59"\n');
-  await writeFile(join(root, "crates/dbx-web/Cargo.toml"), 'version = "0.6.59"\n');
+  await writeFile(join(root, "crates/linop-db-web/Cargo.toml"), 'version = "0.6.59"\n');
   await writeFile(
     join(root, "Cargo.lock"),
-    '[[package]]\nname = "dbx"\nversion = "0.6.59"\n\n[[package]]\nname = "dbx-web"\nversion = "0.6.59"\n',
+    '[[package]]\nname = "dbx"\nversion = "0.6.59"\n\n[[package]]\nname = "linop-db-web"\nversion = "0.6.59"\n',
   );
   return root;
 }
@@ -37,7 +37,7 @@ test("sets the complete beta version across build metadata", async () => {
   const root = await fixture();
   const result = await run("v0.6.60-beta.20261029.1", root);
   assert.equal(result.code, 0, result.stderr);
-  for (const relativePath of ["package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml", "crates/dbx-web/Cargo.toml", "Cargo.lock"]) {
+  for (const relativePath of ["package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml", "crates/linop-db-web/Cargo.toml", "Cargo.lock"]) {
     assert.match(await readFile(join(root, relativePath), "utf8"), /0\.6\.60-beta\.20261029\.1/);
   }
 });
@@ -54,7 +54,7 @@ test("accepts an already prepared stable or beta checkout without changing its m
     const root = await fixture();
     const first = await run(tag, root);
     assert.equal(first.code, 0, first.stderr);
-    const files = ["package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml", "crates/dbx-web/Cargo.toml", "Cargo.lock"];
+    const files = ["package.json", "src-tauri/tauri.conf.json", "src-tauri/Cargo.toml", "crates/linop-db-web/Cargo.toml", "Cargo.lock"];
     const before = await Promise.all(files.map((path) => readFile(join(root, path), "utf8")));
     const second = await run(tag, root);
     assert.equal(second.code, 0, second.stderr);
@@ -67,12 +67,12 @@ test("rejects a lockfile missing one of the application packages", async () => {
   await writeFile(join(root, "Cargo.lock"), '[[package]]\nname = "dbx"\nversion = "0.6.59"\n');
   const result = await run("v0.6.60", root);
   assert.notEqual(result.code, 0);
-  assert.match(result.stderr, /dbx-web package version was not found/);
+  assert.match(result.stderr, /linop-db-web package version was not found/);
 });
 
 test("updates a CRLF Cargo.lock as checked out on Windows runners", async () => {
   const root = await fixture();
-  const lock = '[[package]]\r\nname = "dbx"\r\nversion = "0.6.59"\r\n\r\n[[package]]\r\nname = "dbx-web"\r\nversion = "0.6.59"\r\n';
+  const lock = '[[package]]\r\nname = "dbx"\r\nversion = "0.6.59"\r\n\r\n[[package]]\r\nname = "linop-db-web"\r\nversion = "0.6.59"\r\n';
   await writeFile(join(root, "Cargo.lock"), lock);
   const result = await run("v0.6.60-beta.20261029.1", root);
   assert.equal(result.code, 0, result.stderr);

@@ -8,7 +8,7 @@ import type { ConnectionConfig, SidebarLayout, SidebarOrderEntry } from "@/types
  * the inheritance rules can be tested without the settings dialog; the
  * component only renders rows and forwards edits.
  *
- * Inheritance (mirrors `dbx_core::mcp_access` and the v1 server rules):
+ * Inheritance (mirrors `linop_db_core::mcp_access` and the v1 server rules):
  * database > connection > closest group > ancestor group > global default.
  */
 

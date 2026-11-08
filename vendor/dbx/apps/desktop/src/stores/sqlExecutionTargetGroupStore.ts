@@ -5,7 +5,7 @@ import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStor
 import { dedupeMultiDbExecutionTargets, executionTargetGroupNameKey, normalizeMultiDbExecutionTarget, type MultiDbExecutionTarget, type SqlExecutionTargetDatabaseTypeResolver, type SqlExecutionTargetGroup } from "@/types/sqlExecution";
 import type { DatabaseType } from "@/types/database";
 
-const STORAGE_KEY = "dbx-sql-execution-target-groups";
+const STORAGE_KEY = "linop-db-sql-execution-target-groups";
 const STORAGE_VERSION = 1;
 
 interface PersistedTargetGroupState {

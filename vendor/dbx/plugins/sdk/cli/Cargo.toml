@@ -1,5 +1,5 @@
 [package]
-name = "dbx-plugin-cli"
+name = "linop-db-plugin-cli"
 version = "0.1.10"
 edition = "2021"
 license = "Apache-2.0"
@@ -8,11 +8,11 @@ description = "Scaffold and package DBX plugins"
 [workspace]
 
 [[bin]]
-name = "dbx-plugin"
+name = "linop-db-plugin"
 path = "src/main.rs"
 
 [dependencies]
-dbx-plugin-packager = { version = "0.1.0", path = "../packager" }
+linop-db-plugin-packager = { version = "0.1.0", path = "../packager" }
 semver = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

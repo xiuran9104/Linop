@@ -2,7 +2,7 @@
  * Persistence and retrieval for SQL file execution dialog options.
  */
 
-export const SQL_FILE_CLOSE_ON_SUCCESS_STORAGE_KEY = "dbx-sql-file-close-on-success";
+export const SQL_FILE_CLOSE_ON_SUCCESS_STORAGE_KEY = "linop-db-sql-file-close-on-success";
 
 /**
  * Returns whether the SQL file execution dialog should close on successful completion.

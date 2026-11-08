@@ -6,38 +6,38 @@ describe("mcpPolicySelection tool allowlist", () => {
     // A null allowlist lets every discovered plugin tool through. The first
     // checkbox toggle materializes the list, and without the wildcard seed it
     // would silently revoke all of them.
-    const names = toggleMcpAllowedToolName(null, "dbx_list_tables", false);
+    const names = toggleMcpAllowedToolName(null, "linop_db_list_tables", false);
     expect(names).toContain(MCP_PLUGIN_TOOLS_WILDCARD);
-    expect(names).not.toContain("dbx_list_tables");
-    expect(names).toEqual(expect.arrayContaining(MCP_TOOL_OPTIONS.map((tool) => tool.name).filter((name) => name !== "dbx_list_tables")));
+    expect(names).not.toContain("linop_db_list_tables");
+    expect(names).toEqual(expect.arrayContaining(MCP_TOOL_OPTIONS.map((tool) => tool.name).filter((name) => name !== "linop_db_list_tables")));
   });
 
   it("keeps the explicit list exact once materialized", () => {
-    const seeded = toggleMcpAllowedToolName(null, "dbx_list_tables", true);
+    const seeded = toggleMcpAllowedToolName(null, "linop_db_list_tables", true);
     const withoutWildcard = toggleMcpAllowedToolName(seeded, MCP_PLUGIN_TOOLS_WILDCARD, false);
     expect(withoutWildcard).not.toContain(MCP_PLUGIN_TOOLS_WILDCARD);
-    expect(withoutWildcard).not.toContain("dbx_kafka__kafka_topics_delete");
-    expect(withoutWildcard).toContain("dbx_list_tables");
+    expect(withoutWildcard).not.toContain("linop_db_kafka__kafka_topics_delete");
+    expect(withoutWildcard).toContain("linop_db_list_tables");
   });
 
   it("adds trimmed custom entries without duplicates", () => {
-    const seeded = toggleMcpAllowedToolName(null, "dbx_list_tables", true);
-    const first = addMcpAllowedToolName(seeded, " dbx_ssh__* ");
+    const seeded = toggleMcpAllowedToolName(null, "linop_db_list_tables", true);
+    const first = addMcpAllowedToolName(seeded, " linop_db_ssh__* ");
     expect(first.added).toBe(true);
-    expect(first.names).toContain("dbx_ssh__*");
-    const second = addMcpAllowedToolName(first.names, "dbx_ssh__*");
+    expect(first.names).toContain("linop_db_ssh__*");
+    const second = addMcpAllowedToolName(first.names, "linop_db_ssh__*");
     expect(second.added).toBe(false);
     expect(second.names).toEqual(first.names);
   });
 
   it("ignores empty custom entries", () => {
-    const result = addMcpAllowedToolName(["dbx_ssh__*"], "   ");
+    const result = addMcpAllowedToolName(["linop_db_ssh__*"], "   ");
     expect(result.added).toBe(false);
-    expect(result.names).toEqual(["dbx_ssh__*"]);
+    expect(result.names).toEqual(["linop_db_ssh__*"]);
   });
 
   it("reports custom entries beyond the static options", () => {
-    const names = toggleMcpAllowedToolName(null, "dbx_list_tables", true);
+    const names = toggleMcpAllowedToolName(null, "linop_db_list_tables", true);
     expect(customMcpAllowedToolNames(names)).toEqual([MCP_PLUGIN_TOOLS_WILDCARD]);
     expect(customMcpAllowedToolNames(null)).toEqual([]);
   });

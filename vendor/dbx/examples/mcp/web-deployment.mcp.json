@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "dbx": {
-      "command": "dbx-mcp-server",
+      "command": "linop-db-mcp-server",
       "env": {
         "DBX_WEB_URL": "http://localhost:4224",
         "DBX_WEB_PASSWORD": "changeme"

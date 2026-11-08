@@ -119,7 +119,7 @@ async function mountDialog() {
 
 beforeEach(() => {
   localStorage.clear();
-  renderCodeSnapshotHtmlMock.mockReset().mockResolvedValue('<div class="dbx-code-snapshot">SELECT 1</div>');
+  renderCodeSnapshotHtmlMock.mockReset().mockResolvedValue('<div class="linop-db-code-snapshot">SELECT 1</div>');
 });
 
 afterEach(() => {

@@ -225,7 +225,7 @@ describe("DataCompareDialog manual transactions", () => {
     expect(mocks.executeBatch).not.toHaveBeenCalled();
     expect(mocks.commitManualTransaction).not.toHaveBeenCalled();
     expect(buttonFor("dataCompare.recompare").disabled).toBe(true);
-    expect([...document.querySelectorAll<HTMLButtonElement>("button.dbx-searchable-select-trigger")].every((button) => button.disabled)).toBe(true);
+    expect([...document.querySelectorAll<HTMLButtonElement>("button.linop-db-searchable-select-trigger")].every((button) => button.disabled)).toBe(true);
     buttonFor("toolbar.commit").click();
     await vi.waitFor(() => expect(mocks.commitManualTransaction).toHaveBeenCalledWith("compare-txn"));
     await flushAsyncSetup();
@@ -365,14 +365,14 @@ describe("DataCompareDialog source prefill", () => {
     expect(mocks.listDatabases).not.toHaveBeenCalled();
     expect(mocks.listSchemas).toHaveBeenCalledWith("oracle-11g", "XE", true);
 
-    const searchableSelectTriggers = [...document.querySelectorAll<HTMLButtonElement>("button.dbx-searchable-select-trigger")];
+    const searchableSelectTriggers = [...document.querySelectorAll<HTMLButtonElement>("button.linop-db-searchable-select-trigger")];
     const sourceDatabaseTrigger = searchableSelectTriggers[0];
     expect(sourceDatabaseTrigger?.title).toBe("DBX_TEST");
     expect(sourceDatabaseTrigger?.disabled).toBe(false);
     sourceDatabaseTrigger?.click();
     await flushAsyncSetup();
 
-    const databaseOptions = [...document.querySelectorAll<HTMLButtonElement>(".dbx-searchable-select-list button")].map((button) => button.textContent?.trim());
+    const databaseOptions = [...document.querySelectorAll<HTMLButtonElement>(".linop-db-searchable-select-list button")].map((button) => button.textContent?.trim());
     expect(databaseOptions).toEqual(expect.arrayContaining(["DBX_TEST", "REPORTING"]));
     expect(mocks.listTables).toHaveBeenCalledWith("oracle-11g", "DBX_TEST", "DBX_TEST");
     expect(document.body.textContent).toContain("CODEX_7467_META");
@@ -399,7 +399,7 @@ describe("DataCompareDialog source prefill", () => {
     app.mount(container);
     await flushAsyncSetup();
 
-    const targetConnectionTrigger = document.querySelectorAll<HTMLButtonElement>("button.dbx-diff-connection-trigger")[1];
+    const targetConnectionTrigger = document.querySelectorAll<HTMLButtonElement>("button.linop-db-diff-connection-trigger")[1];
     expect(targetConnectionTrigger).toBeDefined();
     targetConnectionTrigger?.click();
     await flushAsyncSetup();
@@ -411,16 +411,16 @@ describe("DataCompareDialog source prefill", () => {
 
     expect(mocks.listSchemas).toHaveBeenCalledWith("oracle-jdbc-11g", "", true);
 
-    const triggersAfterTargetLoad = [...document.querySelectorAll<HTMLButtonElement>("button.dbx-searchable-select-trigger")];
+    const triggersAfterTargetLoad = [...document.querySelectorAll<HTMLButtonElement>("button.linop-db-searchable-select-trigger")];
     const targetDatabaseTrigger = triggersAfterTargetLoad[2];
     expect(targetDatabaseTrigger?.disabled).toBe(false);
     targetDatabaseTrigger?.click();
     await flushAsyncSetup();
 
-    const targetDatabaseOptions = [...document.querySelectorAll<HTMLButtonElement>(".dbx-searchable-select-list button")].map((button) => button.textContent?.trim());
+    const targetDatabaseOptions = [...document.querySelectorAll<HTMLButtonElement>(".linop-db-searchable-select-list button")].map((button) => button.textContent?.trim());
     expect(targetDatabaseOptions).toEqual(expect.arrayContaining(["DBX_TEST", "REPORTING"]));
 
-    const reportingOption = [...document.querySelectorAll<HTMLButtonElement>(".dbx-searchable-select-list button")].find((button) => button.textContent?.trim() === "REPORTING");
+    const reportingOption = [...document.querySelectorAll<HTMLButtonElement>(".linop-db-searchable-select-list button")].find((button) => button.textContent?.trim() === "REPORTING");
     expect(reportingOption).toBeDefined();
     reportingOption?.click();
     await flushAsyncSetup();

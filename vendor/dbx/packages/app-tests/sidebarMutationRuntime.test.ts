@@ -57,7 +57,7 @@ test("mutation families retain accepted targets, failures, and refresh work", ()
 
   const redis = functionBody("confirmFlushRedisDb");
   assert.match(redis, /updateRedisDbKeyStats/);
-  assert.match(redis, /dbx-redis-db-flushed/);
+  assert.match(redis, /linop-db-redis-db-flushed/);
 
   const cancel = functionBody("cancelConnectionAttempt");
   assert.match(cancel, /cancelConnecting/);

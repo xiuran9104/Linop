@@ -9,7 +9,7 @@ const outputPath = resolve(import.meta.dirname, "../data/contributors.json");
 const headers = {
   Accept: "application/vnd.github+json",
   "X-GitHub-Api-Version": "2022-11-28",
-  "User-Agent": "dbx-contributor-sync",
+  "User-Agent": "linop-db-contributor-sync",
   ...(token ? { Authorization: `Bearer ${token}` } : {}),
 };
 

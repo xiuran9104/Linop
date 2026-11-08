@@ -410,11 +410,11 @@ describe("TableImportDialog existing targets", () => {
 
   it("uses the connection-aware default schema for a database-level import", async () => {
     i18n.global.locale.value = "en";
-    await mountDialog({ connectionId: "postgres-1", database: "dbx_test" });
+    await mountDialog({ connectionId: "postgres-1", database: "linop_db_test" });
     await selectWorkbook();
 
     await vi.waitFor(() => {
-      expect(mocks.listTables).toHaveBeenCalledWith("postgres-1", "dbx_test", "", undefined, undefined, undefined, ["TABLE"]);
+      expect(mocks.listTables).toHaveBeenCalledWith("postgres-1", "linop_db_test", "", undefined, undefined, undefined, ["TABLE"]);
     });
   });
 

@@ -74,7 +74,7 @@ export async function signMcp(binary, options = {}) {
     .filter((line) => line.trim())
     .map((line) => JSON.parse(line.trim()));
   if (!originalKeychains.every((keychain) => typeof keychain === "string")) throw new Error("Invalid keychain search list.");
-  const directory = mkdtempSync(join(ctx.env.RUNNER_TEMP || ctx.env.TMPDIR || tmpdir(), "dbx-mcp-signing-"));
+  const directory = mkdtempSync(join(ctx.env.RUNNER_TEMP || ctx.env.TMPDIR || tmpdir(), "linop-db-mcp-signing-"));
   chmodSync(directory, 0o700);
   const keychain = join(directory, "signing.keychain-db");
   const certificate = join(directory, "certificate.p12");

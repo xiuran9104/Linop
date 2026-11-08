@@ -35,12 +35,12 @@ DBX 使用两套互相独立的密钥体系：
 
 ### Web、Docker、CLI 和 MCP
 
-`dbx-web` 无论通过 Docker、systemd 还是直接运行二进制，默认都使用 `${DBX_DATA_DIR}/.dbx/secret.key`。只有在开始迁移或第一次写入敏感字段时才创建该密钥，并使用受限权限。它与 `dbx.db` 属于同一恢复单元，必须一起备份和恢复；数据目录内密钥不能防护整个数据卷被复制或泄露。
+`linop-db-web` 无论通过 Docker、systemd 还是直接运行二进制，默认都使用 `${LINOP_DB_DATA_DIR}/.dbx/secret.key`。只有在开始迁移或第一次写入敏感字段时才创建该密钥，并使用受限权限。它与 `dbx.db` 属于同一恢复单元，必须一起备份和恢复；数据目录内密钥不能防护整个数据卷被复制或泄露。
 
 生产环境可以改用外部托管密钥：
 
 ```text
-DBX_SECRET_KEY_FILE=/run/secrets/dbx_secret_key
+DBX_SECRET_KEY_FILE=/run/secrets/linop_db_secret_key
 ```
 
 也可以由密钥管理系统提供 `DBX_SECRET_KEY`。显式配置优先；显式密钥不可读或格式错误时不会回退到数据目录密钥。已有密文使用期间不能更换密钥。
@@ -89,7 +89,7 @@ start_data_migration()/retry_data_migration()
 迁移前创建权限受限的目录：
 
 ```text
-dbx-secret-migration-<uuid>/
+linop-db-secret-migration-<uuid>/
 ```
 
 目录中包含 SQLite 一致性备份以及存在的历史 JSON 文件。SQLite 使用备份 API，避免只复制主数据库而遗漏 WAL 状态。备份创建失败时不会开始迁移。
@@ -177,7 +177,7 @@ Windows 到 Mac 的流程是：
 
 - 桌面端：允许 DBX 访问系统钥匙串/凭据存储。
 - Windows 便携版：确认 `data/.dbx/secret.key` 与 `dbx.db` 一起存在。旧数据首次升级时先回到原电脑启动一次新版；原密钥丢失后不能生成替代密钥解密旧数据。
-- Web/Docker：确认 `${DBX_DATA_DIR}/.dbx/secret.key` 与数据卷一起保留，或显式配置的 `DBX_SECRET_KEY_FILE` 可读。
+- Web/Docker：确认 `${LINOP_DB_DATA_DIR}/.dbx/secret.key` 与数据卷一起保留，或显式配置的 `DBX_SECRET_KEY_FILE` 可读。
 - 不要删除或更换已经用于加密数据库的密钥文件。
 
 ### 迁移失败
@@ -188,12 +188,12 @@ Windows 到 Mac 的流程是：
 
 | 模块 | 主要职责 |
 | --- | --- |
-| `crates/dbx-core/src/persistence/secret_codec.rs` | 本地密文、密钥提供者和密钥材料解析 |
-| `crates/dbx-core/src/persistence/storage.rs` | 迁移状态、预检查、备份、迁移和验证 |
-| `crates/dbx-core/src/persistence/cloud_sync.rs` | 跨设备同步 payload 和导入导出事务 |
+| `crates/linop-db-core/src/persistence/secret_codec.rs` | 本地密文、密钥提供者和密钥材料解析 |
+| `crates/linop-db-core/src/persistence/storage.rs` | 迁移状态、预检查、备份、迁移和验证 |
+| `crates/linop-db-core/src/persistence/cloud_sync.rs` | 跨设备同步 payload 和导入导出事务 |
 | `src-tauri/src/migration_gate.rs` | 桌面端业务 API 启动门禁 |
-| `crates/dbx-web/src/routes/migration.rs` | Web/Docker 迁移 API |
-| `crates/dbx-web/src/main.rs` | Web 端迁移门禁 |
+| `crates/linop-db-web/src/routes/migration.rs` | Web/Docker 迁移 API |
+| `crates/linop-db-web/src/main.rs` | Web 端迁移门禁 |
 | `apps/desktop/src/StartupGate.vue` | 桌面端启动路由和向导阻塞 |
 | `apps/desktop/src/components/migration/SecurityMigrationWizard.vue` | 向导 UI、语言切换和诊断导出 |
 | `apps/desktop/src/stores/migrationStore.ts` | 向导状态和动作编排 |
@@ -226,7 +226,7 @@ Rust 侧应覆盖密文 AAD、迁移缓存失效、数据库事务回滚、JSON 
 至少验证以下环境：
 
 1. macOS、Windows、Linux 桌面端各完成一次旧数据迁移。
-2. Docker 命名卷与直接运行 `dbx-web` 都能保留数据目录密钥，重启后仍可读取密文。
+2. Docker 命名卷与直接运行 `linop-db-web` 都能保留数据目录密钥，重启后仍可读取密文。
 3. 迁移成功后关闭并重新打开，直接进入主界面。
 4. 错误密钥、错误同步口令和损坏 JSON 不会破坏原始数据。
 5. Windows 导出、Mac 导入后，连接和插件 secret 可以正常使用。

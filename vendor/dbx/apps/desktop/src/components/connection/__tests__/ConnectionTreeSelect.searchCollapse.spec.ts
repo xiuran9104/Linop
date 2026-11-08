@@ -126,7 +126,7 @@ describe("ConnectionTreeSelect search collapse behavior", () => {
     await nextTick();
     for (const element of [row, trigger]) {
       expect(element.querySelector("[data-connection-color]")).toBeNull();
-      expect(element.classList.contains("dbx-connection-picker-colored")).toBe(false);
+      expect(element.classList.contains("linop-db-connection-picker-colored")).toBe(false);
       expect(element.style.getPropertyValue("--connection-picker-background")).toBe("");
     }
   });

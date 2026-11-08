@@ -84,7 +84,7 @@ export function useTauriEvents(deps: {
         // SSH session dies, flip the sidebar entry offline so the tree stops
         // showing a connection that no longer exists.
         track(
-          listen<{ method: string; params: { state?: string; connectionId?: string } }>("dbx-plugin-event", async (event) => {
+          listen<{ method: string; params: { state?: string; connectionId?: string } }>("linop-db-plugin-event", async (event) => {
             try {
               const payload = event.payload ?? ({} as typeof event.payload);
               if (payload.method !== "ssh/session/state" || payload.params?.state !== "disconnected") return;
@@ -94,7 +94,7 @@ export function useTauriEvents(deps: {
               if (!connectionStore.getConfig(connectionId)) return;
               connectionStore.markConnectionOffline(connectionId);
             } catch (e) {
-              console.error("[DBX] dbx-plugin-event (ssh/session/state) error:", e);
+              console.error("[DBX] linop-db-plugin-event (ssh/session/state) error:", e);
             }
           }),
         );
@@ -131,72 +131,72 @@ export function useTauriEvents(deps: {
         );
 
         track(
-          listen<string[]>("dbx-open-sql-files", async (event) => {
+          listen<string[]>("linop-db-open-sql-files", async (event) => {
             try {
               for (const path of event.payload) {
                 await deps.openSqlFilePath(path);
               }
               focusCurrentWindow();
             } catch (e) {
-              console.error("[DBX] dbx-open-sql-files error:", e);
+              console.error("[DBX] linop-db-open-sql-files error:", e);
             }
           }),
         );
 
         track(
-          listen<string[]>("dbx-open-db-files", async (event) => {
+          listen<string[]>("linop-db-open-db-files", async (event) => {
             try {
               for (const path of event.payload) {
                 await deps.openDbFilePath(path);
               }
               focusCurrentWindow();
             } catch (e) {
-              console.error("[DBX] dbx-open-db-files error:", e);
+              console.error("[DBX] linop-db-open-db-files error:", e);
             }
           }),
         );
 
         track(
-          listen<string[]>("dbx-open-connection-links", async (event) => {
+          listen<string[]>("linop-db-open-connection-links", async (event) => {
             try {
               for (const url of event.payload) {
                 await deps.openConnectionDeepLink(url);
               }
               focusCurrentWindow();
             } catch (e) {
-              console.error("[DBX] dbx-open-connection-links error:", e);
+              console.error("[DBX] linop-db-open-connection-links error:", e);
             }
           }),
         );
 
         track(
-          listen<string[]>("dbx-open-ai-config-links", async (event) => {
+          listen<string[]>("linop-db-open-ai-config-links", async (event) => {
             try {
               for (const url of event.payload) {
                 await deps.openAiConfigDeepLink(url);
               }
               focusCurrentWindow();
             } catch (e) {
-              console.error("[DBX] dbx-open-ai-config-links error:", e);
+              console.error("[DBX] linop-db-open-ai-config-links error:", e);
             }
           }),
         );
 
         track(
-          listen<string[]>("dbx-open-plugin-install-links", async (event) => {
+          listen<string[]>("linop-db-open-plugin-install-links", async (event) => {
             try {
               for (const url of event.payload) {
                 await deps.openPluginInstallDeepLink(url);
               }
               focusCurrentWindow();
             } catch (e) {
-              console.error("[DBX] dbx-open-plugin-install-links error:", e);
+              console.error("[DBX] linop-db-open-plugin-install-links error:", e);
             }
           }),
         );
 
         track(
-          listen("dbx-close-active-tab", () => {
+          listen("linop-db-close-active-tab", () => {
             deps.closeActiveSurface();
           }),
         );

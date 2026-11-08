@@ -15,7 +15,7 @@ import {
   updateMcpAllowedConnectionIds,
 } from "@/lib/mcp/mcpPolicySelection";
 
-const mcpServerSource = readFileSync(new URL("../../../../../../crates/dbx-mcp/src/server.rs", import.meta.url), "utf8");
+const mcpServerSource = readFileSync(new URL("../../../../../../crates/linop-db-mcp/src/server.rs", import.meta.url), "utf8");
 
 describe("MCP execution permission selection", () => {
   it("maps the persisted policy to the three UI modes", () => {
@@ -84,42 +84,42 @@ describe("MCP policy connection selection", () => {
 
 describe("MCP tool permission selection", () => {
   it("lists every tool registered by the MCP server", () => {
-    const registeredToolNames = [...mcpServerSource.matchAll(/name\s*=\s*"(dbx_[^"]+)"/g)].map((match) => match[1]).sort();
+    const registeredToolNames = [...mcpServerSource.matchAll(/name\s*=\s*"(linop_db_[^"]+)"/g)].map((match) => match[1]).sort();
 
     expect(MCP_TOOL_OPTIONS.map((tool) => tool.name).sort()).toEqual(registeredToolNames);
   });
 
   it("keeps the Salesforce tools individually switchable, writes included", () => {
-    expect(MCP_TOOL_OPTIONS.filter((tool) => tool.name.startsWith("dbx_salesforce_")).map((tool) => [tool.name, tool.labelKey])).toEqual([
-      ["dbx_salesforce_current_user", "settings.mcpToolSalesforceCurrentUser"],
-      ["dbx_salesforce_prepare_write", "settings.mcpToolSalesforcePrepareWrite"],
-      ["dbx_salesforce_apply_write", "settings.mcpToolSalesforceApplyWrite"],
+    expect(MCP_TOOL_OPTIONS.filter((tool) => tool.name.startsWith("linop_db_salesforce_")).map((tool) => [tool.name, tool.labelKey])).toEqual([
+      ["linop_db_salesforce_current_user", "settings.mcpToolSalesforceCurrentUser"],
+      ["linop_db_salesforce_prepare_write", "settings.mcpToolSalesforcePrepareWrite"],
+      ["linop_db_salesforce_apply_write", "settings.mcpToolSalesforceApplyWrite"],
     ]);
 
     // An admin can expose reading (identity + SOQL) without handing over the write path.
-    const readOnlySfdc = toggleMcpAllowedToolName(null, "dbx_salesforce_apply_write", false);
-    expect(toggleMcpAllowedToolName(readOnlySfdc, "dbx_salesforce_prepare_write", false)).not.toContain("dbx_salesforce_prepare_write");
-    expect(readOnlySfdc).toContain("dbx_salesforce_current_user");
+    const readOnlySfdc = toggleMcpAllowedToolName(null, "linop_db_salesforce_apply_write", false);
+    expect(toggleMcpAllowedToolName(readOnlySfdc, "linop_db_salesforce_prepare_write", false)).not.toContain("linop_db_salesforce_prepare_write");
+    expect(readOnlySfdc).toContain("linop_db_salesforce_current_user");
   });
 
   it("keeps batch execution allowed when allow-all becomes an explicit allowlist", () => {
-    const next = toggleMcpAllowedToolName(null, "dbx_send_message", false);
+    const next = toggleMcpAllowedToolName(null, "linop_db_send_message", false);
 
-    expect(next).toContain("dbx_execute_batch");
-    expect(next).not.toContain("dbx_send_message");
+    expect(next).toContain("linop_db_execute_batch");
+    expect(next).not.toContain("linop_db_send_message");
   });
 
   it("keeps Kafka reading independent from message sending", () => {
-    const next = toggleMcpAllowedToolName(null, "dbx_send_message", false);
-    expect(next).toContain("dbx_peek_messages");
-    expect(toggleMcpAllowedToolName(next, "dbx_peek_messages", false)).not.toContain("dbx_peek_messages");
-    expect(toggleMcpAllowedToolName([], "dbx_peek_messages", true)).toEqual(["dbx_peek_messages"]);
+    const next = toggleMcpAllowedToolName(null, "linop_db_send_message", false);
+    expect(next).toContain("linop_db_peek_messages");
+    expect(toggleMcpAllowedToolName(next, "linop_db_peek_messages", false)).not.toContain("linop_db_peek_messages");
+    expect(toggleMcpAllowedToolName([], "linop_db_peek_messages", true)).toEqual(["linop_db_peek_messages"]);
   });
 
   it("lets batch execution be enabled and disabled independently", () => {
-    expect(toggleMcpAllowedToolName(["dbx_execute_query"], "dbx_execute_batch", true)).toEqual(["dbx_execute_query", "dbx_execute_batch"]);
-    expect(toggleMcpAllowedToolName(["dbx_execute_query", "dbx_execute_batch"], "dbx_execute_batch", false)).toEqual(["dbx_execute_query"]);
-    expect(MCP_TOOL_OPTIONS.find((tool) => tool.name === "dbx_execute_batch")?.labelKey).toBe("settings.mcpToolExecuteBatch");
+    expect(toggleMcpAllowedToolName(["linop_db_execute_query"], "linop_db_execute_batch", true)).toEqual(["linop_db_execute_query", "linop_db_execute_batch"]);
+    expect(toggleMcpAllowedToolName(["linop_db_execute_query", "linop_db_execute_batch"], "linop_db_execute_batch", false)).toEqual(["linop_db_execute_query"]);
+    expect(MCP_TOOL_OPTIONS.find((tool) => tool.name === "linop_db_execute_batch")?.labelKey).toBe("settings.mcpToolExecuteBatch");
   });
 });
 

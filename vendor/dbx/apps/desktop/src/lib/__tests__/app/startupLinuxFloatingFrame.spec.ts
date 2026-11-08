@@ -22,6 +22,6 @@ describe("startup Linux floating frame", () => {
     Function("document", "window", floatingFrameScript)({ documentElement: { classList: { add: addClass } } }, { __DBX_LINUX_FLOATING__: true });
 
     expect(addClass).toHaveBeenCalledOnce();
-    expect(addClass).toHaveBeenCalledWith("dbx-linux-floating");
+    expect(addClass).toHaveBeenCalledWith("linop-db-linux-floating");
   });
 });

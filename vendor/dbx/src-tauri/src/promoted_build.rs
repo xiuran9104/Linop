@@ -54,15 +54,15 @@ impl Default for PromotedBuildState {
 /// A promoted build resolves to `(X.Y.Z, X.Y.Z-beta…)`, matching the copied
 /// support info: the stable version up front, the exact build kept for bug
 /// reports. Everything else keeps the raw version with no parenthesized build.
-/// The decision itself lives in `dbx_platform::version` so it is unit-tested
+/// The decision itself lives in `linop_db_platform::version` so it is unit-tested
 /// where the test binary can run.
 ///
 /// Compiled on every platform (not just macOS) so the Windows/Linux build
 /// type-checks the panel logic; only macOS calls it.
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn about_version_pair(build: &str, promoted: Option<&str>) -> (String, Option<String>) {
-    match dbx_platform::version::promoted_base_version(build, promoted) {
-        Some(base) => (base, Some(dbx_platform::version::normalize_version(build))),
+    match linop_db_platform::version::promoted_base_version(build, promoted) {
+        Some(base) => (base, Some(linop_db_platform::version::normalize_version(build))),
         None => (build.trim().to_string(), None),
     }
 }
@@ -79,8 +79,8 @@ pub fn about_version_pair(build: &str, promoted: Option<&str>) -> (String, Optio
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 pub fn apply_stored_promotion(app: &tauri::AppHandle, stored: Option<String>) {
     // A marker left over from an older build says nothing about this one.
-    let running = dbx_platform::version::normalize_version(env!("CARGO_PKG_VERSION"));
-    let Some(stored) = stored.filter(|value| dbx_platform::version::normalize_version(value) == running) else {
+    let running = linop_db_platform::version::normalize_version(env!("CARGO_PKG_VERSION"));
+    let Some(stored) = stored.filter(|value| linop_db_platform::version::normalize_version(value) == running) else {
         // Nothing stored says nothing about this build either: keep whatever the
         // state already holds instead of clearing a fresher report.
         return;

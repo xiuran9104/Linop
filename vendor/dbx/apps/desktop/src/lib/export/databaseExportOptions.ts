@@ -33,7 +33,7 @@ export const DEFAULT_DATABASE_EXPORT_OPTIONS: DatabaseExportSavedOptions = {
   splitSqlPartMaxMb: 100,
 };
 
-export const DATABASE_EXPORT_OPTIONS_STORAGE_KEY = "dbx-database-export-last-options-v1";
+export const DATABASE_EXPORT_OPTIONS_STORAGE_KEY = "linop-db-database-export-last-options-v1";
 
 export function loadSavedDatabaseExportOptions(storage?: Pick<Storage, "getItem">): DatabaseExportSavedOptions {
   try {

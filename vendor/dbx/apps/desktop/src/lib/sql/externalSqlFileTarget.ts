@@ -2,7 +2,7 @@ import { normalizeExternalSqlPath } from "@/lib/sql/sqlFileOpen";
 import { supportsSqlFileExecution } from "@/lib/database/databaseFeatureSupport";
 import type { ConnectionConfig, QueryTab } from "@/types/database";
 
-export const EXTERNAL_SQL_FILE_TARGETS_STORAGE_KEY = "dbx-external-sql-file-targets-v1";
+export const EXTERNAL_SQL_FILE_TARGETS_STORAGE_KEY = "linop-db-external-sql-file-targets-v1";
 export const MAX_EXTERNAL_SQL_FILE_TARGETS = 200;
 
 export interface ExternalSqlFileTarget {

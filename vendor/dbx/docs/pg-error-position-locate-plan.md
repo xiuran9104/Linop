@@ -13,12 +13,12 @@
 tokio_postgres::Error
   └─ DbError.position() = ErrorPosition::Original(cursorpos)   ← 位置信息在这里，当前被丢弃
         │
-        │  crates/dbx-core/src/db/postgres.rs::pg_error_to_string()
+        │  crates/linop-db-core/src/db/postgres.rs::pg_error_to_string()
         │  (只取 err.as_db_error().map(ToString::to_string))     ← 只保留文本，未保留 cursorpos
         ▼
 Result<db::QueryResult, String>            ← db 层统一用 String 承载错误
         │
-        │  crates/dbx-core/src/query.rs::do_execute_typed() 尾部 .map_err(...)
+        │  crates/linop-db-core/src/query.rs::do_execute_typed() 尾部 .map_err(...)
         ▼
 QueryExecutionError::{Legacy|Sql}(String)   ← 仍是纯文本
         │
@@ -52,10 +52,10 @@ DataGrid ErrorBanner（apps/desktop/src/components/grid/DataGrid.vue:11835）
 
 | 层 | 文件 | 作用 |
 | --- | --- | --- |
-| 驱动 | `crates/dbx-core/src/db/postgres.rs` | 从 `DbError` 提取 cursorpos |
-| 新模块 | `crates/dbx-core/src/sql_error_position.rs`（新增） | 位置类型、行列换算、marker 编解码 |
-| 查询层 | `crates/dbx-core/src/query.rs` | 还原位置、挂到 `QueryExecutionError` |
-| 契约 | `crates/dbx-core/src/backend_error.rs` | `BackendError.errorPosition` 字段与构造器 |
+| 驱动 | `crates/linop-db-core/src/db/postgres.rs` | 从 `DbError` 提取 cursorpos |
+| 新模块 | `crates/linop-db-core/src/sql_error_position.rs`（新增） | 位置类型、行列换算、marker 编解码 |
+| 查询层 | `crates/linop-db-core/src/query.rs` | 还原位置、挂到 `QueryExecutionError` |
+| 契约 | `crates/linop-db-core/src/backend_error.rs` | `BackendError.errorPosition` 字段与构造器 |
 | 契约文档 | `docs/backend-error-handling.md` | 记录新可选字段 |
 | 前端类型 | `apps/desktop/src/lib/backend/errorUtils.ts` | TS `BackendError.errorPosition` + 校验 |
 | 前端映射 | `apps/desktop/src/lib/sql/errorPosition.ts`（新增） | 语句内行列 → 编辑器 offset |
@@ -104,7 +104,7 @@ QueryEditor.focusErrorPosition(offset)：selection + scrollIntoView + 高亮
 
 ## 3. 后端改造
 
-### 3.1 新模块 `crates/dbx-core/src/sql_error_position.rs`
+### 3.1 新模块 `crates/linop-db-core/src/sql_error_position.rs`
 
 ```rust
 use serde::{Deserialize, Serialize};
@@ -178,7 +178,7 @@ pub fn resolve_message(message: &str, executed_sql: &str) -> Option<(String, Sql
 }
 ```
 
-> 在 `crates/dbx-core/src/lib.rs` 注册 `pub mod sql_error_position;`（仓库若已有模块清单，按现有顺序追加）。
+> 在 `crates/linop-db-core/src/lib.rs` 注册 `pub mod sql_error_position;`（仓库若已有模块清单，按现有顺序追加）。
 
 ### 3.2 `db/postgres.rs`：提取 cursorpos
 
@@ -491,7 +491,7 @@ executionSummary: {
 
 ### Phase 1 — 后端位置提取与透传（不影响 UI）
 
-- [ ] 新增 `crates/dbx-core/src/sql_error_position.rs` 并在 `lib.rs` 注册；写 `from_pg_cursor` / marker 的单测（多行、`\r\n`、含 emoji、越界钳制）。
+- [ ] 新增 `crates/linop-db-core/src/sql_error_position.rs` 并在 `lib.rs` 注册；写 `from_pg_cursor` / marker 的单测（多行、`\r\n`、含 emoji、越界钳制）。
 - [ ] `postgres.rs::pg_error_to_string` 追加 marker（仅 `ErrorPosition::Original`）。
 - [ ] `backend_error.rs`：加 `error_position` 字段、`from_sql_detail_with_position`、`error_position()`，`new()` 补默认；在 `bounded_detail`/`bounded_native_detail` 内 `strip_marker`。
 - [ ] `query.rs`：新增 `QueryExecutionError::SqlWithPosition`，补齐所有 match 分支，在 `do_execute_typed` 尾部 PG 分支解析。
@@ -537,9 +537,9 @@ executionSummary: {
 **Rust 单测**
 
 ```text
-cargo test -j 1 -p dbx-core --no-default-features --lib sql_error_position::tests
-cargo test -j 1 -p dbx-core --no-default-features --lib backend_error::tests
-cargo test -j 1 -p dbx-core --no-default-features --lib query::tests  # QueryExecutionError 分支
+cargo test -j 1 -p linop-db-core --no-default-features --lib sql_error_position::tests
+cargo test -j 1 -p linop-db-core --no-default-features --lib backend_error::tests
+cargo test -j 1 -p linop-db-core --no-default-features --lib query::tests  # QueryExecutionError 分支
 ```
 
 **前端**

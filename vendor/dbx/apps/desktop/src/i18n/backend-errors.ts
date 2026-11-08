@@ -105,9 +105,9 @@ const patterns: [RegExp, string][] = [
   [/^MYSQL_DATA_CHARSET_TRANSFER_UNSUPPORTED(?::[\s\S]*)?$/, "connection.mysqlDataCharsetExportHint"],
   [/^MYSQL_DATA_CHARSET_SESSION_CHANGE_UNSUPPORTED(?::[\s\S]*)?$/, "connection.mysqlDataCharsetConflict"],
   [/^Plugin update blocked by active connections: ([\s\S]+)$/, "pluginPlatform.updateBlockedByConnections"],
-  // src-tauri/src/commands/plugins.rs and crates/dbx-web/src/routes/plugins.rs uninstall guard.
+  // src-tauri/src/commands/plugins.rs and crates/linop-db-web/src/routes/plugins.rs uninstall guard.
   [/^Cannot uninstall plugin '(.+?)' while these connections still use it: ([\s\S]+)$/, "pluginPlatform.uninstallBlockedByConnections"],
-  // crates/dbx-plugin-runtime provenance guard (installer.rs / marketplace.rs)
+  // crates/linop-db-plugin-runtime provenance guard (installer.rs / marketplace.rs)
   [/^Plugin update source change requires confirmation:/, "pluginPlatform.updateSourceChangeRequired"],
   [/^Plugin downgrade to version .+ is not allowed/, "pluginPlatform.updateDowngradeRejected"],
   [/^(.+?) driver is not installed\. Please install it from the Driver Manager\.$/, "connection.driverNotInstalled"],
@@ -115,7 +115,7 @@ const patterns: [RegExp, string][] = [
   [/^System Java runtime was not found:/, "connection.systemJavaNotFound"],
   [/^Custom Java runtime path is empty\. Please choose a Java executable\.$/, "connection.customJavaPathEmpty"],
   [/^Agent requires Java 21, but DBX started it with an older Java runtime\. Use DBX managed JRE 21 or select a Java 21 executable in Driver Manager\./, "connection.agentJavaTooOld"],
-  // crates/dbx-plugin-runtime PLUGIN_JAVA_TOO_OLD_MESSAGE; callers may prefix it with connection context.
+  // crates/linop-db-plugin-runtime PLUGIN_JAVA_TOO_OLD_MESSAGE; callers may prefix it with connection context.
   [/Plugin requires Java 21, but DBX started it with an older Java runtime\. Use DBX managed JRE 21 or select a Java 21 executable in Driver Manager\./, "connection.agentJavaTooOld"],
   [/^JDBC plugin is not installed\. Install the optional JDBC plugin to use this connection\.$/, "connection.jdbcPluginNotInstalled"],
   [/GBASEDBTSERVER[\s\S]*DBSERVERNAME[\s\S]*DBSERVERALIASES/, "connection.gbaseServerMismatch"],
@@ -151,13 +151,13 @@ const patterns: [RegExp, string][] = [
   [/^(?:SSH layer \d+ failed:\s*)?SSH keyboard-interactive authentication was cancelled$/, "connection.sshTotpCancelled"],
   [/^(?:SSH layer \d+ failed:\s*)?Failed to bind requested local port (\d+): ([\s\S]+)$/, "connection.sshLocalPortBindFailed"],
 
-  // Query result export limits (crates/dbx-core/src/data/query_result_export.rs)
+  // Query result export limits (crates/linop-db-core/src/data/query_result_export.rs)
   [/^Streaming export cannot page through this query\. Export a single SELECT statement, or load the full result first and export the loaded rows\.$/, "exportProgress.streamingUnsupported"],
   [/^A manual transaction cannot use a result cursor, and this query cannot be split into pages\. Commit or roll back the transaction, then export again\.$/, "exportProgress.transactionUnsupported"],
   // Still raised by the frontend for MongoDB exports (apps/desktop/src/stores/queryStore.ts).
   [/^Streaming export is unsupported for this query\. Simplify it or use a supported driver\.$/, "exportProgress.streamingUnsupported"],
   // Paging a cursor-only query while a manual transaction is open: raised by the pagination planner
-  // (crates/dbx-sql-data/src/query_result_sql.rs) and by the store's OceanBase Oracle guard.
+  // (crates/linop-db-sql-data/src/query_result_sql.rs) and by the store's OceanBase Oracle guard.
   [/^This query requires an Agent result session for offset pagination$/, "editor.resultSessionRequiredForPaging"],
   [/^This query requires an existing result session for offset pagination in a manual transaction$/, "editor.resultSessionRequiredForPaging"],
   // MongoDB Legacy agent failures: messages raised by the agent arrive wrapped in "Agent RPC
@@ -176,7 +176,7 @@ const patterns: [RegExp, string][] = [
   // Legacy bundled DuckDB error kept for compatibility with older backends.
   [/^The previous DuckDB query is still stopping\. Please try again shortly\.$/, "editor.duckdbDraining"],
 
-  // Driver / JRE management (crates/dbx-driver-agent/src/agent_service.rs, routes/agents.rs)
+  // Driver / JRE management (crates/linop-db-driver-agent/src/agent_service.rs, routes/agents.rs)
   // The Windows variant is multi-line, so it must be tried before the single-line one.
   [/^Failed to remove the old JRE directory: (.+)\nPossible causes:[\s\S]*\(original error: ([\s\S]+)\)$/, "driverStore.jreDirRemoveFailedWindows"],
   [/^Failed to remove the old JRE directory: (.+) \(original error: ([\s\S]+)\)$/, "driverStore.jreDirRemoveFailed"],
@@ -184,17 +184,17 @@ const patterns: [RegExp, string][] = [
   [/^agent-registry\.json not found in the ZIP; not a valid offline driver package\.$/, "driverStore.offlinePackageRegistryMissing"],
   [/^Close these database connections before updating drivers: (.+)$/, "driverStore.driverUpdateBlocked"],
 
-  // Message queues (crates/dbx-core/src/admin/mq/adapters/kafka.rs)
+  // Message queues (crates/linop-db-core/src/admin/mq/adapters/kafka.rs)
   [/^Kafka does not support unloading topics$/, "mqClients.unloadTopicUnsupportedKafka"],
 
   // Filesystem (src-tauri/src/commands/fs_open.rs)
   [/^file does not exist: (.+)$/, "common.fileNotFound"],
 
-  // Web auth rate limiting and captcha gate (crates/dbx-web/src/auth.rs)
+  // Web auth rate limiting and captcha gate (crates/linop-db-web/src/auth.rs)
   [/^Please try again in (\d+)s$/, "auth.rateLimited"],
   [/^captcha_invalid$/, "auth.captchaInvalid"],
 
-  // Dameng native dexp/dimp dump (crates/dbx-core/src/data/dameng_dump.rs)
+  // Dameng native dexp/dimp dump (crates/linop-db-core/src/data/dameng_dump.rs)
   [/^\[damengToolNotFound\]/, "damengDump.errors.toolNotFound"],
   [/^\[damengConnectionRequired\]/, "damengDump.errors.connectionRequired"],
   [/^\[damengPasswordMissing\]/, "damengDump.errors.passwordMissing"],

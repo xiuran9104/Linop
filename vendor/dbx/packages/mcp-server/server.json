@@ -10,7 +10,7 @@
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "@dbx-app/mcp-server",
+      "identifier": "@linop-db-app/mcp-server",
       "version": "0.4.141",
       "transport": {
         "type": "stdio"

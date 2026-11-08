@@ -6,17 +6,17 @@ use std::{
     sync::Arc,
 };
 
-use dbx_core::cloud_sync::{
+use linop_db_core::cloud_sync::{
     apply_sync_snapshot_with_selection, build_sync_snapshot_with_selection, describe_sync_snapshot,
     ApplySnapshotOptions, ApplySnapshotSummary, SyncExportOptions, SyncSelection, SyncSnapshot, SyncSnapshotCatalog,
 };
-use dbx_core::connection::AppState;
-use dbx_core::storage::DesktopSettings;
+use linop_db_core::connection::AppState;
+use linop_db_core::storage::DesktopSettings;
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 
-const LOCAL_BACKUP_FORMAT: &str = "dbx-local-backup";
+const LOCAL_BACKUP_FORMAT: &str = "linop-db-local-backup";
 const LOCAL_BACKUP_FORMAT_VERSION: u32 = 1;
 const MANIFEST_ENTRY: &str = "manifest.json";
 const SNAPSHOT_ENTRY: &str = "snapshot.json";
@@ -238,8 +238,8 @@ mod tests {
     #[test]
     fn staged_backup_replaces_existing_file() {
         let directory = tempfile::tempdir().unwrap();
-        let destination = directory.path().join("backup.dbx-backup");
-        let temporary = directory.path().join(".backup.dbx-backup.staged.tmp");
+        let destination = directory.path().join("backup.linop-db-backup");
+        let temporary = directory.path().join(".backup.linop-db-backup.staged.tmp");
         fs::write(&destination, b"previous backup").unwrap();
         fs::write(&temporary, b"completed backup").unwrap();
 
@@ -252,7 +252,7 @@ mod tests {
     #[test]
     fn failed_backup_replacement_preserves_existing_file() {
         let directory = tempfile::tempdir().unwrap();
-        let destination = directory.path().join("backup.dbx-backup");
+        let destination = directory.path().join("backup.linop-db-backup");
         let missing_temporary = directory.path().join(".missing.staged.tmp");
         fs::write(&destination, b"previous backup").unwrap();
 

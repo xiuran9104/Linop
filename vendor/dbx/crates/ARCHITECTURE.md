@@ -2,26 +2,26 @@
 
 ## 依赖方向
 
-`dbx-core` 是应用编排层，不再承载所有底层实现。桌面、Web、CLI、MCP
+`linop-db-core` 是应用编排层，不再承载所有底层实现。桌面、Web、CLI、MCP
 继续通过 core 调用连接、查询、导入导出等业务；独立工具可直接使用下层 crate。
 
 ```text
 desktop / web / cli / mcp
             │
-         dbx-core
-            ├── dbx-drivers ── dbx-sql ── dbx-types
-            │       ├── dbx-types
-            │       ├── dbx-platform
-            │       └── dbx-sqlite-worker (protocol, no runtime defaults)
-            ├── dbx-plugin-runtime ── dbx-types + dbx-platform
-            ├── dbx-ai-provider ── dbx-platform
-            ├── dbx-formats
-            ├── dbx-sql / dbx-types
-            └── dbx-platform
+         linop-db-core
+            ├── linop-db-drivers ── linop-db-sql ── linop-db-types
+            │       ├── linop-db-types
+            │       ├── linop-db-platform
+            │       └── linop-db-sqlite-worker (protocol, no runtime defaults)
+            ├── linop-db-plugin-runtime ── linop-db-types + linop-db-platform
+            ├── linop-db-ai-provider ── linop-db-platform
+            ├── linop-db-formats
+            ├── linop-db-sql / linop-db-types
+            └── linop-db-platform
 ```
 
 下层 crate 不得反向依赖 core，包括 build 和 dev 依赖。涉及多层的测试放在
-`dbx-core/tests/`，避免为了测试把数据库连接引入 SQL、类型或格式 crate。
+`linop-db-core/tests/`，避免为了测试把数据库连接引入 SQL、类型或格式 crate。
 `scripts/core-architecture.test.mjs` 校验 workspace 依赖、功能转发、源码归属、
 构建输入和前端测试引用路径；CI 的 Rust 检查执行此守卫。
 
@@ -29,22 +29,22 @@ desktop / web / cli / mcp
 
 | Crate | 拥有的实现 | 不应引入 |
 | --- | --- | --- |
-| `dbx-types` | 连接配置、数据库身份、查询与元数据 DTO、JS 安全 JSON、MQTT/GridFS 数据记录 | 连接池、应用状态、驱动 SDK |
-| `dbx-sql` | 解析、方言注册与加载、SQL 风险、DDL/DML、结构差异计划 | 查询执行、凭据、core 业务 |
-| `dbx-drivers` | 原生驱动、隧道、JDBC/Agent 运行与分发、超时取消、SQLite 元数据读取 | 导入/迁移编排、应用配置持久化 |
-| `dbx-formats` | CSV/XLSX/文本/时间格式与 ZIP 编码 | 数据库请求、连接管理 |
-| `dbx-ai-provider` | 模型与 CLI 适配器、流式协议、事件和 token 用量 | 数据库工具执行和 Agent 业务循环 |
-| `dbx-plugin-runtime` | manifest、签名与安装、Marketplace、子进程会话及 host 请求 | 数据库驱动实现、core 应用状态 |
-| `dbx-platform` | 进程、路径、代理、下载、版本比较与共享用户提示网关 | 数据库身份和业务规则 |
+| `linop-db-types` | 连接配置、数据库身份、查询与元数据 DTO、JS 安全 JSON、MQTT/GridFS 数据记录 | 连接池、应用状态、驱动 SDK |
+| `linop-db-sql` | 解析、方言注册与加载、SQL 风险、DDL/DML、结构差异计划 | 查询执行、凭据、core 业务 |
+| `linop-db-drivers` | 原生驱动、隧道、JDBC/Agent 运行与分发、超时取消、SQLite 元数据读取 | 导入/迁移编排、应用配置持久化 |
+| `linop-db-formats` | CSV/XLSX/文本/时间格式与 ZIP 编码 | 数据库请求、连接管理 |
+| `linop-db-ai-provider` | 模型与 CLI 适配器、流式协议、事件和 token 用量 | 数据库工具执行和 Agent 业务循环 |
+| `linop-db-plugin-runtime` | manifest、签名与安装、Marketplace、子进程会话及 host 请求 | 数据库驱动实现、core 应用状态 |
+| `linop-db-platform` | 进程、路径、代理、下载、版本比较与共享用户提示网关 | 数据库身份和业务规则 |
 
-`dbx-sql` 包含方言文件加载/监听，因此不是完全无 I/O 的函数库；边界是“不执行数据库业务”。
+`linop-db-sql` 包含方言文件加载/监听，因此不是完全无 I/O 的函数库；边界是“不执行数据库业务”。
 平台的 `host-prompts`、`downloads` 和类型库的 `mq-admin` 等能力显式启用，
 避免只使用类型或纯格式的消费者意外加载驱动或应用层。
 
 ## Core 业务目录
 
 ```text
-dbx-core/src/
+linop-db-core/src/
   lib.rs          对外模块与旧 API 兼容导出
   connection/     连接路由、凭据、运行配置、JDBC 配置、任务监督
   query/          查询编排、取消、文档/Redis/HBase 操作、事务与对象缓存
@@ -67,16 +67,16 @@ SQL 限制与词法处理位于 drivers。SQLite 表重建执行留在 core，SQ
 
 ## 兼容性
 
-- 原有 `dbx_core::models`、`dbx_core::types`、`dbx_core::db`、`dbx_core::sql*`、
-  `dbx_core::ai`、`dbx_core::plugins` 及业务模块路径继续通过重导出可用。
+- 原有 `linop_db_core::models`、`linop_db_core::types`、`linop_db_core::db`、`linop_db_core::sql*`、
+  `linop_db_core::ai`、`linop_db_core::plugins` 及业务模块路径继续通过重导出可用。
 - 同一 DTO、连接池、提示请求和插件类型不复制定义；旧路径与新 crate 具有相同类型身份。
   `public_api_compatibility` 测试覆盖这些跨层身份。
 - 协议、序列化字段、默认配置、数据库语义、安装目录与进程生命周期不因搬迁而改变。
   原测试随实现迁移；依赖 core 的跨层测试移入 core 集成测试目录。
 - `test-support` 仅提供原有 stub/测试钩子，由 dev-dependency 启用，不在生产依赖启用。
 - 模块路径产生的日志 target 和 Rust 调试类型名会随 crate/目录变化。自定义
-  `RUST_LOG=dbx_core=debug` 不会覆盖新 crate；需要加入
-  `dbx_drivers=debug,dbx_sql=debug,dbx_plugin_runtime=debug,dbx_ai_provider=debug,dbx_platform=debug`
+  `RUST_LOG=linop_db_core=debug` 不会覆盖新 crate；需要加入
+  `linop_db_drivers=debug,linop_db_sql=debug,linop_db_plugin_runtime=debug,linop_db_ai_provider=debug,linop_db_platform=debug`
   等目标。默认桌面日志级别及 Web 默认过滤策略保持原样。
 
 ## Features 与资源
@@ -86,10 +86,10 @@ core 保留原来的 default feature 集合，并向实际实现 crate 转发
 `sqlite-bundled`、`sqlite-sqlcipher`、`sqlite-multiple-ciphers` 是不同的 SQLite
 后端选择，不要用 workspace `--all-features` 代替合法组合测试。
 
-- `dbx-types/build.rs` 消费 `plugins/connection-types/`。
-- `dbx-sql/build.rs` 消费 `plugins/dialects/`。
+- `linop-db-types/build.rs` 消费 `plugins/connection-types/`。
+- `linop-db-sql/build.rs` 消费 `plugins/dialects/`。
 - Pi MCP bridge 随 AI provider；Agent v2 协议 JSON 随 drivers，并与 Java resource 对照。
-- 数据库文档导出的 JS/CSS 仍在 `dbx-core/assets/`，由 `pnpm build:docs-export` 生成。
+- 数据库文档导出的 JS/CSS 仍在 `linop-db-core/assets/`，由 `pnpm build:docs-export` 生成。
 - Docker 的依赖缓存阶段必须包含所有 workspace manifest 和 stub，实际构建阶段
   必须包含方言与连接类型目录。Nix 保留整个仓库源码输入。
 
@@ -107,17 +107,17 @@ Rust 单元与集成测试使用 `cargo nextest run`，CI 固定 nextest `0.9.13
 
 ```sh
 pnpm test:architecture
-cargo check -p dbx-core --no-default-features --all-targets
+cargo check -p linop-db-core --no-default-features --all-targets
 
 env -u DOCKER_CONTEXT \
-  DOCKER_HOST=unix:///tmp/dbx-disabled-docker.sock \
+  DOCKER_HOST=unix:///tmp/linop-db-disabled-docker.sock \
   RUST_MIN_STACK=33554432 \
-  cargo nextest run -p dbx-core -p dbx-drivers -p dbx-sql \
-    -p dbx-types -p dbx-formats -p dbx-platform \
-    -p dbx-ai-provider -p dbx-plugin-runtime \
-    --no-default-features --features dbx-core/sqlite-bundled --lib --no-fail-fast
+  cargo nextest run -p linop-db-core -p linop-db-drivers -p linop-db-sql \
+    -p linop-db-types -p linop-db-formats -p linop-db-platform \
+    -p linop-db-ai-provider -p linop-db-plugin-runtime \
+    --no-default-features --features linop-db-core/sqlite-bundled --lib --no-fail-fast
 
-cargo nextest run -p dbx-core --no-default-features --features sqlite-bundled \
+cargo nextest run -p linop-db-core --no-default-features --features sqlite-bundled \
   --test public_api_compatibility --test connection_url_compatibility --no-fail-fast
 ```
 

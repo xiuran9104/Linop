@@ -5,7 +5,7 @@ set -euo pipefail
 # only supplies disposable official RocketMQ NameServer/Broker server JARs.
 version="${1:?RocketMQ version is required}"
 module_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-work_dir=$(mktemp -d "${TMPDIR:-/tmp}/dbx-rocketmq-${version}.XXXXXX")
+work_dir=$(mktemp -d "${TMPDIR:-/tmp}/linop-db-rocketmq-${version}.XXXXXX")
 namesrv_port="${ROCKETMQ_NAMESRV_PORT:-19876}"
 broker_port="${ROCKETMQ_BROKER_PORT:-20911}"
 store_root="${ROCKETMQ_STORE_ROOT:-${work_dir}/store}"

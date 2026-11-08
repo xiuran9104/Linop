@@ -143,7 +143,7 @@ test("GitHub script selection excludes planner tests only when fast checks own t
 });
 
 async function snapshotFixture(context) {
-  const directory = await mkdtemp(join(tmpdir(), "dbx-contributor-snapshot-"));
+  const directory = await mkdtemp(join(tmpdir(), "linop-db-contributor-snapshot-"));
   context.after(() => rm(directory, { recursive: true, force: true }));
   return join(directory, "data", "contributors.json");
 }

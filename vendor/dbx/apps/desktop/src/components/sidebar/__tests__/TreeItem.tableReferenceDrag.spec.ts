@@ -129,7 +129,7 @@ describe("TreeItem table reference dragging", () => {
     const detail = (onDrop.mock.calls[0][0] as CustomEvent<QueryEditorTableReferenceDropDetail>).detail;
     expect(detail).toEqual({
       payload: {
-        kind: "dbx-table-reference",
+        kind: "linop-db-table-reference",
         connectionId: "connection-1",
         database: "main",
         tableName: "orders",

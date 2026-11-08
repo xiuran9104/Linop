@@ -1,0 +1,23 @@
+[package]
+name = "linop-db-cli"
+version = "0.4.141"
+edition = "2021"
+license = "Apache-2.0"
+
+[[bin]]
+name = "linop-db"
+path = "src/main.rs"
+
+[dependencies]
+linop-db-core = { path = "../linop-db-core", default-features = false, features = ["sqlite-bundled"] }
+linop-db-mcp = { path = "../linop-db-mcp" }
+dirs = "6"
+rustls = { version = "0.23", features = ["aws-lc-rs"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tempfile = "3"
+tokio = { version = "1", features = ["fs", "macros", "rt-multi-thread"] }
+
+[dev-dependencies]
+async-trait = "0.1"

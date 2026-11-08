@@ -206,11 +206,11 @@ describe("SidebarTreeRuntimeHost expansion", () => {
 
   it.each(["single", "double"] as const)("focuses object search when %s-click activation opens a database", async (activation) => {
     const database: TreeNode = {
-      id: "mysql:dbx_test",
-      label: "dbx_test",
+      id: "mysql:linop_db_test",
+      label: "linop_db_test",
       type: "database",
       connectionId: "mysql",
-      database: "dbx_test",
+      database: "linop_db_test",
       isExpanded: true,
       children: [],
     };
@@ -233,7 +233,7 @@ describe("SidebarTreeRuntimeHost expansion", () => {
       host.value?.handleRowDoubleClick(database, new MouseEvent("dblclick"));
     }
 
-    await vi.waitFor(() => expect(queryStore.openObjectBrowser).toHaveBeenCalledWith("mysql", "dbx_test", undefined, undefined, undefined, false, undefined, undefined));
+    await vi.waitFor(() => expect(queryStore.openObjectBrowser).toHaveBeenCalledWith("mysql", "linop_db_test", undefined, undefined, undefined, false, undefined, undefined));
     await vi.waitFor(() => expect(focusRequested).toHaveBeenCalledOnce());
     expect((focusRequested.mock.calls[0]?.[0] as CustomEvent<{ tabId: string }>).detail.tabId).toBe("object-browser-tab");
 
@@ -242,11 +242,11 @@ describe("SidebarTreeRuntimeHost expansion", () => {
 
   it("toggles an expanded database closed on double-click in double-click activation mode", async () => {
     const database: TreeNode = {
-      id: "mysql:dbx_test",
-      label: "dbx_test",
+      id: "mysql:linop_db_test",
+      label: "linop_db_test",
       type: "database",
       connectionId: "mysql",
-      database: "dbx_test",
+      database: "linop_db_test",
       isExpanded: true,
       children: [],
     };
@@ -269,11 +269,11 @@ describe("SidebarTreeRuntimeHost expansion", () => {
 
   it("does not collapse an expanded database on click in single-click activation mode", async () => {
     const database: TreeNode = {
-      id: "mysql:dbx_test",
-      label: "dbx_test",
+      id: "mysql:linop_db_test",
+      label: "linop_db_test",
       type: "database",
       connectionId: "mysql",
-      database: "dbx_test",
+      database: "linop_db_test",
       isExpanded: true,
       children: [],
     };

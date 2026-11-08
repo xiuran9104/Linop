@@ -8,13 +8,13 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("SQL panel search preferences", () => {
   it.each([null, "invalid", "name", "content"])("restores and validates %s", (stored) => {
-    if (stored !== null) localStorage.setItem("dbx-sql-library-search-mode", stored);
+    if (stored !== null) localStorage.setItem("linop-db-sql-library-search-mode", stored);
     const scope = effectScope();
     try {
       const mode = scope.run(() => useSqlPanelSearchMode("library"))!;
       expect(mode.value).toBe(stored === "content" ? "content" : "name");
       mode.value = "content";
-      expect(localStorage.getItem("dbx-sql-library-search-mode")).toBe("content");
+      expect(localStorage.getItem("linop-db-sql-library-search-mode")).toBe("content");
     } finally {
       scope.stop();
     }

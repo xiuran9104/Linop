@@ -18,6 +18,6 @@ describe("tab drag payload", () => {
   });
 
   it("exposes the custom MIME type", () => {
-    expect(TAB_DRAG_MIME).toBe("application/x-dbx-tab");
+    expect(TAB_DRAG_MIME).toBe("application/x-linop-db-tab");
   });
 });

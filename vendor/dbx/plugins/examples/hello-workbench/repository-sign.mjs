@@ -11,7 +11,7 @@ const candidate = path.resolve(process.argv[2] || path.join(root, "dist", `dbx.e
 const signed = path.resolve(process.argv[3] || path.join(root, "dist", `dbx.example.hello-1.0.0-${target}.signed.dbxp`));
 const metadata = signed.replace(/\.dbxp$/, ".artifact.json");
 const keyId = process.env.DBX_PLUGIN_SIGNING_KEY_ID;
-const buildRoot = await mkdtemp(path.join(os.tmpdir(), "dbx-repository-sign-"));
+const buildRoot = await mkdtemp(path.join(os.tmpdir(), "linop-db-repository-sign-"));
 
 if (!process.env.DBX_PLUGIN_SIGNING_KEY || !keyId) {
   throw new Error("Repository signing requires DBX_PLUGIN_SIGNING_KEY and DBX_PLUGIN_SIGNING_KEY_ID");

@@ -740,13 +740,13 @@ describe("useDataGridColumnResize", () => {
     document.dispatchEvent(new MouseEvent("mouseup", { clientX: 250 }));
     expect(state.columnWidths.value[0]).toBeGreaterThan(autoWidth);
     expect(state.hasUserSizedColumns.value).toBe(true);
-    expect(localStorage.getItem(`dbx-data-grid-column-widths:${cacheKey}`)).toBeTruthy();
+    expect(localStorage.getItem(`linop-db-data-grid-column-widths:${cacheKey}`)).toBeTruthy();
 
     // Reset column widths
     state.resetColumnWidths();
     expect(state.hasUserSizedColumns.value).toBe(false);
     expect(state.columnWidths.value[0]).toBe(autoWidth);
-    expect(localStorage.getItem(`dbx-data-grid-column-widths:${cacheKey}`)).toBeNull();
+    expect(localStorage.getItem(`linop-db-data-grid-column-widths:${cacheKey}`)).toBeNull();
   });
 
   it("clears auto-fitted widths after manual and automatic width states are split", () => {
@@ -765,7 +765,7 @@ describe("useDataGridColumnResize", () => {
     state.resetColumnWidths();
     expect(state.hasUserSizedColumns.value).toBe(false);
     expect(state.columnWidths.value[0]).toBe(autoWidth);
-    expect(localStorage.getItem(`dbx-data-grid-column-widths:${cacheKey}`)).toBeNull();
+    expect(localStorage.getItem(`linop-db-data-grid-column-widths:${cacheKey}`)).toBeNull();
   });
 });
 

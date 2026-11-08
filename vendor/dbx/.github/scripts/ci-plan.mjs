@@ -17,7 +17,7 @@ const win7InfrastructureFiles = new Set([
   "src-tauri/tauri.webview2-win7-fixed.conf.json",
   "src-tauri/build.rs",
 ]);
-const win7InfrastructurePrefixes = [".cargo/", "rust-toolchain", ".github/fixtures/win7-", "src-tauri/windows/nsis/", "src-tauri/src/commands/update", "crates/dbx-core/src/host/update", "crates/dbx-platform/", "vendor/"];
+const win7InfrastructurePrefixes = [".cargo/", "rust-toolchain", ".github/fixtures/win7-", "src-tauri/windows/nsis/", "src-tauri/src/commands/update", "crates/linop-db-core/src/host/update", "crates/linop-db-platform/", "vendor/"];
 
 function expandAffectedPackages(packages, members, affected) {
   let expanded;
@@ -80,8 +80,8 @@ export function planCi({ files, metadata, root, eventName = "pull_request", rust
     const owner = packagePaths.find(([, directory]) => file.startsWith(directory));
     if (owner) affected.add(owner[0]);
     else if (/^(?:crates|src-tauri)\//.test(file)) unknownRust = true;
-    if (file.startsWith("plugins/connection-types/")) affected.add("dbx-types");
-    if (file.startsWith("plugins/dialects/")) affected.add("dbx-sql-dialect");
+    if (file.startsWith("plugins/connection-types/")) affected.add("linop-db-types");
+    if (file.startsWith("plugins/dialects/")) affected.add("linop-db-sql-dialect");
   }
   const knownGroups = new Set(Object.values(rustGroups).flat());
   const unknownMember = packages.some((pkg) => !knownGroups.has(pkg.name));
@@ -118,12 +118,12 @@ export function planCi({ files, metadata, root, eventName = "pull_request", rust
     ciChanged ||
     sharedRust ||
     files.some((file) => file.startsWith("agents/") && !nativeDrivers.some((driver) => file.startsWith(`agents/drivers/${driver}/`)) && !jdbcDrivers.some((driver) => file.startsWith(`agents/drivers/${driver}/`))) ||
-    files.some((file) => file.startsWith(".github/scripts/bump-agent-versions.") || file === ".github/workflows/agents-release.yml" || file === "crates/dbx-driver-agent/assets/agent-protocol-v2.json");
+    files.some((file) => file.startsWith(".github/scripts/bump-agent-versions.") || file === ".github/workflows/agents-release.yml" || file === "crates/linop-db-driver-agent/assets/agent-protocol-v2.json");
   const allAgents = sharedAgents || (agentsChanged && nativeChanges.size === 0 && !javaDriverChanges);
   if (allAgents) {
     for (const driver of nativeDrivers) nativeChanges.add(driver);
   }
-  if (affected.has("dbx-core")) nativeChanges.add("duckdb");
+  if (affected.has("linop-db-core")) nativeChanges.add("duckdb");
   const goMatrix = goAgents.filter((agent) => nativeChanges.has(agent.driver));
   const nativeRustMatrix = rustAgents.filter((driver) => nativeChanges.has(driver)).map((driver) => ({ driver }));
   const liveMatrix = integrationCases.filter((entry) => nativeChanges.has(entry.driver));

@@ -9,8 +9,8 @@ services:
       # Uncomment when serving DBX behind a reverse-proxy subpath.
       # - DBX_PUBLIC_BASE_PATH=/dbx
     volumes:
-      - dbx-data:/app/data
+      - linop-db-data:/app/data
     restart: unless-stopped
 
 volumes:
-  dbx-data:
+  linop-db-data:

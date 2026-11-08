@@ -9,8 +9,8 @@ import {
 import type { PluginTableContext, PluginTableMetadata } from "../../apps/desktop/src/types/pluginSchemaMetadata.ts";
 import type { InstalledPlugin, PluginWorkbenchContribution } from "../../apps/desktop/src/types/database.ts";
 
-const coreSource = readFileSync("crates/dbx-core/src/schema/plugin_metadata.rs", "utf8");
-const manifestSource = readFileSync("crates/dbx-plugin-runtime/src/plugins/manifest.rs", "utf8");
+const coreSource = readFileSync("crates/linop-db-core/src/schema/plugin_metadata.rs", "utf8");
+const manifestSource = readFileSync("crates/linop-db-plugin-runtime/src/plugins/manifest.rs", "utf8");
 const manifestSchema = JSON.parse(readFileSync("plugins/manifest.schema.json", "utf8"));
 
 function rustStructFields(source: string, name: string): string[] {
@@ -58,7 +58,7 @@ function sandbox() {
 function send(bridge: PluginHostBridge, target: Window, params: unknown, id = "1"): void {
   bridge.handleWindowMessage({
     source: target,
-    data: { source: "dbx-plugin", version: 1, type: "request", id, method: "host.getTableMetadata", params },
+    data: { source: "linop-db-plugin", version: 1, type: "request", id, method: "host.getTableMetadata", params },
   } as MessageEvent);
 }
 

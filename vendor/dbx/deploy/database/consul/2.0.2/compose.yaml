@@ -1,7 +1,7 @@
 services:
   database:
     image: docker.cnb.cool/znb/images/consul:2.0.2
-    container_name: dbx-consul-2.0.2
+    container_name: linop-db-consul-2.0.2
     restart: unless-stopped
     command:
       - agent

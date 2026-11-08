@@ -150,9 +150,9 @@ describe("connectionConfigTransfer", () => {
     expect(JSON.stringify(exported)).not.toContain("basic-password");
   });
 
-  it("parses legacy arrays and dbx-config payloads without inventing a layout", () => {
+  it("parses legacy arrays and linop-db-config payloads without inventing a layout", () => {
     expect(parseConnectionConfigObject([conn("a", "A")])).toEqual({ connections: [conn("a", "A")] });
-    expect(parseConnectionConfigObject({ format: "dbx-config", connections: [conn("a", "A")] })).toEqual({ connections: [conn("a", "A")] });
+    expect(parseConnectionConfigObject({ format: "linop-db-config", connections: [conn("a", "A")] })).toEqual({ connections: [conn("a", "A")] });
   });
 
   it("remaps ordinary import IDs on collision and updates tunnel/layout references", () => {

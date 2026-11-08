@@ -12,7 +12,7 @@ vi.mock("@/lib/backend/api", () => apiMock);
 
 import { useUserSkillStore } from "../../apps/desktop/src/stores/userSkillStore.ts";
 
-const rootSettings: UserSkillRootSettings = { customRootEnabled: true, customRoot: "D:/Team/dbx-skills" };
+const rootSettings: UserSkillRootSettings = { customRootEnabled: true, customRoot: "D:/Team/linop-db-skills" };
 
 function listing(status: "ok" | "missing" | "invalid", skills: Array<{ id: string; name: string; description: string }>) {
   return { status, skills };

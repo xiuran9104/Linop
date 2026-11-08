@@ -79,7 +79,7 @@ describe("QueryChart", () => {
     btn.click();
     await nextTick();
 
-    expect(localStorage.getItem("dbx-query-chart-show-labels")).toBe("true");
+    expect(localStorage.getItem("linop-db-query-chart-show-labels")).toBe("true");
     option = JSON.parse(vchart.getAttribute("data-chart-option") || "{}");
     expect(option.series[0].label.show).toBe(true);
     expect(option.series[0].label.position).toBe("top");
@@ -87,13 +87,13 @@ describe("QueryChart", () => {
     btn.click();
     await nextTick();
 
-    expect(localStorage.getItem("dbx-query-chart-show-labels")).toBe("false");
+    expect(localStorage.getItem("linop-db-query-chart-show-labels")).toBe("false");
     option = JSON.parse(vchart.getAttribute("data-chart-option") || "{}");
     expect(option.series[0].label.show).toBe(false);
   });
 
   it("initializes showLabels from localStorage if previously enabled", async () => {
-    localStorage.setItem("dbx-query-chart-show-labels", "true");
+    localStorage.setItem("linop-db-query-chart-show-labels", "true");
 
     app = createApp(QueryChart, { result: createQueryResult() });
     app.mount(container!);

@@ -364,7 +364,7 @@ describe("queryStore query result export", () => {
     expect(queryResultTransferIncomplete(result!)).toBe(false);
   });
 
-  it.each(["SELECT * FROM events", "SELECT t.* FROM events t"])("exports every wildcard page and its real __dbx_row_num column: %s", async (sql) => {
+  it.each(["SELECT * FROM events", "SELECT t.* FROM events t"])("exports every wildcard page and its real __linop_db_row_num column: %s", async (sql) => {
     mocks.getConfig.mockReturnValue({ id: "ob-1", db_type: "oceanbase-oracle", database: "app" });
     mocks.prepareQueryPaginationExecutionPlan.mockImplementation(async (request) => ({
       sqlToExecute: request.sql,
@@ -375,7 +375,7 @@ describe("queryStore query result export", () => {
     let row = 0;
     mocks.executeMulti.mockImplementation(async () => [
       {
-        columns: ["ID", "__dbx_row_num"],
+        columns: ["ID", "__linop_db_row_num"],
         column_types: ["NUMBER", "VARCHAR2"],
         rows: Array.from({ length: 2 }, () => [++row, `user-${row}`]),
         has_more: row < 6,
@@ -389,9 +389,9 @@ describe("queryStore query result export", () => {
     const id = store.createTab("ob-1", "app", "Query");
     const tab = store.tabs.find((item) => item.id === id)!;
     tab.lastExecutedSql = sql;
-    tab.result = { columns: ["ID", "__dbx_row_num"], rows: [[1, "user-1"]], has_more: true, execution_time_ms: 0, affected_rows: 0 };
+    tab.result = { columns: ["ID", "__linop_db_row_num"], rows: [[1, "user-1"]], has_more: true, execution_time_ms: 0, affected_rows: 0 };
     const result = await store.fetchTabResultForExport(id, undefined, true);
-    expect(result?.columns).toEqual(["ID", "__dbx_row_num"]);
+    expect(result?.columns).toEqual(["ID", "__linop_db_row_num"]);
     expect(result?.rows).toEqual(Array.from({ length: 6 }, (_, index) => [index + 1, `user-${index + 1}`]));
     expect(mocks.executeMulti).toHaveBeenCalledTimes(3);
     for (const [index, call] of mocks.executeMulti.mock.calls.entries()) {
@@ -406,7 +406,7 @@ describe("queryStore query result export", () => {
     mocks.prepareQueryPaginationExecutionPlan.mockResolvedValue({ sqlToExecute: sql, pageLimit: 2, pageOffset: 0, useAgentResultSession: true });
     mocks.executeMulti.mockResolvedValueOnce([
       {
-        columns: ["ID", "__dbx_row_num"],
+        columns: ["ID", "__linop_db_row_num"],
         rows: [
           [1, "user-1"],
           [2, "user-2"],
@@ -423,7 +423,7 @@ describe("queryStore query result export", () => {
     const id = store.createTab("ob-1", "app", "Query");
     const tab = store.tabs.find((item) => item.id === id)!;
     tab.lastExecutedSql = sql;
-    tab.result = { columns: ["ID", "__dbx_row_num"], rows: [[1, "user-1"]], has_more: true, execution_time_ms: 0, affected_rows: 0 };
+    tab.result = { columns: ["ID", "__linop_db_row_num"], rows: [[1, "user-1"]], has_more: true, execution_time_ms: 0, affected_rows: 0 };
     await expect(store.fetchTabResultForExport(id, undefined, true)).rejects.toThrow("Query cancelled");
     expect(mocks.executeMulti.mock.calls[1]![5].resultSessionId).toBe("ob-export-cursor");
     expect(mocks.closeQuerySession).toHaveBeenCalledWith("ob-1", "app", "ob-export-cursor", id, undefined);

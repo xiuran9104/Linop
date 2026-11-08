@@ -4,7 +4,7 @@ import * as api from "@/lib/backend/api";
 
 /**
  * Character budgets for notes injected into the AI schema prompt. Mirrors
- * `crates/dbx-core/src/data/docs/annotations.rs`; keeping the numbers identical
+ * `crates/linop-db-core/src/data/docs/annotations.rs`; keeping the numbers identical
  * means the same note is truncated the same way in the built-in prompt and in
  * the Rust tool results.
  */
@@ -14,7 +14,7 @@ export const SCHEMA_NOTE_TOTAL_MAX_CHARS = 8_000;
 
 /**
  * The instruction/data boundary for local notes. Mirrors
- * `crates/dbx-core/src/data/docs/annotations.rs`: a note is always wrapped in
+ * `crates/linop-db-core/src/data/docs/annotations.rs`: a note is always wrapped in
  * these markers, and delimiters inside it are escaped, so adversarial text
  * cannot forge a closing marker. MCP clients do not receive DBX's system
  * prompt, so the boundary must travel with the data.
@@ -30,7 +30,7 @@ export function renderUntrustedNote(note: string): string {
 }
 
 /**
- * Mirror of `dbx_core::docs::keys::fold_identifier`.
+ * Mirror of `linop_db_core::docs::keys::fold_identifier`.
  *
  * The notes file is keyed by `schema.table` with database-specific case
  * folding. Doing this in TypeScript MUST stay in sync with the Rust reader:

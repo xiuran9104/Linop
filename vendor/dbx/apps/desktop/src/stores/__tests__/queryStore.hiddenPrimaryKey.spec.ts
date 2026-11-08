@@ -1575,7 +1575,7 @@ describe("queryStore hidden primary key editing", () => {
     const { useQueryStore } = await import("@/stores/queryStore");
     const store = useQueryStore();
     const tabId = store.createTab("elasticsearch-1", "", "Query");
-    const sql = "SELECT * FROM `dbx-app-logs-v1` AS dalv";
+    const sql = "SELECT * FROM `linop-db-app-logs-v1` AS dalv";
 
     await store.executeTabSql(tabId, sql, { pagination: { limit: 100, offset: 0 } });
     const tab = store.tabs.find((item) => item.id === tabId)!;
@@ -2516,11 +2516,11 @@ describe("queryStore hidden primary key editing", () => {
       pageOffset: options.pagination.offset,
       countSql: undefined,
       useAgentResultSession: false,
-      paginationRowNumberColumn: options.pagination.offset > 0 ? "__dbx_row_num" : undefined,
+      paginationRowNumberColumn: options.pagination.offset > 0 ? "__linop_db_row_num" : undefined,
     }));
     executeMulti.mockResolvedValueOnce([{ columns: ["N"], rows: [[1], [2]], affected_rows: 0, execution_time_ms: 1 }]).mockResolvedValueOnce([
       {
-        columns: ["N", "__dbx_row_num"],
+        columns: ["N", "__linop_db_row_num"],
         rows: [
           [3, 3],
           [4, 4],
@@ -2549,13 +2549,13 @@ describe("queryStore hidden primary key editing", () => {
       pageOffset: options.pagination.offset,
       countSql: undefined,
       useAgentResultSession: false,
-      paginationRowNumberColumn: options.pagination.offset > 0 ? "__dbx_row_num" : undefined,
+      paginationRowNumberColumn: options.pagination.offset > 0 ? "__linop_db_row_num" : undefined,
     }));
     executeMulti
       .mockResolvedValueOnce([{ columns: ["N"], rows: [[1], [2]], affected_rows: 0, execution_time_ms: 1 }])
       .mockResolvedValueOnce([
         {
-          columns: ["N", "__dbx_row_num"],
+          columns: ["N", "__linop_db_row_num"],
           rows: [
             [3, 3],
             [4, 4],
@@ -2564,7 +2564,7 @@ describe("queryStore hidden primary key editing", () => {
           execution_time_ms: 1,
         },
       ])
-      .mockResolvedValueOnce([{ columns: ["N", "__dbx_row_num"], rows: [], affected_rows: 0, execution_time_ms: 1 }]);
+      .mockResolvedValueOnce([{ columns: ["N", "__linop_db_row_num"], rows: [], affected_rows: 0, execution_time_ms: 1 }]);
     const exported = await store.fetchTabResultForExport(tabId);
     expect(exported?.columns).toEqual(["N"]);
     expect(exported?.rows).toEqual([[1], [2], [3], [4]]);
@@ -2972,7 +2972,7 @@ describe("queryStore hidden primary key editing", () => {
     expect(tab.result?.columns).toEqual(["NAME", "NAME"]);
   });
 
-  it.each(["SELECT * FROM events", "SELECT t.* FROM events t"])("preserves a real __dbx_row_num column across OceanBase wildcard pages: %s", async (sql) => {
+  it.each(["SELECT * FROM events", "SELECT t.* FROM events t"])("preserves a real __linop_db_row_num column across OceanBase wildcard pages: %s", async (sql) => {
     getConnectionConfig.mockReturnValue({ id: "ob-1", name: "OceanBase", db_type: "oceanbase-oracle", database: "app", query_timeout_secs: 30 });
     analyzeEditableQueryEditability.mockResolvedValue({ editable: false, reason: "complex-query" });
     prepareQueryPaginationExecutionPlan.mockImplementation(async (options) => ({
@@ -2984,7 +2984,7 @@ describe("queryStore hidden primary key editing", () => {
     let row = 0;
     executeMulti.mockImplementation(async () => [
       {
-        columns: ["ID", "__dbx_row_num"],
+        columns: ["ID", "__linop_db_row_num"],
         rows: Array.from({ length: 2 }, () => [++row, `user-${row}`]),
         affected_rows: 0,
         execution_time_ms: 1,
@@ -2998,7 +2998,7 @@ describe("queryStore hidden primary key editing", () => {
     for (const offset of [0, 2, 4]) {
       await store.executeTabSql(tabId, sql, { pagination: { limit: 2, offset, sessionId: offset ? "ob-star-cursor" : undefined } });
       const result = store.tabs.find((item) => item.id === tabId)!.result;
-      expect(result?.columns).toEqual(["ID", "__dbx_row_num"]);
+      expect(result?.columns).toEqual(["ID", "__linop_db_row_num"]);
       expect(result?.rows).toEqual([
         [offset + 1, `user-${offset + 1}`],
         [offset + 2, `user-${offset + 2}`],

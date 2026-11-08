@@ -2,13 +2,13 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::commands::connection::{ensure_connection_writable, AppState};
-use dbx_core::agent_kv::{
+use linop_db_core::agent_kv::{
     EtcdDefragResponse, EtcdLeaseListResponse, EtcdPreflightRequest, EtcdPreflightResponse, EtcdWatchPollResponse,
     EtcdWatchStartRequest, EtcdWatchStartResponse, KvDeleteOptions, KvDeleteResponse, KvGetOptions, KvGetResponse,
     KvHistoryRequest, KvHistoryResponse, KvInt64, KvListPrefixResponse, KvPutOptions, KvPutResponse, KvRangeOptions,
     KvRenameRequest, KvRenameResponse, KvStatusResponse, KvValue,
 };
-use dbx_core::db::agent_driver::AgentKvMethod;
+use linop_db_core::db::agent_driver::AgentKvMethod;
 
 #[tauri::command]
 pub async fn etcd_list_prefix(
@@ -20,7 +20,7 @@ pub async fn etcd_list_prefix(
     revision: Option<KvInt64>,
     include_values: Option<bool>,
 ) -> Result<KvListPrefixResponse, String> {
-    dbx_core::agent_kv::kv_list_prefix_core_with_range_options(
+    linop_db_core::agent_kv::kv_list_prefix_core_with_range_options(
         &state,
         &connection_id,
         &prefix,
@@ -33,7 +33,7 @@ pub async fn etcd_list_prefix(
 
 #[tauri::command]
 pub async fn etcd_supports_ttl(state: State<'_, Arc<AppState>>, connection_id: String) -> Result<bool, String> {
-    dbx_core::agent_kv::kv_supports_ttl_core(&state, &connection_id).await
+    linop_db_core::agent_kv::kv_supports_ttl_core(&state, &connection_id).await
 }
 
 #[tauri::command]
@@ -45,7 +45,7 @@ pub async fn etcd_get(
     revision: Option<KvInt64>,
     metadata_only: Option<bool>,
 ) -> Result<KvGetResponse, String> {
-    dbx_core::agent_kv::kv_get_core_with_options(
+    linop_db_core::agent_kv::kv_get_core_with_options(
         &state,
         &connection_id,
         &key,
@@ -68,7 +68,7 @@ pub async fn etcd_put(
     expected_create_revision: Option<KvInt64>,
 ) -> Result<KvPutResponse, String> {
     ensure_connection_writable(&state, &connection_id, "Put").await?;
-    dbx_core::agent_kv::kv_put_core_with_options(
+    linop_db_core::agent_kv::kv_put_core_with_options(
         &state,
         &connection_id,
         &key,
@@ -95,7 +95,7 @@ pub async fn etcd_delete(
     expected_mod_revision: Option<KvInt64>,
 ) -> Result<KvDeleteResponse, String> {
     ensure_connection_writable(&state, &connection_id, "Delete").await?;
-    dbx_core::agent_kv::kv_delete_core_with_options(
+    linop_db_core::agent_kv::kv_delete_core_with_options(
         &state,
         &connection_id,
         &key,
@@ -111,7 +111,7 @@ pub async fn etcd_rename(
     request: KvRenameRequest,
 ) -> Result<KvRenameResponse, String> {
     ensure_connection_writable(&state, &connection_id, "Rename").await?;
-    dbx_core::agent_kv::kv_rename_core(&state, &connection_id, request).await
+    linop_db_core::agent_kv::kv_rename_core(&state, &connection_id, request).await
 }
 
 #[tauri::command]
@@ -120,12 +120,12 @@ pub async fn etcd_history(
     connection_id: String,
     request: KvHistoryRequest,
 ) -> Result<KvHistoryResponse, String> {
-    dbx_core::agent_kv::kv_history_core(&state, &connection_id, request).await
+    linop_db_core::agent_kv::kv_history_core(&state, &connection_id, request).await
 }
 
 #[tauri::command]
 pub async fn etcd_status(state: State<'_, Arc<AppState>>, connection_id: String) -> Result<KvStatusResponse, String> {
-    dbx_core::agent_kv::kv_status_core(&state, &connection_id).await
+    linop_db_core::agent_kv::kv_status_core(&state, &connection_id).await
 }
 
 #[tauri::command]
@@ -135,7 +135,7 @@ pub async fn etcd_preflight(
     request: EtcdPreflightRequest,
 ) -> Result<EtcdPreflightResponse, String> {
     ensure_connection_writable(&state, &connection_id, "Dangerous etcd operation").await?;
-    dbx_core::agent_kv::etcd_preflight_core(&state, &connection_id, request).await
+    linop_db_core::agent_kv::etcd_preflight_core(&state, &connection_id, request).await
 }
 
 #[tauri::command]
@@ -148,7 +148,7 @@ pub async fn etcd_compact(
 ) -> Result<serde_json::Value, String> {
     ensure_connection_writable(&state, &connection_id, "Compact").await?;
     let params = serde_json::json!({ "revision": revision.clone() });
-    dbx_core::agent_kv::etcd_consume_preflight_core(
+    linop_db_core::agent_kv::etcd_consume_preflight_core(
         &state,
         &connection_id,
         "compact",
@@ -157,7 +157,7 @@ pub async fn etcd_compact(
         &confirmation_text,
     )
     .await?;
-    dbx_core::agent_kv::etcd_compact_core(&state, &connection_id, revision).await
+    linop_db_core::agent_kv::etcd_compact_core(&state, &connection_id, revision).await
 }
 
 #[tauri::command]
@@ -170,7 +170,7 @@ pub async fn etcd_defrag(
 ) -> Result<EtcdDefragResponse, String> {
     ensure_connection_writable(&state, &connection_id, "Defrag").await?;
     let params = serde_json::json!({ "endpoints": endpoints.clone() });
-    dbx_core::agent_kv::etcd_consume_preflight_core(
+    linop_db_core::agent_kv::etcd_consume_preflight_core(
         &state,
         &connection_id,
         "defrag",
@@ -179,7 +179,7 @@ pub async fn etcd_defrag(
         &confirmation_text,
     )
     .await?;
-    dbx_core::agent_kv::etcd_defrag_core(&state, &connection_id, endpoints).await
+    linop_db_core::agent_kv::etcd_defrag_core(&state, &connection_id, endpoints).await
 }
 
 #[tauri::command]
@@ -188,7 +188,7 @@ pub async fn etcd_watch_start(
     connection_id: String,
     request: EtcdWatchStartRequest,
 ) -> Result<EtcdWatchStartResponse, String> {
-    dbx_core::agent_kv::etcd_watch_start_core(&state, &connection_id, request).await
+    linop_db_core::agent_kv::etcd_watch_start_core(&state, &connection_id, request).await
 }
 
 #[tauri::command]
@@ -197,7 +197,7 @@ pub async fn etcd_watch_poll(
     connection_id: String,
     watch_id: String,
 ) -> Result<EtcdWatchPollResponse, String> {
-    dbx_core::agent_kv::etcd_watch_poll_core(&state, &connection_id, &watch_id).await
+    linop_db_core::agent_kv::etcd_watch_poll_core(&state, &connection_id, &watch_id).await
 }
 
 #[tauri::command]
@@ -206,7 +206,7 @@ pub async fn etcd_watch_stop(
     connection_id: String,
     watch_id: String,
 ) -> Result<serde_json::Value, String> {
-    dbx_core::agent_kv::etcd_watch_stop_core(&state, &connection_id, &watch_id).await
+    linop_db_core::agent_kv::etcd_watch_stop_core(&state, &connection_id, &watch_id).await
 }
 
 #[tauri::command]
@@ -216,7 +216,7 @@ pub async fn etcd_lease_list(
     limit: Option<usize>,
     continuation: Option<String>,
 ) -> Result<EtcdLeaseListResponse, String> {
-    dbx_core::agent_kv::etcd_lease_list_core(&state, &connection_id, limit.unwrap_or(100), continuation.as_deref())
+    linop_db_core::agent_kv::etcd_lease_list_core(&state, &connection_id, limit.unwrap_or(100), continuation.as_deref())
         .await
 }
 
@@ -240,7 +240,7 @@ pub async fn etcd_lease_call(
         ensure_connection_writable(&state, &connection_id, "Lease operation").await?;
     }
     if operation == "revoke" {
-        dbx_core::agent_kv::etcd_consume_preflight_core(
+        linop_db_core::agent_kv::etcd_consume_preflight_core(
             &state,
             &connection_id,
             "lease_revoke",
@@ -250,7 +250,7 @@ pub async fn etcd_lease_call(
         )
         .await?;
     }
-    dbx_core::agent_kv::etcd_lease_call_core(&state, &connection_id, method, params).await
+    linop_db_core::agent_kv::etcd_lease_call_core(&state, &connection_id, method, params).await
 }
 
 #[tauri::command]
@@ -282,7 +282,7 @@ pub async fn etcd_auth_call(
         ensure_connection_writable(&state, &connection_id, "Auth operation").await?;
     }
     if let Some(action) = auth_preflight_action(&operation) {
-        dbx_core::agent_kv::etcd_consume_preflight_core(
+        linop_db_core::agent_kv::etcd_consume_preflight_core(
             &state,
             &connection_id,
             action,
@@ -292,7 +292,7 @@ pub async fn etcd_auth_call(
         )
         .await?;
     }
-    dbx_core::agent_kv::etcd_auth_call_core(&state, &connection_id, method, params).await
+    linop_db_core::agent_kv::etcd_auth_call_core(&state, &connection_id, method, params).await
 }
 
 fn auth_preflight_action(operation: &str) -> Option<&'static str> {

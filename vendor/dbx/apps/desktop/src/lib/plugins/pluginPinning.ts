@@ -1,6 +1,6 @@
 import type { FrontendPluginDefinition } from "@/lib/plugins/frontendPlugin";
 
-const PINNED_PLUGINS_STORAGE_KEY = "dbx-plugin-pinned-ids";
+const PINNED_PLUGINS_STORAGE_KEY = "linop-db-plugin-pinned-ids";
 
 export function loadPinnedPluginIds(): string[] {
   try {

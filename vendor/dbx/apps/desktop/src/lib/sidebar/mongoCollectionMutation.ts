@@ -68,7 +68,7 @@ export function mongoCollectionTableTypeFromNode(node: Pick<TreeNode, "meta">): 
 
 /** MongoDB materializes a database when its initialization collection is created. */
 export function mongoCreateDatabasePreview(database: string): string {
-  return `db.getSiblingDB(${JSON.stringify(database)}).createCollection("dbx_init");`;
+  return `db.getSiblingDB(${JSON.stringify(database)}).createCollection("linop_db_init");`;
 }
 
 export function toMongoCollectionKind(kind?: string | null): MongoCollectionKind {

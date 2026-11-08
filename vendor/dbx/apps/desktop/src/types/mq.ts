@@ -1,4 +1,4 @@
-// Message queue admin types, matching dbx-core/src/mq/types.rs
+// Message queue admin types, matching linop-db-core/src/mq/types.rs
 
 import type { KafkaTlsConfig } from "@/lib/connection/kafkaTlsOptions";
 

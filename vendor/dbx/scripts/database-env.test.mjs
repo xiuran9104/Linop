@@ -34,7 +34,7 @@ const dockerComposeAvailable = spawnSync("docker", ["compose", "version"], { std
 
 function fixture(database, version) {
   const hostPort = { mysql: 10100, postgresql: 10300, redis: 10500 }[database] ?? 10100;
-  const root = mkdtempSync(join(tmpdir(), "dbx-db-env-"));
+  const root = mkdtempSync(join(tmpdir(), "linop-db-db-env-"));
   const directory = join(root, database, version);
   mkdirSync(join(directory, "init"), { recursive: true });
   writeFileSync(join(directory, "init", "001-smoke.txt"), "fixture initialization");
@@ -57,7 +57,7 @@ function fixture(database, version) {
   );
   writeFileSync(
     join(directory, "compose.yaml"),
-    `services:\n  database:\n    image: test:1\n    platform: linux/amd64\n    container_name: dbx-${database}-${version}\n    ports:\n      - "\${DB_BIND_ADDRESS:-127.0.0.1}:\${DB_PORT:-${hostPort}}:1234"\n    volumes:\n      - data:/var/lib/database\n    healthcheck:\n      test: ["CMD", "true"]\nvolumes:\n  data:\n`,
+    `services:\n  database:\n    image: test:1\n    platform: linux/amd64\n    container_name: linop-db-${database}-${version}\n    ports:\n      - "\${DB_BIND_ADDRESS:-127.0.0.1}:\${DB_PORT:-${hostPort}}:1234"\n    volumes:\n      - data:/var/lib/database\n    healthcheck:\n      test: ["CMD", "true"]\nvolumes:\n  data:\n`,
   );
   return root;
 }
@@ -138,8 +138,8 @@ test("discovers all public Make targets for shell completion", () => {
 
 test("Bash completion preserves all Make targets and completes database selectors", { skip: !bashAvailable }, () => {
   const repoRoot = join(DEFAULT_RECIPES_ROOT, "..", "..");
-  const completionScript = join(DEFAULT_RECIPES_ROOT, "completion", "dbx-make.bash");
-  const result = spawnSync("bash", ["--noprofile", "--norc", "-c", 'source "$COMPLETION_SCRIPT"; COMP_WORDS=(make ""); COMP_CWORD=1; _dbx_make; printf "TARGET:%s\\n" "${COMPREPLY[@]}"; COMP_WORDS=(make db DB=); COMP_CWORD=2; _dbx_make; printf "SELECTOR:%s\\n" "${COMPREPLY[@]}"'], {
+  const completionScript = join(DEFAULT_RECIPES_ROOT, "completion", "linop-db-make.bash");
+  const result = spawnSync("bash", ["--noprofile", "--norc", "-c", 'source "$COMPLETION_SCRIPT"; COMP_WORDS=(make ""); COMP_CWORD=1; _linop_db_make; printf "TARGET:%s\\n" "${COMPREPLY[@]}"; COMP_WORDS=(make db DB=); COMP_CWORD=2; _linop_db_make; printf "SELECTOR:%s\\n" "${COMPREPLY[@]}"'], {
     cwd: repoRoot,
     env: { ...process.env, COMPLETION_SCRIPT: completionScript },
     encoding: "utf8",
@@ -152,8 +152,8 @@ test("Bash completion preserves all Make targets and completes database selector
 });
 
 test("Bash completion delegates to the previous completer outside the repository", { skip: !bashAvailable }, () => {
-  const completionScript = join(DEFAULT_RECIPES_ROOT, "completion", "dbx-make.bash");
-  const result = spawnSync("bash", ["--noprofile", "--norc", "-c", '_original_make_completion() { COMPREPLY=(ORIGINAL); }; complete -F _original_make_completion make; source "$COMPLETION_SCRIPT"; cd "$TMPDIR"; COMP_WORDS=(make db DB=); COMP_CWORD=2; _dbx_make; printf "%s\\n" "${COMPREPLY[@]}"'], {
+  const completionScript = join(DEFAULT_RECIPES_ROOT, "completion", "linop-db-make.bash");
+  const result = spawnSync("bash", ["--noprofile", "--norc", "-c", '_original_make_completion() { COMPREPLY=(ORIGINAL); }; complete -F _original_make_completion make; source "$COMPLETION_SCRIPT"; cd "$TMPDIR"; COMP_WORDS=(make db DB=); COMP_CWORD=2; _linop_db_make; printf "%s\\n" "${COMPREPLY[@]}"'], {
     env: { ...process.env, COMPLETION_SCRIPT: completionScript, TMPDIR: tmpdir() },
     encoding: "utf8",
   });
@@ -163,13 +163,13 @@ test("Bash completion delegates to the previous completer outside the repository
 
 test("Zsh completion delegates ordinary Make completion and handles DB selectors", { skip: !zshAvailable }, () => {
   const repoRoot = join(DEFAULT_RECIPES_ROOT, "..", "..");
-  const completionScript = join(DEFAULT_RECIPES_ROOT, "completion", "_dbx-make.zsh");
+  const completionScript = join(DEFAULT_RECIPES_ROOT, "completion", "_linop-db-make.zsh");
   const result = spawnSync(
     "zsh",
     [
       "-f",
       "-c",
-      'autoload -Uz compinit && compinit -D; _original_make_completion() { print ORIGINAL; }; compdef _original_make_completion make; source "$COMPLETION_SCRIPT"; words=(make ""); CURRENT=2; _dbx_make; _describe() { local values_name="$2"; print -l -- "${(@P)values_name}"; }; compset() { return 0; }; words=(make db DB=); CURRENT=3; _dbx_make',
+      'autoload -Uz compinit && compinit -D; _original_make_completion() { print ORIGINAL; }; compdef _original_make_completion make; source "$COMPLETION_SCRIPT"; words=(make ""); CURRENT=2; _linop_db_make; _describe() { local values_name="$2"; print -l -- "${(@P)values_name}"; }; compset() { return 0; }; words=(make db DB=); CURRENT=3; _linop_db_make',
     ],
     { cwd: repoRoot, env: { ...process.env, COMPLETION_SCRIPT: completionScript }, encoding: "utf8" },
   );
@@ -466,16 +466,16 @@ test("requires the target service to mount a named volume", () => {
   assert.equal(serviceHasNamedVolume(namedVolume, "database"), true);
 });
 
-test("derives the required dbx-prefixed container name", () => {
-  assert.equal(expectedContainerName({ database: "mysql", displayVersion: "5.7" }), "dbx-mysql-5.7");
-  assert.equal(expectedContainerName({ database: "PostgreSQL", displayVersion: "17.4" }), "dbx-postgresql-17.4");
+test("derives the required linop-db-prefixed container name", () => {
+  assert.equal(expectedContainerName({ database: "mysql", displayVersion: "5.7" }), "linop-db-mysql-5.7");
+  assert.equal(expectedContainerName({ database: "PostgreSQL", displayVersion: "17.4" }), "linop-db-postgresql-17.4");
 });
 
 test("rejects a recipe whose Compose container name is not standardized", () => {
   const [recipe] = discoverRecipes(fixture("mysql", "8.4"));
   const composePath = join(recipe.directory, "compose.yaml");
-  writeFileSync(composePath, readFileSync(composePath, "utf8").replace("container_name: dbx-mysql-8.4", "container_name: custom-mysql"));
-  assert.match(validateRecipe(recipe).join("; "), /container_name must be dbx-mysql-8.4/);
+  writeFileSync(composePath, readFileSync(composePath, "utf8").replace("container_name: linop-db-mysql-8.4", "container_name: custom-mysql"));
+  assert.match(validateRecipe(recipe).join("; "), /container_name must be linop-db-mysql-8.4/);
 });
 
 test("requires the shared default password and database name", () => {

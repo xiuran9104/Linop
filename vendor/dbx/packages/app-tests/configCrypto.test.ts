@@ -6,7 +6,7 @@ test("encrypts and decrypts config round-trip", async () => {
   const original = JSON.stringify([{ id: "1", name: "test", password: "secret123" }]);
   const encrypted = await encryptConfig(original, "my-passphrase");
 
-  assert.equal(encrypted.format, "dbx-encrypted");
+  assert.equal(encrypted.format, "linop-db-encrypted");
   assert.equal(encrypted.version, 1);
   assert.ok(encrypted.salt);
   assert.ok(encrypted.iv);
@@ -26,8 +26,8 @@ test("fails to decrypt with wrong passphrase", async () => {
 });
 
 test("detects encrypted config format", () => {
-  assert.equal(isEncryptedConfig({ format: "dbx-encrypted", version: 1, salt: "a", iv: "b", data: "c" }), true);
-  assert.equal(isEncryptedConfig({ format: "dbx-config", version: 1, connections: [] }), false);
+  assert.equal(isEncryptedConfig({ format: "linop-db-encrypted", version: 1, salt: "a", iv: "b", data: "c" }), true);
+  assert.equal(isEncryptedConfig({ format: "linop-db-config", version: 1, connections: [] }), false);
   assert.equal(isEncryptedConfig([{ id: "1" }]), false);
   assert.equal(isEncryptedConfig(null), false);
   assert.equal(isEncryptedConfig("string"), false);

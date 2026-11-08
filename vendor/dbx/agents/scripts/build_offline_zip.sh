@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Build offline ZIP bundles for each platform.
 # Usage: ./scripts/build_offline_zip.sh <release-dir>
-# The release-dir must contain agent-registry.json, raw driver artifacts, and dbx-jre-*.tar.zst.
+# The release-dir must contain agent-registry.json, raw driver artifacts, and linop-db-jre-*.tar.zst.
 # If offline-jdbc/jdbc is present, it is included as the managed JDBC payload.
 
 RELEASE_DIR="$(cd "${1:?Usage: build_offline_zip.sh <release-dir>}" && pwd)"
@@ -37,7 +37,7 @@ for platform in "${PLATFORMS[@]}"; do
 
   # Copy all JRE archives for this platform
   JRE_COUNT=0
-  for jre_file in "$RELEASE_DIR"/dbx-jre-*-"$platform".tar.zst; do
+  for jre_file in "$RELEASE_DIR"/linop-db-jre-*-"$platform".tar.zst; do
     [ -f "$jre_file" ] || continue
     cp "$jre_file" "$WORK/jre/"
     JRE_COUNT=$((JRE_COUNT + 1))
@@ -50,12 +50,12 @@ for platform in "${PLATFORMS[@]}"; do
   fi
 
   # Copy all driver JARs (platform-independent)
-  for jar_file in "$RELEASE_DIR"/dbx-agent-*.jar; do
+  for jar_file in "$RELEASE_DIR"/linop-db-agent-*.jar; do
     [ -f "$jar_file" ] || continue
     cp "$jar_file" "$WORK/drivers/"
   done
 
-  for native_file in "$RELEASE_DIR"/dbx-agent-*-"$platform" "$RELEASE_DIR"/dbx-agent-*-"$platform".exe; do
+  for native_file in "$RELEASE_DIR"/linop-db-agent-*-"$platform" "$RELEASE_DIR"/linop-db-agent-*-"$platform".exe; do
     [ -f "$native_file" ] || continue
     cp "$native_file" "$WORK/drivers/"
   done
@@ -63,13 +63,13 @@ for platform in "${PLATFORMS[@]}"; do
   # The SQLite SSH worker executes on the remote SSH host, so its Linux binaries
   # must ship in every bundle: the desktop platform never matches them, which
   # otherwise leaves the worker missing from offline packages (#8987).
-  for worker_file in "$RELEASE_DIR"/dbx-agent-sqlite-worker-*-linux-x64 \
-      "$RELEASE_DIR"/dbx-agent-sqlite-worker-*-linux-aarch64; do
+  for worker_file in "$RELEASE_DIR"/linop-db-agent-sqlite-worker-*-linux-x64 \
+      "$RELEASE_DIR"/linop-db-agent-sqlite-worker-*-linux-aarch64; do
     [ -f "$worker_file" ] || continue
     cp "$worker_file" "$WORK/drivers/"
   done
 
-  ZIP_NAME="dbx-agents-offline-${platform}.zip"
+  ZIP_NAME="linop-db-agents-offline-${platform}.zip"
   ZIP_ENTRIES=(agent-registry.json jre/ drivers/)
   [ -d "$WORK/jdbc" ] && ZIP_ENTRIES+=(jdbc/)
   (cd "$WORK" && zip -r "$RELEASE_DIR/$ZIP_NAME" "${ZIP_ENTRIES[@]}")

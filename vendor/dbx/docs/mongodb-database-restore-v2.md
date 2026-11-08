@@ -182,11 +182,11 @@ promised after the write phase begins.
 
 ## Code Boundaries
 
-- `dbx-core/src/mongodb_dump/directory.rs`: separate metadata catalog discovery from
+- `linop-db-core/src/mongodb_dump/directory.rs`: separate metadata catalog discovery from
   selected input validation. No data reader calls during directory inspection.
-- `dbx-core/src/mongodb_dump/archive.rs`: separate prelude inspection from full
+- `linop-db-core/src/mongodb_dump/archive.rs`: separate prelude inspection from full
   validation/demultiplexing; preserve official CRC and interleaving compatibility.
-- `dbx-core/src/mongodb_dump.rs`: source states, frozen plans, acquisition ownership,
+- `linop-db-core/src/mongodb_dump.rs`: source states, frozen plans, acquisition ownership,
   preflight validation and restore phase transitions.
 - Web routes/Tauri commands: file transport, task lifecycle, progress/cancel and
   limits. Keep existing export tasks and collection workflows unchanged.

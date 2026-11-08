@@ -19,7 +19,7 @@ DBX 插件 SDK 不是一个常驻服务，不需要先启动 SDK Server。
 
 开发时实际使用的是三类工具：
 
-1. `dbx-plugin` CLI：创建项目、构建后端、打包和生成签名密钥。
+1. `linop-db-plugin` CLI：创建项目、构建后端、打包和生成签名密钥。
 2. Rust/Go SDK：仅供需要原生后端的插件链接使用。
 3. DBX Host API：由 DBX 在插件沙箱页面中注入，前端通过 `window.dbxPlugin` 调用。
 
@@ -32,7 +32,7 @@ DBX 插件 SDK 不是一个常驻服务，不需要先启动 SDK Server。
 └── backend/（可选）
         │
         ▼
-dbx-plugin package
+linop-db-plugin package
         │
         ├── *.dbxp
         └── *.artifact.json
@@ -46,14 +46,14 @@ DBX 插件中心本地安装，或上传 Release 后进入插件商店
 推荐直接安装预编译的 npm 包。安装过程不会编译 CLI，也不需要克隆 DBX 源码：
 
 ```bash
-npm install --global @dbx-app/plugin-cli
-dbx-plugin --help
+npm install --global @linop-db-app/plugin-cli
+linop-db-plugin --help
 ```
 
 也可以不做全局安装，直接运行：
 
 ```bash
-npx @dbx-app/plugin-cli create my-plugin
+npx @linop-db-app/plugin-cli create my-plugin
 ```
 
 npm 主包会自动安装 macOS、Linux 或 Windows 当前平台对应的预编译二进制，并携带匹配版本的 Rust/Go 插件 SDK。纯前端插件只需要 Node.js；只有插件自身包含 Rust 或 Go 后端时才需要对应语言的编译环境。
@@ -63,7 +63,7 @@ npm 主包会自动安装 macOS、Linux 或 Windows 当前平台对应的预编�
 ```bash
 cd /path/to/dbx
 
-CARGO_TARGET_DIR=/tmp/dbx-plugin-cli-target \
+CARGO_TARGET_DIR=/tmp/linop-db-plugin-cli-target \
   cargo install --locked --path plugins/sdk/cli --force
 ```
 
@@ -71,7 +71,7 @@ CLI 在交互式终端中默认显示彩色输出。设置 `NO_COLOR=1` 可以�
 
 ## 2. 选择插件模板
 
-`dbx-plugin create` 提供四种模板：
+`linop-db-plugin create` 提供四种模板：
 
 | 模板 | 组成 | 产物 | 适用场景 |
 | --- | --- | --- | --- |
@@ -87,18 +87,18 @@ CLI 在交互式终端中默认显示彩色输出。设置 `NO_COLOR=1` 可以�
 运行交互式向导：
 
 ```bash
-dbx-plugin create ~/Desktop/dbx-plugin-demo --template frontend
+linop-db-plugin create ~/Desktop/linop-db-plugin-demo --template frontend
 
 # 使用 Svelte + Vite 工作台模板
-dbx-plugin create ~/Desktop/dbx-plugin-svelte --template svelte
+linop-db-plugin create ~/Desktop/linop-db-plugin-svelte --template svelte
 ```
 
 也可以一次性传入全部参数：
 
 ```bash
-dbx-plugin create ~/Desktop/dbx-plugin-demo \
+linop-db-plugin create ~/Desktop/linop-db-plugin-demo \
   --template frontend \
-  --id com.example.dbx-plugin-demo \
+  --id com.example.linop-db-plugin-demo \
   --name "DBX Plugin Demo" \
   --publisher example \
   --description "A small DBX frontend plugin." \
@@ -109,11 +109,11 @@ dbx-plugin create ~/Desktop/dbx-plugin-demo \
 生成的目录结构如下：
 
 ```text
-dbx-plugin-demo/
+linop-db-plugin-demo/
 ├── .github/workflows/plugin-release.yml
 ├── assets/plugin.svg
 ├── ui/index.html
-├── dbx-plugin.toml
+├── linop-db-plugin.toml
 ├── manifest.json
 └── README.md
 ```
@@ -121,7 +121,7 @@ dbx-plugin-demo/
 其中：
 
 - `manifest.json` 是 DBX 运行时读取的插件契约，声明名称、图标、权限、入口、国际化和贡献点。
-- `dbx-plugin.toml` 是开发和打包配置，决定要包含哪些目录，以及是否需要构建原生后端。
+- `linop-db-plugin.toml` 是开发和打包配置，决定要包含哪些目录，以及是否需要构建原生后端。
 - `ui/index.html` 是沙箱前端入口，可以换成构建后的 Vue、React、Svelte 或其他静态资源。
 - `assets/plugin.svg` 是插件提供的图标；未提供可用图标时，DBX 才使用默认图标。
 
@@ -182,12 +182,12 @@ curl -sS 'http://127.0.0.1:5190/api/diagnostics?after=0&limit=100'
 使用包含 `dev` 子命令的 CLI，可不启动 DBX 进行前后端联调：
 
 ```bash
-dbx-plugin dev --path /path/to/my-plugin --port 5190
+linop-db-plugin dev --path /path/to/my-plugin --port 5190
 ```
 
 `--path` 默认为当前目录，端口占用时自动选择空闲端口。仅此子命令要求 Node.js 22+。纯前端插件直接打开工作台；Rust/Go 插件根据 `[backend]` 配置构建并启动后端，兼容 JSONL 和 framed v1。
 
-可在 `dbx-plugin.toml` 配置前端构建命令：
+可在 `linop-db-plugin.toml` 配置前端构建命令：
 
 ```toml
 [dev]
@@ -197,9 +197,9 @@ ui_watch = ["npm", "run", "build:watch"]
 
 命令按参数数组执行，不经过 shell；未配置时使用已有 UI。先自行安装插件依赖，工具不会猜测框架或自动安装。前端重新构建后手动重载页面，后端改动后点击重建并重新连接。
 
-点击“重载页面”右侧的“调试”，底部显示最近 500 条构建、后端状态、RPC 和请求校验日志，包含端口、项目与请求路径、耗时，以及可展开的 JSON 入参和出参。支持级别筛选、清空视图和自动滚动，终端同步输出 `[dbx-dev]` 日志。密码、令牌及 Manifest 声明的敏感字段脱敏，二进制内容省略，长内容截断；普通业务内容仍可见，仅用于本地开发。重启服务后历史清空。
+点击“重载页面”右侧的“调试”，底部显示最近 500 条构建、后端状态、RPC 和请求校验日志，包含端口、项目与请求路径、耗时，以及可展开的 JSON 入参和出参。支持级别筛选、清空视图和自动滚动，终端同步输出 `[linop-db-dev]` 日志。密码、令牌及 Manifest 声明的敏感字段脱敏，二进制内容省略，长内容截断；普通业务内容仍可见，仅用于本地开发。重启服务后历史清空。
 
-开发环境提供声明式连接表单、工作台 Tab、RPC、事件、资源读取和主题切换。普通配置与凭据以本地明文形式保存在 `.dbx-dev/`，默认忽略提交，可通过 `--data-dir` 更换。它不读取 DBX 用户数据，也不替代真实宿主的安装、Secret Store 或生命周期验收。
+开发环境提供声明式连接表单、工作台 Tab、RPC、事件、资源读取和主题切换。普通配置与凭据以本地明文形式保存在 `.linop-db-dev/`，默认忽略提交，可通过 `--data-dir` 更换。它不读取 DBX 用户数据，也不替代真实宿主的安装、Secret Store 或生命周期验收。
 
 源码构建和支持范围见[开发运行时说明](sdk/dev-host/README.md)。
 
@@ -208,16 +208,16 @@ ui_watch = ["npm", "run", "build:watch"]
 进入插件目录并打包：
 
 ```bash
-cd ~/Desktop/dbx-plugin-demo
-dbx-plugin package .
+cd ~/Desktop/linop-db-plugin-demo
+linop-db-plugin package .
 ```
 
 前端插件默认生成：
 
 ```text
 dist/
-├── com.example.dbx-plugin-demo-0.1.0-universal.dbxp
-└── com.example.dbx-plugin-demo-0.1.0-universal.artifact.json
+├── com.example.linop-db-plugin-demo-0.1.0-universal.dbxp
+└── com.example.linop-db-plugin-demo-0.1.0-universal.artifact.json
 ```
 
 - `.dbxp` 是交给 DBX 安装的文件。
@@ -246,30 +246,30 @@ dist/
 ### Rust
 
 ```bash
-dbx-plugin create ~/Desktop/dbx-rust-plugin \
+linop-db-plugin create ~/Desktop/linop-db-rust-plugin \
   --template rust \
   --sdk-root /path/to/dbx
 
-cd ~/Desktop/dbx-rust-plugin
-dbx-plugin package .
+cd ~/Desktop/linop-db-rust-plugin
+linop-db-plugin package .
 ```
 
 ### Go
 
 ```bash
-dbx-plugin create ~/Desktop/dbx-go-plugin \
+linop-db-plugin create ~/Desktop/linop-db-go-plugin \
   --template go \
   --sdk-root /path/to/dbx
 
-cd ~/Desktop/dbx-go-plugin
-dbx-plugin package .
+cd ~/Desktop/linop-db-go-plugin
+linop-db-plugin package .
 ```
 
 `--sdk-root` 让生成项目直接使用当前 DBX 工作区里的 SDK，适合 SDK 尚未发布或正在联调时使用。如果项目已经创建，也可以在打包前设置：
 
 ```bash
 export DBX_PLUGIN_SDK_ROOT=/path/to/dbx
-dbx-plugin package .
+linop-db-plugin package .
 ```
 
 原生插件包含平台二进制，所以必须在对应平台构建：
@@ -286,7 +286,7 @@ dbx-plugin package .
 
 ### 本地开发可以不签名
 
-`dbx-plugin package` 始终生成未签名候选包。自己开发测试时，在插件中心显式开启“允许安装未签名开发包”即可。这个开关只影响手动本地安装，不会放宽插件商店校验。
+`linop-db-plugin package` 始终生成未签名候选包。自己开发测试时，在插件中心显式开启“允许安装未签名开发包”即可。这个开关只影响手动本地安装，不会放宽插件商店校验。
 
 ### 官方插件作者不管理签名密钥
 
@@ -316,12 +316,12 @@ company.repository-signing-v1
 ### 自定义或私有仓库生成签名密钥
 
 ```bash
-dbx-plugin keygen company.plugins.release
+linop-db-plugin keygen company.plugins.release
 ```
 
 命令会：
 
-- 创建 `.dbx-repository-signing-key.env`，Unix 下权限为 `0600`。
+- 创建 `.linop-db-repository-signing-key.env`，Unix 下权限为 `0600`。
 - 在终端打印 Key ID 和 Base64 公钥。
 - 不在终端打印私钥。
 - 如果文件已存在则拒绝覆盖，除非显式使用 `--force`。
@@ -329,7 +329,7 @@ dbx-plugin keygen company.plugins.release
 仓库运营方在审核候选包后加载密钥并执行独立签名：
 
 ```bash
-source .dbx-repository-signing-key.env
+source .linop-db-repository-signing-key.env
 cargo run --release \
   --manifest-path /path/to/dbx/plugins/sdk/packager/Cargo.toml \
   -- sign candidate.dbxp signed.dbxp \
@@ -338,14 +338,14 @@ cargo run --release \
   --target universal
 ```
 
-不要提交 `.dbx-repository-signing-key.env`。它包含仓库私钥，只能保存在密码管理器或受保护的仓库签名 CI Secret 中。官方插件开发者不需要执行本节。
+不要提交 `.linop-db-repository-signing-key.env`。它包含仓库私钥，只能保存在密码管理器或受保护的仓库签名 CI Secret 中。官方插件开发者不需要执行本节。
 
 ### 在 DBX 中信任自定义仓库
 
 使用自定义或私有仓库时，在插件中心“设置”的“自定义仓库信任”中填写：
 
-- 仓库密钥 ID：`dbx-plugin keygen` 使用的 Key ID。
-- Ed25519 公钥：`dbx-plugin keygen` 打印的 Base64 公钥。
+- 仓库密钥 ID：`linop-db-plugin keygen` 使用的 Key ID。
+- Ed25519 公钥：`linop-db-plugin keygen` 打印的 Base64 公钥。
 
 官方插件商店的公钥由 DBX 管理，普通用户不需要手工添加。人工审核决定插件能否进入商店，仓库签名保证审核后的安装包没有被替换，两者不能互相替代。
 
@@ -360,41 +360,41 @@ cargo run --release \
 - 每个候选包对应的 `.artifact.json`。
 - 合并后的 `release-candidates.json`。
 
-这些 `.dbxp` 不能直接作为官方商店安装地址。若插件仓库已登记 `autoUpdate: true`，发布 Release 后 DBX Store 会自动创建或更新候选 PR；未登记时，开发者手动向 [`t8y2/dbx-store`](https://github.com/t8y2/dbx-store) 提交一个候选 PR 即可，不需要先创建 Issue。审核通过后，DBX Store 的受保护工作流在同一个 PR 流程中生成最终签名包并更新目录。源码放在插件自己的 Git 仓库；`dbx-store` Git 仓库只保存商店元数据、最终下载地址、哈希、大小、仓库公钥和审核信息。
+这些 `.dbxp` 不能直接作为官方商店安装地址。若插件仓库已登记 `autoUpdate: true`，发布 Release 后 DBX Store 会自动创建或更新候选 PR；未登记时，开发者手动向 [`t8y2/linop-db-store`](https://github.com/t8y2/linop-db-store) 提交一个候选 PR 即可，不需要先创建 Issue。审核通过后，DBX Store 的受保护工作流在同一个 PR 流程中生成最终签名包并更新目录。源码放在插件自己的 Git 仓库；`linop-db-store` Git 仓库只保存商店元数据、最终下载地址、哈希、大小、仓库公钥和审核信息。
 
 ## 10. 常用命令
 
 ```bash
 # 查看帮助
-dbx-plugin --help
-dbx-plugin create --help
-dbx-plugin dev --help
-dbx-plugin package --help
-dbx-plugin keygen --help
+linop-db-plugin --help
+linop-db-plugin create --help
+linop-db-plugin dev --help
+linop-db-plugin package --help
+linop-db-plugin keygen --help
 
 # 创建纯前端插件
-dbx-plugin create my-plugin --template frontend
+linop-db-plugin create my-plugin --template frontend
 
 # 创建 Svelte + Vite 插件
-dbx-plugin create my-svelte-plugin --template svelte
+linop-db-plugin create my-svelte-plugin --template svelte
 
 # 创建 Rust 插件
-dbx-plugin create my-plugin --template rust
+linop-db-plugin create my-plugin --template rust
 
 # 创建 Go 插件
-dbx-plugin create my-plugin --template go
+linop-db-plugin create my-plugin --template go
 
 # 仅在开发未发布的本地 SDK 时覆盖 SDK 根目录
-dbx-plugin create my-plugin --template rust --sdk-root /path/to/dbx
+linop-db-plugin create my-plugin --template rust --sdk-root /path/to/dbx
 
 # 打包当前项目
-dbx-plugin package .
+linop-db-plugin package .
 
 # 自定义/私有仓库运营方生成仓库密钥
-dbx-plugin keygen company.plugins.release
+linop-db-plugin keygen company.plugins.release
 
 # 关闭彩色输出
-NO_COLOR=1 dbx-plugin --help
+NO_COLOR=1 linop-db-plugin --help
 ```
 
 ### 独立调试插件
@@ -403,32 +403,32 @@ NO_COLOR=1 dbx-plugin --help
 
 ```bash
 # 在插件目录启动，默认端口 5190
-dbx-plugin dev
+linop-db-plugin dev
 
 # 指定插件目录和端口
-dbx-plugin dev --path /path/to/my-plugin --port 5190
+linop-db-plugin dev --path /path/to/my-plugin --port 5190
 
 # 指定开发配置存储目录
-dbx-plugin dev --path /path/to/my-plugin --data-dir /path/to/dev-data
+linop-db-plugin dev --path /path/to/my-plugin --data-dir /path/to/dev-data
 ```
 
 启动后打开终端输出的本地地址，按 `Ctrl+C` 停止。端口占用时自动选择空闲端口。纯前端插件无需后端；Rust/Go 插件会根据项目配置构建并启动 Sidecar，需先安装对应工具链及插件依赖。
 
-连接配置与凭据默认以明文保存在插件目录的 `.dbx-dev/` 中。前端构建监听通过 `[dev].ui_watch` 配置，自动重载默认关闭，可在页面中开启。完整配置与调试方式见[独立浏览器开发环境](#打包前使用独立浏览器开发环境)。
+连接配置与凭据默认以明文保存在插件目录的 `.linop-db-dev/` 中。前端构建监听通过 `[dev].ui_watch` 配置，自动重载默认关闭，可在页面中开启。完整配置与调试方式见[独立浏览器开发环境](#打包前使用独立浏览器开发环境)。
 
 ## 11. 常见问题
 
-### `dbx-plugin: command not found`
+### `linop-db-plugin: command not found`
 
 确认 npm 全局命令目录已经加入 `PATH`，或者直接使用 `npx`：
 
 ```bash
-npx @dbx-app/plugin-cli --help
+npx @linop-db-app/plugin-cli --help
 ```
 
 ### 我只想写前端，为什么还要安装 Rust？
 
-不需要。`@dbx-app/plugin-cli` 安装的是 CI 预编译二进制；生成的 `frontend` 插件不包含 Rust 后端，最终 `.dbxp` 是跨平台的 `universal` 包。只有插件自身选择 Rust 后端，或者开发 CLI 源码时才需要 Rust。
+不需要。`@linop-db-app/plugin-cli` 安装的是 CI 预编译二进制；生成的 `frontend` 插件不包含 Rust 后端，最终 `.dbxp` 是跨平台的 `universal` 包。只有插件自身选择 Rust 后端，或者开发 CLI 源码时才需要 Rust。
 
 ### 为什么原生插件不能只构建一个包？
 

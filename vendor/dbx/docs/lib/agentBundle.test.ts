@@ -54,8 +54,8 @@ const testRegistry: AgentRegistry = {
     "21": {
       version: "21",
       platforms: {
-        "windows-x64": { url: `${RELEASE}/dbx-jre-21-windows-x64.tar.zst`, sha256: JRE_SHA256, size: JRE_BYTES.length, format: "tar_zstd" },
-        "macos-aarch64": { url: `${RELEASE}/dbx-jre-21-macos-aarch64.tar.zst`, sha256: "0".repeat(64), size: 5, format: "tar_zstd" },
+        "windows-x64": { url: `${RELEASE}/linop-db-jre-21-windows-x64.tar.zst`, sha256: JRE_SHA256, size: JRE_BYTES.length, format: "tar_zstd" },
+        "macos-aarch64": { url: `${RELEASE}/linop-db-jre-21-macos-aarch64.tar.zst`, sha256: "0".repeat(64), size: 5, format: "tar_zstd" },
       },
     },
   },
@@ -65,7 +65,7 @@ const testRegistry: AgentRegistry = {
       label: "H2",
       min_app_version: "0.6.33",
       jre: "21",
-      jar: { url: `${RELEASE}/dbx-agent-h2-1.0.0.tar.zst`, sha256: await sha256Hex(h2Package), size: h2Package.length, format: "tar_zstd" },
+      jar: { url: `${RELEASE}/linop-db-agent-h2-1.0.0.tar.zst`, sha256: await sha256Hex(h2Package), size: h2Package.length, format: "tar_zstd" },
     },
     duckdb: {
       version: "0.1.29",
@@ -73,8 +73,8 @@ const testRegistry: AgentRegistry = {
       min_app_version: "0.6.33",
       jre: "21",
       native: {
-        "windows-x64": { url: `${RELEASE}/dbx-agent-duckdb-0.1.29-windows-x64.tar.zst`, sha256: "1".repeat(64), size: 100, format: "tar_zstd" },
-        "macos-aarch64": { url: `${RELEASE}/dbx-agent-duckdb-0.1.29-macos-aarch64.tar.zst`, sha256: "2".repeat(64), size: 90, format: "tar_zstd" },
+        "windows-x64": { url: `${RELEASE}/linop-db-agent-duckdb-0.1.29-windows-x64.tar.zst`, sha256: "1".repeat(64), size: 100, format: "tar_zstd" },
+        "macos-aarch64": { url: `${RELEASE}/linop-db-agent-duckdb-0.1.29-macos-aarch64.tar.zst`, sha256: "2".repeat(64), size: 90, format: "tar_zstd" },
       },
     },
     "sqlite-worker": {
@@ -83,8 +83,8 @@ const testRegistry: AgentRegistry = {
       min_app_version: "0.6.30",
       jre: "21",
       native: {
-        "linux-x64": { url: `${RELEASE}/dbx-agent-sqlite-worker-0.1.6-linux-x64.tar.zst`, sha256: await sha256Hex(workerX64Package), size: workerX64Package.length, format: "tar_zstd" },
-        "linux-aarch64": { url: `${RELEASE}/dbx-agent-sqlite-worker-0.1.6-linux-aarch64.tar.zst`, sha256: await sha256Hex(workerArmPackage), size: workerArmPackage.length, format: "tar_zstd" },
+        "linux-x64": { url: `${RELEASE}/linop-db-agent-sqlite-worker-0.1.6-linux-x64.tar.zst`, sha256: await sha256Hex(workerX64Package), size: workerX64Package.length, format: "tar_zstd" },
+        "linux-aarch64": { url: `${RELEASE}/linop-db-agent-sqlite-worker-0.1.6-linux-aarch64.tar.zst`, sha256: await sha256Hex(workerArmPackage), size: workerArmPackage.length, format: "tar_zstd" },
       },
     },
   },
@@ -184,7 +184,7 @@ test("stored zip parts assemble a valid zip32 archive", async () => {
   const second = new Uint8Array(1000).fill(9);
   const result = buildStoredZipParts([
     { name: "agent-registry.json", data: first },
-    { name: "drivers/dbx-agent.bin", data: second },
+    { name: "drivers/linop-db-agent.bin", data: second },
   ], new Date(2026, 9, 4, 12, 30, 22));
 
   assert.equal(result.totalSize, (30 + 19) + 27 + (30 + 21) + 1000 + (46 + 19) + (46 + 21) + 22);
@@ -192,7 +192,7 @@ test("stored zip parts assemble a valid zip32 archive", async () => {
   const entries = readStoredZip(new Uint8Array(await blob.arrayBuffer()));
   assert.deepEqual(
     entries.map((entry) => entry.name),
-    ["agent-registry.json", "drivers/dbx-agent.bin"],
+    ["agent-registry.json", "drivers/linop-db-agent.bin"],
   );
   assert.ok(entries.every((entry) => entry.method === 0));
   assert.deepEqual([...entries[0]!.data], [...first]);
@@ -206,20 +206,20 @@ test("stored zip parts assemble a valid zip32 archive", async () => {
 test("driver packages unpack their raw artifact and offline registry entry", () => {
   const extracted = extractDriverPackage(h2Package, "h2");
   assert.equal(extracted.artifactKind, "jar");
-  assert.equal(extracted.filename, "dbx-agent-h2-1.0.0.jar");
+  assert.equal(extracted.filename, "linop-db-agent-h2-1.0.0.jar");
   assert.deepEqual([...extracted.bytes], [...H2_JAR_BYTES]);
   assert.equal(extracted.entry.label, "H2");
   assert.equal(extracted.entry.min_app_version, "0.6.33");
-  assert.equal(extracted.entry.jar?.url, "offline://dbx-agent-h2-1.0.0.jar");
+  assert.equal(extracted.entry.jar?.url, "offline://linop-db-agent-h2-1.0.0.jar");
   assert.equal(extracted.entry.jar?.size, H2_JAR_BYTES.length);
   assert.ok(extracted.entry.jar?.sha256);
 
   const worker = extractDriverPackage(workerX64Package, "sqlite-worker");
   assert.equal(worker.artifactKind, "native");
   assert.deepEqual(worker.nativePlatforms, ["linux-x64"]);
-  assert.equal(worker.filename, "dbx-agent-sqlite-worker-0.1.6-linux-x64");
+  assert.equal(worker.filename, "linop-db-agent-sqlite-worker-0.1.6-linux-x64");
   assert.deepEqual([...worker.bytes], [...WORKER_X64_BYTES]);
-  assert.equal(worker.entry.native?.["linux-x64"]?.url, "offline://dbx-agent-sqlite-worker-0.1.6-linux-x64");
+  assert.equal(worker.entry.native?.["linux-x64"]?.url, "offline://linop-db-agent-sqlite-worker-0.1.6-linux-x64");
 
   assert.throws(() => extractDriverPackage(h2Package, "duckdb"), /exactly the "duckdb"/);
 });
@@ -236,11 +236,11 @@ test("bundle options follow native-over-jar and platform availability", () => {
   assert.equal(workers.length, 2);
   assert.deepEqual(
     workers.map((worker) => worker.packageUrl.split("/").pop()),
-    ["dbx-agent-sqlite-worker-0.1.6-linux-x64.tar.zst", "dbx-agent-sqlite-worker-0.1.6-linux-aarch64.tar.zst"],
+    ["linop-db-agent-sqlite-worker-0.1.6-linux-x64.tar.zst", "linop-db-agent-sqlite-worker-0.1.6-linux-aarch64.tar.zst"],
   );
 
   const jre = resolveBundleJre(testRegistry, "windows-x64");
-  assert.equal(jre?.filename, "dbx-jre-21-windows-x64.tar.zst");
+  assert.equal(jre?.filename, "linop-db-jre-21-windows-x64.tar.zst");
   assert.equal(jre?.sha256, JRE_SHA256);
 });
 
@@ -255,7 +255,7 @@ test("bundle plans force the JRE for Java agents and always bundle SSH workers",
   );
   assert.equal(jarPlan.workers.length, 2);
   assert.equal(jarPlan.totalDownloadBytes, h2Package.length + workerX64Package.length + workerArmPackage.length + JRE_BYTES.length);
-  assert.equal(jarPlan.filename, "dbx-agents-offline-custom-windows-x64.zip");
+  assert.equal(jarPlan.filename, "linop-db-agents-offline-custom-windows-x64.zip");
 
   const nativePlan = computeBundlePlan(testRegistry, "windows-x64", new Set(["duckdb"]), true);
   assert.equal(nativePlan.requiresJre, false);
@@ -273,10 +273,10 @@ test("assemble builds a driver-manager compatible offline ZIP end to end", async
   const fetched: string[] = [];
   const fetchPackage: BundleFetch = async (url) => {
     fetched.push(url);
-    if (url.endsWith("dbx-agent-h2-1.0.0.tar.zst")) return h2Package;
-    if (url.endsWith("dbx-agent-sqlite-worker-0.1.6-linux-x64.tar.zst")) return workerX64Package;
-    if (url.endsWith("dbx-agent-sqlite-worker-0.1.6-linux-aarch64.tar.zst")) return workerArmPackage;
-    if (url.endsWith("dbx-jre-21-windows-x64.tar.zst")) return JRE_BYTES;
+    if (url.endsWith("linop-db-agent-h2-1.0.0.tar.zst")) return h2Package;
+    if (url.endsWith("linop-db-agent-sqlite-worker-0.1.6-linux-x64.tar.zst")) return workerX64Package;
+    if (url.endsWith("linop-db-agent-sqlite-worker-0.1.6-linux-aarch64.tar.zst")) return workerArmPackage;
+    if (url.endsWith("linop-db-jre-21-windows-x64.tar.zst")) return JRE_BYTES;
     throw new Error(`unexpected url ${url}`);
   };
   const progress: BundleProgress[] = [];
@@ -284,7 +284,7 @@ test("assemble builds a driver-manager compatible offline ZIP end to end", async
 
   const assembled = await assembleCustomBundle(plan, fetchPackage, (event) => progress.push(event), signal);
 
-  assert.equal(assembled.filename, "dbx-agents-offline-custom-windows-x64.zip");
+  assert.equal(assembled.filename, "linop-db-agents-offline-custom-windows-x64.zip");
   const downloads = progress.filter((event): event is Extract<BundleProgress, { phase: "download" }> => event.phase === "download");
   assert.ok(downloads.some((event) => event.completed === 4), "all four jobs must report completion");
   assert.equal(downloads.at(-1)?.receivedBytes, h2Package.length + workerX64Package.length + workerArmPackage.length + JRE_BYTES.length);
@@ -295,7 +295,7 @@ test("assemble builds a driver-manager compatible offline ZIP end to end", async
   const entries = readStoredZip(bytes);
   assert.deepEqual(
     entries.map((entry) => entry.name),
-    ["agent-registry.json", "drivers/dbx-agent-h2-1.0.0.jar", "drivers/dbx-agent-sqlite-worker-0.1.6-linux-x64", "drivers/dbx-agent-sqlite-worker-0.1.6-linux-aarch64", "jre/dbx-jre-21-windows-x64.tar.zst"],
+    ["agent-registry.json", "drivers/linop-db-agent-h2-1.0.0.jar", "drivers/linop-db-agent-sqlite-worker-0.1.6-linux-x64", "drivers/linop-db-agent-sqlite-worker-0.1.6-linux-aarch64", "jre/linop-db-jre-21-windows-x64.tar.zst"],
   );
   assert.deepEqual([...entries[1]!.data], [...H2_JAR_BYTES]);
   assert.deepEqual([...entries[2]!.data], [...WORKER_X64_BYTES]);
@@ -307,11 +307,11 @@ test("assemble builds a driver-manager compatible offline ZIP end to end", async
   };
   assert.deepEqual(Object.keys(registry.jres), ["21"]);
   const jreEntry = registry.jres["21"]!.platforms["windows-x64"]!;
-  assert.equal(jreEntry.url, "offline://dbx-jre-21-windows-x64.tar.zst");
+  assert.equal(jreEntry.url, "offline://linop-db-jre-21-windows-x64.tar.zst");
   assert.equal(jreEntry.sha256, JRE_SHA256);
   assert.equal(jreEntry.size, JRE_BYTES.length);
   assert.equal(jreEntry.format, "tar_zstd");
-  assert.equal(registry.drivers.h2!.jar!.url, "offline://dbx-agent-h2-1.0.0.jar");
+  assert.equal(registry.drivers.h2!.jar!.url, "offline://linop-db-agent-h2-1.0.0.jar");
   assert.equal(registry.drivers.h2!.min_app_version, "0.6.33");
   assert.equal(registry.drivers.h2!.label, "H2");
   assert.deepEqual(Object.keys(registry.drivers["sqlite-worker"]!.native!), ["linux-x64", "linux-aarch64"]);
@@ -328,7 +328,7 @@ test("bundle downloads run in parallel under the concurrency limit", async () =>
     maxInFlight = Math.max(maxInFlight, inFlight);
     await new Promise((resolve) => setTimeout(resolve, 15));
     inFlight -= 1;
-    if (url.endsWith("dbx-agent-h2-1.0.0.tar.zst")) return h2Package;
+    if (url.endsWith("linop-db-agent-h2-1.0.0.tar.zst")) return h2Package;
     if (url.endsWith("linux-x64.tar.zst")) return workerX64Package;
     if (url.endsWith("linux-aarch64.tar.zst")) return workerArmPackage;
     return JRE_BYTES;
@@ -349,9 +349,9 @@ test("assembly rejects packages whose checksum does not match the registry", asy
 });
 
 test("mirror and proxy URLs map GitHub assets to their alternates", () => {
-  assert.equal(cnbMirrorUrl(`${RELEASE}/dbx-agent-h2-1.0.0.tar.zst`), `https://cnb.cool/dbxio.com/dbx/-/releases/download/agents-v9.9.9/dbx-agent-h2-1.0.0.tar.zst`);
+  assert.equal(cnbMirrorUrl(`${RELEASE}/linop-db-agent-h2-1.0.0.tar.zst`), `https://cnb.cool/dbxio.com/dbx/-/releases/download/agents-v9.9.9/linop-db-agent-h2-1.0.0.tar.zst`);
   assert.equal(
-    proxyUrl("https://dbxio.com", `${RELEASE}/dbx-agent-h2-1.0.0.tar.zst`),
-    `https://dbxio.com/api/agent-asset?url=${encodeURIComponent(`${RELEASE}/dbx-agent-h2-1.0.0.tar.zst`)}`,
+    proxyUrl("https://dbxio.com", `${RELEASE}/linop-db-agent-h2-1.0.0.tar.zst`),
+    `https://dbxio.com/api/agent-asset?url=${encodeURIComponent(`${RELEASE}/linop-db-agent-h2-1.0.0.tar.zst`)}`,
   );
 });

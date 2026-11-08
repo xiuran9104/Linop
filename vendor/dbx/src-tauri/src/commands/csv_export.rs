@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::commands::connection::AppState;
-use dbx_core::csv_export::{
+use linop_db_core::csv_export::{
     csv_null_literal, default_csv_null_literal, export_table_data_csv_core, format_query_result_csv_with_options,
     CsvQuoteMode, TableCsvExportOptions,
 };

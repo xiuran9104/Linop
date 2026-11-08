@@ -144,7 +144,7 @@ function copyWithoutConflict(source, target) {
 }
 
 function extractRawDriver(packagePath, asset, outputDir = "") {
-  const extractDir = mkdtempSync(join(tmpdir(), "dbx-agent-package-"));
+  const extractDir = mkdtempSync(join(tmpdir(), "linop-db-agent-package-"));
   try {
     execFileSync("tar", ["--use-compress-program=unzstd", "-xf", packagePath, "-C", extractDir], { stdio: "inherit" });
     const embeddedRegistry = JSON.parse(readFileSync(join(extractDir, REGISTRY_ASSET), "utf8"));
@@ -188,7 +188,7 @@ export function extractReusableDriverPackages({ packagesDir, outputDir, versions
       throw new Error(`Missing effective previous version for reusable module: ${moduleName}`);
     }
 
-    const javaName = `dbx-agent-${moduleName}-${releaseVersion}.tar.zst`;
+    const javaName = `linop-db-agent-${moduleName}-${releaseVersion}.tar.zst`;
     if (filenames.has(javaName)) {
       extractRawDriver(
         join(packagesDir, javaName),
@@ -206,7 +206,7 @@ export function extractReusableDriverPackages({ packagesDir, outputDir, versions
 
     const nativePlatforms = [];
     for (const platform of PLATFORMS) {
-      const nativeName = `dbx-agent-${moduleName}-${releaseVersion}-${platform}.tar.zst`;
+      const nativeName = `linop-db-agent-${moduleName}-${releaseVersion}-${platform}.tar.zst`;
       if (!filenames.has(nativeName)) continue;
       nativePlatforms.push(platform);
       extractRawDriver(
@@ -296,7 +296,7 @@ function main() {
     return;
   }
 
-  const workDir = mkdtempSync(join(tmpdir(), "dbx-agent-reuse-"));
+  const workDir = mkdtempSync(join(tmpdir(), "linop-db-agent-reuse-"));
   const downloadDir = join(workDir, "downloads");
   mkdirSync(downloadDir);
   mkdirSync(options.outputDir, { recursive: true });

@@ -19,8 +19,8 @@ function vertex(id: string, name: string, age = "9007199254740993") {
     ],
   };
   return {
-    __dbx_graph_cell: "neo4j-v1",
-    __dbx_neo4j_node: "v1",
+    __linop_db_graph_cell: "neo4j-v1",
+    __linop_db_neo4j_node: "v1",
     kind: "vertex",
     display: `(:Person {name: "${name}"})`,
     nodes: [node],
@@ -125,7 +125,7 @@ describe("Neo4j graph and node-table compatibility", () => {
     const result = normalize(
       page([
         [{ ...cell, nodes: null }, "1"],
-        [{ __dbx_neo4j_node: "v1", display: "(:Person)", properties: [] }, "2"],
+        [{ __linop_db_neo4j_node: "v1", display: "(:Person)", properties: [] }, "2"],
       ]),
     );
     expect(result.rows).toEqual([

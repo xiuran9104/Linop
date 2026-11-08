@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::UNIX_EPOCH;
 
-use dbx_core::sql::{decode_sql_file_bytes, decode_sql_file_bytes_with_encoding, encode_sql_file_text};
+use linop_db_core::sql::{decode_sql_file_bytes, decode_sql_file_bytes_with_encoding, encode_sql_file_text};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tokio::io::AsyncReadExt;
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn reads_external_sql_file_content() {
-        let path = std::env::temp_dir().join(format!("dbx-test-{}.sql", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-test-{}.sql", uuid::Uuid::new_v4()));
         std::fs::write(&path, "select 1;").unwrap();
 
         let result = read_external_sql_file_content(&path);
@@ -447,7 +447,7 @@ mod tests {
 
     #[test]
     fn reads_gbk_external_sql_file_content() {
-        let path = std::env::temp_dir().join(format!("dbx-test-{}.sql", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-test-{}.sql", uuid::Uuid::new_v4()));
         std::fs::write(&path, b"select '\xD6\xD0\xCE\xC4';").unwrap();
 
         let result = read_external_sql_file_content(&path);
@@ -462,7 +462,7 @@ mod tests {
 
     #[test]
     fn reads_external_filtered_text_file_content() {
-        let path = std::env::temp_dir().join(format!("dbx-test-{}.py", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-test-{}.py", uuid::Uuid::new_v4()));
         std::fs::write(&path, "print('hello')").unwrap();
 
         let result = read_external_sql_file_content(&path);
@@ -496,7 +496,7 @@ mod tests {
 
     #[test]
     fn rejects_oversized_external_sql_before_reading_content() {
-        let path = std::env::temp_dir().join(format!("dbx-test-{}.sql", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-test-{}.sql", uuid::Uuid::new_v4()));
         let file = std::fs::File::create(&path).unwrap();
         let file_size = MAX_EXTERNAL_SQL_EDITOR_FILE_BYTES + 1;
         file.set_len(file_size).unwrap();
@@ -515,7 +515,7 @@ mod tests {
 
     #[test]
     fn rejects_oversized_external_sql_with_custom_limit() {
-        let path = std::env::temp_dir().join(format!("dbx-test-{}.sql", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-test-{}.sql", uuid::Uuid::new_v4()));
         std::fs::write(&path, "select 1;").unwrap();
 
         let result = read_external_sql_file_content_with_limit(&path, 4);
@@ -526,7 +526,7 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_oversized_external_sql_in_async_command_path() {
-        let path = std::env::temp_dir().join(format!("dbx-test-{}.sql", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-test-{}.sql", uuid::Uuid::new_v4()));
         let file = std::fs::File::create(&path).unwrap();
         let file_size = MAX_EXTERNAL_SQL_EDITOR_FILE_BYTES + 1;
         file.set_len(file_size).unwrap();
@@ -555,7 +555,7 @@ mod tests {
 
     #[test]
     fn writes_external_sql_file_content() {
-        let path = std::env::temp_dir().join(format!("dbx-test-{}.sql", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-test-{}.sql", uuid::Uuid::new_v4()));
 
         let result = write_external_sql_file_content(&path, "select 2;");
 
@@ -567,7 +567,7 @@ mod tests {
 
     #[tokio::test]
     async fn inspects_present_and_missing_external_text_files() {
-        let path = std::env::temp_dir().join(format!("dbx-test-{}.sh", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-test-{}.sh", uuid::Uuid::new_v4()));
         std::fs::write(&path, "echo test").unwrap();
 
         let present = inspect_external_sql_file_async(path.clone()).await.unwrap();
@@ -579,7 +579,7 @@ mod tests {
 
     #[tokio::test]
     async fn checked_write_rejects_external_content_conflicts() {
-        let path = std::env::temp_dir().join(format!("dbx-test-{}.sql", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-test-{}.sql", uuid::Uuid::new_v4()));
         std::fs::write(&path, "select 2;").unwrap();
 
         let result = write_external_sql_file_checked_async(
@@ -600,7 +600,7 @@ mod tests {
 
     #[tokio::test]
     async fn checked_write_reports_missing_and_can_recreate_file() {
-        let path = std::env::temp_dir().join(format!("dbx-test-{}.sql", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-test-{}.sql", uuid::Uuid::new_v4()));
 
         let missing = write_external_sql_file_checked_async(
             path.clone(),
@@ -625,7 +625,7 @@ mod tests {
 
     #[tokio::test]
     async fn checked_write_does_not_overwrite_a_file_recreated_after_confirmation() {
-        let path = std::env::temp_dir().join(format!("dbx-test-{}.sql", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-test-{}.sql", uuid::Uuid::new_v4()));
         std::fs::write(&path, "select external;").unwrap();
 
         let result = write_external_sql_file_checked_async(
@@ -675,7 +675,7 @@ mod tests {
 
     #[test]
     fn reports_external_sql_file_write_failure() {
-        let directory = std::env::temp_dir().join(format!("dbx-missing-parent-{}", uuid::Uuid::new_v4()));
+        let directory = std::env::temp_dir().join(format!("linop-db-missing-parent-{}", uuid::Uuid::new_v4()));
         let path = directory.join("query.sql");
 
         let result = save_external_sql_file_content(Some(&path), "select 6;");
@@ -685,7 +685,7 @@ mod tests {
 
     #[test]
     fn writes_external_filtered_text_file_content() {
-        let path = std::env::temp_dir().join(format!("dbx-test-{}.txt", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-test-{}.txt", uuid::Uuid::new_v4()));
 
         let result = write_external_sql_file_content(&path, "plain text");
 

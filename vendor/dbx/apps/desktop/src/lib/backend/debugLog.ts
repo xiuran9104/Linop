@@ -1,5 +1,5 @@
-const DEBUG_LOG_ENABLED_KEY = "dbx-debug-logging-enabled";
-const DEBUG_LOG_ENTRIES_KEY = "dbx-debug-log-entries";
+const DEBUG_LOG_ENABLED_KEY = "linop-db-debug-logging-enabled";
+const DEBUG_LOG_ENTRIES_KEY = "linop-db-debug-log-entries";
 const MAX_DEBUG_LOG_ENTRIES = 1500;
 const MAX_TEXT_LENGTH = 4000;
 const MAX_LABEL_LENGTH = 120;
@@ -248,7 +248,7 @@ export function getDebugLogText(): string {
 
 export async function downloadDebugLogs() {
   const text = await getDebugLogBundleText();
-  const filename = `dbx-debug-log-${formatLocalTimestampForFilename()}.txt`;
+  const filename = `linop-db-debug-log-${formatLocalTimestampForFilename()}.txt`;
   if (typeof window !== "undefined" && isTauriRuntimeLike()) {
     const [{ save }, { writeTextFile }] = await Promise.all([import("@tauri-apps/plugin-dialog"), import("@tauri-apps/plugin-fs")]);
     const path = await save({

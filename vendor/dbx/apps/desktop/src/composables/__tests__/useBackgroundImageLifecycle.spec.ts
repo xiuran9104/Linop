@@ -50,7 +50,7 @@ describe("background image theme and scope lifecycle", () => {
     expect(bg.active.value).toBe(false);
     expect(bg.backgroundObjectUrl.value).toBeNull();
     expect(bg.backgroundImageStyle.value).toEqual({});
-    expect(document.documentElement.classList.contains("dbx-bg-active")).toBe(false);
+    expect(document.documentElement.classList.contains("linop-db-bg-active")).toBe(false);
     expect(document.documentElement.style.getPropertyValue("--background-solid")).toBe("");
   }
 
@@ -76,7 +76,7 @@ describe("background image theme and scope lifecycle", () => {
     document.documentElement.removeAttribute("style");
     style = document.createElement("style");
     style.textContent = `
-      :root { --background: rgb(255 255 255); --sidebar: rgb(248 248 248); --dbx-content: var(--background); }
+      :root { --background: rgb(255 255 255); --sidebar: rgb(248 248 248); --linop-db-content: var(--background); }
       :root.dark { --background: rgb(10 10 10); --sidebar: rgb(24 24 24); }
       :root.theme-cobalt { --background: rgb(240 246 255); }
     `;
@@ -116,7 +116,7 @@ describe("background image theme and scope lifecycle", () => {
     expect(bg.active.value).toBe(true);
     expect(token("--background")).toBe(`rgb(${rgb} / ${opacity})`);
     expect(token("--background-solid")).toBe(`rgb(${rgb})`);
-    expect(token("--dbx-content")).toBe(`rgb(${rgb} / ${opacity})`);
+    expect(token("--linop-db-content")).toBe(`rgb(${rgb} / ${opacity})`);
     expect(token("--sidebar-solid")).toBe("");
   });
 

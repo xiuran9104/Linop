@@ -1,35 +1,35 @@
-# dbx-plugin CLI
+# linop-db-plugin CLI
 
 Creates and packages DBX plugins as frontend-only universal bundles or full-stack projects with Rust or Go sidecars. The CLI also includes a Svelte + Vite workbench starter.
 
 For the complete [English plugin development guide](https://dbxio.com/en/docs/plugin-development), see the [Chinese quickstart](../../GETTING_STARTED.zh-CN.md) for a step-by-step walkthrough covering installation, templates, local DBX testing, signing, and publishing.
 
 ```bash
-npm install --global @dbx-app/plugin-cli
+npm install --global @linop-db-app/plugin-cli
 
-dbx-plugin create
+linop-db-plugin create
 cd my-plugin
-dbx-plugin dev --port 5190
-dbx-plugin package .
+linop-db-plugin dev --port 5190
+linop-db-plugin package .
 ```
 
 Or run the precompiled CLI without a global installation:
 
 ```bash
-npx @dbx-app/plugin-cli create my-plugin
+npx @linop-db-app/plugin-cli create my-plugin
 ```
 
 The npm launcher selects the matching macOS, Linux, or Windows binary and bundles the matching Rust and Go plugin SDK sources. Building the CLI from a DBX checkout is only necessary while developing the CLI itself.
 
 ## Browser development
 
-`dbx-plugin dev --path /path/to/plugin --port 5190` runs a local browser development host without starting DBX. The npm package includes the prebuilt runtime; only `dev` requires Node.js 22+. Frontend-only plugins need no sidecar; Rust/Go projects are built from `[backend]` configuration. JSONL and framed v1 are supported.
+`linop-db-plugin dev --path /path/to/plugin --port 5190` runs a local browser development host without starting DBX. The npm package includes the prebuilt runtime; only `dev` requires Node.js 22+. Frontend-only plugins need no sidecar; Rust/Go projects are built from `[backend]` configuration. JSONL and framed v1 are supported.
 
-Optional `[dev]` `ui_build` and `ui_watch` argument arrays configure UI builds. Without them, existing UI assets are loaded and watched. The command does not install project dependencies. Development data, including plaintext credentials, defaults to `.dbx-dev/`; use `--data-dir` to override it. See [runtime documentation](../dev-host/README.md) for supported APIs, source builds and limitations.
+Optional `[dev]` `ui_build` and `ui_watch` argument arrays configure UI builds. Without them, existing UI assets are loaded and watched. The command does not install project dependencies. Development data, including plaintext credentials, defaults to `.linop-db-dev/`; use `--data-dir` to override it. See [runtime documentation](../dev-host/README.md) for supported APIs, source builds and limitations.
 
 ## Project templates
 
-`dbx-plugin create` offers four templates:
+`linop-db-plugin create` offers four templates:
 
 - `frontend` — sandboxed workbench UI with no native backend; produces one `universal` package.
 - `svelte` — Svelte + Vite sandboxed workbench UI with no native backend; produces one `universal` package.
@@ -41,7 +41,7 @@ Interactive terminals use a colored wizard, validate each answer, show a final s
 For scripts and CI:
 
 ```bash
-dbx-plugin create my-plugin \
+linop-db-plugin create my-plugin \
   --template frontend \
   --id com.example.my-plugin \
   --name "My Plugin" \
@@ -57,7 +57,7 @@ Generated frontend-only projects contain:
 
 ```text
 my-plugin/
-├── dbx-plugin.toml
+├── linop-db-plugin.toml
 ├── manifest.json
 ├── assets/plugin.svg
 ├── ui/index.html
@@ -68,7 +68,7 @@ Rust and Go templates add a `backend/` directory containing the native sidecar p
 
 ## Packaging
 
-`dbx-plugin package` reads `dbx-plugin.toml`, verifies that its optional backend matches `manifest.json`, stages only declared files, and reuses `dbx-plugin-packager` to generate:
+`linop-db-plugin package` reads `linop-db-plugin.toml`, verifies that its optional backend matches `manifest.json`, stages only declared files, and reuses `linop-db-plugin-packager` to generate:
 
 - `<id>-<version>-<target>.dbxp`
 - `<id>-<version>-<target>.artifact.json`
@@ -77,7 +77,7 @@ Frontend-only projects default to target `universal`. Native projects must be bu
 
 Artifact metadata always includes target, URL, SHA-256, and size. The generated Release workflow publishes these files as unsigned review candidates. After approval, DBX Store signs official candidates and emits final metadata containing `signingKeyId`.
 
-Use `--sdk-root /path/to/dbx` only with Rust or Go templates while developing unpublished SDK changes from a DBX checkout. Normal npm installations use the SDK sources bundled with `@dbx-app/plugin-cli`. Generated release workflows pin the precompiled CLI version so local and CI packaging use the same SDK contract.
+Use `--sdk-root /path/to/dbx` only with Rust or Go templates while developing unpublished SDK changes from a DBX checkout. Normal npm installations use the SDK sources bundled with `@linop-db-app/plugin-cli`. Generated release workflows pin the precompiled CLI version so local and CI packaging use the same SDK contract.
 
 Generated workflows pin the reusable workflow to the same `plugin-cli-v<version>` tag as the CLI. Go projects skip Rust setup, Rust projects skip Go setup, and frontend-only projects skip both. Source-built CLIs still install Rust even when the plugin does not need it.
 
@@ -92,9 +92,9 @@ Official plugin authors do not create or manage signing keys. They publish unsig
 `keygen` is an advanced tool for private or custom repository operators. Packaging and signing are intentionally separate:
 
 ```bash
-dbx-plugin keygen company-plugins.release
-source .dbx-repository-signing-key.env
-dbx-plugin package .
+linop-db-plugin keygen company-plugins.release
+source .linop-db-repository-signing-key.env
+linop-db-plugin package .
 cargo run --release \
   --manifest-path /path/to/dbx/plugins/sdk/packager/Cargo.toml \
   -- sign dist/plugin.unsigned.dbxp dist/plugin.dbxp \
@@ -103,12 +103,12 @@ cargo run --release \
   --target universal
 ```
 
-`keygen` writes `.dbx-repository-signing-key.env` with owner-only permissions on Unix and refuses to overwrite it unless `--force` is supplied. Generated plugin projects ignore this file by default.
+`keygen` writes `.linop-db-repository-signing-key.env` with owner-only permissions on Unix and refuses to overwrite it unless `--force` is supplied. Generated plugin projects ignore this file by default.
 
-The command prints the public key and key ID for configuring a custom repository trust root. The key ID is stable public metadata; the Ed25519 private seed in the generated file is secret and must stay in a password manager or protected repository-signing CI. `dbx-plugin create` and `dbx-plugin package` intentionally have no signing-key options.
+The command prints the public key and key ID for configuring a custom repository trust root. The key ID is stable public metadata; the Ed25519 private seed in the generated file is secret and must stay in a password manager or protected repository-signing CI. `linop-db-plugin create` and `linop-db-plugin package` intentionally have no signing-key options.
 
 ## Terminal colors
 
 Colors are enabled automatically for interactive terminals. Set `NO_COLOR=1` or `CLICOLOR=0` for plain text; set `CLICOLOR_FORCE=1` to preserve colors when piping output. `NO_COLOR` always takes precedence.
 
-Run `dbx-plugin --help`, `dbx-plugin create --help`, or `dbx-plugin package --help` for the complete command reference.
+Run `linop-db-plugin --help`, `linop-db-plugin create --help`, or `linop-db-plugin package --help` for the complete command reference.

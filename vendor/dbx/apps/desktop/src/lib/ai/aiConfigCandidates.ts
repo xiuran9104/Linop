@@ -3,11 +3,11 @@ import type { AiConfig } from "@/types/ai";
 const CLI_PROVIDERS = new Set<AiConfig["provider"]>(["codex-cli", "claude-code-cli", "opencode-cli", "pi-agent-cli", "cursor-cli", "grok-cli", "codebuddy-cli", "qoder-cli"]);
 
 /**
- * Mirrors `is_cli_provider` in `crates/dbx-ai-provider/src/ai.rs`.
+ * Mirrors `is_cli_provider` in `crates/linop-db-ai-provider/src/ai.rs`.
  *
  * CLI providers run an external agent and DBX hands it its own MCP server, so
- * their tool surface is the MCP registry (`dbx_*` names). Native providers use
- * the in-process registry in `crates/dbx-core/src/ai/agent_tools.rs`, whose
+ * their tool surface is the MCP registry (`linop_db_*` names). Native providers use
+ * the in-process registry in `crates/linop-db-core/src/ai/agent_tools.rs`, whose
  * tool names have no prefix. The same prompt is built for both lanes, so
  * anything that names a tool has to know which lane it is talking to.
  */

@@ -18,8 +18,8 @@ The `publisher` field records authorship and catalog ownership. It is not a sign
 
 - The official repository key is controlled by DBX Store and its public key is shipped with DBX.
 - A custom or private repository controls one or more repository keys and distributes the public keys to its users through an independent trusted channel.
-- Plugin authors do not need `dbx-plugin keygen` for official submissions.
-- `dbx-plugin keygen` exists only for operators of custom or private repositories.
+- Plugin authors do not need `linop-db-plugin keygen` for official submissions.
+- `linop-db-plugin keygen` exists only for operators of custom or private repositories.
 - Unsigned packages are accepted only through the explicit local-development installation option.
 
 ## Key rotation

@@ -132,16 +132,16 @@ function mountDialog(props: Record<string, unknown>): App {
 
 /** The dialog prefills only the source side; the target must be selected for a task to match. */
 async function selectMatchedTarget(): Promise<void> {
-  const targetConnectionTrigger = document.querySelectorAll<HTMLButtonElement>("button.dbx-diff-connection-trigger")[1];
+  const targetConnectionTrigger = document.querySelectorAll<HTMLButtonElement>("button.linop-db-diff-connection-trigger")[1];
   targetConnectionTrigger?.click();
   await flushAsyncSetup();
   document.querySelector<HTMLButtonElement>(`[data-picker-connection="${TARGET_CONNECTION_ID}"]`)?.click();
   await flushAsyncSetup();
 
-  const targetDatabaseTrigger = document.querySelectorAll<HTMLButtonElement>("button.dbx-searchable-select-trigger")[2];
+  const targetDatabaseTrigger = document.querySelectorAll<HTMLButtonElement>("button.linop-db-searchable-select-trigger")[2];
   targetDatabaseTrigger?.click();
   await flushAsyncSetup();
-  const reporting = [...document.querySelectorAll<HTMLButtonElement>(".dbx-searchable-select-list button")].find((button) => button.textContent?.trim() === "REPORTING");
+  const reporting = [...document.querySelectorAll<HTMLButtonElement>(".linop-db-searchable-select-list button")].find((button) => button.textContent?.trim() === "REPORTING");
   reporting?.click();
   await flushAsyncSetup();
 }
@@ -153,7 +153,7 @@ async function openWithPrefilledSource(table: string, options: { matchedTarget?:
 }
 
 function keyColumnTrigger(): HTMLButtonElement | undefined {
-  return document.querySelector<HTMLButtonElement>("button.dbx-compare-key-columns-trigger") ?? undefined;
+  return document.querySelector<HTMLButtonElement>("button.linop-db-compare-key-columns-trigger") ?? undefined;
 }
 
 function keyColumnHint(): string {
@@ -161,7 +161,7 @@ function keyColumnHint(): string {
 }
 
 function keyColumnRow(table: string): HTMLButtonElement | undefined {
-  return document.querySelector<HTMLButtonElement>(`button.dbx-compare-key-table-row[data-key-column-table="${table}"]`) ?? undefined;
+  return document.querySelector<HTMLButtonElement>(`button.linop-db-compare-key-table-row[data-key-column-table="${table}"]`) ?? undefined;
 }
 
 function tableSelectionRow(table: string): HTMLButtonElement | undefined {
@@ -178,11 +178,11 @@ function compareButton(): HTMLButtonElement | undefined {
 
 async function togglePickerColumn(columnName: string): Promise<void> {
   // The popover stays open between toggles, so only open it when it is closed.
-  if (!document.querySelector(".dbx-compare-key-columns-list")) {
+  if (!document.querySelector(".linop-db-compare-key-columns-list")) {
     keyColumnTrigger()?.click();
     await flushAsyncSetup();
   }
-  const option = document.querySelector<HTMLButtonElement>(`.dbx-compare-key-columns-list button[data-column-name="${columnName}"]`);
+  const option = document.querySelector<HTMLButtonElement>(`.linop-db-compare-key-columns-list button[data-column-name="${columnName}"]`);
   expect(option).toBeDefined();
   option?.click();
   await flushAsyncSetup();
@@ -281,7 +281,7 @@ describe("DataCompareDialog match columns", () => {
     keyColumnTrigger()?.click();
     await flushAsyncSetup();
 
-    const options = [...document.querySelectorAll<HTMLButtonElement>(".dbx-compare-key-columns-list button")];
+    const options = [...document.querySelectorAll<HTMLButtonElement>(".linop-db-compare-key-columns-list button")];
     expect(options.map((option) => option.dataset.columnName)).toEqual(["TENANT_ID", "ORDER_ID", "ORDER_NO", "AMOUNT"]);
     expect(options.map((option) => option.dataset.primaryKey)).toEqual(["true", "true", "false", "false"]);
     expect(document.body.textContent).toContain(i18n.global.t("dataCompare.keyColumnsSelectedCount", { selected: 2, total: 4 }));

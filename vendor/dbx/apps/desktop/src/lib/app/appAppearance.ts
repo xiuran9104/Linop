@@ -70,7 +70,7 @@ function parseColorObject(raw: string | null): AppCustomUiColors | undefined {
 
 function localAppearance(): AppAppearanceSettings {
   return {
-    locale: safeLocalStorageGet("dbx-locale"),
+    locale: safeLocalStorageGet("linop-db-locale"),
     themeMode: safeLocalStorageGet(APP_THEME_STORAGE_KEY),
     themePalette: safeLocalStorageGet(APP_THEME_PALETTE_STORAGE_KEY),
     customUiColors: parseColorObject(safeLocalStorageGet(APP_CUSTOM_UI_STORAGE_KEY)),
@@ -85,7 +85,7 @@ function backendField<T>(settings: Record<string, unknown>, camelCase: string, s
 }
 
 function setLocalAppearance(patch: AppAppearanceSettingsPatch) {
-  if (nonEmptyString(patch.locale)) safeLocalStorageSet("dbx-locale", patch.locale);
+  if (nonEmptyString(patch.locale)) safeLocalStorageSet("linop-db-locale", patch.locale);
   if (validThemeMode(patch.themeMode)) safeLocalStorageSet(APP_THEME_STORAGE_KEY, patch.themeMode);
   if (validThemePalette(patch.themePalette)) safeLocalStorageSet(APP_THEME_PALETTE_STORAGE_KEY, patch.themePalette);
   if (patch.customUiColors && typeof patch.customUiColors === "object") {

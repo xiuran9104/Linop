@@ -80,7 +80,7 @@ function detectUserLocale(): Locale {
   }
 }
 
-const savedLocale = normalizeLocale(safeLocalStorageGet("dbx-locale"));
+const savedLocale = normalizeLocale(safeLocalStorageGet("linop-db-locale"));
 const initialLocale = savedLocale ?? detectUserLocale();
 let persistedLocale = initialLocale;
 let localeRequestId = 0;

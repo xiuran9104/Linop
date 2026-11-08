@@ -30,7 +30,7 @@ impl Product for FullProduct {
     fn domains(&self) -> Vec<Arc<dyn Domain>> {
         vec![
             Arc::new(shell_domain::ShellDomain),
-            Arc::new(dbx_view::DbxDomain),
+            Arc::new(linop_db_view::DbxDomain),
         ]
     }
 

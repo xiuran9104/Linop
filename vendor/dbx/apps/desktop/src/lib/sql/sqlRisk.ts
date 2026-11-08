@@ -42,9 +42,9 @@ const SAFE_READ_PRAGMA_NAMES = new Set(["table_info", "table_xinfo", "index_list
  * (SQL Server) and `SELECT 'dir\'; DELETE FROM users;` (PostgreSQL) would
  * otherwise be read as one read-only statement and auto-execute.
  *
- * Mirrors `is_mysql_compatible_database` in `crates/dbx-sql-core/src/sql.rs`,
+ * Mirrors `is_mysql_compatible_database` in `crates/linop-db-sql-core/src/sql.rs`,
  * which gates `supports_hash_line_comments` the same way, and
- * `SqlScanLexerRules` in `crates/dbx-core/src/safety/production_safety.rs`.
+ * `SqlScanLexerRules` in `crates/linop-db-core/src/safety/production_safety.rs`.
  * An unknown dialect is deliberately not treated as MySQL: keeping `#` and
  * backslashes literal can only split more statements than before, which raises
  * the assessed risk rather than lowering it.
@@ -61,7 +61,7 @@ export function usesMysqlLexerRules(dialect?: DatabaseType | string): boolean {
  * literals backslash-literal. The `E`/`e` must start its own token, so
  * `DATE'2020-01-01'` and `x$e'...'` stay ordinary strings. Mirrors the
  * `postgres_escape_strings` rule of `SqlScanLexerRules` in
- * `crates/dbx-core/src/safety/production_safety.rs`.
+ * `crates/linop-db-core/src/safety/production_safety.rs`.
  */
 const POSTGRES_ESCAPE_STRING_DATABASE_TYPES = new Set<string>(["postgres", "opengauss", "gaussdb", "vastbase", "kingbase", "highgo", "uxdb", "kwdb"]);
 
@@ -72,7 +72,7 @@ export function usesPostgresEscapeStrings(dialect?: DatabaseType | string): bool
 /**
  * True when the `E'`/`e'` introducer before `quoteIndex` starts its own token,
  * so `DATE'2020-01-01'` and `x$e'...'` stay ordinary strings. Mirrors
- * `ends_with_escape_string_prefix` in `crates/dbx-core/src/safety/production_safety.rs`.
+ * `ends_with_escape_string_prefix` in `crates/linop-db-core/src/safety/production_safety.rs`.
  */
 export function endsWithEscapeStringPrefix(sql: string, quoteIndex: number): boolean {
   const introducer = sql[quoteIndex - 1];

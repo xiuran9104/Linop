@@ -1,18 +1,18 @@
 import type { SyncSelection, WebDavConfig } from "@/lib/backend/api";
 import { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet } from "@/lib/backend/safeStorage";
 
-export const WEB_DAV_BACKUP_SELECTION_STORAGE_KEY = "dbx-webdav-backup-selection";
-export const WEB_DAV_LAST_SUCCESSFUL_SYNC_STORAGE_KEY = "dbx-webdav-last-successful-sync";
+export const WEB_DAV_BACKUP_SELECTION_STORAGE_KEY = "linop-db-webdav-backup-selection";
+export const WEB_DAV_LAST_SUCCESSFUL_SYNC_STORAGE_KEY = "linop-db-webdav-last-successful-sync";
 export const WEB_DAV_SYNC_SUCCESS_EVENT = "dbx:webdav-sync-succeeded";
-export const SYNC_METHOD_STORAGE_KEY = "dbx-sync-method";
-export const WEB_DAV_LAST_UPLOAD_AT_STORAGE_KEY = "dbx-webdav-last-upload-at";
+export const SYNC_METHOD_STORAGE_KEY = "linop-db-sync-method";
+export const WEB_DAV_LAST_UPLOAD_AT_STORAGE_KEY = "linop-db-webdav-last-upload-at";
 export const WEB_DAV_AUTO_UPLOAD_STORAGE_KEYS = [
-  "dbx-webdav-endpoint",
-  "dbx-webdav-username",
-  "dbx-webdav-user-agent",
-  "dbx-webdav-remote-path",
-  "dbx-webdav-auto-upload-enabled",
-  "dbx-webdav-auto-upload-interval-minutes",
+  "linop-db-webdav-endpoint",
+  "linop-db-webdav-username",
+  "linop-db-webdav-user-agent",
+  "linop-db-webdav-remote-path",
+  "linop-db-webdav-auto-upload-enabled",
+  "linop-db-webdav-auto-upload-interval-minutes",
   WEB_DAV_BACKUP_SELECTION_STORAGE_KEY,
   WEB_DAV_LAST_UPLOAD_AT_STORAGE_KEY,
 ] as const;
@@ -120,14 +120,14 @@ export function formatWebDavAutoUploadInterval(value: unknown, locale: string, u
 }
 
 export function readWebDavAutoUploadConfig(): WebDavAutoUploadConfig {
-  const endpoint = safeLocalStorageGet("dbx-webdav-endpoint")?.trim() || "";
-  const username = safeLocalStorageGet("dbx-webdav-username")?.trim() || "";
-  const userAgent = safeLocalStorageGet("dbx-webdav-user-agent")?.trim() || "";
-  const remotePath = safeLocalStorageGet("dbx-webdav-remote-path")?.trim() || DEFAULT_WEB_DAV_REMOTE_PATH;
+  const endpoint = safeLocalStorageGet("linop-db-webdav-endpoint")?.trim() || "";
+  const username = safeLocalStorageGet("linop-db-webdav-username")?.trim() || "";
+  const userAgent = safeLocalStorageGet("linop-db-webdav-user-agent")?.trim() || "";
+  const remotePath = safeLocalStorageGet("linop-db-webdav-remote-path")?.trim() || DEFAULT_WEB_DAV_REMOTE_PATH;
 
   return {
-    enabled: safeLocalStorageGet("dbx-webdav-auto-upload-enabled") === "true",
-    intervalMinutes: normalizedWebDavAutoUploadInterval(safeLocalStorageGet("dbx-webdav-auto-upload-interval-minutes")),
+    enabled: safeLocalStorageGet("linop-db-webdav-auto-upload-enabled") === "true",
+    intervalMinutes: normalizedWebDavAutoUploadInterval(safeLocalStorageGet("linop-db-webdav-auto-upload-interval-minutes")),
     webDavConfig: endpoint
       ? {
           endpoint,
@@ -229,12 +229,12 @@ export function writeWebDavAutoUploadFields(config: WebDavConfig, autoUpload: { 
   const nextEndpoint = config.endpoint.trim();
   const nextRemotePath = config.remotePath?.trim() || DEFAULT_WEB_DAV_REMOTE_PATH;
 
-  safeLocalStorageSet("dbx-webdav-endpoint", nextEndpoint);
-  safeLocalStorageSet("dbx-webdav-username", config.username?.trim() || "");
-  safeLocalStorageSet("dbx-webdav-user-agent", config.userAgent?.trim() || "");
-  safeLocalStorageSet("dbx-webdav-remote-path", nextRemotePath);
-  safeLocalStorageSet("dbx-webdav-auto-upload-enabled", String(autoUpload.enabled));
-  safeLocalStorageSet("dbx-webdav-auto-upload-interval-minutes", String(normalizedWebDavAutoUploadInterval(autoUpload.intervalMinutes)));
+  safeLocalStorageSet("linop-db-webdav-endpoint", nextEndpoint);
+  safeLocalStorageSet("linop-db-webdav-username", config.username?.trim() || "");
+  safeLocalStorageSet("linop-db-webdav-user-agent", config.userAgent?.trim() || "");
+  safeLocalStorageSet("linop-db-webdav-remote-path", nextRemotePath);
+  safeLocalStorageSet("linop-db-webdav-auto-upload-enabled", String(autoUpload.enabled));
+  safeLocalStorageSet("linop-db-webdav-auto-upload-interval-minutes", String(normalizedWebDavAutoUploadInterval(autoUpload.intervalMinutes)));
 }
 
 export function readWebDavBackupSelection(): SyncSelection | undefined {

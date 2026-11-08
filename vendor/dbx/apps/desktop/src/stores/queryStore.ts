@@ -8761,7 +8761,7 @@ export const useQueryStore = defineStore("query", () => {
           };
           try {
             // The frontend parser remains responsible for editor ranges, while
-            // dbx-core is authoritative for command semantics at execution time.
+            // linop-db-core is authoritative for command semantics at execution time.
             mongoCommand = await api.mongoParseShellCommand(sourceStatement);
             // The authoritative parse keeps the `db.getSiblingDB("x").` wrapper;
             // re-apply the same one-command database override before dispatch.

@@ -65,7 +65,7 @@ listenPort=19876
 CONF
 cat >"$fixture/broker.conf" <<CONF
 brokerClusterName=DefaultCluster
-brokerName=dbx-proxy-fixture
+brokerName=linop-db-proxy-fixture
 brokerId=0
 brokerIP1=127.0.0.1
 namesrvAddr=127.0.0.1:19876
@@ -97,7 +97,7 @@ for attempt in {1..120}; do
   for pid in "${children[@]}"; do
     if ! kill -0 "$pid" 2>/dev/null; then echo "Fixture child $pid exited before registration" >&2; exit 1; fi
   done
-  if "$java_bin" "${jvm[@]}" org.apache.rocketmq.tools.command.MQAdminStartup clusterList -n 127.0.0.1:19876 >"$fixture/cluster.stdout.log" 2>&1 && grep -q 'dbx-proxy-fixture' "$fixture/cluster.stdout.log"; then
+  if "$java_bin" "${jvm[@]}" org.apache.rocketmq.tools.command.MQAdminStartup clusterList -n 127.0.0.1:19876 >"$fixture/cluster.stdout.log" 2>&1 && grep -q 'linop-db-proxy-fixture' "$fixture/cluster.stdout.log"; then
     registered=true
     break
   fi

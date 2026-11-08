@@ -5,12 +5,12 @@ use base64::Engine;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
-use dbx_core::agent_service::AgentProgressEvent;
-use dbx_core::jdbc::{
+use linop_db_core::agent_service::AgentProgressEvent;
+use linop_db_core::jdbc::{
     self, JdbcDriverInfo, JdbcLocalBundleInfo, JdbcMavenBundleInfo, JdbcMavenInstallRequest, JdbcPluginStatus,
 };
-use dbx_core::models::connection::ConnectionConfig;
-use dbx_core::plugins::{
+use linop_db_core::models::connection::ConnectionConfig;
+use linop_db_core::plugins::{
     ActivePluginSession, InstalledPlugin, InstalledPluginInfo, PluginConnectionActionResult,
     PluginFilesystemListResult, PluginFilesystemMutationResult, PluginFilesystemReadResult, PluginInstallPolicy,
     PluginInstallResponse, PluginMarketplace, PluginMarketplaceInstallRequest, PluginPackageInstaller,
@@ -151,7 +151,7 @@ pub fn install_plugin_event_bridge(app: &tauri::AppHandle, state: Arc<AppState>)
         loop {
             match events.recv().await {
                 Ok(event) => {
-                    let _ = app_handle.emit("dbx-plugin-event", event);
+                    let _ = app_handle.emit("linop-db-plugin-event", event);
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                     log::warn!("Desktop plugin event bridge skipped {skipped} events");
@@ -172,7 +172,7 @@ pub fn install_plugin_event_bridge(app: &tauri::AppHandle, state: Arc<AppState>)
                         channel: message.channel,
                         data_base64: base64::engine::general_purpose::STANDARD.encode(message.data),
                     };
-                    let _ = app_handle.emit("dbx-plugin-binary", payload);
+                    let _ = app_handle.emit("linop-db-plugin-binary", payload);
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                     log::warn!("Desktop plugin binary bridge skipped {skipped} messages");
@@ -264,7 +264,7 @@ pub async fn uninstall_plugin(
         .await?
         .into_iter()
         .filter(|connection| {
-            connection.db_type == dbx_core::models::connection::DatabaseType::Plugin
+            connection.db_type == linop_db_core::models::connection::DatabaseType::Plugin
                 && connection.plugin_id.as_deref() == Some(plugin_id.as_str())
         })
         .map(|connection| connection.name)

@@ -1,7 +1,7 @@
 /**
  * Consent-gated read-only data queries for plugins (`host.data:read`, Host API 1.4).
  *
- * Mirrors `crates/dbx-core/src/query/plugin_data.rs`. The plugin sends one
+ * Mirrors `crates/linop-db-core/src/query/plugin_data.rs`. The plugin sends one
  * read-only SQL statement for a connection; the host enforces the manifest
  * permission, the user's per-connection grant, the open-connection rule, the
  * read-only statement gate, and the row/byte caps.

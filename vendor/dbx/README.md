@@ -49,7 +49,7 @@
     <img src="https://img.shields.io/badge/JDBC-4B5563?logoColor=white" />
     <img src="https://img.shields.io/badge/and%20more...-555555?logoColor=white" />
     <a href="https://1panel.cn/" target="_blank" rel="noopener noreferrer"><img src="https://img.shields.io/badge/1Panel-Partner-005EEB?logo=1panel&amp;logoColor=white" alt="1Panel Partner" /></a>
-    <a href="https://cnb.cool/dbxio.com/dbx"><img src="https://img.shields.io/badge/CNB-dbx-F76945?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAppJREFUOE9tk01rE1EUhs+5H5lJ0iQT3FRX2Yi4avoLkv4CWxBcNt11oZiuFKGmXQhFN6kuRESSgitXKf6A5g+I6cqFLiKCiptOkraZ5H4cuZOkH9oLw+UO8z7nvGfei3DFohoEQLAKCGWyGJCSbQZsD3ei7r+f45WATV6xmjdISyAlYLaDliveux+ti5ozwLAaFPhIlk6G6f18sxuO7l9bBiWbVoncDGCMWMl++PI/gJ7IohkmD0zkBxT5oRn5LTpN7ULqBByEtFywWvRyHz8Fx3dvN0UwuMPyR0uJFycddH7tKPHZRn7BjnwwkQcUud0HO/K7oOENcTYPRCEAFERmsCpyfZDZfpdnBosOUKGx13BC60QTIdjpmSzrEWDR+UagjsgMciLXAwfhc4MNpKfQtOPE6mVh0gEOaeTXtWXXEdADpJAR/GaZ/rrM9Us82wORPd5zHbRp7JVcyxR5PRP5LTPy6uo0HXIlG9awMgLuEUABkBYI7VLyxs+yyPW3+Nyg4zqoG+UV7TDRlMBbWA/D43u3qlbLGmgRWM2BjFxjQjWQGQBuu4bYYvrm14JMnQSXcjBcny9A5DXIiDJp9/8FWCXAAOaFUEfILTgIcttOvf+2NJnLdI0fBFUyskZKBGTEJEAmBuzr9LCSUDwGQAwwgMzu+m9/VWOAeZSsk+YP48C4li/sRok1nlBd5PogBjgxNw70PfHyqBADyEVXicasZXCVpxYiLfO+HxVZDHCVYwvu2ebPT7fOLNAm65AWLnEAzvsEcOi9/lPU1aACXDfOLdhD9kxNszGdweQGYstqXgItJwDFNxKvwrp57G8h0zVwldHuA0IFt8El83yIs2FSDcpgxDJpUUTwK7gTduN3AK5iG7ehc/E2/gUPD3q3eY4awwAAAABJRU5ErkJggg==" alt="CNB" /></a>
+    <a href="https://cnb.cool/dbxio.com/dbx"><img src="https://img.shields.io/badge/CNB-linop-db-F76945?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAppJREFUOE9tk01rE1EUhs+5H5lJ0iQT3FRX2Yi4avoLkv4CWxBcNt11oZiuFKGmXQhFN6kuRESSgitXKf6A5g+I6cqFLiKCiptOkraZ5H4cuZOkH9oLw+UO8z7nvGfei3DFohoEQLAKCGWyGJCSbQZsD3ei7r+f45WATV6xmjdISyAlYLaDliveux+ti5ozwLAaFPhIlk6G6f18sxuO7l9bBiWbVoncDGCMWMl++PI/gJ7IohkmD0zkBxT5oRn5LTpN7ULqBByEtFywWvRyHz8Fx3dvN0UwuMPyR0uJFycddH7tKPHZRn7BjnwwkQcUud0HO/K7oOENcTYPRCEAFERmsCpyfZDZfpdnBosOUKGx13BC60QTIdjpmSzrEWDR+UagjsgMciLXAwfhc4MNpKfQtOPE6mVh0gEOaeTXtWXXEdADpJAR/GaZ/rrM9Us82wORPd5zHbRp7JVcyxR5PRP5LTPy6uo0HXIlG9awMgLuEUABkBYI7VLyxs+yyPW3+Nyg4zqoG+UV7TDRlMBbWA/D43u3qlbLGmgRWM2BjFxjQjWQGQBuu4bYYvrm14JMnQSXcjBcny9A5DXIiDJp9/8FWCXAAOaFUEfILTgIcttOvf+2NJnLdI0fBFUyskZKBGTEJEAmBuzr9LCSUDwGQAwwgMzu+m9/VWOAeZSsk+YP48C4li/sRok1nlBd5PogBjgxNw70PfHyqBADyEVXicasZXCVpxYiLfO+HxVZDHCVYwvu2ebPT7fOLNAm65AWLnEAzvsEcOi9/lPU1aACXDfOLdhD9kxNszGdweQGYstqXgItJwDFNxKvwrp57G8h0zVwldHuA0IFt8El83yIs2FSDcpgxDJpUUTwK7gTduN3AK5iG7ehc/E2/gUPD3q3eY4awwAAAABJRU5ErkJggg==" alt="CNB" /></a>
     <a href="https://mcptoplist.com/server/io.github.t8y2%2Fdbx"><img src="https://mcptoplist.com/badge/io.github.t8y2%2Fdbx.svg" alt="MCP Toplist" /></a>
   </p>
 	  <p>
@@ -320,7 +320,7 @@ Virtual-scrolled table that handles large result sets. Inline editing, SQL previ
 
 - **Extensible by design** — new connection types and tools arrive as plugins: S3 browsing, Kubernetes, LDAP, and more from the built-in store
 - **Signed & sandboxed** — every plugin package is signature-verified before install; plugin UI runs sandboxed with its own sidecar process
-- **Build your own** — Go / TypeScript SDKs with `npx @dbx-app/plugin-cli` scaffolding; publish to the Marketplace via [`t8y2/dbx-store`](https://github.com/t8y2/dbx-store)
+- **Build your own** — Go / TypeScript SDKs with `npx @linop-db-app/plugin-cli` scaffolding; publish to the Marketplace via [`t8y2/linop-db-store`](https://github.com/t8y2/linop-db-store)
 
 ### Safety & Connectivity
 
@@ -335,7 +335,7 @@ Dark mode with native title bar sync · 9 editor themes · English, 简体中文
 DBX provides a separate [Rust-powered MCP server](packages/mcp-server/) that lets AI coding agents query databases using connections configured in DBX. The MCP server is distributed independently from the desktop application, so installing DBX does not automatically install the MCP executable.
 
 ```bash
-npx @dbx-app/mcp-server
+npx @linop-db-app/mcp-server
 ```
 
 Add to your `.mcp.json`:
@@ -343,7 +343,7 @@ Add to your `.mcp.json`:
 ```json
 {
   "mcpServers": {
-    "dbx": { "command": "npx", "args": ["-y", "@dbx-app/mcp-server"] }
+    "dbx": { "command": "npx", "args": ["-y", "@linop-db-app/mcp-server"] }
   }
 }
 ```
@@ -352,7 +352,7 @@ Manage the connection allowlist and the **Read only**, **Data read/write**, and 
 
 For upgrade compatibility, an existing `DBX_MCP_ALLOW_WRITES=0` (or `false`) remains a read-only restriction only until a central MCP policy is saved for the first time; it can never enable writes or override a saved policy.
 
-Windows portable builds need `DBX_DATA_DIR` in the MCP config, pointing to the `data` directory next to `DBX.exe` (the folder that contains `dbx.db`).
+Windows portable builds need `LINOP_DB_DATA_DIR` in the MCP config, pointing to the `data` directory next to `DBX.exe` (the folder that contains `dbx.db`).
 
 For DBX Web or Docker deployments, point the MCP server at the Web backend API. If the Web login page requires a password, set `DBX_WEB_PASSWORD` to the same password used there:
 
@@ -361,7 +361,7 @@ For DBX Web or Docker deployments, point the MCP server at the Web backend API. 
   "mcpServers": {
     "dbx": {
       "command": "npx",
-      "args": ["-y", "@dbx-app/mcp-server"],
+      "args": ["-y", "@linop-db-app/mcp-server"],
       "env": {
         "DBX_WEB_URL": "http://localhost:4224",
         "DBX_WEB_PASSWORD": "your-web-login-password"
@@ -378,9 +378,9 @@ Precompiled native binaries are also published for macOS, Linux, and Windows in 
 DBX also provides a dedicated CLI package for terminal, script, and Codex workflows:
 
 ```bash
-npm install -g @dbx-app/cli
+npm install -g @linop-db-app/cli
 # or via Homebrew
-brew tap t8y2/tap && brew install dbx-cli
+brew tap t8y2/tap && brew install linop-db-cli
 dbx agent setup
 dbx connections list --json
 dbx query local "select 1" --json
@@ -434,11 +434,11 @@ the `latest` tag to pull the current release.
 ```bash
 # The default keeps the key in the persistent /app/data volume.
 docker run -d --pull=always --name dbx -p 4224:4224 \
-  -v dbx-data:/app/data \
+  -v linop-db-data:/app/data \
   t8y2/dbx:latest
 ```
 
-This uses the cross-platform `dbx-data` named volume. Users in China can use
+This uses the cross-platform `linop-db-data` named volume. Users in China can use
 the CNB image, `docker.cnb.cool/dbxio.com/dbx:latest`, for faster pulls.
 
 For Docker Compose, `deploy/docker-compose.yml` remains the source-build
@@ -459,11 +459,11 @@ services:
     ports:
       - "4224:4224"
     volumes:
-      - dbx-data:/app/data
+      - linop-db-data:/app/data
     restart: unless-stopped
 
 volumes:
-  dbx-data:
+  linop-db-data:
 
 ```
 
@@ -472,8 +472,8 @@ Open `http://localhost:4224` in your browser. Multi-arch images (amd64 / arm64) 
 Connection, plugin, AI, and tunnel credentials are encrypted before they are
 written to `dbx.db`. Desktop builds use the local platform credential store
 (macOS Keychain, Windows Credential Manager, or Linux Secret Service).
-Web/Docker and directly running `dbx-web` use the same managed data-directory
-key by default: `${DBX_DATA_DIR}/.dbx/secret.key`. The key is created only when
+Web/Docker and directly running `linop-db-web` use the same managed data-directory
+key by default: `${LINOP_DB_DATA_DIR}/.dbx/secret.key`. The key is created only when
 migration starts or the first sensitive value is written, and must be backed up
 together with `dbx.db`. Persisting `/app/data` is therefore sufficient for a
 normal Docker deployment. This key protects the database contents, but cannot
@@ -495,7 +495,7 @@ secret manager. Explicit keys take precedence and must never be rotated while
 encrypted data is in use. Without a usable key, business APIs remain blocked
 and the browser displays the data security upgrade screen.
 
-When running the binary directly, set `DBX_DATA_DIR=/var/lib/dbx` to use
+When running the binary directly, set `LINOP_DB_DATA_DIR=/var/lib/dbx` to use
 `/var/lib/dbx/.dbx/secret.key` with the same lifecycle and backup rules.
 
 When upgrading from a release that stored credentials in plain text, Desktop
@@ -607,7 +607,7 @@ make docs
 
 The official DBX documentation site lives in `docs/`. If you want to improve the website content or documentation pages, edit the files under `docs/` and run `make docs` to preview the site locally.
 
-Plugin authors should start with [Develop and Submit DBX Plugins](https://dbxio.com/en/docs/plugin-development). Plugin source normally stays in its own repository; Marketplace listing pull requests go to [`t8y2/dbx-store`](https://github.com/t8y2/dbx-store), while plugin host, SDK, and CLI changes go to this repository.
+Plugin authors should start with [Develop and Submit DBX Plugins](https://dbxio.com/en/docs/plugin-development). Plugin source normally stays in its own repository; Marketplace listing pull requests go to [`t8y2/linop-db-store`](https://github.com/t8y2/linop-db-store), while plugin host, SDK, and CLI changes go to this repository.
 
 For clean, reproducible local database instances, use the versioned Docker Compose recipes under [`deploy/database/`](deploy/database/README.md):
 

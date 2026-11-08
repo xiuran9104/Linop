@@ -6,7 +6,7 @@
 export const QUERY_EDITOR_DROP_TARGET_SELECTOR = "[data-query-editor-root]";
 
 /** 拖拽期间加在 body 上，禁用文本选择（样式见 globals.css）。 */
-export const TABLE_REFERENCE_DRAGGING_CLASS = "dbx-table-reference-dragging";
+export const TABLE_REFERENCE_DRAGGING_CLASS = "linop-db-table-reference-dragging";
 
 const CHIP_OFFSET_X = 14;
 const CHIP_OFFSET_Y = 18;

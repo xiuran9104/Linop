@@ -60,7 +60,7 @@ export class Diagnostics extends EventEmitter {
     const entry = { id: ++this.sequence, time: new Date().toISOString(), level, category, message, details: safe };
     this.entries.push(entry);
     if (this.entries.length > 500) this.entries.shift();
-    this.output(`[dbx-dev] ${JSON.stringify(entry)}`);
+    this.output(`[linop-db-dev] ${JSON.stringify(entry)}`);
     this.emit("entry", entry);
     return entry;
   }

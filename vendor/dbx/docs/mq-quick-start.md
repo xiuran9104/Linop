@@ -42,7 +42,7 @@
 │  └────────────────┘        └──────────────────┘            │
 │           ▼                         ▼                        │
 │  ┌────────────────────────────────────────────────────┐    │
-│  │         dbx-core/mq/service.rs (*_core)             │    │
+│  │         linop-db-core/mq/service.rs (*_core)             │    │
 │  └────────────────────────────────────────────────────┘    │
 │           ▼                                                  │
 │  ┌────────────────────────────────────────────────────┐    │
@@ -343,7 +343,7 @@ console.log(permissions) // { 'my-app-role': ['produce', 'consume'] }
 所有后端功能已通过 Axum routes 暴露为 REST API：
 
 ```rust
-// crates/dbx-web/src/main.rs
+// crates/linop-db-web/src/main.rs
 .route("/mq/test-connection", post(routes::mq::test_connection))
 .route("/mq/tenants/list", post(routes::mq::list_tenants))
 .route("/mq/tenants/create", post(routes::mq::create_tenant))
@@ -402,9 +402,9 @@ cargo build -p dbx --release --no-default-features --features duckdb-sidecar,sql
 
 ### 检查编译
 ```bash
-cargo check --package dbx-core --features mq-admin
+cargo check --package linop-db-core --features mq-admin
 cargo check --package dbx --features mq-admin
-cargo check --package dbx-web --features mq-admin
+cargo check --package linop-db-web --features mq-admin
 ```
 
 ## 后续扩展
@@ -414,7 +414,7 @@ cargo check --package dbx-web --features mq-admin
 Kafka 使用 Java Agent，RocketMQ 使用 Go 原生 Agent；两者均通过 Rust 适配器接入。新增 MQ 系统时：
 
 1. 在 `agents/drivers/<name>/` 实现 JSON-RPC Agent（参考 `kafka` / `rocketmq`）
-2. 在 `crates/dbx-core/src/mq/adapters/` 实现 `MessageQueueAdmin`
+2. 在 `crates/linop-db-core/src/mq/adapters/` 实现 `MessageQueueAdmin`
 3. 在 `build_adapter()`、`agent_catalog`、`database-drivers.manifest.json` 注册
 4. 在前端连接对话框增加独立顶层入口（不要在内层 `mqSystem` 下拉合并类型）
 
@@ -448,8 +448,8 @@ CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o agent .
 Docker 快速启动（NameServer 9876 + Broker 10911，仅用于本地验证）：
 
 ```bash
-docker run -d --name dbx-rocketmq-namesrv -p 9876:9876 apache/rocketmq:5.3.1 sh mqnamesrv
-docker run -d --name dbx-rocketmq-broker -p 10911:10911 \
+docker run -d --name linop-db-rocketmq-namesrv -p 9876:9876 apache/rocketmq:5.3.1 sh mqnamesrv
+docker run -d --name linop-db-rocketmq-broker -p 10911:10911 \
   -e NAMESRV_ADDR=host.docker.internal:9876 \
   apache/rocketmq:5.3.1 sh mqbroker -n host.docker.internal:9876
 ```
@@ -485,7 +485,7 @@ go build -o agent .
 Docker 快速启动（AMQP 5672 + Management 15672，仅用于本地验证）：
 
 ```bash
-docker run -d --name dbx-rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
+docker run -d --name linop-db-rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3-management
 ```
 
 说明：RabbitMQ 适配器将 topic 映射为队列（queue），支持队列列表/声明/删除、清空队列（purge）、消费者列表、消息预览（basic.get + requeue）与发送（basic.publish）；vhost 映射为 namespace，可在控制台查看/创建/删除。AMQP 操作按 vhost 透传（agent 侧 per-vhost 通道缓存），tenant 语义不适用（固定合成 `_rabbitmq`）。
@@ -496,7 +496,7 @@ RabbitMQ 的 AMQP 监听端口与 Management HTTP 监听端口是独立配置。
 
 1. 实现 `MessageQueueAdmin` trait：
 ```rust
-// crates/dbx-core/src/mq/adapters/kafka.rs
+// crates/linop-db-core/src/mq/adapters/kafka.rs
 pub struct KafkaAdmin { /* ... */ }
 
 #[async_trait]

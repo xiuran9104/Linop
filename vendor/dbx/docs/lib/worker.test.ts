@@ -41,8 +41,8 @@ test("plugin detail shell routes are routed to the worker before static 404 hand
 });
 
 test("signed OAuth payloads round-trip and reject tampering", async () => {
-  const signed = await signPayload({ login: "dbx-user" }, "test-secret");
-  assert.deepEqual(await verifySignedPayload<{ login: string }>(signed, "test-secret"), { login: "dbx-user" });
+  const signed = await signPayload({ login: "linop-db-user" }, "test-secret");
+  assert.deepEqual(await verifySignedPayload<{ login: string }>(signed, "test-secret"), { login: "linop-db-user" });
   assert.equal(await verifySignedPayload(`${signed}x`, "test-secret"), null);
 });
 
@@ -61,7 +61,7 @@ test("anonymous Issue aliases redirect to one localized route", () => {
 
 test("static assets receive browser cache headers without caching HTML", () => {
   assert.equal(staticAssetCacheControl("/_next/static/chunks/app-123.js"), "public, max-age=31536000, immutable");
-  assert.equal(staticAssetCacheControl("/screenshots/dbx-light-1280.webp"), "public, max-age=86400, stale-while-revalidate=604800");
+  assert.equal(staticAssetCacheControl("/screenshots/linop-db-light-1280.webp"), "public, max-age=86400, stale-while-revalidate=604800");
   assert.equal(staticAssetCacheControl("/cn"), null);
   assert.equal(staticAssetCacheControl("/cn/changelog.txt"), null);
 });
@@ -87,7 +87,7 @@ afterEach(() => {
 
 test("agent asset proxy only streams allowlisted agents-release assets", async () => {
   const env = {};
-  const assetUrl = "https://github.com/t8y2/dbx/releases/download/agents-v0.2.130/dbx-agent-dameng-0.1.85.tar.zst";
+  const assetUrl = "https://github.com/t8y2/dbx/releases/download/agents-v0.2.130/linop-db-agent-dameng-0.1.85.tar.zst";
   const upstream = new Response("package-bytes", { headers: { "Content-Length": "13" } });
   const fetchMock = vi.fn(async () => upstream);
   vi.stubGlobal("fetch", fetchMock);
@@ -102,8 +102,8 @@ test("agent asset proxy only streams allowlisted agents-release assets", async (
   assert.equal((await worker.fetch(new Request(`https://dbxio.com/api/agent-asset?url=${encodeURIComponent(assetUrl)}`, { method: "HEAD" }), env)).status, 200);
   assert.equal((await worker.fetch(new Request(`https://dbxio.com/api/agent-asset?url=${encodeURIComponent(assetUrl)}`, { method: "POST" }), env)).status, 404);
   for (const invalid of [
-    "https://evil.example/dbx-agent-dameng-0.1.85.tar.zst",
-    "https://github.com/t8y2/other/releases/download/agents-v0.2.130/dbx-agent-dameng-0.1.85.tar.zst",
+    "https://evil.example/linop-db-agent-dameng-0.1.85.tar.zst",
+    "https://github.com/t8y2/other/releases/download/agents-v0.2.130/linop-db-agent-dameng-0.1.85.tar.zst",
     "https://github.com/t8y2/dbx/releases/download/v0.6.33/DBX_0.6.33_x64-setup.exe",
     "https://github.com/t8y2/dbx/releases/download/agents-v0.2.130/../../secret",
     "",

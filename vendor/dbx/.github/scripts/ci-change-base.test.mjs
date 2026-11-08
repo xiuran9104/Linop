@@ -9,7 +9,7 @@ import { changeBase } from "./ci-change-base.mjs";
 import { changedPaths, planCi } from "./ci-plan.mjs";
 
 function mergeFixture(context) {
-  const directory = mkdtempSync(path.join(tmpdir(), "dbx-ci-change-base-"));
+  const directory = mkdtempSync(path.join(tmpdir(), "linop-db-ci-change-base-"));
   context.after(() => rmSync(directory, { recursive: true, force: true }));
   const root = path.join(directory, "source");
   mkdirSync(root);
@@ -27,15 +27,15 @@ function mergeFixture(context) {
   git("init", "--initial-branch=main");
   git("config", "user.email", "fixture@example.invalid");
   git("config", "user.name", "CI Fixture");
-  write("crates/dbx-core/tests/old.rs", "original source\n");
-  write("crates/dbx-core/tests/deleted.rs", "removed source\n");
-  write("crates/dbx-web/src/routes/transfer.rs", "original route\n");
+  write("crates/linop-db-core/tests/old.rs", "original source\n");
+  write("crates/linop-db-core/tests/deleted.rs", "removed source\n");
+  write("crates/linop-db-web/src/routes/transfer.rs", "original route\n");
   const staleBase = commit("baseline");
   git("checkout", "-b", "pull-request");
-  git("mv", "crates/dbx-core/tests/old.rs", "crates/dbx-core/tests/renamed\nfile.rs");
-  git("rm", "crates/dbx-core/tests/deleted.rs");
-  write("crates/dbx-core/tests/runtime_diagnostic_history.rs", "diagnostic test\n");
-  write("crates/dbx-web/src/routes/transfer.rs", "updated route\n");
+  git("mv", "crates/linop-db-core/tests/old.rs", "crates/linop-db-core/tests/renamed\nfile.rs");
+  git("rm", "crates/linop-db-core/tests/deleted.rs");
+  write("crates/linop-db-core/tests/runtime_diagnostic_history.rs", "diagnostic test\n");
+  write("crates/linop-db-web/src/routes/transfer.rs", "updated route\n");
   const pullRequestHead = commit("PR diagnostic changes");
   git("checkout", "main");
   write(".github/workflows/ci.yml", "main CI changes\n");
@@ -52,13 +52,13 @@ test("PR routing uses the exact test merge first parent, excluding unrelated mai
   assert.equal(base, fixture.actualBase);
   assert.notEqual(base, fixture.pullRequestHead);
   const files = changedPaths(base, fixture.root);
-  assert.deepEqual(files.toSorted(), ["crates/dbx-core/tests/old.rs", "crates/dbx-core/tests/deleted.rs", "crates/dbx-core/tests/renamed\nfile.rs", "crates/dbx-core/tests/runtime_diagnostic_history.rs", "crates/dbx-web/src/routes/transfer.rs"].toSorted());
+  assert.deepEqual(files.toSorted(), ["crates/linop-db-core/tests/old.rs", "crates/linop-db-core/tests/deleted.rs", "crates/linop-db-core/tests/renamed\nfile.rs", "crates/linop-db-core/tests/runtime_diagnostic_history.rs", "crates/linop-db-web/src/routes/transfer.rs"].toSorted());
   const metadata = {
-    workspace_members: ["dbx-core", "dbx-web", "dbx"],
+    workspace_members: ["linop-db-core", "linop-db-web", "dbx"],
     packages: [
-      { id: "dbx-core", name: "dbx-core", manifest_path: path.join(fixture.root, "crates/dbx-core/Cargo.toml"), dependencies: [] },
-      { id: "dbx-web", name: "dbx-web", manifest_path: path.join(fixture.root, "crates/dbx-web/Cargo.toml"), dependencies: [{ name: "dbx-core" }] },
-      { id: "dbx", name: "dbx", manifest_path: path.join(fixture.root, "src-tauri/Cargo.toml"), dependencies: [{ name: "dbx-core" }] },
+      { id: "linop-db-core", name: "linop-db-core", manifest_path: path.join(fixture.root, "crates/linop-db-core/Cargo.toml"), dependencies: [] },
+      { id: "linop-db-web", name: "linop-db-web", manifest_path: path.join(fixture.root, "crates/linop-db-web/Cargo.toml"), dependencies: [{ name: "linop-db-core" }] },
+      { id: "dbx", name: "dbx", manifest_path: path.join(fixture.root, "src-tauri/Cargo.toml"), dependencies: [{ name: "linop-db-core" }] },
     ],
   };
   const corrected = planCi({ files, metadata, root: fixture.root });

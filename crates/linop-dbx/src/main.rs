@@ -6,7 +6,7 @@
 //!   linop-dbx query <连接名> <SQL> [上限]  执行查询(JSON)
 //!
 //! 连接配置来自 `~/.linop-dev/databases.toml`(linop-core::DbRegistry),
-//! 数据库执行走 DBX 内核(dbx-core)。
+//! 数据库执行走 DBX 内核(linop-db-core)。
 
 use linop_dbx::Dbx;
 

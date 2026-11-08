@@ -288,8 +288,8 @@ describe("floating window identity", () => {
       expect(label).not.toMatch(/\./);
     }
     // Slugs that differ only in stripped characters stay apart through the hash:
-    // "io.dbx.demo" and "io-dbx-demo" must not share a window.
-    expect(floatingWindowLabel("io.dbx.demo", "capsule")).not.toBe(floatingWindowLabel("io-dbx-demo", "capsule"));
+    // "io.dbx.demo" and "io-linop-db-demo" must not share a window.
+    expect(floatingWindowLabel("io.dbx.demo", "capsule")).not.toBe(floatingWindowLabel("io-linop-db-demo", "capsule"));
     const long = floatingWindowLabel("io.dbx.".concat("a".repeat(200)), "contribution");
     expect(long.startsWith("plugin-floating-")).toBe(true);
     expect(long.length).toBeLessThanOrEqual(120);

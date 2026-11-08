@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 
 use super::connection::AppState;
-pub use dbx_core::ai::*;
+pub use linop_db_core::ai::*;
 
 #[tauri::command]
 pub async fn ai_test_connection(
@@ -13,9 +13,9 @@ pub async fn ai_test_connection(
     let mut config = resolve_cli_provider_config(config);
     merge_global_max_retries(
         &mut config,
-        state.storage.load_max_retries().await.unwrap_or(dbx_core::ai::DEFAULT_MAX_RETRIES),
+        state.storage.load_max_retries().await.unwrap_or(linop_db_core::ai::DEFAULT_MAX_RETRIES),
     );
-    dbx_core::ai::test_connection_core(&config).await
+    linop_db_core::ai::test_connection_core(&config).await
 }
 
 #[tauri::command]
@@ -23,9 +23,9 @@ pub async fn ai_list_models(state: State<'_, Arc<AppState>>, config: AiConfig) -
     let mut config = resolve_cli_provider_config(config);
     merge_global_max_retries(
         &mut config,
-        state.storage.load_max_retries().await.unwrap_or(dbx_core::ai::DEFAULT_MAX_RETRIES),
+        state.storage.load_max_retries().await.unwrap_or(linop_db_core::ai::DEFAULT_MAX_RETRIES),
     );
-    dbx_core::ai::list_models_core(&config).await
+    linop_db_core::ai::list_models_core(&config).await
 }
 
 #[tauri::command]
@@ -37,9 +37,9 @@ pub async fn ai_resolve_model_effort(
     let mut config = resolve_cli_provider_config(config);
     merge_global_max_retries(
         &mut config,
-        state.storage.load_max_retries().await.unwrap_or(dbx_core::ai::DEFAULT_MAX_RETRIES),
+        state.storage.load_max_retries().await.unwrap_or(linop_db_core::ai::DEFAULT_MAX_RETRIES),
     );
-    dbx_core::ai::resolve_model_effort_core(&config, &model_id).await
+    linop_db_core::ai::resolve_model_effort_core(&config, &model_id).await
 }
 
 #[tauri::command]
@@ -90,9 +90,9 @@ pub async fn ai_complete(state: State<'_, Arc<AppState>>, request: AiCompletionR
     let mut request = request;
     merge_global_max_retries(
         &mut request.config,
-        state.storage.load_max_retries().await.unwrap_or(dbx_core::ai::DEFAULT_MAX_RETRIES),
+        state.storage.load_max_retries().await.unwrap_or(linop_db_core::ai::DEFAULT_MAX_RETRIES),
     );
-    dbx_core::ai::complete(&request).await
+    linop_db_core::ai::complete(&request).await
 }
 
 #[tauri::command]
@@ -105,23 +105,23 @@ pub async fn ai_stream(
     let mut request = request;
     merge_global_max_retries(
         &mut request.config,
-        state.storage.load_max_retries().await.unwrap_or(dbx_core::ai::DEFAULT_MAX_RETRIES),
+        state.storage.load_max_retries().await.unwrap_or(linop_db_core::ai::DEFAULT_MAX_RETRIES),
     );
-    let cancelled = dbx_core::ai::register_stream(&session_id).await;
+    let cancelled = linop_db_core::ai::register_stream(&session_id).await;
 
     let batcher = AiStreamChunkBatcher::new(app.clone(), session_id.clone());
-    let result = dbx_core::ai::stream(&session_id, &request, &cancelled, |chunk| batcher.handle(chunk)).await;
+    let result = linop_db_core::ai::stream(&session_id, &request, &cancelled, |chunk| batcher.handle(chunk)).await;
     // Emit tail deltas the interval gate was still holding when the stream ended.
     batcher.flush();
 
-    dbx_core::ai::unregister_stream(&session_id).await;
+    linop_db_core::ai::unregister_stream(&session_id).await;
     result
 }
 
-use dbx_core::agent_events::AgentEvent;
-use dbx_core::agent_loop::{run_agent_loop, AgentLoopContext};
-use dbx_core::ai_cli_agent::CliAgentCommandSpec;
-use dbx_core::models::connection::DatabaseType;
+use linop_db_core::agent_events::AgentEvent;
+use linop_db_core::agent_loop::{run_agent_loop, AgentLoopContext};
+use linop_db_core::ai_cli_agent::CliAgentCommandSpec;
+use linop_db_core::models::connection::DatabaseType;
 
 #[derive(serde::Serialize)]
 struct AiAgentEventPayload {
@@ -319,14 +319,14 @@ impl<R: tauri::Runtime> AiStreamChunkBatcher<R> {
 
 #[tauri::command]
 pub async fn ai_cancel_stream(session_id: String) -> Result<bool, String> {
-    Ok(dbx_core::ai::cancel_stream(&session_id).await)
+    Ok(linop_db_core::ai::cancel_stream(&session_id).await)
 }
 
 /// Answers a pending plugin tool approval of the agent run `session_id`.
 /// Returns false when nothing was waiting (already answered or expired).
 #[tauri::command]
 pub async fn ai_resolve_tool_approval(session_id: String, approval_id: String, approved: bool) -> Result<bool, String> {
-    Ok(dbx_core::tool_approval::resolve_tool_approval(&session_id, &approval_id, approved))
+    Ok(linop_db_core::tool_approval::resolve_tool_approval(&session_id, &approval_id, approved))
 }
 
 /// Plugin ids whose MCP tools the built-in AI agent may call.
@@ -337,7 +337,7 @@ pub async fn ai_resolve_tool_approval(session_id: String, approval_id: String, a
 #[tauri::command]
 pub async fn get_ai_plugin_tool_plugins(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
     let mut ids =
-        dbx_core::ai::plugin_tools::effective_ai_tool_plugin_ids(state.inner()).await.into_iter().collect::<Vec<_>>();
+        linop_db_core::ai::plugin_tools::effective_ai_tool_plugin_ids(state.inner()).await.into_iter().collect::<Vec<_>>();
     ids.sort();
     Ok(ids)
 }
@@ -356,8 +356,8 @@ pub async fn set_ai_plugin_tool_plugin_enabled(
 pub async fn preview_plugin_ai_tools(
     state: State<'_, Arc<AppState>>,
     plugin_id: String,
-) -> Result<dbx_core::plugin_tools::PluginToolPreview, String> {
-    dbx_core::plugin_tools::preview_plugin_tools(state.inner(), None, &plugin_id).await
+) -> Result<linop_db_core::plugin_tools::PluginToolPreview, String> {
+    linop_db_core::plugin_tools::preview_plugin_tools(state.inner(), None, &plugin_id).await
 }
 
 #[tauri::command]
@@ -385,7 +385,7 @@ pub async fn ai_agent_stream(
     let mut request = resolve_cli_provider_request(request);
     merge_global_max_retries(
         &mut request.config,
-        state.storage.load_max_retries().await.unwrap_or(dbx_core::ai::DEFAULT_MAX_RETRIES),
+        state.storage.load_max_retries().await.unwrap_or(linop_db_core::ai::DEFAULT_MAX_RETRIES),
     );
 
     let parsed_db_type: DatabaseType =
@@ -397,22 +397,22 @@ pub async fn ai_agent_stream(
     } else {
         None
     };
-    let cancelled = dbx_core::ai::register_stream(&session_id).await;
+    let cancelled = linop_db_core::ai::register_stream(&session_id).await;
     let production_database = state
         .configs
         .read()
         .await
         .get(&connection_id)
-        .is_some_and(|config| dbx_core::production_safety::is_production_database(config, &database));
+        .is_some_and(|config| linop_db_core::production_safety::is_production_database(config, &database));
     let max_agent_turns = state.storage.load_max_agent_turns().await.unwrap_or_else(|err| {
         log::warn!("Failed to load max_agent_turns setting, using default: {err}");
-        dbx_core::agent_loop::DEFAULT_MAX_AGENT_TURNS
+        linop_db_core::agent_loop::DEFAULT_MAX_AGENT_TURNS
     });
     // Reject the confirmed-write grant when the connection or database changed
     // between the user's confirmation and this backend request.  The frontend
     // also verifies this synchronously, but this backend check provides
     // defense-in-depth for CLI-provider and API-driven paths.
-    let (allow_write_sql, confirmed_write_sql) = dbx_core::agent_tools::verify_confirmed_target(
+    let (allow_write_sql, confirmed_write_sql) = linop_db_core::agent_tools::verify_confirmed_target(
         allow_write_sql,
         confirmed_write_sql,
         confirmed_connection_id,
@@ -426,7 +426,7 @@ pub async fn ai_agent_stream(
     // production.  Writes are only allowed when a specific SQL statement was
     // confirmed — an empty confirmed_write_sql is treated as "no confirmation"
     // so the agent cannot execute arbitrary write/DDL statements.
-    let sql_permissions = dbx_core::agent_tools::confirmed_write_sql_permissions(
+    let sql_permissions = linop_db_core::agent_tools::confirmed_write_sql_permissions(
         production_database,
         allow_write_sql.unwrap_or(false),
         confirmed_write_sql,
@@ -468,7 +468,7 @@ pub async fn ai_agent_stream(
     // (e.g. an error return that produced no terminal AgentEvent).
     emitter.flush();
 
-    dbx_core::ai::unregister_stream(&session_id).await;
+    linop_db_core::ai::unregister_stream(&session_id).await;
     result
 }
 
@@ -563,7 +563,7 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     use super::super::connection::AppState;
-    use dbx_core::ai::{AiApiStyle, AiAuthMethod, AiConfig, AiProvider, AiReasoningLevel};
+    use linop_db_core::ai::{AiApiStyle, AiAuthMethod, AiConfig, AiProvider, AiReasoningLevel};
 
     /// Captures the JSON payload of every `event_name` emission on a mock app.
     fn captured_events(
@@ -584,7 +584,7 @@ mod tests {
     #[test]
     fn ai_agent_event_batcher_coalesces_deltas_between_intervals() {
         use super::AiAgentEventBatcher;
-        use dbx_core::agent_events::AgentEvent;
+        use linop_db_core::agent_events::AgentEvent;
 
         let (handle, received) = captured_events("ai-agent-event");
         let batcher = AiAgentEventBatcher::new(handle, "session-1".to_string());
@@ -638,7 +638,7 @@ mod tests {
     #[test]
     fn ai_agent_event_batcher_merges_held_deltas_after_interval() {
         use super::AiAgentEventBatcher;
-        use dbx_core::agent_events::AgentEvent;
+        use linop_db_core::agent_events::AgentEvent;
 
         let (handle, received) = captured_events("ai-agent-event");
         let batcher = AiAgentEventBatcher::new(handle, "session-1".to_string());
@@ -768,7 +768,7 @@ mod tests {
 
     #[test]
     fn verify_confirmed_target_allows_matching_connection_and_database() {
-        let (allow, confirmed) = dbx_core::agent_tools::verify_confirmed_target(
+        let (allow, confirmed) = linop_db_core::agent_tools::verify_confirmed_target(
             Some(true),
             Some("DELETE FROM users WHERE id = 1".to_string()),
             Some("conn-1".to_string()),
@@ -784,7 +784,7 @@ mod tests {
 
     #[test]
     fn verify_confirmed_target_rejects_mismatched_connection() {
-        let (allow, confirmed) = dbx_core::agent_tools::verify_confirmed_target(
+        let (allow, confirmed) = linop_db_core::agent_tools::verify_confirmed_target(
             Some(true),
             Some("DELETE FROM users WHERE id = 1".to_string()),
             Some("conn-staging".to_string()),
@@ -800,7 +800,7 @@ mod tests {
 
     #[test]
     fn verify_confirmed_target_rejects_mismatched_database() {
-        let (allow, confirmed) = dbx_core::agent_tools::verify_confirmed_target(
+        let (allow, confirmed) = linop_db_core::agent_tools::verify_confirmed_target(
             Some(true),
             Some("DELETE FROM users WHERE id = 1".to_string()),
             Some("conn-1".to_string()),
@@ -818,7 +818,7 @@ mod tests {
     fn verify_confirmed_target_passes_through_when_no_sql_confirmed() {
         // Without a confirmed SQL, no target verification is needed — the
         // grant has no write permission to protect.
-        let (allow, confirmed) = dbx_core::agent_tools::verify_confirmed_target(
+        let (allow, confirmed) = linop_db_core::agent_tools::verify_confirmed_target(
             Some(false),
             None,
             Some("conn-staging".to_string()),
@@ -837,7 +837,7 @@ mod tests {
         // When confirmed_connection_id is None (e.g. older frontend that
         // doesn't send snapshots), the target cannot be verified, so the
         // grant must be rejected — fail-closed.
-        let (allow, confirmed) = dbx_core::agent_tools::verify_confirmed_target(
+        let (allow, confirmed) = linop_db_core::agent_tools::verify_confirmed_target(
             Some(true),
             Some("DELETE FROM users WHERE id = 1".to_string()),
             None,
@@ -853,7 +853,7 @@ mod tests {
 
     #[test]
     fn verify_confirmed_target_rejects_mismatched_schema() {
-        let (allow, confirmed) = dbx_core::agent_tools::verify_confirmed_target(
+        let (allow, confirmed) = linop_db_core::agent_tools::verify_confirmed_target(
             Some(true),
             Some("DELETE FROM users WHERE id = 1".to_string()),
             Some("conn-1".to_string()),
@@ -869,9 +869,9 @@ mod tests {
 
     #[tokio::test]
     async fn tauri_entry_respects_global_max_retries_zero() {
-        let dir = std::env::temp_dir().join(format!("dbx-tauri-mr-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-tauri-mr-{}", uuid::Uuid::new_v4()));
         let _ = std::fs::create_dir_all(&dir);
-        let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         storage.save_max_retries(0).await.unwrap();
         assert_eq!(storage.load_max_retries().await.unwrap(), 0);
 

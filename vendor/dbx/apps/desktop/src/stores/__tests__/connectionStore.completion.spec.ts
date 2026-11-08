@@ -127,7 +127,7 @@ function damengConnection(): ConnectionConfig {
     name: "Dameng",
     db_type: "dameng",
     port: 5236,
-    username: "dbx_test",
+    username: "linop_db_test",
     database: "",
   } as ConnectionConfig;
 }
@@ -958,8 +958,8 @@ describe("connectionStore completion assistant", () => {
 
     expect(completionAssistantSearch).toHaveBeenCalledTimes(1);
     expect(getColumns).toHaveBeenCalledTimes(1);
-    expect(getColumns).toHaveBeenCalledWith("dameng-1", "", "dbx_test", "tb_user", undefined, undefined);
-    expect(first).toEqual([expect.objectContaining({ name: "ID", table: "tb_user", schema: "dbx_test" })]);
+    expect(getColumns).toHaveBeenCalledWith("dameng-1", "", "linop_db_test", "tb_user", undefined, undefined);
+    expect(first).toEqual([expect.objectContaining({ name: "ID", table: "tb_user", schema: "linop_db_test" })]);
     expect(cached).toEqual(first);
   });
 

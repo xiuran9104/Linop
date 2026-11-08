@@ -3,10 +3,10 @@ import { isOfflineDriverPackage, webDriverImportAccept } from "./driverImportSel
 
 describe("driver import selection", () => {
   it("recognizes ZIP and tar.zst packages case-insensitively", () => {
-    expect(isOfflineDriverPackage("C:\\Downloads\\dbx-agent-h2-0.2.5.ZIP")).toBe(true);
-    expect(isOfflineDriverPackage({ name: "dbx-agent-kingbase-0.1.34-macos-aarch64.zip" })).toBe(true);
-    expect(isOfflineDriverPackage({ name: "dbx-agent-duckdb-0.1.0-macos-aarch64.TAR.ZST" })).toBe(true);
-    expect(isOfflineDriverPackage({ name: "dbx-agent-h2-0.2.5.jar" })).toBe(false);
+    expect(isOfflineDriverPackage("C:\\Downloads\\linop-db-agent-h2-0.2.5.ZIP")).toBe(true);
+    expect(isOfflineDriverPackage({ name: "linop-db-agent-kingbase-0.1.34-macos-aarch64.zip" })).toBe(true);
+    expect(isOfflineDriverPackage({ name: "linop-db-agent-duckdb-0.1.0-macos-aarch64.TAR.ZST" })).toBe(true);
+    expect(isOfflineDriverPackage({ name: "linop-db-agent-h2-0.2.5.jar" })).toBe(false);
   });
 
   it("allows ZIP alongside the platform raw artifact", () => {

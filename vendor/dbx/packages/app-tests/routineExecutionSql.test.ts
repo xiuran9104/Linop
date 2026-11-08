@@ -37,9 +37,9 @@ test("builds procedure execution templates from parameter values", () => {
       parameters,
     }),
     [
-      "DECLARE @dbx_output_4 text;",
-      "EXEC [dbo].[refresh_stats] @p_message = 'it''s ready', @p_count = 3, @p_debug = 1, @p_result = @dbx_output_4 OUTPUT;",
-      "SELECT @dbx_output_4 AS [p_result];",
+      "DECLARE @linop_db_output_4 text;",
+      "EXEC [dbo].[refresh_stats] @p_message = 'it''s ready', @p_count = 3, @p_debug = 1, @p_result = @linop_db_output_4 OUTPUT;",
+      "SELECT @linop_db_output_4 AS [p_result];",
     ].join("\n"),
   );
 });

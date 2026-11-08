@@ -163,7 +163,7 @@ export function computeBundlePlan(registry: AgentRegistry, platform: string, sel
     requiresJre,
     includeJre: effectiveIncludeJre,
     totalDownloadBytes,
-    filename: `dbx-agents-offline-custom-${platform}.zip`,
+    filename: `linop-db-agents-offline-custom-${platform}.zip`,
   };
 }
 

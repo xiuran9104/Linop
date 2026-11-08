@@ -22,7 +22,7 @@ function isCellValue(value: unknown): value is CellValue {
 function nodeEnvelope(value: unknown): { display: string; properties: Neo4jNodeProperty[] } | undefined {
   if (!value || typeof value !== "object") return;
   const cell = value as Record<string, unknown>;
-  if (cell.__dbx_neo4j_node !== "v1" || typeof cell.display !== "string" || !Array.isArray(cell.properties)) return;
+  if (cell.__linop_db_neo4j_node !== "v1" || typeof cell.display !== "string" || !Array.isArray(cell.properties)) return;
   const names = new Set<string>();
   for (const value of cell.properties) {
     if (!value || typeof value !== "object") return;

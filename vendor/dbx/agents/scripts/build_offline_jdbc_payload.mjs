@@ -153,7 +153,7 @@ async function main() {
 
   const externalCache = process.env.DBX_OFFLINE_JDBC_MAVEN_CACHE?.trim();
   const resolverRepository = process.env.DBX_OFFLINE_JDBC_MAVEN_REPOSITORY?.trim() || assetManifest.repository;
-  const workDir = externalCache ? null : mkdtempSync(join(tmpdir(), "dbx-offline-jdbc-"));
+  const workDir = externalCache ? null : mkdtempSync(join(tmpdir(), "linop-db-offline-jdbc-"));
   const localRepository = externalCache ? resolve(externalCache) : join(workDir, "maven-cache");
   mkdirSync(localRepository, { recursive: true });
   const manifestBundles = [];

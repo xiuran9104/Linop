@@ -653,7 +653,7 @@ async function submitKeySearch(value: string) {
 }
 
 function groupRow(label: string): HTMLElement {
-  const labelElement = Array.from(document.querySelectorAll<HTMLElement>(".dbx-editor-font-family")).find((element) => element.textContent === label);
+  const labelElement = Array.from(document.querySelectorAll<HTMLElement>(".linop-db-editor-font-family")).find((element) => element.textContent === label);
   expect(labelElement, label).toBeDefined();
   const row = labelElement?.closest<HTMLElement>(".group");
   expect(row, label).toBeDefined();
@@ -661,7 +661,7 @@ function groupRow(label: string): HTMLElement {
 }
 
 function groupRowOrUndefined(label: string): HTMLElement | undefined {
-  const labelElement = Array.from(document.querySelectorAll<HTMLElement>(".dbx-editor-font-family")).find((element) => element.textContent === label);
+  const labelElement = Array.from(document.querySelectorAll<HTMLElement>(".linop-db-editor-font-family")).find((element) => element.textContent === label);
   return labelElement?.closest<HTMLElement>(".group") ?? undefined;
 }
 
@@ -676,7 +676,7 @@ function groupCheckbox(label: string): HTMLElement {
 }
 
 function leafCheckbox(label: string): HTMLElement {
-  const checkbox = redisCheckboxes().find((el) => el.closest(".group")?.querySelector(".dbx-editor-font-family")?.textContent === label);
+  const checkbox = redisCheckboxes().find((el) => el.closest(".group")?.querySelector(".linop-db-editor-font-family")?.textContent === label);
   expect(checkbox, label).toBeDefined();
   return checkbox!;
 }
@@ -1673,7 +1673,7 @@ describe("RedisKeyBrowser fuzzy key hierarchy", () => {
     groupRow("issue5012").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     await settle();
     await vi.waitFor(() => {
-      const labels = Array.from(document.querySelectorAll<HTMLElement>(".dbx-editor-font-family")).map((element) => element.textContent);
+      const labels = Array.from(document.querySelectorAll<HTMLElement>(".linop-db-editor-font-family")).map((element) => element.textContent);
       expect(labels).toContain("target");
     });
 
@@ -1870,7 +1870,7 @@ describe("RedisKeyBrowser fuzzy key hierarchy", () => {
 
     currentContinuation.resolve({ cursor: 0, keys: [currentLastPage], total_keys: 0 });
     await vi.waitFor(() => expect(Array.from(document.querySelectorAll<HTMLButtonElement>("button")).filter((button) => button.textContent?.includes("redis.fetchMoreKeys"))).toHaveLength(0));
-    const labels = Array.from(document.querySelectorAll<HTMLElement>(".dbx-editor-font-family")).map((element) => element.textContent);
+    const labels = Array.from(document.querySelectorAll<HTMLElement>(".linop-db-editor-font-family")).map((element) => element.textContent);
     expect(labels).toContain("new");
     expect(labels).not.toContain("old");
   });
@@ -1973,7 +1973,7 @@ describe("RedisKeyBrowser fuzzy key hierarchy", () => {
     groupRow("course").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
     await settle();
     for (const input of redisCheckboxes()) {
-      const label = input.closest(".group")?.querySelector(".dbx-editor-font-family")?.textContent;
+      const label = input.closest(".group")?.querySelector(".linop-db-editor-font-family")?.textContent;
       if (label?.startsWith("incr_class_id-") && isCheckboxChecked(input)) {
         input.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
       }
@@ -2811,7 +2811,7 @@ describe("RedisKeyBrowser connection default key scope", () => {
   });
 
   it("keeps the input and history empty while browsing a collapsed, scoped hierarchy", async () => {
-    localStorage.removeItem("dbx-redis-key-search-history");
+    localStorage.removeItem("linop-db-redis-key-search-history");
     mocks.redisScanKeysBatch.mockResolvedValue({ cursor: 0, keys: [first, second, outside], total_keys: 1305 });
     mountBrowser();
     await settle();

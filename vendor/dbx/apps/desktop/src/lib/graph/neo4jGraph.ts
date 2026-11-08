@@ -36,7 +36,7 @@ export function buildNeo4jGraphPropertyUpdate(entity: GraphNode | GraphEdge, pro
   if (!node) predicates.push(identity("s", entity.sourceVid), identity("t", entity.targetVid));
   const target = `${variable}.${quoteIdentifier(property.name)}`;
   // The dependent SET acquires the write lock before checking the saved value.
-  return `MATCH ${pattern} WHERE ${predicates.join(" AND ")} SET ${target} = ${target} WITH ${variable} WHERE ${target} = ${propertyValue(property.type, property.value)} SET ${target} = ${propertyValue(property.type, value)} RETURN ${target} AS dbx_value`;
+  return `MATCH ${pattern} WHERE ${predicates.join(" AND ")} SET ${target} = ${target} WITH ${variable} WHERE ${target} = ${propertyValue(property.type, property.value)} SET ${target} = ${propertyValue(property.type, value)} RETURN ${target} AS linop_db_value`;
 }
 
 export function buildNeo4jGraphExpand(node: GraphNode): string {

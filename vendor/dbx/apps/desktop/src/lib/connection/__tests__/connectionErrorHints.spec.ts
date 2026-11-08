@@ -26,7 +26,7 @@ function jdbcConfig(): ConnectionConfig {
     port: 6041,
     username: "root",
     password: "",
-    database: "dbx_tdengine_demo",
+    database: "linop_db_tdengine_demo",
     ssl: false,
   };
 }

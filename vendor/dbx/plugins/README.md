@@ -7,10 +7,10 @@ New plugin developers can read the official [Chinese documentation](https://dbxi
 Install the precompiled development CLI without cloning or compiling DBX:
 
 ```bash
-npm install --global @dbx-app/plugin-cli
+npm install --global @linop-db-app/plugin-cli
 ```
 
-Marketplace listing pull requests go to `t8y2/dbx-store`. Plugin host, SDK, CLI, schema, documentation, and official-example changes go to `t8y2/dbx`. Ordinary plugin source stays in the plugin author's own repository.
+Marketplace listing pull requests go to `t8y2/linop-db-store`. Plugin host, SDK, CLI, schema, documentation, and official-example changes go to `t8y2/dbx`. Ordinary plugin source stays in the plugin author's own repository.
 
 The platform contract is manifest v1 + Host API 1.x + sidecar protocol v1. The source code for a plugin may live in this repository or in a separate repository; DBX installs only the built package.
 
@@ -18,9 +18,9 @@ The platform contract is manifest v1 + Host API 1.x + sidecar protocol v1. The s
 
 - `manifest.schema.json` — editor/CI schema for manifest v1.
 - `marketplace.schema.json` — editor/CI schema for marketplace catalog v1.
-- `sdk/rust/dbx-plugin-sdk` — Rust sidecar SDK.
-- `sdk/go/dbx-plugin-sdk` — Go sidecar SDK.
-- `sdk/cli` — Rust source for the `dbx-plugin create/package` CLI published as `@dbx-app/plugin-cli`.
+- `sdk/rust/linop-db-plugin-sdk` — Rust sidecar SDK.
+- `sdk/go/linop-db-plugin-sdk` — Go sidecar SDK.
+- `sdk/cli` — Rust source for the `linop-db-plugin create/package` CLI published as `@linop-db-app/plugin-cli`.
 - `sdk/packager` — deterministic `.dbxp` packager plus repository-side Ed25519 signing.
 - `sdk/templates/github/plugin-release.yml` — caller template for multi-platform unsigned release candidates.
 - `examples/hello-workbench` — complete connection provider + native sidecar + sandboxed workbench example.
@@ -34,9 +34,9 @@ The platform contract is manifest v1 + Host API 1.x + sidecar protocol v1. The s
 Create a frontend-only universal plugin or a complete Rust/Go plugin project:
 
 ```bash
-dbx-plugin create my-ui-plugin --template frontend
-dbx-plugin create my-rust-plugin --template rust
-dbx-plugin create my-go-plugin --template go
+linop-db-plugin create my-ui-plugin --template frontend
+linop-db-plugin create my-rust-plugin --template rust
+linop-db-plugin create my-go-plugin --template go
 ```
 
 All generated projects include sandbox workbench UI, localized manifest metadata, `.dbxp` packaging configuration, and a GitHub Release workflow. Rust and Go templates additionally include a native sidecar and multi-platform build matrix; frontend-only projects publish one `universal` package.
@@ -59,10 +59,10 @@ The Plugin Center separates three concerns:
 - **Installed** manages the local plugin lifecycle and opens connection providers, workbenches, and filesystem providers.
 - **Settings** manages local `.dbxp` installation, custom repositories, development-only unsigned packages, and advanced repository trust.
 
-Repository configuration is persisted under the plugin store in `.repositories.json`. DBX always exposes one managed `dbx-official` repository backed by the official catalog:
+Repository configuration is persisted under the plugin store in `.repositories.json`. DBX always exposes one managed `linop-db-official` repository backed by the official catalog:
 
 ```text
-https://raw.githubusercontent.com/t8y2/dbx-store/main/catalog/index.json
+https://raw.githubusercontent.com/t8y2/linop-db-store/main/catalog/index.json
 ```
 
 The official URL is part of the DBX client contract and cannot be edited in Plugin Center settings. Official repository signing public keys are built into DBX; release builds may append rotation keys with `DBX_PLUGIN_MARKETPLACE_TRUSTED_KEYS_JSON`. Custom repositories use user-managed repository keys. The official repository accepts only DBX-managed keys, so adding a custom key cannot impersonate an official package.
@@ -72,8 +72,8 @@ Catalog v1 is defined by `marketplace.schema.json` and includes repository metad
 Run the live official-store smoke test with:
 
 ```bash
-cargo run -p dbx-core --no-default-features --example plugin_marketplace_smoke
-cargo run -p dbx-core --no-default-features --example plugin_marketplace_smoke -- <plugin-id> [version]
+cargo run -p linop-db-core --no-default-features --example plugin_marketplace_smoke
+cargo run -p linop-db-core --no-default-features --example plugin_marketplace_smoke -- <plugin-id> [version]
 ```
 
 Without a plugin ID the smoke test verifies catalog availability and parsing. With a listed plugin ID it additionally downloads, verifies, installs, and reports the trusted signing key.
@@ -89,10 +89,10 @@ Review alone cannot protect an already approved download URL from later replacem
 
 ### Recommended repository ownership
 
-Keep the host, SDK, schemas, packager, and minimal examples in `t8y2/dbx`. The official catalog and review metadata live in the separate [`t8y2/dbx-store`](https://github.com/t8y2/dbx-store) repository:
+Keep the host, SDK, schemas, packager, and minimal examples in `t8y2/dbx`. The official catalog and review metadata live in the separate [`t8y2/linop-db-store`](https://github.com/t8y2/linop-db-store) repository:
 
 ```text
-t8y2/dbx-store
+t8y2/linop-db-store
 ├── plugins/              # reviewed metadata submissions
 ├── publishers/           # publisher identity and review records
 ├── revoked.json          # revoked versions or signing keys
@@ -144,8 +144,8 @@ Add the schema to a manifest for editor validation:
   "name": "Example",
   "icon": "assets/plugin.svg",
   "version": "1.0.0",
-  "source": "https://github.com/example/dbx-plugin",
-  "homepage": "https://example.com/dbx-plugin",
+  "source": "https://github.com/example/linop-db-plugin",
+  "homepage": "https://example.com/linop-db-plugin",
   "engines": {
     "dbx": ">=0.5.68",
     "host_api": "^1.0"
@@ -400,12 +400,12 @@ All backend calls are rebound to the owning plugin ID by the host. A plugin UI c
 Every sandbox document ships with a small official component kit built on the DBX design tokens, so plugin UI follows light/dark mode and custom palettes automatically:
 
 ```html
-<button class="dbx-btn dbx-btn--primary">Connect</button>
-<input class="dbx-input" placeholder="Endpoint" />
-<span class="dbx-badge">Ready</span>
+<button class="linop-db-btn linop-db-btn--primary">Connect</button>
+<input class="linop-db-input" placeholder="Endpoint" />
+<span class="linop-db-badge">Ready</span>
 ```
 
-Available classes: `dbx-card`, `dbx-section-title`, `dbx-btn` (`--primary` / `--danger` / `--ghost`), `dbx-label`, `dbx-input`, `dbx-select`, `dbx-textarea`, `dbx-hint`, `dbx-row` (label + field grid), `dbx-table`, `dbx-badge`, `dbx-link`. Custom plugin CSS can use the same `var(--color-*)` tokens; `document.documentElement.dataset.dbxTheme` reflects the current appearance.
+Available classes: `linop-db-card`, `linop-db-section-title`, `linop-db-btn` (`--primary` / `--danger` / `--ghost`), `linop-db-label`, `linop-db-input`, `linop-db-select`, `linop-db-textarea`, `linop-db-hint`, `linop-db-row` (label + field grid), `linop-db-table`, `linop-db-badge`, `linop-db-link`. Custom plugin CSS can use the same `var(--color-*)` tokens; `document.documentElement.dataset.dbxTheme` reflects the current appearance.
 
 Plugin-authored names, descriptions, contribution labels, form-field text, and select-option labels can be localized through `manifest.json > localizations`. DBX selects the exact current locale first, then its base language, and finally falls back to the manifest's default text:
 
@@ -440,7 +440,7 @@ A result view contributes a plugin-rendered visualization for query results. DBX
 }
 ```
 
-A result view declares display metadata only: it carries no UI of its own and never names a workbench. The opened contribution id reaches the plugin UI in the init payload (`dbx-plugin-init` detail `contributionId`), so a plugin that declares several result views selects the matching one inside its single UI entrypoint.
+A result view declares display metadata only: it carries no UI of its own and never names a workbench. The opened contribution id reaches the plugin UI in the init payload (`linop-db-plugin-init` detail `contributionId`), so a plugin that declares several result views selects the matching one inside its single UI entrypoint.
 
 The `context.result` snapshot is bounded — `{ columns, rows (<= 500), truncated }` plus `sql`, `connectionId`, `database`, and `schema`. Plugins that need more rows can re-run a read-only statement with [`queryData`](#read-only-data-queries) (requires `host.data:read` and the user's consent for that connection). Requires a UI entrypoint.
 
@@ -580,7 +580,7 @@ Mutation methods return `{ success, message?, entry? }` and are rejected unless 
 
 **The MCP tools mark.** Declaring this contribution (with a backend entrypoint) is what marks a plugin as *providing MCP tools*. Marked plugins get an "MCP tools" badge in the Plugin Center and the store, can be filtered there, and get a card in Settings → MCP → Capabilities where the user enables and authorizes their tools. A plugin without the contribution has no MCP surface and never appears in the MCP settings. Store catalogs should set `"mcpTools": true` on the plugin entry so the badge shows before install (see `marketplace.schema.json`).
 
-A backend that implements the optional MCP tool bridge (`mcp/tools` + `mcp/call`, see "Tools for the built-in AI assistant" below) does not put its tools in front of anyone by itself: the built-in AI agent only sees a plugin after the user enabled it in the Plugin Center, and the external `dbx` MCP server (`dbx-mcp`) only sees plugins that opt in with `external_tools: true`. This optional contribution declares and tunes those surfaces:
+A backend that implements the optional MCP tool bridge (`mcp/tools` + `mcp/call`, see "Tools for the built-in AI assistant" below) does not put its tools in front of anyone by itself: the built-in AI agent only sees a plugin after the user enabled it in the Plugin Center, and the external `dbx` MCP server (`linop-db-mcp`) only sees plugins that opt in with `external_tools: true`. This optional contribution declares and tunes those surfaces:
 
 ```json
 {
@@ -727,7 +727,7 @@ The result is `{ dbType, columns: [{ name, dataType? }], rows, truncated, elapse
 - **Open SQL connections only.** A saved-but-closed connection is rejected with `Connection is not open`; non-SQL connections are not served.
 - **Bounds.** `maxRows` defaults to 500 (max 5000), serialized rows are capped at 8 MiB, and `timeoutMs` is clamped to the connection timeout and 60 s.
 
-The backend re-checks the manifest permission and the grant on every call (`crates/dbx-core/src/query/plugin_data.rs`); the bridge only adds the consent prompt and a per-session cache. Hosts without a consent surface deny instead of granting.
+The backend re-checks the manifest permission and the grant on every call (`crates/linop-db-core/src/query/plugin_data.rs`); the bridge only adds the consent prompt and a per-session cache. Hosts without a consent surface deny instead of granting.
 
 ### Estimated execution plans
 
@@ -837,7 +837,7 @@ Plugins normally answer requests, but Host API 1.1 adds one method a plugin back
 - Errors come back as JSON-RPC errors: `-32001` means no user interface is attached (headless/MCP runs, or the desktop dialog is not mounted), `-32602` means the params are invalid, `-32601` means the host does not implement the method. A plugin must degrade gracefully on all three instead of blocking forever.
 - DBX answers only with what the user typed. It never auto-fills, caches, or logs the value, and it allows at most four open prompts per plugin session.
 - Capability gating: `plugin/initialize` advertises `host.hostApiVersion` (`1.1.0` or later) and `host.features` (containing `host.requestUserInput` when available). Only call the method when it is advertised; an older host reports `1.0.0` and drops the frame.
-- The Rust SDK (`dbx-plugin-sdk`) wraps this: `dbx_plugin_sdk::host_client()`, `HostClient::supports("host/requestUserInput")`, and `HostClient::request_user_input(&UserInputPrompt::secret("Verification code"))`.
+- The Rust SDK (`linop-db-plugin-sdk`) wraps this: `linop_db_plugin_sdk::host_client()`, `HostClient::supports("host/requestUserInput")`, and `HostClient::request_user_input(&UserInputPrompt::secret("Verification code"))`.
 
 ## Tools for the built-in AI assistant
 
@@ -850,11 +850,11 @@ A backend can expose tools to the built-in DBX AI agent through the MCP-shaped s
 
 `mcp/tools` returns `{ "tools": [{ "name", "description", "inputSchema", "annotations"? }] }`; `mcp/call` returns an MCP `CallToolResult` (`{ "content": [{ "type": "text", "text": "…" }], "isError": false }`). `lifecycle` is the open connection's `connection/connect` payload, with secrets resolved by the host and the runtime endpoint after transport layers.
 
-Host rules (`crates/dbx-core/src/ai/plugin_tools.rs`):
+Host rules (`crates/linop-db-core/src/ai/plugin_tools.rs`):
 
 - Tools are opt-in: a plugin contributes AI tools only after the user enabled it in Plugin Center, and a manifest `mcp` contribution with `ai_tools: false` keeps it off the surface even when opted in. The Plugin Center switch turns a plugin off for good. Tools appear only in Agent mode with API model providers, and only for plugin connections that are currently open.
-- The host binds the connection: `connectionId` / `connectionName` are removed from the model-facing schema, and the bound `connectionId` is injected into the forwarded arguments when the plugin schema declares it. With several open connections the model chooses through an added `dbx_connection` argument.
-- A tool runs without asking only when its entry sets `annotations.readOnlyHint: true`. Every other call pauses the run behind an inline approval that shows the exact forwarded arguments; unanswered approvals are denied after five minutes (`crates/dbx-core/src/ai/tool_approval.rs`). The hint is trusted because the plugin's native backend is already trusted code; the approval protects against model mistakes and prompt injection, not against a hostile plugin.
+- The host binds the connection: `connectionId` / `connectionName` are removed from the model-facing schema, and the bound `connectionId` is injected into the forwarded arguments when the plugin schema declares it. With several open connections the model chooses through an added `linop_db_connection` argument.
+- A tool runs without asking only when its entry sets `annotations.readOnlyHint: true`. Every other call pauses the run behind an inline approval that shows the exact forwarded arguments; unanswered approvals are denied after five minutes (`crates/linop-db-core/src/ai/tool_approval.rs`). The hint is trusted because the plugin's native backend is already trusted code; the approval protects against model mistakes and prompt injection, not against a hostile plugin.
 - Names are exposed as `<prefix>__<tool>` (`io.dbx.ssh` → `ssh__…`). Schemas are reduced to a provider-portable subset (`type`, `description`, `properties`, `required`, `items`, string `enum`, numeric/length/item bounds); argument names must match `[A-Za-z_][A-Za-z0-9_]{0,63}`.
 - Discovery times out after 8 s per connection, calls after 120 s, and results are compacted before reaching the model.
 
@@ -1043,14 +1043,14 @@ For native plugins, copy `sdk/templates/github/plugin-release.yml` into the plug
 Core checks:
 
 ```bash
-cargo test -p dbx-core --no-default-features plugins::
-cargo check -p dbx-web --no-default-features
+cargo test -p linop-db-core --no-default-features plugins::
+cargo check -p linop-db-web --no-default-features
 ```
 
 SDK and example checks:
 
 ```bash
-cargo test --manifest-path plugins/sdk/rust/dbx-plugin-sdk/Cargo.toml
+cargo test --manifest-path plugins/sdk/rust/linop-db-plugin-sdk/Cargo.toml
 cargo check --manifest-path plugins/sdk/packager/Cargo.toml
 node plugins/examples/hello-workbench/package.mjs
 node plugins/examples/hello-workbench/smoke.mjs

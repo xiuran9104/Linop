@@ -7,7 +7,7 @@ import { buildTabResultSnapshot, decodeTabResultSnapshot, encodeTabResultSnapsho
 import type { QueryResult, QueryTab } from "@/types/database";
 
 function node(properties: Neo4jNodeProperty[], display = "(:QA)") {
-  return { __dbx_neo4j_node: "v1", display, properties };
+  return { __linop_db_neo4j_node: "v1", display, properties };
 }
 
 function property(name: string, value: string, type = "String"): Neo4jNodeProperty {
@@ -59,7 +59,7 @@ describe("Neo4j node table projection", () => {
   });
 
   it("does not normalize unknown versions, malformed envelopes or ordinary scalar results", () => {
-    const envelopes = [{ ...node([]), __dbx_neo4j_node: "v2" }, node([{ ...property("bad", "x"), value: {} } as unknown as Neo4jNodeProperty]), node([property("a", "x"), property("a", "y")])];
+    const envelopes = [{ ...node([]), __linop_db_neo4j_node: "v2" }, node([{ ...property("bad", "x"), value: {} } as unknown as Neo4jNodeProperty]), node([property("a", "x"), property("a", "y")])];
     const source = result(
       ["n"],
       envelopes.map((value) => [value]),

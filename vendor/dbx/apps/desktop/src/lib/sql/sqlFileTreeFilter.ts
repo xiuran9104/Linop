@@ -3,7 +3,7 @@ import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStor
 import { normalizeExternalSqlPath } from "@/lib/sql/sqlFileOpen";
 import type { SqlFileOrder } from "@/lib/sqlFile/sqlFileOrder";
 
-const SORT_ORDER_STORAGE_KEY = "dbx-sql-file-sort-order";
+const SORT_ORDER_STORAGE_KEY = "linop-db-sql-file-sort-order";
 export type SqlFileSortOrder = "asc" | "desc" | "manual";
 export type SqlFileSearchMode = "name" | "content";
 export const DEFAULT_SQL_FILE_SORT_ORDER: SqlFileSortOrder = "asc";

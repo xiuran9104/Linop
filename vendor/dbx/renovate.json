@@ -223,7 +223,7 @@
         "flake.nix"
       ],
       "enabled": false,
-      "description": "Nix hashes must be updated manually with the CI-computed value; renovate's local pnpm environment computes a different dbx-desktop-pnpm-deps hash"
+      "description": "Nix hashes must be updated manually with the CI-computed value; renovate's local pnpm environment computes a different linop-db-desktop-pnpm-deps hash"
     }
   ]
 }

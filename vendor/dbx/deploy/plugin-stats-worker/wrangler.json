@@ -1,5 +1,5 @@
 {
-  "name": "dbx-plugin-stats",
+  "name": "linop-db-plugin-stats",
   "compatibility_date": "2026-05-07",
   "main": "worker.ts",
   "routes": [

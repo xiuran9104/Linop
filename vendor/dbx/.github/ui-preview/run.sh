@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Runs the PR's frontend against a dbx-web backend in a home of its own, with
+# Runs the PR's frontend against a linop-db-web backend in a home of its own, with
 # made-up data beside it (seed.mjs: two SQLite databases, connections, a
 # saved-SQL library, query history), and records it (record.mjs).
 #
 #   run.sh <out dir>
 #
-# env: DBX_WEB_BIN    the dbx-web binary (or the static package's launcher)
+# env: DBX_WEB_BIN    the linop-db-web binary (or the static package's launcher)
 #                     — required
 #      DIST_DIR       the PR's frontend build; when set it replaces the
 #                     binary's embedded frontend (DBX_STATIC_DIR)
@@ -15,7 +15,7 @@
 #      PLAYWRIGHT_BROWSERS_PATH must already point at the installed
 #      Chromium, since HOME moves.
 #
-# For local testing against a dbx-web that already runs somewhere: set
+# For local testing against a linop-db-web that already runs somewhere: set
 # DBX_URL and nothing here is started or seeded.
 set -euo pipefail
 [ "$(uname -s)" = Linux ] || { echo "run.sh: Linux only" >&2; exit 1; }
@@ -39,7 +39,7 @@ if [ -z "$url" ]; then
   static=()
   [ -n "${DIST_DIR:-}" ] && static=(DBX_STATIC_DIR="$(cd "$DIST_DIR" && pwd)")
   env DBX_PORT="$port" DBX_BIND_ADDR=127.0.0.1 DBX_DISABLE_PASSWORD=1 \
-      DBX_DATA_DIR="$work/data" "${static[@]}" \
+      LINOP_DB_DATA_DIR="$work/data" "${static[@]}" \
       "$DBX_WEB_BIN" >"$work/web.log" 2>&1 &
   web=$!
   url="http://127.0.0.1:$port"
@@ -48,7 +48,7 @@ if [ -z "$url" ]; then
     kill -0 "$web" 2>/dev/null || { cat "$work/web.log"; exit 1; }
     sleep 1
   done
-  curl -fsS -o /dev/null "$url/api/auth/check" || { echo "run.sh: dbx-web never became ready" >&2; cat "$work/web.log"; exit 1; }
+  curl -fsS -o /dev/null "$url/api/auth/check" || { echo "run.sh: linop-db-web never became ready" >&2; cat "$work/web.log"; exit 1; }
 
   node "$here/seed.mjs" dbs "$work/dbs"
   node "$here/seed.mjs" api "$url" "$work/dbs"

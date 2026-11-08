@@ -132,7 +132,7 @@ cp agents/drivers/<db_type>/build/libs/*-all.jar ~/.dbx/agents/drivers/<db_type>
 
 Restart DBX or disconnect and reconnect the database so the new agent process loads the replacement JAR.
 
-Native agents such as `cassandra`, `hive`, `iotdb`, `oracle`, `kingbase`, `tdengine`, `xugu`, `rabbitmq`, `rocketmq`, `zookeeper`, `etcd`, and `etcd2` use an `agent` executable instead of `agent.jar`. TDengine builds `target/release/dbx-tdengine-driver` from `drivers/tdengine/Cargo.toml`.
+Native agents such as `cassandra`, `hive`, `iotdb`, `oracle`, `kingbase`, `tdengine`, `xugu`, `rabbitmq`, `rocketmq`, `zookeeper`, `etcd`, and `etcd2` use an `agent` executable instead of `agent.jar`. TDengine builds `target/release/linop-db-tdengine-driver` from `drivers/tdengine/Cargo.toml`.
 
 ## Versioning
 
@@ -153,7 +153,7 @@ Agent module versions are tracked in [`versions.json`](versions.json).
 DBX Main Process (Rust/Tauri)
     │ stdin/stdout (JSON-RPC 2.0)
     ▼
-agent / java -jar dbx-agent-{type}.jar
+agent / java -jar linop-db-agent-{type}.jar
     │
     ▼
 Native driver / JDBC → Database

@@ -105,9 +105,9 @@ describe("AI SQL dialect prompt", () => {
 
     // The built-in assistant can only call the in-process registry's tool. The
     // MCP name belongs to the CLI-provider lane (issue #10425: the prompt used
-    // to promise `dbx_execute_redis_command` to a run that never had it).
+    // to promise `linop_db_execute_redis_command` to a run that never had it).
     expect(prompt).toContain("execute_redis_command");
-    expect(prompt).not.toContain("dbx_execute_redis_command");
+    expect(prompt).not.toContain("linop_db_execute_redis_command");
     expect(prompt).toContain("db argument");
     expect(prompt).toContain("Never send the SELECT command");
     expect(prompt).toContain("Use SCAN, not KEYS");
@@ -123,7 +123,7 @@ describe("AI SQL dialect prompt", () => {
     const prompt = buildSystemPrompt("general", context({ connectionName: "Redis", databaseType: "redis", database: "8", selectedDatabases: ["8"] }), "agent", undefined, true);
 
     // CLI providers drive the DBX MCP server, which does expose this tool.
-    expect(prompt).toContain("Use dbx_execute_redis_command");
+    expect(prompt).toContain("Use linop_db_execute_redis_command");
     expect(prompt).not.toContain("execute_redis_command (read-only)");
     expect(prompt).toContain("MCP authorization still applies");
   });

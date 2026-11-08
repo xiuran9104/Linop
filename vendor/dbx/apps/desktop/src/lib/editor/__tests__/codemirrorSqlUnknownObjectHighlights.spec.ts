@@ -142,6 +142,6 @@ describe("createSqlUnknownObjectHighlights", () => {
     // The repeated class is what beats .cm-sql-table-name (same specificity as a
     // single class once the generated theme id prefix is accounted for).
     expect(css).toContain(".cm-sql-unknown-object.cm-sql-unknown-object.cm-sql-unknown-object");
-    expect(css).toContain("var(--dbx-sql-unknown-object-color, #e5484d) !important");
+    expect(css).toContain("var(--linop-db-sql-unknown-object-color, #e5484d) !important");
   });
 });

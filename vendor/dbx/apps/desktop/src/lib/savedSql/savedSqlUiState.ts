@@ -1,6 +1,6 @@
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStorage";
 
-export const SQL_LIBRARY_EXPANDED_FOLDERS_STORAGE_KEY = "dbx-sql-library-expanded-folders";
+export const SQL_LIBRARY_EXPANDED_FOLDERS_STORAGE_KEY = "linop-db-sql-library-expanded-folders";
 
 /**
  * Load the persisted set of expanded folder IDs in the SQL Library panel.

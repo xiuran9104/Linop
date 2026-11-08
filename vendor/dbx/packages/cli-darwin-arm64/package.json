@@ -1,5 +1,5 @@
 {
-  "name": "@dbx-app/cli-darwin-arm64",
+  "name": "@linop-db-app/cli-darwin-arm64",
   "version": "0.4.141",
   "description": "Precompiled DBX CLI binary for darwin arm64",
   "license": "Apache-2.0",
@@ -15,7 +15,7 @@
     "arm64"
   ],
   "bin": {
-    "dbx-native": "bin/dbx"
+    "linop-db-native": "bin/dbx"
   },
   "files": [
     "bin"

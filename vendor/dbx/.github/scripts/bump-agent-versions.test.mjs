@@ -37,8 +37,8 @@ test("bumps DuckDB after its initial release", () => {
 test("bumps the SQLite SSH worker from its crate path", () => {
   const result = evaluateAgentVersionBump({
     versions: { "sqlite-worker": "0.1.0" },
-    changedFiles: ["crates/dbx-sqlite-worker/src/runtime.rs"],
-    moduleExists: (path) => path === "crates/dbx-sqlite-worker",
+    changedFiles: ["crates/linop-db-sqlite-worker/src/runtime.rs"],
+    moduleExists: (path) => path === "crates/linop-db-sqlite-worker",
     readModuleFile: () => "",
   });
 
@@ -314,10 +314,10 @@ test("keeps versions.json publish-relevant when it changes after the sync commit
 });
 
 function createRepository(versions) {
-  const repository = mkdtempSync(join(tmpdir(), "dbx-agent-release-"));
+  const repository = mkdtempSync(join(tmpdir(), "linop-db-agent-release-"));
   git(repository, ["init", "--initial-branch=main"]);
   git(repository, ["config", "user.name", "DBX Test"]);
-  git(repository, ["config", "user.email", "dbx-test@example.com"]);
+  git(repository, ["config", "user.email", "linop-db-test@example.com"]);
   mkdirSync(join(repository, "agents/drivers/kingbase-go"), { recursive: true });
   mkdirSync(join(repository, "agents/drivers/duckdb"), { recursive: true });
   writeVersions(repository, versions);

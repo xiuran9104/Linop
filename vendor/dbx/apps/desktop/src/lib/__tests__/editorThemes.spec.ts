@@ -224,8 +224,8 @@ describe("SQL completion theme", () => {
   it("uses the configurable medium radius for the popup container", () => {
     const rules = buildSqlCompletionThemeRules();
 
-    expect(rules[".cm-tooltip.cm-tooltip-autocomplete"]).toMatchObject({ borderRadius: "var(--dbx-radius-md)" });
-    expect(rules[".cm-tooltip.cm-tooltip-autocomplete > ul > li"]).toMatchObject({ borderRadius: "var(--dbx-radius-sm)" });
+    expect(rules[".cm-tooltip.cm-tooltip-autocomplete"]).toMatchObject({ borderRadius: "var(--linop-db-radius-md)" });
+    expect(rules[".cm-tooltip.cm-tooltip-autocomplete > ul > li"]).toMatchObject({ borderRadius: "var(--linop-db-radius-sm)" });
   });
 
   it("renders the info popup and completion list items in the configured editor font", () => {
@@ -284,7 +284,7 @@ describe("SQL completion theme", () => {
 
     for (const key of [".cm-completionIcon-sequence", ".cm-completionIcon-variable"]) {
       expect(rules[key]).toMatchObject({
-        "--dbx-completion-icon-mask": expect.stringContaining("data:image/svg+xml"),
+        "--linop-db-completion-icon-mask": expect.stringContaining("data:image/svg+xml"),
       });
     }
   });

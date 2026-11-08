@@ -7,14 +7,14 @@ Command line interface for DBX database connections, schema inspection, safe que
 ### npm
 
 ```bash
-npm install -g @dbx-app/cli
+npm install -g @linop-db-app/cli
 ```
 
 ### Homebrew
 
 ```bash
 brew tap t8y2/tap
-brew install dbx-cli
+brew install linop-db-cli
 ```
 
 The npm package installs the native CLI for the current platform automatically. Node.js 18.18.0 or newer is only needed for the npm launcher; direct native distributions do not require Node.js.
@@ -25,23 +25,23 @@ The `packages-v*` GitHub Release also provides standalone native CLI archives:
 
 | Platform | Archive |
 | --- | --- |
-| macOS Apple Silicon | `dbx-cli-darwin-arm64.tar.gz` |
-| macOS Intel | `dbx-cli-darwin-x64.tar.gz` |
-| Linux glibc ARM64 | `dbx-cli-linux-arm64-gnu.tar.gz` |
-| Linux glibc x64 | `dbx-cli-linux-x64-gnu.tar.gz` |
-| Windows ARM64 | `dbx-cli-win32-arm64.zip` |
-| Windows x64 | `dbx-cli-win32-x64.zip` |
+| macOS Apple Silicon | `linop-db-cli-darwin-arm64.tar.gz` |
+| macOS Intel | `linop-db-cli-darwin-x64.tar.gz` |
+| Linux glibc ARM64 | `linop-db-cli-linux-arm64-gnu.tar.gz` |
+| Linux glibc x64 | `linop-db-cli-linux-x64-gnu.tar.gz` |
+| Windows ARM64 | `linop-db-cli-win32-arm64.zip` |
+| Windows x64 | `linop-db-cli-win32-x64.zip` |
 
 Verify the downloaded archive with `CLI-SHA256SUMS`, extract it, and run the native binary directly:
 
 ```bash
-tar -xzf dbx-cli-linux-x64-gnu.tar.gz
+tar -xzf linop-db-cli-linux-x64-gnu.tar.gz
 chmod +x dbx
 ./dbx --version
 ./dbx connections list --json
 ```
 
-Standalone binaries do not require Node.js. They read the same DBX connection storage as the desktop application; set `DBX_DATA_DIR` when using a custom or portable data directory.
+Standalone binaries do not require Node.js. They read the same DBX connection storage as the desktop application; set `LINOP_DB_DATA_DIR` when using a custom or portable data directory.
 
 ## Official Agent Skill
 
@@ -136,8 +136,8 @@ Use `dbx doctor` to check whether the DBX connection database, connection table,
 If the optional platform package was not installed, reinstall without `--no-optional`:
 
 ```bash
-npm uninstall -g @dbx-app/cli
-npm install -g @dbx-app/cli
+npm uninstall -g @linop-db-app/cli
+npm install -g @linop-db-app/cli
 ```
 
 The native CLI does not require `better-sqlite3` and is not coupled to the Node.js ABI.

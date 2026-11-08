@@ -90,14 +90,14 @@ export function configureQueryEditorSqlExtensions(options: QueryEditorSqlExtensi
 
   const diagnosticTheme = EditorView.baseTheme({
     ".cm-sql-error.cm-sql-error.cm-sql-error, .cm-sql-error.cm-sql-error.cm-sql-error *": {
-      color: "var(--dbx-editor-diagnostic-error, var(--dbx-sql-unknown-object-color, #e5484d)) !important",
+      color: "var(--linop-db-editor-diagnostic-error, var(--linop-db-sql-unknown-object-color, #e5484d)) !important",
     },
     ".cm-sql-error": {
-      textDecoration: "underline wavy var(--dbx-editor-diagnostic-error, var(--destructive))",
+      textDecoration: "underline wavy var(--linop-db-editor-diagnostic-error, var(--destructive))",
       textUnderlineOffset: "3px",
     },
     ".cm-sql-semantic-warning": {
-      textDecoration: "underline wavy var(--dbx-editor-diagnostic-warning, var(--warning))",
+      textDecoration: "underline wavy var(--linop-db-editor-diagnostic-warning, var(--warning))",
       textUnderlineOffset: "3px",
     },
   });

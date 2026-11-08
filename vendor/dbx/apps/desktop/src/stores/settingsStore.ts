@@ -1689,9 +1689,9 @@ export const DEFAULT_EDITOR_SETTINGS: EditorSettings = {
   keepExplicitTransactionInAutoCommit: false,
 };
 
-export const STORAGE_KEY = "dbx-editor-settings";
-const OLD_FONT_SIZE_KEY = "dbx-query-editor-font-size";
-const EXPORT_BATCH_SIZE_DEFAULT_MIGRATION_KEY = "dbx-export-batch-size-default-migrated-v1";
+export const STORAGE_KEY = "linop-db-editor-settings";
+const OLD_FONT_SIZE_KEY = "linop-db-query-editor-font-size";
+const EXPORT_BATCH_SIZE_DEFAULT_MIGRATION_KEY = "linop-db-export-batch-size-default-migrated-v1";
 const LEGACY_DEFAULT_EXPORT_BATCH_SIZE = 10000;
 const MIN_UI_SCALE = 0.7;
 const MAX_UI_SCALE = 2;

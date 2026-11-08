@@ -13,7 +13,7 @@ describe("executed table query conditions", () => {
   it.each([0, 200])("uses the Oracle base query rather than ROWNUM predicates at offset %i", (offset) => {
     const inner = 'SELECT "ID", DBMS_LOB.SUBSTR("BODY", 1000, 1) AS "BODY", \'T:999:\' || DBMS_LOB.GETLENGTH("BODY") AS "__DBX_LARGE_VALUE_BYTES_T_1" FROM "APP"."ORDERS" WHERE "STATUS" = 4 ORDER BY "ID" DESC';
     const sql =
-      offset === 0 ? `SELECT "ID", "BODY", "__DBX_LARGE_VALUE_BYTES_T_1" FROM (${inner}) WHERE ROWNUM <= 100` : `SELECT "ID", "BODY", "__DBX_LARGE_VALUE_BYTES_T_1" FROM (SELECT dbx_inner.*, ROWNUM AS "__dbx_row_num" FROM (${inner}) dbx_inner WHERE ROWNUM <= 300) WHERE "__dbx_row_num" > 200`;
+      offset === 0 ? `SELECT "ID", "BODY", "__DBX_LARGE_VALUE_BYTES_T_1" FROM (${inner}) WHERE ROWNUM <= 100` : `SELECT "ID", "BODY", "__DBX_LARGE_VALUE_BYTES_T_1" FROM (SELECT linop_db_inner.*, ROWNUM AS "__linop_db_row_num" FROM (${inner}) linop_db_inner WHERE ROWNUM <= 300) WHERE "__linop_db_row_num" > 200`;
     expect(dataGridExecutedQueryConditions(sql, "ORDERS", "oracle")).toEqual({ whereInput: '"STATUS" = 4', orderBy: '"ID" DESC' });
   });
 

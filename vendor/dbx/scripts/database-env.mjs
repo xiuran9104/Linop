@@ -128,8 +128,8 @@ function printQuickStart(recipes) {
 }
 
 function printCompletionSetup() {
-  console.log("Bash:       source deploy/database/completion/dbx-make.bash");
-  console.log("Zsh:        autoload -Uz compinit && compinit && source deploy/database/completion/_dbx-make.zsh");
+  console.log("Bash:       source deploy/database/completion/linop-db-make.bash");
+  console.log("Zsh:        autoload -Uz compinit && compinit && source deploy/database/completion/_linop-db-make.zsh");
   console.log("PowerShell: . .\\deploy\\database\\completion\\Dbx.Make.ps1");
 }
 
@@ -160,7 +160,7 @@ export function assertResetConfirmed(value) {
 }
 
 export function expectedContainerName(recipe) {
-  return `dbx-${recipe.database}-${recipe.displayVersion}`.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
+  return `linop-db-${recipe.database}-${recipe.displayVersion}`.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-");
 }
 
 export function defaultHostPortMappings(compose) {
@@ -385,7 +385,7 @@ export function serviceHasNamedVolume(compose, service) {
 }
 
 function composeArgs(recipe, ...args) {
-  const project = (process.env.DB_PROJECT || `dbx-${basename(REPO_ROOT)}-${recipe.database}-${recipe.displayVersion}`).toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
+  const project = (process.env.DB_PROJECT || `linop-db-${basename(REPO_ROOT)}-${recipe.database}-${recipe.displayVersion}`).toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
   return ["compose", "--project-name", project, "--file", join(recipe.directory, "compose.yaml"), ...args];
 }
 

@@ -35,7 +35,7 @@ test("rejects tags the MSI version cannot represent", () => {
 });
 
 test("writes the config file for the Tauri CLI", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "dbx-msi-config-"));
+  const dir = await mkdtemp(join(tmpdir(), "linop-db-msi-config-"));
   const output = join(dir, "tauri.msi.conf.json");
   const result = spawnSync(process.execPath, [script, "v0.6.60-beta.20261029.1", output], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);

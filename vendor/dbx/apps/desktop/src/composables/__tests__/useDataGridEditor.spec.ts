@@ -1702,7 +1702,7 @@ describe("useDataGridEditor saveChanges reload", () => {
   // addressed by matching every column value, and the loaded page cannot show
   // whether another physical row matches the same condition.
   const keylessGuard = {
-    sql: "SELECT COUNT(*) AS dbx_keyless_row_matches FROM orders_test WHERE (status = 'pending')",
+    sql: "SELECT COUNT(*) AS linop_db_keyless_row_matches FROM orders_test WHERE (status = 'pending')",
     maxMatchedRows: 1,
     message: "Cannot safely update or delete this row: more than one row matches.",
   };
@@ -1873,7 +1873,7 @@ describe("useDataGridEditor saveChanges reload", () => {
       rollbackStatements: [],
       keylessGuards: [keylessGuard],
     });
-    mocks.executeQuery.mockResolvedValue({ columns: ["dbx_keyless_row_matches"], rows: [[2]] });
+    mocks.executeQuery.mockResolvedValue({ columns: ["linop_db_keyless_row_matches"], rows: [[2]] });
 
     const { editor } = createSaveTestEditor({ primaryKeys: [] });
     editor.dirtyRows.value.set(0, new Map([[1, "shipped"]]));
@@ -1891,7 +1891,7 @@ describe("useDataGridEditor saveChanges reload", () => {
       rollbackStatements: [],
       keylessGuards: [keylessGuard],
     });
-    mocks.executeQuery.mockResolvedValue({ columns: ["dbx_keyless_row_matches"], rows: [[1]] });
+    mocks.executeQuery.mockResolvedValue({ columns: ["linop_db_keyless_row_matches"], rows: [[1]] });
     mocks.executeBatch.mockResolvedValue({ affected_rows: 1 });
 
     const { editor } = createSaveTestEditor({ primaryKeys: [] });
@@ -1909,7 +1909,7 @@ describe("useDataGridEditor saveChanges reload", () => {
   // must report the conflict instead of silently deleting nothing.
   it("refuses a keyless save when the physical row locator no longer matches a row", async () => {
     const staleLocatorGuard = {
-      sql: "SELECT COUNT(*) AS dbx_keyless_row_matches FROM orders_test WHERE (ctid = '(0,1)'::tid)",
+      sql: "SELECT COUNT(*) AS linop_db_keyless_row_matches FROM orders_test WHERE (ctid = '(0,1)'::tid)",
       maxMatchedRows: 1,
       minMatchedRows: 1,
       message: keylessGuard.message,
@@ -1920,7 +1920,7 @@ describe("useDataGridEditor saveChanges reload", () => {
       rollbackStatements: [],
       keylessGuards: [staleLocatorGuard],
     });
-    mocks.executeQuery.mockResolvedValue({ columns: ["dbx_keyless_row_matches"], rows: [[0]] });
+    mocks.executeQuery.mockResolvedValue({ columns: ["linop_db_keyless_row_matches"], rows: [[0]] });
 
     const { editor } = createSaveTestEditor({ databaseType: "postgres", primaryKeys: [] });
     editor.deletedRows.value.add(0);

@@ -454,7 +454,7 @@ describe("DocumentBrowser Elasticsearch field search", () => {
       database: "",
       collection: "orders",
     });
-    storedValues.set(`dbx-document-grid-column-visibility:v1:${legacyScopeKey}`, JSON.stringify(["title"]));
+    storedValues.set(`linop-db-document-grid-column-visibility:v1:${legacyScopeKey}`, JSON.stringify(["title"]));
 
     app = createApp(DocumentBrowser, {
       connectionId: "connection-1",
@@ -1240,7 +1240,7 @@ describe("DocumentBrowser MongoDB filter value types", () => {
     await flushUi();
 
     expect(backend.documentDeleteDocument).toHaveBeenCalledOnce();
-    expect(backend.documentDeleteDocument).toHaveBeenCalledWith("mongo-1", "test", "typed_ids", '__dbx_mongo_string_id__"document-1"', undefined, undefined);
+    expect(backend.documentDeleteDocument).toHaveBeenCalledWith("mongo-1", "test", "typed_ids", '__linop_db_mongo_string_id__"document-1"', undefined, undefined);
   });
 
   it("waits for danger confirmation before deleting a document when confirmation is enabled", async () => {
@@ -1321,7 +1321,7 @@ describe("DocumentBrowser MongoDB filter value types", () => {
     expect(connectionId).toBe("meili-1");
     expect(collection).toBe("movies");
     expect(updates).toHaveLength(1);
-    expect(updates[0].id).toBe('__dbx_meilisearch_string_id__"001"');
+    expect(updates[0].id).toBe('__linop_db_meilisearch_string_id__"001"');
     expect(JSON.parse(updates[0].docJson)).toEqual({ title: "One revised", rating: 1 });
     expect(deleteIds).toEqual(["3"]);
     expect(inserts.map((value: string) => JSON.parse(value))).toEqual([

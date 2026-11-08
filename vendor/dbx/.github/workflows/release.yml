@@ -58,7 +58,7 @@ jobs:
         uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
 
       - name: Build Nix desktop package
-        run: nix build .#dbx-desktop --no-link --print-build-logs
+        run: nix build .#linop-db-desktop --no-link --print-build-logs
 
   bump-jdbc-plugin-version:
     runs-on: ubuntu-latest
@@ -290,7 +290,7 @@ jobs:
         if: startsWith(matrix.platform, 'ubuntu')
         shell: bash
         env:
-          XDG_CACHE_HOME: ${{ runner.temp }}/dbx-tauri-cache
+          XDG_CACHE_HOME: ${{ runner.temp }}/linop-db-tauri-cache
         run: |
           echo "XDG_CACHE_HOME=${XDG_CACHE_HOME}" >> "$GITHUB_ENV"
           ./.github/scripts/prepare-appimage-bundler.sh "${{ matrix.target }}"
@@ -310,7 +310,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Standard ARM runners have 16 GB RAM; parallel rustc of the heavy
-          # workspace crates (dbx-core, dbx-mcp) plus linking peaks past what
+          # workspace crates (linop-db-core, linop-db-mcp) plus linking peaks past what
           # the pool now tolerates and the runner is killed with a shutdown
           # signal. Serialize codegen on the ARM leg and link with lld, which
           # holds far less memory than the default bfd linker.
@@ -821,11 +821,11 @@ jobs:
       - name: Build DBX for Windows 7 ${{ matrix.arch }}
         shell: pwsh
         run: |
-          cargo build --locked --package dbx-web --release --no-default-features --features embed-static,duckdb-sidecar,dynamodb,mq-admin,dbx-core/sqlite-bundled --target ${{ matrix.target }} -Z build-std=std,panic_abort
+          cargo build --locked --package linop-db-web --release --no-default-features --features embed-static,duckdb-sidecar,dynamodb,mq-admin,linop-db-core/sqlite-bundled --target ${{ matrix.target }} -Z build-std=std,panic_abort
 
       - name: Audit Windows 7 PE imports
         shell: pwsh
-        run: ./.github/scripts/assert-win7-pe-compat.ps1 -BinaryPath target/${{ matrix.target }}/release/dbx-web.exe
+        run: ./.github/scripts/assert-win7-pe-compat.ps1 -BinaryPath target/${{ matrix.target }}/release/linop-db-web.exe
 
       - name: Upload Windows portable ${{ matrix.arch }} ZIP
         timeout-minutes: 20
@@ -838,9 +838,9 @@ jobs:
           $arch = "${{ matrix.arch }}"
           $portableRoot = "portable"
           $portableDir = Join-Path $portableRoot "DBX_${version}_${arch}"
-          $zipName = "dbx-web_${version}_${arch}-browser-static.zip"
-          $zipSha256 = "dbx-web_${version}_${arch}-browser-static.zip.sha256"
-          $exePath = "target/${{ matrix.target }}/release/dbx-web.exe"
+          $zipName = "linop-db-web_${version}_${arch}-browser-static.zip"
+          $zipSha256 = "linop-db-web_${version}_${arch}-browser-static.zip.sha256"
+          $exePath = "target/${{ matrix.target }}/release/linop-db-web.exe"
 
           if (!(Test-Path $exePath)) {
             Write-Error "Missing Windows executable: $exePath"
@@ -848,10 +848,10 @@ jobs:
           }
 
           New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
-          Copy-Item $exePath (Join-Path $portableDir "dbx-web.exe") -Force
+          Copy-Item $exePath (Join-Path $portableDir "linop-db-web.exe") -Force
           Copy-Item "LICENSE" (Join-Path $portableDir "LICENSE") -Force
           Copy-Item "README.md" (Join-Path $portableDir "README.md") -Force
-          Copy-Item ".github\scripts\start-dbx-web.bat" (Join-Path $portableDir "start.bat") -Force
+          Copy-Item ".github\scripts\start-linop-db-web.bat" (Join-Path $portableDir "start.bat") -Force
 
           Compress-Archive -Path (Join-Path $portableDir "*") -DestinationPath $zipName -Force
 
@@ -861,7 +861,7 @@ jobs:
           gh release upload "${env:RELEASE_TAG}" $zipName $zipSha256 --repo "${env:GITHUB_REPOSITORY}" --clobber
 
   static-browser:
-    # Fully static musl builds of the browser (dbx-web) variant. No glibc
+    # Fully static musl builds of the browser (linop-db-web) variant. No glibc
     # dependency, so the tarball runs on any Linux distribution (verified in
     # the oldest pullable Ubuntu container for each arch).
     needs: release-ready
@@ -960,8 +960,8 @@ jobs:
         env:
           RUSTFLAGS: ${{ matrix.rustflags }}
         run: |
-          cargo zigbuild --release -p dbx-web --target ${{ matrix.target }} \
-            --no-default-features --features "embed-static,duckdb-sidecar,dynamodb,mq-admin,dbx-core/sqlite-bundled"
+          cargo zigbuild --release -p linop-db-web --target ${{ matrix.target }} \
+            --no-default-features --features "embed-static,duckdb-sidecar,dynamodb,mq-admin,linop-db-core/sqlite-bundled"
 
       - name: Package static browser runtime
         env:
@@ -986,7 +986,7 @@ jobs:
           echo "Verifying in $VERIFY_IMAGE"
           docker run --rm -v "$PWD:/workspace" -w /workspace "$VERIFY_IMAGE" \
             bash scripts/verify-web-static.sh \
-            "dist-web-static/dbx-linux-${{ matrix.arch }}-browser-static.tar.gz"
+            "dist-web-static/linop-db-linux-${{ matrix.arch }}-browser-static.tar.gz"
 
       - name: Upload release asset
         env:
@@ -994,12 +994,12 @@ jobs:
         run: |
           TAG_VERSION="${RELEASE_TAG#v}"
           VERSION="${TAG_VERSION%%-beta.*}"
-          PACKAGE_VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "dbx-web") | .version')"
+          PACKAGE_VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "linop-db-web") | .version')"
           if [ "$PACKAGE_VERSION" != "$VERSION" ] && [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
-            echo "Release tag version $TAG_VERSION or base version $VERSION does not match dbx-web package version $PACKAGE_VERSION" >&2
+            echo "Release tag version $TAG_VERSION or base version $VERSION does not match linop-db-web package version $PACKAGE_VERSION" >&2
             exit 1
           fi
-          SOURCE="dist-web-static/dbx-linux-${{ matrix.arch }}-browser-static.tar.gz"
+          SOURCE="dist-web-static/linop-db-linux-${{ matrix.arch }}-browser-static.tar.gz"
           ASSET="DBX_${VERSION}_${{ matrix.arch }}-browser-static.tar.gz"
           CHECKSUM="${ASSET}.sha256"
           cp "$SOURCE" "$ASSET"
@@ -1075,8 +1075,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload "${RELEASE_TAG}" \
-            "plugins/jdbc/dist/dbx-jdbc-plugin-${{ steps.jdbc-plugin.outputs.version }}.zip" \
-            "plugins/jdbc/dist/dbx-jdbc-plugin-latest.zip" \
+            "plugins/jdbc/dist/linop-db-jdbc-plugin-${{ steps.jdbc-plugin.outputs.version }}.zip" \
+            "plugins/jdbc/dist/linop-db-jdbc-plugin-latest.zip" \
             --repo "${GITHUB_REPOSITORY}" \
             --clobber
 
@@ -1094,7 +1094,7 @@ jobs:
             "$RUNNER_TEMP/latest-json/latest.json" \
             "${{ steps.jdbc-plugin.outputs.version }}" \
             "1" \
-            "https://github.com/t8y2/dbx/releases/latest/download/dbx-jdbc-plugin-latest.zip"
+            "https://github.com/t8y2/dbx/releases/latest/download/linop-db-jdbc-plugin-latest.zip"
           gh release upload "${RELEASE_TAG}" \
             "$RUNNER_TEMP/latest-json/latest.json" \
             --repo "${GITHUB_REPOSITORY}" \

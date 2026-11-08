@@ -16,7 +16,7 @@ function workflowStep(action) {
 }
 
 function resolveCache(files, directory = ".") {
-  const root = mkdtempSync(join(tmpdir(), "dbx-plugin-release-cache-"));
+  const root = mkdtempSync(join(tmpdir(), "linop-db-plugin-release-cache-"));
   try {
     const project = join(root, directory);
     mkdirSync(project, { recursive: true });

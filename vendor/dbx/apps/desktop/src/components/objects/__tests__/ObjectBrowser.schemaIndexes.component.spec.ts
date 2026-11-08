@@ -143,7 +143,7 @@ describe("schema index browsing and draft navigation", () => {
       });
       row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
       const action = await vi.waitFor(() => {
-        expect(document.querySelector("[data-dbx-context-menu]")).not.toBeNull();
+        expect(document.querySelector("[data-linop-db-context-menu]")).not.toBeNull();
         const item = document.querySelector<HTMLElement>('[data-menu-action="contextMenu.exportStructure"]');
         expect([...document.querySelectorAll("[data-menu-action]")].map((item) => item.getAttribute("data-menu-action"))).toContain("contextMenu.exportStructure");
         return item!;

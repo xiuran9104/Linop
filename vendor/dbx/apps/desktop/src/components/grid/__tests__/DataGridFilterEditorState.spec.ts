@@ -155,7 +155,7 @@ async function settle() {
 }
 
 function contextMenuButton(label: string): HTMLButtonElement {
-  const button = [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].find((candidate) => candidate.textContent?.trim() === label);
+  const button = [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].find((candidate) => candidate.textContent?.trim() === label);
   if (!button) throw new Error(`Context menu item not found: ${label}`);
   return button;
 }
@@ -180,7 +180,7 @@ afterEach(() => {
     app.unmount();
     host.remove();
   }
-  document.querySelectorAll("[data-dbx-context-menu]").forEach((menu) => menu.remove());
+  document.querySelectorAll("[data-linop-db-context-menu]").forEach((menu) => menu.remove());
   clearDataGridStructuredFilterStates();
 });
 

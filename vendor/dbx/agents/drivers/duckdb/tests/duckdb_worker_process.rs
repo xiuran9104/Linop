@@ -4,11 +4,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use dbx_core::db::duckdb_worker_process::DuckDbWorkerClient;
-use dbx_core::db::duckdb_worker_protocol::{
+use linop_db_core::db::duckdb_worker_process::DuckDbWorkerClient;
+use linop_db_core::db::duckdb_worker_protocol::{
     DuckDbWorkerConnectParams, DuckDbWorkerExecuteParams, DuckDbWorkerMethod, DuckDbWorkerRequest, DuckDbWorkerResponse,
 };
-use dbx_core::query_cancel::{RunningQueries, RunningTaskMetadata};
+use linop_db_core::query_cancel::{RunningQueries, RunningTaskMetadata};
 use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, RefreshKind, System};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
@@ -16,31 +16,31 @@ use tokio_util::sync::CancellationToken;
 
 static TEMP_DB_COUNTER: AtomicU64 = AtomicU64::new(0);
 
-#[path = "../../../../crates/dbx-core/tests/support/duckdb_export.rs"]
+#[path = "../../../../crates/linop-db-core/tests/support/duckdb_export.rs"]
 mod export_regressions;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn worker_query_pages_preserve_one_execution() {
     let _guard = duckdb_worker_process_test_guard().await;
-    export_regressions::run_query_pages(PathBuf::from(env!("CARGO_BIN_EXE_dbx-duckdb-driver")));
+    export_regressions::run_query_pages(PathBuf::from(env!("CARGO_BIN_EXE_linop-db-duckdb-driver")));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn worker_parquet_exports_preserve_rows_and_project_totals() {
     let _guard = duckdb_worker_process_test_guard().await;
-    export_regressions::run_parquet_exports(PathBuf::from(env!("CARGO_BIN_EXE_dbx-duckdb-driver")));
+    export_regressions::run_parquet_exports(PathBuf::from(env!("CARGO_BIN_EXE_linop-db-duckdb-driver")));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn worker_export_snapshots_preserve_values_and_cleanup() {
     let _guard = duckdb_worker_process_test_guard().await;
-    export_regressions::run_snapshot_cleanup(PathBuf::from(env!("CARGO_BIN_EXE_dbx-duckdb-driver")));
+    export_regressions::run_snapshot_cleanup(PathBuf::from(env!("CARGO_BIN_EXE_linop-db-duckdb-driver")));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn worker_process_reads_view_source() {
     let _guard = duckdb_worker_process_test_guard().await;
-    let executable = PathBuf::from(env!("CARGO_BIN_EXE_dbx-duckdb-driver"));
+    let executable = PathBuf::from(env!("CARGO_BIN_EXE_linop-db-duckdb-driver"));
     let db_path = temp_duckdb_path();
     let _ = std::fs::remove_file(&db_path);
 
@@ -64,7 +64,7 @@ async fn worker_process_reads_view_source() {
             "main".to_string(),
             "main".to_string(),
             "active_orders".to_string(),
-            dbx_core::db::ObjectSourceKind::View,
+            linop_db_core::db::ObjectSourceKind::View,
         )
         .await
         .expect("get view source");
@@ -79,7 +79,7 @@ async fn worker_process_reads_view_source() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn worker_process_reads_table_ddl() {
     let _guard = duckdb_worker_process_test_guard().await;
-    let executable = PathBuf::from(env!("CARGO_BIN_EXE_dbx-duckdb-driver"));
+    let executable = PathBuf::from(env!("CARGO_BIN_EXE_linop-db-duckdb-driver"));
     let db_path = temp_duckdb_path();
     let _ = std::fs::remove_file(&db_path);
 
@@ -114,7 +114,7 @@ async fn worker_process_reads_table_ddl() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn worker_process_recovers_immediately_after_cancelled_long_query() {
     let _guard = duckdb_worker_process_test_guard().await;
-    let executable = PathBuf::from(env!("CARGO_BIN_EXE_dbx-duckdb-driver"));
+    let executable = PathBuf::from(env!("CARGO_BIN_EXE_linop-db-duckdb-driver"));
     let db_path = temp_duckdb_path();
     let _ = std::fs::remove_file(&db_path);
 
@@ -139,7 +139,7 @@ async fn worker_process_recovers_immediately_after_cancelled_long_query() {
     let cancelled = tokio::time::timeout(Duration::from_secs(5), &mut long_query)
         .await
         .expect("cancelled query should return promptly");
-    assert_eq!(cancelled.expect_err("long query should be cancelled"), dbx_core::query::canceled_error());
+    assert_eq!(cancelled.expect_err("long query should be cancelled"), linop_db_core::query::canceled_error());
 
     let probe = tokio::time::timeout(
         Duration::from_secs(5),
@@ -165,7 +165,7 @@ async fn worker_process_recovers_immediately_after_cancelled_long_query() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn worker_process_recovers_after_registered_cancel_interrupt() {
     let _guard = duckdb_worker_process_test_guard().await;
-    let executable = PathBuf::from(env!("CARGO_BIN_EXE_dbx-duckdb-driver"));
+    let executable = PathBuf::from(env!("CARGO_BIN_EXE_linop-db-duckdb-driver"));
     let db_path = temp_duckdb_path();
     let _ = std::fs::remove_file(&db_path);
 
@@ -201,7 +201,7 @@ async fn worker_process_recovers_after_registered_cancel_interrupt() {
     let cancelled = tokio::time::timeout(Duration::from_secs(5), &mut long_query)
         .await
         .expect("cancelled query should return promptly");
-    assert_eq!(cancelled.expect_err("long query should be cancelled"), dbx_core::query::canceled_error());
+    assert_eq!(cancelled.expect_err("long query should be cancelled"), linop_db_core::query::canceled_error());
     drop(registered);
 
     let probe = tokio::time::timeout(
@@ -228,7 +228,7 @@ async fn worker_process_recovers_after_registered_cancel_interrupt() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn worker_process_recovers_after_parser_error() {
     let _guard = duckdb_worker_process_test_guard().await;
-    let executable = PathBuf::from(env!("CARGO_BIN_EXE_dbx-duckdb-driver"));
+    let executable = PathBuf::from(env!("CARGO_BIN_EXE_linop-db-duckdb-driver"));
     let db_path = temp_duckdb_path();
     let _ = std::fs::remove_file(&db_path);
 
@@ -285,7 +285,7 @@ async fn worker_process_recovers_after_parser_error() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn worker_process_keeps_session_state_after_benign_error() {
     let _guard = duckdb_worker_process_test_guard().await;
-    let executable = PathBuf::from(env!("CARGO_BIN_EXE_dbx-duckdb-driver"));
+    let executable = PathBuf::from(env!("CARGO_BIN_EXE_linop-db-duckdb-driver"));
     let db_path = temp_duckdb_path();
     let _ = std::fs::remove_file(&db_path);
 
@@ -333,7 +333,7 @@ async fn worker_process_keeps_session_state_after_benign_error() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn worker_process_exits_when_stdin_closes_during_active_query() {
     let _guard = duckdb_worker_process_test_guard().await;
-    let executable = PathBuf::from(env!("CARGO_BIN_EXE_dbx-duckdb-driver"));
+    let executable = PathBuf::from(env!("CARGO_BIN_EXE_linop-db-duckdb-driver"));
     let db_path = temp_duckdb_path();
     let _ = std::fs::remove_file(&db_path);
     let mut child = Command::new(executable)
@@ -469,7 +469,7 @@ async fn worker_process_is_killed_after_connect_error() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn worker_process_retries_connect_after_transient_file_lock() {
     let _guard = duckdb_worker_process_test_guard().await;
-    let executable = PathBuf::from(env!("CARGO_BIN_EXE_dbx-duckdb-driver"));
+    let executable = PathBuf::from(env!("CARGO_BIN_EXE_linop-db-duckdb-driver"));
     let lock_owner_executable = PathBuf::from(env!("CARGO_BIN_EXE_duckdb-worker-file-lock-owner"));
     let db_path = temp_duckdb_path();
     let _ = std::fs::remove_file(&db_path);
@@ -524,7 +524,7 @@ async fn worker_process_retries_connect_after_transient_file_lock() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn worker_shutdown_checkpoints_and_removes_wal() {
     let _guard = duckdb_worker_process_test_guard().await;
-    let executable = PathBuf::from(env!("CARGO_BIN_EXE_dbx-duckdb-driver"));
+    let executable = PathBuf::from(env!("CARGO_BIN_EXE_linop-db-duckdb-driver"));
     let db_path = temp_duckdb_path();
     let wal_path = wal_path_for(&db_path);
     let _ = std::fs::remove_file(&db_path);
@@ -599,7 +599,7 @@ fn temp_duckdb_path() -> PathBuf {
     // These tests run concurrently; the counter prevents same-tick temp DB paths
     // from sharing a DuckDB file lock.
     let counter = TEMP_DB_COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!("dbx-duckdb-worker-process-{pid}-{suffix}-{counter}.duckdb"))
+    std::env::temp_dir().join(format!("linop-db-duckdb-worker-process-{pid}-{suffix}-{counter}.duckdb"))
 }
 
 async fn duckdb_worker_process_test_guard() -> tokio::sync::MutexGuard<'static, ()> {
@@ -611,7 +611,7 @@ fn temp_pid_path() -> PathBuf {
     let suffix = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
     let pid = std::process::id();
     let counter = TEMP_DB_COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!("dbx-duckdb-worker-process-{pid}-{suffix}-{counter}.pid"))
+    std::env::temp_dir().join(format!("linop-db-duckdb-worker-process-{pid}-{suffix}-{counter}.pid"))
 }
 
 fn read_pid_file(path: &PathBuf) -> Option<u32> {

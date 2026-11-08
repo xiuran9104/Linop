@@ -243,7 +243,7 @@ export function listingRepositoryCanVerify(repository: PluginRepository): boolea
 }
 
 const INSTALL_BEACON_URL = "https://dbxio.com/api/plugins/install";
-const INSTALLATION_ID_STORAGE_KEY = "dbx-installation-id";
+const INSTALLATION_ID_STORAGE_KEY = "linop-db-installation-id";
 const INSTALLATION_ID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 // Anonymous, purely random per-installation id so server-side stats can count

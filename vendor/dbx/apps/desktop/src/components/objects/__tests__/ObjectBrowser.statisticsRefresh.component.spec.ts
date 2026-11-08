@@ -312,7 +312,7 @@ describe("MySQL table charset and collation columns", () => {
     });
     toggle!.click();
     await vi.waitFor(() => expect(host.querySelector('[data-object-column-resize="characterSet"]')).toBeNull());
-    expect(JSON.parse(localStorage.getItem(`dbx-object-browser-columns:v1:${connection.id}:pgdemo:`) ?? "{}")).toMatchObject({ characterSet: false });
+    expect(JSON.parse(localStorage.getItem(`linop-db-object-browser-columns:v1:${connection.id}:pgdemo:`) ?? "{}")).toMatchObject({ characterSet: false });
     const mounted = mountedApps.pop()!;
     mounted.app.unmount();
     mounted.host.remove();

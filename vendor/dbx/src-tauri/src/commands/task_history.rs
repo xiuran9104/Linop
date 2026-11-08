@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tauri::State;
 
 use super::connection::AppState;
-use dbx_core::persistence::task_history::{
+use linop_db_core::persistence::task_history::{
     TaskRunDetail, TaskRunItemsPage, TaskRunItemsQuery, TaskRunListQuery, TaskRunPage,
 };
 

@@ -271,7 +271,7 @@ function splitTargetStatements(sql: string): string[] {
  * the write would no longer require confirmation.
  *
  * Mirrors `SqlScanLexerRules` in
- * `crates/dbx-core/src/safety/production_safety.rs`.
+ * `crates/linop-db-core/src/safety/production_safety.rs`.
  */
 function sqlTargetSafetyText(sql: string, dialect?: DatabaseType | string, quotedIdentifiers = new Map<string, string>()): SqlTargetSafetyText {
   const mysqlLexer = usesMysqlLexerRules(dialect);

@@ -381,7 +381,7 @@ describe("Oracle management through the shared page", () => {
     await click(en.userAdmin.lock);
 
     const dialog = document.querySelector<HTMLElement>('[data-slot="dialog-content"]')!;
-    expect(dialog.classList.contains("max-h-[calc(var(--dbx-viewport-height)-2rem)]")).toBe(true);
+    expect(dialog.classList.contains("max-h-[calc(var(--linop-db-viewport-height)-2rem)]")).toBe(true);
     expect(dialog.classList.contains("grid-rows-[auto_minmax(0,1fr)_auto]")).toBe(true);
     const sql = dialog.querySelector("pre")!;
     const middle = sql.parentElement!;

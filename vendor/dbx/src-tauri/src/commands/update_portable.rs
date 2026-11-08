@@ -45,11 +45,11 @@ pub(super) fn ensure_portable_version_is_newer(
 
 fn is_portable_upgrade(requested: &Version, current: &Version) -> bool {
     let channel = if requested.pre.is_empty() {
-        dbx_core::update::UpdateChannel::Stable
+        linop_db_core::update::UpdateChannel::Stable
     } else {
-        dbx_core::update::UpdateChannel::Beta
+        linop_db_core::update::UpdateChannel::Beta
     };
-    dbx_core::update::is_channel_update_available(channel, &requested.to_string(), &current.to_string())
+    linop_db_core::update::is_channel_update_available(channel, &requested.to_string(), &current.to_string())
 }
 
 fn parse_portable_version(value: &str, label: &str) -> Result<Version, String> {
@@ -192,7 +192,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 
 #[cfg(any(target_os = "windows", test))]
 fn portable_update_staging_dir(executable_dir: &std::path::Path, update_id: &str) -> std::path::PathBuf {
-    executable_dir.join(format!(".dbx-portable-update-{update_id}"))
+    executable_dir.join(format!(".linop-db-portable-update-{update_id}"))
 }
 
 /// Windows PowerShell lives in a versioned directory that Rust's executable
@@ -231,7 +231,7 @@ pub(super) fn launch_portable_update_helper(archive: &[u8], version: &Version) -
         .map_err(|error| format!("System clock is unavailable: {error}"))?
         .as_nanos();
     let update_id = format!("{}-{timestamp}", std::process::id());
-    let write_probe = exe_dir.join(format!(".dbx-update-{update_id}.probe"));
+    let write_probe = exe_dir.join(format!(".linop-db-update-{update_id}.probe"));
     OpenOptions::new()
         .create_new(true)
         .write(true)
@@ -405,7 +405,7 @@ mod tests {
         let staging_dir = portable_update_staging_dir(executable_dir, "123-456");
 
         assert_eq!(staging_dir.parent(), Some(executable_dir));
-        assert_eq!(staging_dir.file_name().and_then(|name| name.to_str()), Some(".dbx-portable-update-123-456"));
+        assert_eq!(staging_dir.file_name().and_then(|name| name.to_str()), Some(".linop-db-portable-update-123-456"));
         assert_eq!(staging_dir.join("DBX.exe.new").parent(), Some(staging_dir.as_path()));
         assert_eq!(staging_dir.join("apply-update.ps1").parent(), Some(staging_dir.as_path()));
     }

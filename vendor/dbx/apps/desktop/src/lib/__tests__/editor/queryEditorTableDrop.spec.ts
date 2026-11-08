@@ -50,7 +50,7 @@ describe("query editor table reference drop", () => {
     });
 
     expect(payload).toEqual({
-      kind: "dbx-table-reference",
+      kind: "linop-db-table-reference",
       connectionId: "conn-1",
       database: "app-db",
       columnNames: ["id", "order no"],

@@ -694,13 +694,13 @@ test("does not mark SQL Server default port explicit when connection URL omits i
 });
 
 test("parses H2 split JDBC URLs as file connections", () => {
-  const source = "jdbc:h2:split:28:C:/dbx-test/h2/sample-db;AUTO_SERVER=TRUE";
+  const source = "jdbc:h2:split:28:C:/linop-db-test/h2/sample-db;AUTO_SERVER=TRUE";
   const parsed = parseConnectionUrl(source);
 
   assert.equal(parsed.dbType, "h2");
   assert.equal(parsed.driverProfile, "h2");
   assert.equal(parsed.driverLabel, "H2");
-  assert.equal(parsed.host, "C:/dbx-test/h2/sample-db");
+  assert.equal(parsed.host, "C:/linop-db-test/h2/sample-db");
   assert.equal(parsed.port, 0);
   assert.equal(parsed.username, "sa");
   assert.equal(parsed.password, "");
@@ -727,7 +727,7 @@ test("parses H2 TCP JDBC URLs as server connections", () => {
 });
 
 test("keeps typed H2 credentials when JDBC URL does not include them", () => {
-  const parsed = parseConnectionUrl("jdbc:h2:split:28:C:/dbx-test/h2/sample-db;AUTO_SERVER=TRUE");
+  const parsed = parseConnectionUrl("jdbc:h2:split:28:C:/linop-db-test/h2/sample-db;AUTO_SERVER=TRUE");
   const applied = applyParsedConnectionUrl({ name: "", db_type: "h2", username: "typed-user", password: "typed-secret" } as any, parsed);
 
   assert.equal(applied.username, "typed-user");
@@ -735,7 +735,7 @@ test("keeps typed H2 credentials when JDBC URL does not include them", () => {
 });
 
 test("uses H2 JDBC URL credentials when they are included", () => {
-  const parsed = parseConnectionUrl("jdbc:h2:split:28:C:/dbx-test/h2/sample-db;USER=url-user;PASSWORD=url-secret;AUTO_SERVER=TRUE");
+  const parsed = parseConnectionUrl("jdbc:h2:split:28:C:/linop-db-test/h2/sample-db;USER=url-user;PASSWORD=url-secret;AUTO_SERVER=TRUE");
   const applied = applyParsedConnectionUrl({ name: "", db_type: "h2", username: "typed-user", password: "typed-secret" } as any, parsed);
 
   assert.equal(applied.username, "url-user");
@@ -743,7 +743,7 @@ test("uses H2 JDBC URL credentials when they are included", () => {
 });
 
 test("rebuilds H2 split JDBC URLs with an edited file path", () => {
-  assert.equal(h2FileJdbcUrlWithPath("jdbc:h2:split:28:C:/dbx-test/h2/sample-db;AUTO_SERVER=TRUE", "D:/dbx/new-sample.mv.db"), "jdbc:h2:split:28:D:/dbx/new-sample;AUTO_SERVER=TRUE");
+  assert.equal(h2FileJdbcUrlWithPath("jdbc:h2:split:28:C:/linop-db-test/h2/sample-db;AUTO_SERVER=TRUE", "D:/dbx/new-sample.mv.db"), "jdbc:h2:split:28:D:/dbx/new-sample;AUTO_SERVER=TRUE");
 });
 
 test("parses Oracle JDBC service URLs", () => {
@@ -818,12 +818,12 @@ test("uses selected HTTP-compatible profile for HTTP URLs", () => {
 });
 
 test("parses Easysearch URLs and keeps the selected HTTPS profile", () => {
-  const dedicated = parseConnectionUrl("easysearch://dbx_test:secret@search.example.com:9200");
+  const dedicated = parseConnectionUrl("easysearch://linop_db_test:secret@search.example.com:9200");
   const https = parseConnectionUrl("https://search.example.com:9243", "easysearch");
 
   assert.equal(dedicated.dbType, "easysearch");
   assert.equal(dedicated.driverProfile, "easysearch");
-  assert.equal(dedicated.username, "dbx_test");
+  assert.equal(dedicated.username, "linop_db_test");
   assert.equal(https.dbType, "easysearch");
   assert.equal(https.port, 9243);
   assert.equal(https.ssl, true);

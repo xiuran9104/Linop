@@ -43,7 +43,7 @@ test("custom Tauri runners cannot bypass development signing", () => {
 });
 
 test("incomplete identities are preserved instead of silently regenerated", { skip: process.platform !== "darwin" }, () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "dbx-dev-signing-incomplete-"));
+  const directory = mkdtempSync(path.join(tmpdir(), "linop-db-dev-signing-incomplete-"));
   const keychain = path.join(directory, "development.keychain-db");
   try {
     writeFileSync(keychain, "existing identity", { mode: 0o600 });
@@ -62,7 +62,7 @@ test("the designated requirement binds both the stable identifier and certificat
 });
 
 test("signing configuration rejects symlinked directories before accessing a keychain", { skip: process.platform !== "darwin" }, () => {
-  const root = mkdtempSync(path.join(tmpdir(), "dbx-dev-signing-test-"));
+  const root = mkdtempSync(path.join(tmpdir(), "linop-db-dev-signing-test-"));
   try {
     mkdirSync(path.join(root, "real"));
     symlinkSync(path.join(root, "real"), path.join(root, "link"));
@@ -80,7 +80,7 @@ test(
     timeout: 60000,
   },
   () => {
-    const root = mkdtempSync(path.join(tmpdir(), "dbx-dev-signing-integration-"));
+    const root = mkdtempSync(path.join(tmpdir(), "linop-db-dev-signing-integration-"));
     const directory = path.join(root, "signing");
     let identity;
     const execute = (command, args) => execFileSync(command, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });

@@ -6,7 +6,7 @@ type GetVimEditor = typeof import("@replit/codemirror-vim").getCM;
 type VimCm = NonNullable<ReturnType<GetVimEditor>>;
 
 /** DOM event the `:dbx` Ex command dispatches; bubbles from the editor's contentDOM. */
-export const DBX_VIM_ACTION_EVENT = "dbx-vim-action";
+export const DBX_VIM_ACTION_EVENT = "linop-db-vim-action";
 
 export interface DbxVimActionDetail {
   action: ShortcutActionId;

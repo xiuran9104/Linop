@@ -1,7 +1,7 @@
 services:
   database:
     image: docker.cnb.cool/znb/images/mariadb:10.11.11
-    container_name: dbx-mariadb-10.11
+    container_name: linop-db-mariadb-10.11
     restart: always
     ports:
       - "${DB_BIND_ADDRESS:-127.0.0.1}:${DB_PORT:-10200}:3306"

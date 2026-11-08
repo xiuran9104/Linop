@@ -1,0 +1,18 @@
+[package]
+name = "linop-db-sql"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[features]
+default = []
+duckdb-sidecar = ["linop-db-sql-schema/duckdb-sidecar"]
+openapi = ["linop-db-sql-data/openapi", "linop-db-types/openapi"]
+
+[dependencies]
+linop-db-sql-core = { path = "../linop-db-sql-core" }
+linop-db-sql-data = { path = "../linop-db-sql-data" }
+linop-db-sql-dialect = { path = "../linop-db-sql-dialect" }
+linop-db-sql-schema = { path = "../linop-db-sql-schema" }
+linop-db-types = { path = "../linop-db-types", default-features = false }

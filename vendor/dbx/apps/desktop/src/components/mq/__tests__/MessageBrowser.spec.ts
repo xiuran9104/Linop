@@ -312,7 +312,7 @@ describe("MessageBrowser", () => {
 
     await loadMessages(browser);
 
-    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__dbx_kafka_viewer__", 20, { startPosition: "latest" });
+    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__linop_db_kafka_viewer__", 20, { startPosition: "latest" });
   });
 
   it("orders loaded Kafka messages newest first by default and changes presentation without reloading", async () => {
@@ -369,7 +369,7 @@ describe("MessageBrowser", () => {
     await loadMessages(browser);
 
     expect(countInput.value).toBe("2");
-    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__dbx_kafka_viewer__", 2, { startPosition: "latest" });
+    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__linop_db_kafka_viewer__", 2, { startPosition: "latest" });
   });
 
   it("shows an explicit warning when the broker returns an incomplete snapshot", async () => {
@@ -524,7 +524,7 @@ describe("MessageBrowser", () => {
 
     await setSelectValue(startPosition, "earliest");
     await loadMessages(browser);
-    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__dbx_kafka_viewer__", 20, { startPosition: "earliest" });
+    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__linop_db_kafka_viewer__", 20, { startPosition: "earliest" });
     const earliestCall = backend.mqPeekMessages.mock.calls.at(-1);
     if (!earliestCall) throw new Error("earliest peek call not found");
     // 非 timestamp 模式不下发读取方向，保持纯展示排序语义
@@ -538,7 +538,7 @@ describe("MessageBrowser", () => {
     await setInputValue(offset, "17");
     await loadMessages(browser);
 
-    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__dbx_kafka_viewer__", 20, { startPosition: "offset", partition: 2, offset: 17 });
+    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__linop_db_kafka_viewer__", 20, { startPosition: "offset", partition: 2, offset: 17 });
   });
 
   it("sends a timestamp window and rejects an end timestamp before the start", async () => {
@@ -554,7 +554,7 @@ describe("MessageBrowser", () => {
     await setInputValue(startInput, "2026-11-04T10:00:00");
     await setInputValue(endInput, "2026-11-04T10:05:00");
     await loadMessages(browser);
-    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__dbx_kafka_viewer__", 20, {
+    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__linop_db_kafka_viewer__", 20, {
       startPosition: "timestamp",
       timestamp: Date.parse("2026-11-04T10:00:00"),
       endTimestamp: Date.parse("2026-11-04T10:05:00"),
@@ -566,7 +566,7 @@ describe("MessageBrowser", () => {
     if (!displayOrder) throw new Error("Kafka display order select not found");
     await setSelectValue(displayOrder, "oldest");
     await loadMessages(browser);
-    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__dbx_kafka_viewer__", 20, expect.objectContaining({ sortOrder: "oldest" }));
+    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__linop_db_kafka_viewer__", 20, expect.objectContaining({ sortOrder: "oldest" }));
 
     // 截止时间早于起始时间时不发请求，只提示错误
     await setInputValue(endInput, "2026-11-04T09:00:00");
@@ -593,7 +593,7 @@ describe("MessageBrowser", () => {
 
     await setInputValue(offset, "17");
     await loadMessages(browser);
-    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__dbx_kafka_viewer__", 20, { startPosition: "offset", offset: 17 });
+    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__linop_db_kafka_viewer__", 20, { startPosition: "offset", offset: 17 });
   });
 
   it("clears results and does not leak an offset into a different read mode", async () => {
@@ -614,7 +614,7 @@ describe("MessageBrowser", () => {
 
     await setSelectValue(startPosition, "latest");
     await loadMessages(browser);
-    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__dbx_kafka_viewer__", 20, { startPosition: "latest", partition: 2 });
+    expect(backend.mqPeekMessages).toHaveBeenLastCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__linop_db_kafka_viewer__", 20, { startPosition: "latest", partition: 2 });
   });
 
   it("ignores an older topic request that resolves after the current request", async () => {
@@ -838,6 +838,6 @@ describe("MessageBrowser", () => {
     await setInputValue(offset, "17");
     await loadMessages(browser);
 
-    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expect.objectContaining({ tenant: "_rabbitmq", topic: "events" }), "__dbx_kafka_viewer__", 20, { partition: 2, offset: 17 });
+    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expect.objectContaining({ tenant: "_rabbitmq", topic: "events" }), "__linop_db_kafka_viewer__", 20, { partition: 2, offset: 17 });
   });
 });

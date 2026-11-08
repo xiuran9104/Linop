@@ -35,7 +35,7 @@ impl DataDirResolution {
 }
 
 pub fn resolve_data_dir_with_mode(default_app_data_dir: PathBuf) -> DataDirResolution {
-    let env_data_dir = std::env::var_os("DBX_DATA_DIR").filter(|value| !value.is_empty()).map(PathBuf::from);
+    let env_data_dir = std::env::var_os("LINOP_DB_DATA_DIR").filter(|value| !value.is_empty()).map(PathBuf::from);
 
     #[cfg(target_os = "windows")]
     let exe_dir = current_exe_dir();

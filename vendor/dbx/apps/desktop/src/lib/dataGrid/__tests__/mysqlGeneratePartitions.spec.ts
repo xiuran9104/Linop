@@ -84,7 +84,7 @@ describe("MySQL partition-aware data generation (#13883)", () => {
 // Opt-in: uses the local mysql CLI's configured connection and a fresh scratch
 // database. No application database is read or changed.
 it.runIf(process.env.DBX_TEST_MYSQL_PARTITIONS === "1")("inserts generated rows into a populated MySQL LIST partition table", () => {
-  const database = `dbx_issue13883_${process.pid}_${Date.now()}`;
+  const database = `linop_db_issue13883_${process.pid}_${Date.now()}`;
   const mysql = (sql: string) => execFileSync("mysql", ["-uroot", "--batch", "--skip-column-names"], { input: sql, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] });
   mysql(`CREATE DATABASE ${database}`);
   try {

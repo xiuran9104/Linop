@@ -359,7 +359,7 @@ PostgreSQL/openGauss 的 schema 执行上下文行为保持不变，但 `SET sea
 
 | 场景 | 错误来源 | 错误消息格式（lowercase） | 当前是否匹配 | 处理方式 |
 |------|----------|---------------------------|--------------|----------|
-| DBX query timeout | `tokio::time::timeout` | `"query timed out after {n} seconds"` | 已排除（`is_dbx_query_timeout_error`） | 保持排除，不触发清池 |
+| DBX query timeout | `tokio::time::timeout` | `"query timed out after {n} seconds"` | 已排除（`is_linop_db_query_timeout_error`） | 保持排除，不触发清池 |
 | PostgreSQL pool checkout timeout | `deadpool-postgres PoolError::Timeout(TimeoutType::Wait)` | `"pool wait timeout"` | **不匹配**（是 "timeout" 不是 "timed out"） | 需新增匹配 `"pool"` + `"timeout"` 组合，或匹配 deadpool 的 `TimeoutType` 枚举变体 |
 | PostgreSQL pool create timeout | `deadpool-postgres PoolError::Timeout(TimeoutType::Create)` | `"pool create timeout"` | **不匹配** | 同上 |
 | PostgreSQL pool recycle timeout | `deadpool-postgres PoolError::Timeout(TimeoutType::Recycle)` | `"pool recycle timeout"` | **不匹配** | 同上 |

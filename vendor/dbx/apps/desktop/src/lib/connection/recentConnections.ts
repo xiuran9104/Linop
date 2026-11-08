@@ -1,4 +1,4 @@
-export const RECENT_CONNECTION_IDS_STORAGE_KEY = "dbx-recent-connection-ids-v1";
+export const RECENT_CONNECTION_IDS_STORAGE_KEY = "linop-db-recent-connection-ids-v1";
 export const MAX_RECENT_CONNECTION_IDS = 5;
 
 function normalizeRecentConnectionIds(ids: readonly unknown[]): string[] {

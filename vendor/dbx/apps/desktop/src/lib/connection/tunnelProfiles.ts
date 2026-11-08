@@ -48,7 +48,7 @@ export function createTunnelProfile(type: TunnelProfileType): TunnelProfile {
       enabled: true,
       url: "",
       token: "",
-      protocol: "dbx_tcp",
+      protocol: "linop_db_tcp",
       connect_timeout_secs: 10,
     };
   }

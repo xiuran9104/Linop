@@ -303,7 +303,7 @@ test("Elasticsearch aggregation terms and range keep DSL keys, while query terms
 
 test("flattens a shallow all-types mapping without recursion", () => {
   const mapping = {
-    dbx_all_types: {
+    linop_db_all_types: {
       mappings: {
         properties: {
           ali_title: { type: "alias", path: "title_text" },

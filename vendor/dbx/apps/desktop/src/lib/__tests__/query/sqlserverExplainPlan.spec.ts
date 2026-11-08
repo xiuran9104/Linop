@@ -9,7 +9,7 @@ const SHOWPLAN_XML = `<ShowPlanXML xmlns="http://schemas.microsoft.com/sqlserver
       <Sort>
         <RelOp NodeId="1" PhysicalOp="Index Seek" LogicalOp="Index Seek" EstimateRows="1" EstimatedRowsRead="4" EstimateIO="0.003125" EstimateCPU="0.0001581" EstimatedTotalSubtreeCost="0.0034412" AvgRowSize="16">
           <IndexScan>
-            <Object Database="[dbx_explain_plan_test]" Schema="[dbo]" Table="[orders]" Index="[ix_orders_customer_status]" />
+            <Object Database="[linop_db_explain_plan_test]" Schema="[dbo]" Table="[orders]" Index="[ix_orders_customer_status]" />
             <SeekPredicates><SeekPredicateNew><SeekKeys><Prefix>
               <RangeExpressions><ScalarOperator ScalarString="[orders].[status]='paid'" /></RangeExpressions>
             </Prefix></SeekKeys></SeekPredicateNew></SeekPredicates>

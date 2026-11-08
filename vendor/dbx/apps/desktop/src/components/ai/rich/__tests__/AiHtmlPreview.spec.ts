@@ -180,7 +180,7 @@ describe("AiHtmlPreview", () => {
   it("writes the wrapped safe document, never the raw source", async () => {
     await mountPreview();
     await click(button("ai.htmlSaveSafe"));
-    expect(mocks.saveTextFile).toHaveBeenCalledWith(documentHtml, "dbx-ai-html-preview.html", "HTML", "html");
+    expect(mocks.saveTextFile).toHaveBeenCalledWith(documentHtml, "linop-db-ai-html-preview.html", "HTML", "html");
     expect(mocks.saveTextFile.mock.calls[0][0]).not.toBe(content);
   });
 

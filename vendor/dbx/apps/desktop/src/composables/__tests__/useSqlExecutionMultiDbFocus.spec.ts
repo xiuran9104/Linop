@@ -2,7 +2,7 @@
  * Issue #6189 — SQL Server "focus jumps to the message result".
  *
  * Background:
- *  - `crates/dbx-driver-sqlserver/src/sqlserver.rs` synthesizes a pseudo result with a
+ *  - `crates/linop-db-driver-sqlserver/src/sqlserver.rs` synthesizes a pseudo result with a
  *    single "Message" column and `server_message: true` for any batch segment that
  *    produced only server messages (PRINT / "DBCC execution completed" / ...).
  *  - `stores/queryStore.ts:4727` then picks the first result that HAS COLUMNS as the
@@ -55,7 +55,7 @@ function sqlServerConnection(): ConnectionConfig {
   };
 }
 
-function queryTab(database = "dbx_sqlserver_demo"): QueryTab {
+function queryTab(database = "linop_db_sqlserver_demo"): QueryTab {
   return {
     id: "tab-1",
     connectionId: "conn-1",

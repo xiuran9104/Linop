@@ -495,7 +495,7 @@ impl<H: PluginHandler> PluginServer<H> {
                 continue;
             }
             if let Err(error) = self.dispatch_json(&line, emitter.clone(), workers) {
-                eprintln!("[dbx-plugin-sdk] {error}");
+                eprintln!("[linop-db-plugin-sdk] {error}");
             }
         }
     }
@@ -519,12 +519,12 @@ impl<H: PluginHandler> PluginServer<H> {
             match kind {
                 FRAME_KIND_JSON => {
                     if let Err(error) = self.dispatch_json(&payload, emitter.clone(), workers) {
-                        eprintln!("[dbx-plugin-sdk] {error}");
+                        eprintln!("[linop-db-plugin-sdk] {error}");
                     }
                 }
                 FRAME_KIND_BINARY => {
                     if let Err(error) = self.dispatch_binary(payload, emitter.clone(), workers) {
-                        eprintln!("[dbx-plugin-sdk] {error}");
+                        eprintln!("[linop-db-plugin-sdk] {error}");
                     }
                 }
                 _ => return Err(io::Error::new(io::ErrorKind::InvalidData, "unknown plugin frame kind")),
@@ -577,7 +577,7 @@ impl<H: PluginHandler> PluginServer<H> {
             let result = handler.handle(context, &request.method, request.params, &emitter);
             if let Some(id) = request.id {
                 if let Err(error) = emitter.respond(id, result) {
-                    eprintln!("[dbx-plugin-sdk] failed to write response: {}", error.message);
+                    eprintln!("[linop-db-plugin-sdk] failed to write response: {}", error.message);
                 }
             }
         })
@@ -599,7 +599,7 @@ impl<H: PluginHandler> PluginServer<H> {
         let handler = self.handler.clone();
         workers.submit(move || {
             if let Err(error) = handler.handle_binary(&channel, data, &emitter) {
-                eprintln!("[dbx-plugin-sdk] binary handler failed: {}", error.message);
+                eprintln!("[linop-db-plugin-sdk] binary handler failed: {}", error.message);
             }
         })
     }
@@ -629,7 +629,7 @@ impl WorkerPool {
         let receiver = Arc::new(Mutex::new(receiver));
         for index in 0..worker_threads {
             let receiver = receiver.clone();
-            thread::Builder::new().name(format!("dbx-plugin-worker-{index}")).spawn(move || loop {
+            thread::Builder::new().name(format!("linop-db-plugin-worker-{index}")).spawn(move || loop {
                 let job = match receiver.lock() {
                     Ok(receiver) => receiver.recv(),
                     Err(_) => return,

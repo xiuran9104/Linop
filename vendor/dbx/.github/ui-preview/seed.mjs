@@ -1,4 +1,4 @@
-// Fills the UI preview's sandbox (run.sh) with data to show: a fresh dbx-web
+// Fills the UI preview's sandbox (run.sh) with data to show: a fresh linop-db-web
 // has no connections, so a change to the sidebar, the grid, query history or
 // the ER diagram has nothing to draw. Made up, every bit of it, and never
 // real.
@@ -12,9 +12,9 @@
 //       are genuine, then adds a saved-SQL library and a few more history
 //       entries the UI can list.
 //
-// The connections point at files as the dbx-web process sees them: pass
+// The connections point at files as the linop-db-web process sees them: pass
 // --as when the databases are generated on another machine than the one
-// dbx-web runs on (local testing over an SSH tunnel).
+// linop-db-web runs on (local testing over an SSH tunnel).
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -27,7 +27,7 @@ const opt = (name, d) => {
 
 const DBS = [
   {
-    file: "dbx-shop.sqlite",
+    file: "linop-db-shop.sqlite",
     name: "商店 Shop (SQLite)",
     note: "订单、商品与客户示例库",
     tables: "customers · products · orders · audit_log（含视图 v_daily_revenue、外键与触发器）",
@@ -38,7 +38,7 @@ const DBS = [
     ],
   },
   {
-    file: "dbx-analytics.sqlite",
+    file: "linop-db-analytics.sqlite",
     name: "分析 Analytics (SQLite)",
     note: "事件流与每日指标",
     tables: "events（5000 行，看分页）· daily_stats（90 天）",
@@ -59,7 +59,7 @@ rng = random.Random(20261008)
 def d(days, hours=0):
     return (datetime.datetime(2026, 10, 8, 12, 0, 0) - datetime.timedelta(days=days, hours=hours)).strftime("%Y-%m-%d %H:%M:%S")
 
-shop = sqlite3.connect(os.path.join(${JSON.stringify(dir)}, "dbx-shop.sqlite"))
+shop = sqlite3.connect(os.path.join(${JSON.stringify(dir)}, "linop-db-shop.sqlite"))
 shop.executescript("""
 CREATE TABLE customers (id INTEGER PRIMARY KEY, name TEXT NOT NULL, email TEXT, city TEXT, level TEXT, created_at TEXT);
 CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT NOT NULL, category TEXT, price REAL, stock INTEGER, listed INTEGER DEFAULT 1);
@@ -90,7 +90,7 @@ for i in range(1, 501):
         (i, rng.randint(1, 200), rng.randint(1, 120), q, round(q * price, 2), rng.choice(statuses) if rng.random() > 0.15 else "pending", d(rng.randint(0, 90), rng.randint(0, 23))))
 shop.commit()
 
-an = sqlite3.connect(os.path.join(${JSON.stringify(dir)}, "dbx-analytics.sqlite"))
+an = sqlite3.connect(os.path.join(${JSON.stringify(dir)}, "linop-db-analytics.sqlite"))
 an.executescript("""
 CREATE TABLE events (id INTEGER PRIMARY KEY, ts TEXT, user_id INTEGER, event_type TEXT, page TEXT, duration_ms INTEGER);
 CREATE TABLE daily_stats (stat_date TEXT PRIMARY KEY, dau INTEGER, revenue REAL, new_users INTEGER);

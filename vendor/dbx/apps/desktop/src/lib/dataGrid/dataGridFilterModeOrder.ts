@@ -3,7 +3,7 @@ import type { DataGridContextFilterMode } from "@/lib/dataGrid/dataGridSql";
 
 export type DataGridFilterModeOption = { value: DataGridContextFilterMode; labelKey: string };
 
-const STORAGE_KEY = "dbx-data-grid-filter-mode-order-v1";
+const STORAGE_KEY = "linop-db-data-grid-filter-mode-order-v1";
 
 function readOrders(): Record<string, DataGridContextFilterMode[]> {
   try {

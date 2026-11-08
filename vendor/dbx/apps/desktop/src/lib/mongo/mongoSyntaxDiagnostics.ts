@@ -8,7 +8,7 @@
  */
 import type { SqlTextSpan } from "@/types/database";
 import type { SqlSemanticDiagnostic } from "@/lib/sql/semantic/diagnostics";
-import { findMatchingParen, hasUnclosedMongoDelimiters, trimMongoOuterComments } from "@dbx-app/mongo-shell";
+import { findMatchingParen, hasUnclosedMongoDelimiters, trimMongoOuterComments } from "@linop-db-app/mongo-shell";
 import { bulkWriteFilters, describeMongoCommandParseFailure, isMongoCommandText, mongoFilterIsEffectivelyUnbounded, parseMongoCommand, splitMongoCommandTextRanges, type MongoCommand, type MongoTextRange } from "@/lib/mongo/mongoShellCommand";
 
 const UNCLOSED_MESSAGE = "MongoDB command has unclosed parentheses, brackets, braces, or strings.";

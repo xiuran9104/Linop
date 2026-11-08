@@ -11,7 +11,7 @@ expressly allowed by its terms. Obtain the script from an authorized Navicat
 distribution and follow the EULA for your edition:
 https://www.navicat.com/manual/pdf_manual/en/navicat_17/win_manual/navicat_en.pdf
 
-The separate `deploy/dbx_tunnel.php` file is DBX's own tunnel and is not a
+The separate `deploy/linop_db_tunnel.php` file is DBX's own tunnel and is not a
 Navicat-compatible endpoint.
 
 Upload your authorized copy of `ntunnel_mysql.php` to the PHP host and configure
@@ -31,6 +31,6 @@ a successful-looking `ROLLBACK` from failing to undo a write that ran in another
 session.
 
 For transaction workflows or backups that require a consistent snapshot, deploy
-DBX's own `deploy/dbx_tunnel.php` endpoint instead. That endpoint keeps one
+DBX's own `deploy/linop_db_tunnel.php` endpoint instead. That endpoint keeps one
 database TCP session alive for the lifetime of the tunnel and is configured as the
 DBX TCP HTTP tunnel, not as the Navicat-compatible endpoint.

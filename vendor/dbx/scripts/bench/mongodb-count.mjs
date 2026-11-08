@@ -6,11 +6,11 @@ import { performance } from "node:perf_hooks";
 
 const DEFAULTS = {
   apiBase: "http://127.0.0.1:4224/api",
-  container: "dbx-issue-2959-mongo",
+  container: "linop-db-issue-2959-mongo",
   image: "mongo:3.4",
   host: "127.0.0.1",
   port: 12959,
-  database: "dbx_issue_2959",
+  database: "linop_db_issue_2959",
   collection: "large_count",
   expectedCount: 21_606_536,
   iterations: 5,
@@ -69,7 +69,7 @@ function parseArgs(argv) {
       case "seed-batch-size":
         options.seedBatchSize = Number.parseInt(value, 10);
         break;
-      case "dbx-data-dir":
+      case "linop-db-data-dir":
         options.dbxDataDir = value;
         break;
       case "json":
@@ -93,25 +93,25 @@ Usage:
 
 Options:
   --api-base=http://127.0.0.1:4224/api  DBX Web API base URL
-  --container=dbx-issue-2959-mongo       MongoDB Docker container name
+  --container=linop-db-issue-2959-mongo       MongoDB Docker container name
   --image=mongo:3.4                      MongoDB image used when creating the container
   --port=12959                           Host port for MongoDB
-  --database=dbx_issue_2959              Database name
+  --database=linop_db_issue_2959              Database name
   --collection=large_count               Collection name
   --expected-count=21606536              Expected collection count
   --iterations=5                         Timed iterations per case
   --warmups=1                            Warmup iterations per case
-  --dbx-data-dir=/tmp/dbx-bench          Copy local Mongo agent jar into this DBX data dir
+  --linop-db-data-dir=/tmp/linop-db-bench          Copy local Mongo agent jar into this DBX data dir
   --seed                                 Seed the collection if its count does not match
   --force-seed                           Drop and reseed even if the collection exists
   --seed-batch-size=10000                Number of docs per insertMany batch
   --json                                 Print JSON only
 
 Before running this benchmark, start DBX Web with the same data dir, for example:
-  DBX_DATA_DIR=/tmp/dbx-bench DBX_DISABLE_PASSWORD=1 cargo run -p dbx-web
+  LINOP_DB_DATA_DIR=/tmp/linop-db-bench DBX_DISABLE_PASSWORD=1 cargo run -p linop-db-web
 
 The benchmark saves one temporary connection into that DBX data dir, so use an
-isolated DBX_DATA_DIR instead of your normal desktop profile.
+isolated LINOP_DB_DATA_DIR instead of your normal desktop profile.
 `);
 }
 
@@ -215,7 +215,7 @@ async function seedMongo(options) {
 }
 
 function localMongoAgentJar() {
-  return resolve("agents", "drivers", "mongodb", "build", "libs", "dbx-agent-mongodb.jar");
+  return resolve("agents", "drivers", "mongodb", "build", "libs", "linop-db-agent-mongodb.jar");
 }
 
 function syncMongoAgentJar(options) {

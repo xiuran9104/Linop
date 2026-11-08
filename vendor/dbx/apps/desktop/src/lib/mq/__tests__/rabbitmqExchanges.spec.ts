@@ -14,7 +14,7 @@ describe("rabbitmqExchanges", () => {
 
   it("renders the default exchange with a display name", () => {
     expect(rabbitMqExchangeDisplayName(exchange({ name: "" }))).toBe("(AMQP default)");
-    expect(rabbitMqExchangeDisplayName(exchange({ name: "dbx-events" }))).toBe("dbx-events");
+    expect(rabbitMqExchangeDisplayName(exchange({ name: "linop-db-events" }))).toBe("linop-db-events");
     expect(rabbitMqExchangeDisplayName({ name: "amq.topic" })).toBe("amq.topic");
   });
 
@@ -22,8 +22,8 @@ describe("rabbitmqExchanges", () => {
     expect(isBuiltinRabbitMqExchange(exchange({ name: "" }))).toBe(true);
     expect(isBuiltinRabbitMqExchange(exchange({ name: "amq.direct" }))).toBe(true);
     expect(isBuiltinRabbitMqExchange(exchange({ name: "amq.headers", type: "headers" }))).toBe(true);
-    expect(isBuiltinRabbitMqExchange(exchange({ name: "dbx-internal", internal: true }))).toBe(true);
-    expect(isBuiltinRabbitMqExchange(exchange({ name: "dbx-events" }))).toBe(false);
+    expect(isBuiltinRabbitMqExchange(exchange({ name: "linop-db-internal", internal: true }))).toBe(true);
+    expect(isBuiltinRabbitMqExchange(exchange({ name: "linop-db-events" }))).toBe(false);
     expect(isBuiltinRabbitMqExchange(exchange({ name: "amqp.custom" }))).toBe(false);
   });
 });

@@ -14,8 +14,8 @@ name: UI preview
 #
 # The backend the recording runs against comes in two lanes: a diff that
 # only touches the frontend (the usual case) runs against the released
-# dbx-web static binary — no Rust is built; a diff that reaches crates/,
-# plugins/ or src-tauri/ builds dbx-web from the PR itself. Either way the
+# linop-db-web static binary — no Rust is built; a diff that reaches crates/,
+# plugins/ or src-tauri/ builds linop-db-web from the PR itself. Either way the
 # PR's own frontend build is what's on screen (DBX_STATIC_DIR).
 
 on:
@@ -127,7 +127,7 @@ jobs:
           pnpm build
 
       # the backend: released static binary, or built from the PR
-      - name: The released dbx-web (frontend-only diff)
+      - name: The released linop-db-web (frontend-only diff)
         if: needs.detect.outputs.lane != 'rust'
         working-directory: ${{ github.workspace }}
         env:
@@ -136,13 +136,13 @@ jobs:
           mkdir -p backend
           gh release download --repo "$GITHUB_REPOSITORY" --pattern '*x64-browser-static.tar.gz' --dir backend --clobber
           tar xzf backend/*x64-browser-static.tar.gz -C backend
-          echo "DBX_WEB_BIN=$(echo backend/*/dbx-web)" >> "$GITHUB_ENV"
-      - name: dbx-web built from the PR (backend diff)
+          echo "DBX_WEB_BIN=$(echo backend/*/linop-db-web)" >> "$GITHUB_ENV"
+      - name: linop-db-web built from the PR (backend diff)
         if: needs.detect.outputs.lane == 'rust'
         working-directory: pr
         run: |
-          cargo build --release -p dbx-web --no-default-features --features dbx-core/sqlite-bundled
-          echo "DBX_WEB_BIN=pr/target/release/dbx-web" >> "$GITHUB_ENV"
+          cargo build --release -p linop-db-web --no-default-features --features linop-db-core/sqlite-bundled
+          echo "DBX_WEB_BIN=pr/target/release/linop-db-web" >> "$GITHUB_ENV"
 
       - name: Chromium, ffmpeg and fonts
         working-directory: ci/.github/ui-preview

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Output, Stdio};
 use std::time::{Duration, Instant};
 
-const HOMEBREW_FORMULA: &str = "t8y2/tap/dbx-mcp";
+const HOMEBREW_FORMULA: &str = "t8y2/tap/linop-db-mcp";
 #[cfg(not(windows))]
 const INSTALLER_SCRIPT: &str = include_str!("../../../docs/public/install-mcp.sh");
 #[cfg(windows)]
@@ -38,7 +38,7 @@ pub(super) fn resolve() -> Option<NativeInstallation> {
     if let Some(path) = std::env::var_os("PATH") {
         directories.extend(std::env::split_paths(&path));
     }
-    directories.into_iter().find_map(|directory| discover_homebrew(&directory.join("dbx-mcp")))
+    directories.into_iter().find_map(|directory| discover_homebrew(&directory.join("linop-db-mcp")))
 }
 
 fn home_directory() -> Option<PathBuf> {
@@ -54,14 +54,14 @@ fn discover_standalone() -> Option<NativeInstallation> {
 }
 
 fn parse_version(value: &str) -> Option<String> {
-    let value = value.trim().strip_prefix("dbx-mcp ").unwrap_or(value.trim());
+    let value = value.trim().strip_prefix("linop-db-mcp ").unwrap_or(value.trim());
     let parts: Vec<_> = value.split('.').collect();
     (parts.len() == 3 && parts.iter().all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit())))
         .then(|| value.to_string())
 }
 
 fn binary_version(binary: &Path) -> Option<String> {
-    let mut child = dbx_core::process::new_std_command(binary)
+    let mut child = linop_db_core::process::new_std_command(binary)
         .arg("--version")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -89,12 +89,12 @@ fn binary_version(binary: &Path) -> Option<String> {
 }
 
 fn discover(directory: &Path) -> Option<NativeInstallation> {
-    let binary = directory.join(if cfg!(windows) { "dbx-mcp.exe" } else { "dbx-mcp" });
+    let binary = directory.join(if cfg!(windows) { "linop-db-mcp.exe" } else { "linop-db-mcp" });
     let version = None;
     let mut installation = discover_binary(binary, version, NativeInstallationKind::Installer)?;
     if installation.version.is_none() {
         installation.version =
-            std::fs::read_to_string(directory.join(".dbx-mcp-version")).ok().and_then(|value| parse_version(&value));
+            std::fs::read_to_string(directory.join(".linop-db-mcp-version")).ok().and_then(|value| parse_version(&value));
     }
     Some(installation)
 }
@@ -105,7 +105,7 @@ fn discover_homebrew(binary: &Path) -> Option<NativeInstallation> {
     let version_directory = bin_directory.parent()?;
     let formula_directory = version_directory.parent()?;
     if bin_directory.file_name()? != "bin"
-        || formula_directory.file_name()? != "dbx-mcp"
+        || formula_directory.file_name()? != "linop-db-mcp"
         || formula_directory.parent()?.file_name()? != "Cellar"
     {
         return None;
@@ -133,7 +133,7 @@ fn discover_binary(
     Some(NativeInstallation { binary, version, kind })
 }
 
-/// Result of probing whether a background `dbx-mcp` launch can read the DBX
+/// Result of probing whether a background `linop-db-mcp` launch can read the DBX
 /// encryption key from the OS credential store without user interaction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -144,7 +144,7 @@ pub enum KeychainAccess {
     KeyMissing,
     /// The probe could not be interpreted, e.g. a binary predating the probe flag.
     Unknown,
-    /// Not macOS, or no native `dbx-mcp` is installed: nothing to authorize.
+    /// Not macOS, or no native `linop-db-mcp` is installed: nothing to authorize.
     NotApplicable,
 }
 
@@ -167,7 +167,7 @@ fn classify_keychain_probe(success: bool, stderr: &str) -> KeychainAccess {
 }
 
 fn run_with_timeout(binary: &Path, argument: &str, timeout: Duration) -> Result<Output, String> {
-    let mut child = dbx_core::process::new_std_command(binary)
+    let mut child = linop_db_core::process::new_std_command(binary)
         .arg(argument)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -230,29 +230,29 @@ impl NativeInstallation {
         }
         let output = run_with_timeout(&self.binary, AUTHORIZE_KEYCHAIN_ARGUMENT, AUTHORIZE_KEYCHAIN_TIMEOUT)?;
         let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        require_success(output, "dbx-mcp --authorize-keychain")?;
+        require_success(output, "linop-db-mcp --authorize-keychain")?;
         Ok(stdout)
     }
 
     pub fn install_command(&self) -> &'static str {
         match self.kind {
             NativeInstallationKind::Installer => install_command(),
-            NativeInstallationKind::Homebrew => "brew install t8y2/tap/dbx-mcp",
+            NativeInstallationKind::Homebrew => "brew install t8y2/tap/linop-db-mcp",
         }
     }
 
     pub fn update_command(&self) -> &'static str {
         match self.kind {
             NativeInstallationKind::Installer => install_command(),
-            NativeInstallationKind::Homebrew => "brew upgrade t8y2/tap/dbx-mcp",
+            NativeInstallationKind::Homebrew => "brew upgrade t8y2/tap/linop-db-mcp",
         }
     }
 
     pub fn uninstall_command(&self) -> String {
         if self.kind == NativeInstallationKind::Homebrew {
-            return "brew uninstall t8y2/tap/dbx-mcp".to_string();
+            return "brew uninstall t8y2/tap/linop-db-mcp".to_string();
         }
-        let marker = self.binary.with_file_name(".dbx-mcp-version");
+        let marker = self.binary.with_file_name(".linop-db-mcp-version");
         #[cfg(windows)]
         {
             format!(
@@ -280,14 +280,14 @@ impl NativeInstallation {
 
     fn uninstall_standalone(&self) -> Result<String, String> {
         let expected = home_directory()
-            .map(|home| standalone_bin_directory(&home).join(if cfg!(windows) { "dbx-mcp.exe" } else { "dbx-mcp" }))
+            .map(|home| standalone_bin_directory(&home).join(if cfg!(windows) { "linop-db-mcp.exe" } else { "linop-db-mcp" }))
             .ok_or_else(|| "Unable to resolve the user home directory.".to_string())?;
         if self.binary != expected {
             return Err(format!("Refusing to remove unexpected native MCP path: {}", self.binary.display()));
         }
         std::fs::remove_file(&self.binary)
             .map_err(|error| format!("Failed to remove {}: {error}", self.binary.display()))?;
-        let marker = self.binary.with_file_name(".dbx-mcp-version");
+        let marker = self.binary.with_file_name(".linop-db-mcp-version");
         if marker.exists() {
             std::fs::remove_file(&marker).map_err(|error| {
                 format!("Removed the MCP binary, but failed to remove {}: {error}", marker.display())
@@ -308,7 +308,7 @@ impl NativeInstallation {
                     "Homebrew manages this installation, but brew was not found. Run: brew {action} {HOMEBREW_FORMULA}"
                 )
             })?;
-        let output = dbx_core::process::new_std_command(&brew)
+        let output = linop_db_core::process::new_std_command(&brew)
             .args([action, HOMEBREW_FORMULA])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -318,7 +318,7 @@ impl NativeInstallation {
         require_success(output, &format!("brew {action}"))?;
         if action == "uninstall" {
             if discover_homebrew(&self.binary).is_some() {
-                return Err("Homebrew completed, but dbx-mcp is still installed.".to_string());
+                return Err("Homebrew completed, but linop-db-mcp is still installed.".to_string());
             }
             return Ok("Uninstalled Homebrew DBX MCP".to_string());
         }
@@ -338,7 +338,7 @@ pub(super) fn install_or_update(existing: Option<&NativeInstallation>, npm_insta
 
     run_embedded_installer()?;
     let installation = discover_standalone()
-        .ok_or_else(|| "The native installer completed, but ~/.dbx/bin/dbx-mcp could not be validated.".to_string())?;
+        .ok_or_else(|| "The native installer completed, but ~/.dbx/bin/linop-db-mcp could not be validated.".to_string())?;
     let action = if existing.is_some() { "Updated" } else { "Installed" };
     let mut message = format!(
         "{action} native DBX MCP{} at {}",
@@ -358,13 +358,13 @@ fn run_embedded_installer() -> Result<(), String> {
     #[cfg(not(windows))]
     let (program, arguments): (&str, &[&str]) = ("sh", &["-s"]);
 
-    let mut command = dbx_core::process::new_std_command(program);
+    let mut command = linop_db_core::process::new_std_command(program);
     command.args(arguments).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     if ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"]
         .into_iter()
         .all(|name| std::env::var_os(name).is_none())
     {
-        if let Some(proxy) = dbx_core::update::system_proxy_url() {
+        if let Some(proxy) = linop_db_core::update::system_proxy_url() {
             command.env("HTTPS_PROXY", &proxy).env("HTTP_PROXY", &proxy).env("ALL_PROXY", proxy);
         }
     }
@@ -460,9 +460,9 @@ mod tests {
 
     #[test]
     fn parses_version_output_and_rejects_marker_commands() {
-        assert_eq!(parse_version("dbx-mcp 0.4.96\n").as_deref(), Some("0.4.96"));
+        assert_eq!(parse_version("linop-db-mcp 0.4.96\n").as_deref(), Some("0.4.96"));
         assert_eq!(parse_version("0.4.95\n").as_deref(), Some("0.4.95"));
-        for invalid in ["", "0.4", "0.4.1; rm", "0.4.1\n0.4.2", "dbx-mcp unknown"] {
+        for invalid in ["", "0.4", "0.4.1; rm", "0.4.1\n0.4.2", "linop-db-mcp unknown"] {
             assert!(parse_version(invalid).is_none());
         }
     }
@@ -470,7 +470,7 @@ mod tests {
     #[test]
     fn marker_alone_is_not_an_installation() {
         let directory = tempfile::tempdir().unwrap();
-        std::fs::write(directory.path().join(".dbx-mcp-version"), "0.4.96\n").unwrap();
+        std::fs::write(directory.path().join(".linop-db-mcp-version"), "0.4.96\n").unwrap();
         assert!(discover(directory.path()).is_none());
     }
 
@@ -479,17 +479,17 @@ mod tests {
     fn native_version_precedes_marker_and_legacy_binary_uses_marker() {
         use std::os::unix::fs::PermissionsExt;
         let directory = tempfile::tempdir().unwrap();
-        let binary = directory.path().join("dbx-mcp");
-        std::fs::write(&binary, "#!/bin/sh\nprintf 'dbx-mcp 0.4.96\\n'\n").unwrap();
+        let binary = directory.path().join("linop-db-mcp");
+        std::fs::write(&binary, "#!/bin/sh\nprintf 'linop-db-mcp 0.4.96\\n'\n").unwrap();
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
-        std::fs::write(directory.path().join(".dbx-mcp-version"), "0.4.95\n").unwrap();
+        std::fs::write(directory.path().join(".linop-db-mcp-version"), "0.4.95\n").unwrap();
         let installation = discover(directory.path()).unwrap();
         assert_eq!(installation.binary, binary);
         assert_eq!(installation.version.as_deref(), Some("0.4.96"));
         assert_eq!(installation.source(), "native");
         std::fs::write(&binary, "#!/bin/sh\nexit 1\n").unwrap();
         assert_eq!(discover(directory.path()).unwrap().version.as_deref(), Some("0.4.95"));
-        std::fs::remove_file(directory.path().join(".dbx-mcp-version")).unwrap();
+        std::fs::remove_file(directory.path().join(".linop-db-mcp-version")).unwrap();
         assert!(discover(directory.path()).unwrap().version.is_none());
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o644)).unwrap();
         assert!(discover(directory.path()).is_none());
@@ -500,10 +500,10 @@ mod tests {
     fn stalled_version_probe_times_out_and_uses_marker() {
         use std::os::unix::fs::PermissionsExt;
         let directory = tempfile::tempdir().unwrap();
-        let binary = directory.path().join("dbx-mcp");
+        let binary = directory.path().join("linop-db-mcp");
         std::fs::write(&binary, "#!/bin/sh\nexec sleep 30\n").unwrap();
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o755)).unwrap();
-        std::fs::write(directory.path().join(".dbx-mcp-version"), "0.4.95\n").unwrap();
+        std::fs::write(directory.path().join(".linop-db-mcp-version"), "0.4.95\n").unwrap();
         let started = Instant::now();
         assert_eq!(discover(directory.path()).unwrap().version.as_deref(), Some("0.4.95"));
         assert!(started.elapsed() < Duration::from_secs(5));
@@ -514,19 +514,19 @@ mod tests {
     fn homebrew_keeps_a_stable_path_and_its_own_management_commands() {
         use std::os::unix::fs::{symlink, PermissionsExt};
         let directory = tempfile::tempdir().unwrap();
-        let cellar_binary = directory.path().join("Cellar/dbx-mcp/0.4.96/bin/dbx-mcp");
+        let cellar_binary = directory.path().join("Cellar/linop-db-mcp/0.4.96/bin/linop-db-mcp");
         std::fs::create_dir_all(cellar_binary.parent().unwrap()).unwrap();
         std::fs::write(&cellar_binary, "#!/bin/sh\nexit 1\n").unwrap();
         std::fs::set_permissions(&cellar_binary, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let link = directory.path().join("dbx-mcp");
+        let link = directory.path().join("linop-db-mcp");
         symlink(&cellar_binary, &link).unwrap();
         let installation = discover_homebrew(&link).unwrap();
         assert_eq!(installation.binary, link);
         assert_eq!(installation.version.as_deref(), Some("0.4.96"));
         assert_eq!(installation.source(), "homebrew");
-        assert_eq!(installation.install_command(), "brew install t8y2/tap/dbx-mcp");
-        assert_eq!(installation.update_command(), "brew upgrade t8y2/tap/dbx-mcp");
-        assert_eq!(installation.uninstall_command(), "brew uninstall t8y2/tap/dbx-mcp");
+        assert_eq!(installation.install_command(), "brew install t8y2/tap/linop-db-mcp");
+        assert_eq!(installation.update_command(), "brew upgrade t8y2/tap/linop-db-mcp");
+        assert_eq!(installation.uninstall_command(), "brew uninstall t8y2/tap/linop-db-mcp");
         assert!(discover_homebrew(Path::new("/bin/sh")).is_none());
     }
 }

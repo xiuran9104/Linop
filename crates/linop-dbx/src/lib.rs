@@ -1,18 +1,18 @@
-//! linop-dbx:数据库模块 —— DBX 内核(dbx-core)作为**驱动执行层**。
+//! linop-dbx:数据库模块 —— DBX 内核(linop-db-core)作为**驱动执行层**。
 //!
 //! 设计(用户决策:DBX 原始前端/存储不要,改 GPUI 原生):
 //! - 连接配置归 Linop 自己管(`databases.toml`,见 linop-core::DbProfile);
 //! - `AppState` 仅作技术性运行时(连接池/超时/风控/取消 —— DBX 的执行
 //!   路径全部复用),放在 Linop 数据目录下的空 `dbx.db` 上,不承载
 //!   DBX 的任何业务数据;连接在会话内以内存方式注入 `configs`;
-//! - 查询走 `dbx_core::query::execute_sql_statement`,表元数据走
+//! - 查询走 `linop_db_core::query::execute_sql_statement`,表元数据走
 //!   `list_tables_core` —— 与 DBX 桌面版同一条执行代码。
 
 use std::path::{Path, PathBuf};
 
-use dbx_core::connection::AppState;
-use dbx_core::persistence::storage::Storage;
-use dbx_types::models::connection::ConnectionConfig;
+use linop_db_core::connection::AppState;
+use linop_db_core::persistence::storage::Storage;
+use linop_db_types::models::connection::ConnectionConfig;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DbxError {
@@ -57,7 +57,7 @@ pub fn default_store_path() -> Result<PathBuf> {
     let home = std::env::var_os("HOME")
         .map(PathBuf::from)
         .ok_or(DbxError::NoDataDir)?;
-    Ok(home.join(".linop-dev").join("dbx-data").join("dbx.db"))
+    Ok(home.join(".linop-dev").join("linop-db-data").join("dbx.db"))
 }
 
 impl Dbx {
@@ -71,8 +71,8 @@ impl Dbx {
             .await
             .map_err(DbxError::Dbx)?;
         let state = AppState::new(storage);
-        // 核心方言注册(dbx-web 同款全局初始化)。
-        dbx_core::sql_dialect::dialect_loader::register_core_dialects();
+        // 核心方言注册(linop-db-web 同款全局初始化)。
+        linop_db_core::sql_dialect::dialect_loader::register_core_dialects();
         for profile in &profiles {
             Self::inject(&state, profile).await?;
         }
@@ -141,10 +141,10 @@ impl Dbx {
     }
 
     /// 表列表(走 DBX 驱动的元数据路径)。
-    pub async fn list_tables(&self, name: &str) -> Result<Vec<dbx_core::types::TableInfo>> {
+    pub async fn list_tables(&self, name: &str) -> Result<Vec<linop_db_core::types::TableInfo>> {
         let id = self.connection_id(name)?;
         let database = self.database_of(name);
-        dbx_core::schema::list_tables_core(
+        linop_db_core::schema::list_tables_core(
             &self.state,
             &id,
             &database,
@@ -160,10 +160,10 @@ impl Dbx {
     }
 
     /// 执行 SQL(默认只读风控、超时与取消都来自 DBX 执行路径)。
-    pub async fn query(&self, name: &str, sql: &str) -> Result<dbx_core::db::QueryResult> {
+    pub async fn query(&self, name: &str, sql: &str) -> Result<linop_db_core::db::QueryResult> {
         let id = self.connection_id(name)?;
         let database = self.database_of(name);
-        dbx_core::query::execute_sql_statement(&self.state, &id, &database, sql, None, None)
+        linop_db_core::query::execute_sql_statement(&self.state, &id, &database, sql, None, None)
             .await
             .map_err(DbxError::Dbx)
     }

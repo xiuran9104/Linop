@@ -33,7 +33,7 @@ async function request(endpoint, body) {
 function checksum() {
   return execFileSync(
     "docker",
-    ["exec", "dbx-nacos-mysql", "sh", "-c", 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot --batch --skip-column-names -e "SET SESSION group_concat_max_len=16777216; SELECT COUNT(*), MD5(GROUP_CONCAT(CONCAT(id, CHAR(58), MD5(content)) ORDER BY id)) FROM nacos.config_info;"'],
+    ["exec", "linop-db-nacos-mysql", "sh", "-c", 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot --batch --skip-column-names -e "SET SESSION group_concat_max_len=16777216; SELECT COUNT(*), MD5(GROUP_CONCAT(CONCAT(id, CHAR(58), MD5(content)) ORDER BY id)) FROM nacos.config_info;"'],
     { encoding: "utf8" },
   ).trim();
 }
@@ -115,7 +115,7 @@ try {
       const storage = await import("/src/lib/nacos/nacosReplaceHistoryStorage.ts");
       const entries = await storage.listNacosReplaceHistory(connectionId);
       const db = await new Promise((resolve, reject) => {
-        const req = indexedDB.open("dbx-nacos-replace-history", 1);
+        const req = indexedDB.open("linop-db-nacos-replace-history", 1);
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
       });

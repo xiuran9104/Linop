@@ -4,7 +4,7 @@ import { performance } from "node:perf_hooks";
 
 const DEFAULTS = {
   apiBase: "http://127.0.0.1:4224/api",
-  container: "dbx_bench_redis_key_search",
+  container: "linop_db_bench_redis_key_search",
   image: "redis:7-alpine",
   host: "127.0.0.1",
   port: 16151,
@@ -77,7 +77,7 @@ Usage:
 
 Options:
   --api-base=http://127.0.0.1:4224/api  DBX Web API base URL
-  --container=dbx_bench_redis_key_search Redis Docker container name
+  --container=linop_db_bench_redis_key_search Redis Docker container name
   --port=16151                              Host port for Redis
   --key-count=1000000                       Number of generated keys
   --pattern=user:*                          SCAN MATCH pattern
@@ -87,7 +87,7 @@ Options:
   --json                                    Print JSON only
 
 Before running this benchmark, start DBX Web separately, for example:
-  DBX_DATA_DIR=/tmp/dbx-bench DBX_PORT=4224 DBX_DISABLE_PASSWORD=1 cargo run -p dbx-web
+  LINOP_DB_DATA_DIR=/tmp/linop-db-bench DBX_PORT=4224 DBX_DISABLE_PASSWORD=1 cargo run -p linop-db-web
 `);
 }
 

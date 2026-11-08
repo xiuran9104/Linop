@@ -100,10 +100,10 @@ describe("DataGrid drop column availability", () => {
     expect(header).toBeDefined();
     header!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 12, clientY: 12 }));
     await settle();
-    expect(document.querySelector("[data-dbx-context-menu]")).not.toBeNull();
+    expect(document.querySelector("[data-linop-db-context-menu]")).not.toBeNull();
     expect(host.querySelector('[data-toolbar-action="deleteColumn"]')).toBeNull();
-    expect([...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].some((button) => button.textContent?.trim() === i18n.global.t("dangerDialog.title"))).toBe(false);
-    expect([...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].some((button) => button.textContent?.trim() === i18n.global.t("grid.deleteColumn"))).toBe(false);
+    expect([...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].some((button) => button.textContent?.trim() === i18n.global.t("dangerDialog.title"))).toBe(false);
+    expect([...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].some((button) => button.textContent?.trim() === i18n.global.t("grid.deleteColumn"))).toBe(false);
     expect(mocks.executeBatch).not.toHaveBeenCalled();
     expect(mocks.buildDropTableChildObjectSql).not.toHaveBeenCalled();
   });

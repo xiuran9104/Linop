@@ -187,7 +187,7 @@ describe("SqlEditorWorkspace mount contract", () => {
     queryFocusCalls.grid.length = 0;
     queryFocusCalls.cancelled = 0;
     document.body.innerHTML = "";
-    localStorage.removeItem("dbx-shared-results-pane-size");
+    localStorage.removeItem("linop-db-shared-results-pane-size");
     editorPreviewCalls.length = 0;
     editorFocusCalls.length = 0;
     groupHandleModRCalls.length = 0;
@@ -406,7 +406,7 @@ describe("SqlEditorWorkspace mount contract", () => {
   });
 
   it("preserves the saved result height across result and idle query tabs", async () => {
-    localStorage.setItem("dbx-shared-results-pane-size", "45");
+    localStorage.setItem("linop-db-shared-results-pane-size", "45");
     const { store, host, cleanup } = mountOutputWorkspace([tab("result"), { ...tab("idle"), result: undefined }]);
     await nextTick();
     expect(host.querySelector(".pane-stub")?.getAttribute("size")).toBe("55");

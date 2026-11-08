@@ -7,11 +7,11 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::connection::AppState;
 
-use dbx_core::query_cancel::RunningTaskMetadata;
-pub use dbx_core::query_result_export::QueryResultExportRequest;
-use dbx_core::query_result_export::StagedExportTarget;
-use dbx_core::table_export::ExportStatus;
-pub use dbx_core::table_export::TableExportProgress;
+use linop_db_core::query_cancel::RunningTaskMetadata;
+pub use linop_db_core::query_result_export::QueryResultExportRequest;
+use linop_db_core::query_result_export::StagedExportTarget;
+use linop_db_core::table_export::ExportStatus;
+pub use linop_db_core::table_export::TableExportProgress;
 
 /// Allocate a temporary XLSX destination and remove files older than one week.
 #[tauri::command]
@@ -20,7 +20,7 @@ pub async fn create_query_result_temp_file(extension: String) -> Result<String, 
     if !matches!(extension, "xlsx" | "html") {
         return Err("unsupported temporary export extension".to_string());
     }
-    let dir = std::env::temp_dir().join("dbx-query-results");
+    let dir = std::env::temp_dir().join("linop-db-query-results");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let now = std::time::SystemTime::now();
     if let Ok(entries) = std::fs::read_dir(&dir) {
@@ -36,7 +36,7 @@ pub async fn create_query_result_temp_file(extension: String) -> Result<String, 
             }
         }
     }
-    Ok(dir.join(format!("dbx-query-result-{}.{}", uuid::Uuid::new_v4(), extension)).to_string_lossy().to_string())
+    Ok(dir.join(format!("linop-db-query-result-{}.{}", uuid::Uuid::new_v4(), extension)).to_string_lossy().to_string())
 }
 
 fn emit_progress(app: &AppHandle, progress: TableExportProgress) {
@@ -155,7 +155,7 @@ mod tests {
     impl TestDir {
         fn new() -> Self {
             let path = std::env::temp_dir().join(format!(
-                "dbx-query-result-export-{}-{}",
+                "linop-db-query-result-export-{}-{}",
                 std::process::id(),
                 NEXT_TEST_DIR.fetch_add(1, Ordering::SeqCst)
             ));
@@ -323,7 +323,7 @@ pub async fn start_query_result_export(
     state: State<'_, Arc<AppState>>,
     mut request: QueryResultExportRequest,
 ) -> Result<(), String> {
-    dbx_core::query::mysql_data_charset_policy::check_export(&state, &request.connection_id, &request.format).await?;
+    linop_db_core::query::mysql_data_charset_policy::check_export(&state, &request.connection_id, &request.format).await?;
     let state = state.inner().clone();
     let export_id = request.export_id.clone();
     let target = StagedExportTarget::new(&request.file_path)?;
@@ -331,7 +331,7 @@ pub async fn start_query_result_export(
 
     // Exports interleave async fetches with synchronous row formatting and
     // buffered disk writes; run them off the async workers (see spawn_export_task).
-    dbx_core::export_runtime::spawn_export_task(async move {
+    linop_db_core::export_runtime::spawn_export_task(async move {
         let execution_id = request.execution_id.clone().filter(|id| !id.trim().is_empty());
         let registered_query = execution_id.as_ref().map(|id| {
             state.running_queries.register_task(
@@ -346,7 +346,7 @@ pub async fn start_query_result_export(
         let cancel_token = registered_query.as_ref().map(|query| query.token());
         let routed_progress = Arc::new(RoutedExportProgress::default());
         let routed_progress_handler = routed_progress.clone();
-        let completion = dbx_core::query_result_export::export_query_result_core_with_completion(
+        let completion = linop_db_core::query_result_export::export_query_result_core_with_completion(
             &state,
             &request,
             cancel_token.clone(),
@@ -362,7 +362,7 @@ pub async fn start_query_result_export(
         let cancellation_requested =
             terminal.as_ref().is_some_and(|progress| matches!(progress.status, ExportStatus::Cancelled))
                 || cancel_token.as_ref().is_some_and(|token| token.is_cancelled())
-                || dbx_core::database_export::is_export_cancelled(&export_id).await;
+                || linop_db_core::database_export::is_export_cancelled(&export_id).await;
         let result = if let Err(error) = completion.cleanup {
             let _ = target.discard();
             Err(error)
@@ -388,7 +388,7 @@ pub async fn start_query_result_export(
             );
         }
 
-        dbx_core::database_export::clear_export_cancelled(&export_id).await;
+        linop_db_core::database_export::clear_export_cancelled(&export_id).await;
     });
 
     Ok(())
@@ -400,7 +400,7 @@ pub async fn cancel_query_result_export(
     export_id: String,
     execution_id: Option<String>,
 ) -> Result<(), String> {
-    dbx_core::database_export::set_export_cancelled(&export_id).await;
+    linop_db_core::database_export::set_export_cancelled(&export_id).await;
     if let Some(execution_id) = execution_id.filter(|id| !id.trim().is_empty()) {
         state.running_queries.cancel(&execution_id);
     }
@@ -410,7 +410,7 @@ pub async fn cancel_query_result_export(
 #[tauri::command]
 pub async fn open_query_result_temp_file(app: AppHandle, path: String) -> Result<(), String> {
     use tauri_plugin_opener::OpenerExt;
-    let root = std::fs::canonicalize(std::env::temp_dir().join("dbx-query-results")).map_err(|e| e.to_string())?;
+    let root = std::fs::canonicalize(std::env::temp_dir().join("linop-db-query-results")).map_err(|e| e.to_string())?;
     let resolved = std::fs::canonicalize(&path).map_err(|e| e.to_string())?;
     if resolved.parent() != Some(root.as_path())
         || !matches!(resolved.extension().and_then(|e| e.to_str()), Some("xlsx") | Some("html"))

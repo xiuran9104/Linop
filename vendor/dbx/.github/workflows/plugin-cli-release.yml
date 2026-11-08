@@ -125,7 +125,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           if [ -z "${NODE_AUTH_TOKEN}" ]; then
-            echo "::error::NPM_TOKEN secret is required to publish @dbx-app/plugin-cli."
+            echo "::error::NPM_TOKEN secret is required to publish @linop-db-app/plugin-cli."
             exit 1
           fi
 
@@ -242,33 +242,33 @@ jobs:
           - runner: macos-15
             target: aarch64-apple-darwin
             package-dir: plugin-cli-darwin-arm64
-            package-name: "@dbx-app/plugin-cli-darwin-arm64"
-            binary: dbx-plugin
+            package-name: "@linop-db-app/plugin-cli-darwin-arm64"
+            binary: linop-db-plugin
           - runner: macos-15-intel
             target: x86_64-apple-darwin
             package-dir: plugin-cli-darwin-x64
-            package-name: "@dbx-app/plugin-cli-darwin-x64"
-            binary: dbx-plugin
+            package-name: "@linop-db-app/plugin-cli-darwin-x64"
+            binary: linop-db-plugin
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             package-dir: plugin-cli-linux-arm64-gnu
-            package-name: "@dbx-app/plugin-cli-linux-arm64-gnu"
-            binary: dbx-plugin
+            package-name: "@linop-db-app/plugin-cli-linux-arm64-gnu"
+            binary: linop-db-plugin
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             package-dir: plugin-cli-linux-x64-gnu
-            package-name: "@dbx-app/plugin-cli-linux-x64-gnu"
-            binary: dbx-plugin
+            package-name: "@linop-db-app/plugin-cli-linux-x64-gnu"
+            binary: linop-db-plugin
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc
             package-dir: plugin-cli-win32-arm64
-            package-name: "@dbx-app/plugin-cli-win32-arm64"
-            binary: dbx-plugin.exe
+            package-name: "@linop-db-app/plugin-cli-win32-arm64"
+            binary: linop-db-plugin.exe
           - runner: windows-2025
             target: x86_64-pc-windows-msvc
             package-dir: plugin-cli-win32-x64
-            package-name: "@dbx-app/plugin-cli-win32-x64"
-            binary: dbx-plugin.exe
+            package-name: "@linop-db-app/plugin-cli-win32-x64"
+            binary: linop-db-plugin.exe
     steps:
       - uses: actions/checkout@v7
         with:
@@ -327,7 +327,7 @@ jobs:
           fi
 
   publish-launcher:
-    name: Publish @dbx-app/plugin-cli
+    name: Publish @linop-db-app/plugin-cli
     needs: [prepare, publish-platforms]
     runs-on: ubuntu-24.04
     steps:
@@ -360,12 +360,12 @@ jobs:
           }
 
           for package in \
-            @dbx-app/plugin-cli-darwin-arm64 \
-            @dbx-app/plugin-cli-darwin-x64 \
-            @dbx-app/plugin-cli-linux-arm64-gnu \
-            @dbx-app/plugin-cli-linux-x64-gnu \
-            @dbx-app/plugin-cli-win32-arm64 \
-            @dbx-app/plugin-cli-win32-x64; do
+            @linop-db-app/plugin-cli-darwin-arm64 \
+            @linop-db-app/plugin-cli-darwin-x64 \
+            @linop-db-app/plugin-cli-linux-arm64-gnu \
+            @linop-db-app/plugin-cli-linux-x64-gnu \
+            @linop-db-app/plugin-cli-win32-arm64 \
+            @linop-db-app/plugin-cli-win32-x64; do
             wait_for_package "${package}" || {
               echo "::error::${package}@${VERSION} is unavailable; refusing to publish the launcher."
               exit 1
@@ -378,9 +378,9 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
           NPM_TAG: ${{ needs.prepare.outputs.npm-tag }}
         run: |
-          if npm view "@dbx-app/plugin-cli@${VERSION}" version >/dev/null 2>&1; then
-            echo "@dbx-app/plugin-cli@${VERSION} already exists; refreshing ${NPM_TAG}."
-            npm dist-tag add "@dbx-app/plugin-cli@${VERSION}" "${NPM_TAG}"
+          if npm view "@linop-db-app/plugin-cli@${VERSION}" version >/dev/null 2>&1; then
+            echo "@linop-db-app/plugin-cli@${VERSION} already exists; refreshing ${NPM_TAG}."
+            npm dist-tag add "@linop-db-app/plugin-cli@${VERSION}" "${NPM_TAG}"
           else
             npm publish ./packages/plugin-cli --access public --provenance --tag "${NPM_TAG}"
           fi
@@ -412,27 +412,27 @@ jobs:
           npm init -y >/dev/null
 
           for attempt in $(seq 1 60); do
-            if npm view "@dbx-app/plugin-cli@${VERSION}" version >/dev/null 2>&1; then
+            if npm view "@linop-db-app/plugin-cli@${VERSION}" version >/dev/null 2>&1; then
               break
             fi
             if [ "${attempt}" -eq 60 ]; then
-              echo "::error::@dbx-app/plugin-cli@${VERSION} did not become visible on npm."
+              echo "::error::@linop-db-app/plugin-cli@${VERSION} did not become visible on npm."
               exit 1
             fi
             sleep 10
           done
 
-          npm install --ignore-scripts --no-audit --no-fund "@dbx-app/plugin-cli@${VERSION}"
-          ./node_modules/.bin/dbx-plugin --version
+          npm install --ignore-scripts --no-audit --no-fund "@linop-db-app/plugin-cli@${VERSION}"
+          ./node_modules/.bin/linop-db-plugin --version
 
           for template in frontend rust go; do
-            ./node_modules/.bin/dbx-plugin create "${template}-plugin" \
+            ./node_modules/.bin/linop-db-plugin create "${template}-plugin" \
               --template "${template}" \
               --yes \
               --id "com.example.npm-${template}" \
               --name "npm ${template} smoke" \
               --publisher example \
               --description "Published npm package smoke"
-            ./node_modules/.bin/dbx-plugin package "${template}-plugin"
+            ./node_modules/.bin/linop-db-plugin package "${template}-plugin"
             test "$(find "${template}-plugin/dist" -maxdepth 1 -name '*.dbxp' | wc -l)" -eq 1
           done

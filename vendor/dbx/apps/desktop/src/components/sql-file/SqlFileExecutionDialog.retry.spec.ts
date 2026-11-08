@@ -1260,7 +1260,7 @@ describe("SqlFileExecutionDialog completion prompt and close (#12608)", () => {
 
   it("toasts success and closes dialog upon manual transaction commit when closeOnSuccess is on", async () => {
     const onOpenChange = vi.fn();
-    localStorage.setItem("dbx-sql-file-close-on-success", "true");
+    localStorage.setItem("linop-db-sql-file-close-on-success", "true");
     await mountReadyDialog(onOpenChange);
     const label = Array.from(root!.querySelectorAll("label")).find((item) => item.textContent?.includes("toolbar.manualTransaction"));
     label!.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click();
@@ -1283,23 +1283,23 @@ describe("SqlFileExecutionDialog completion prompt and close (#12608)", () => {
 describe("SqlFileExecutionDialog closeOnSuccess option (#12891)", () => {
   it("toggles closeOnSuccess option and updates localStorage", async () => {
     await mountReadyDialog();
-    expect(localStorage.getItem("dbx-sql-file-close-on-success")).toBeNull();
+    expect(localStorage.getItem("linop-db-sql-file-close-on-success")).toBeNull();
 
     const toggleButton = findButton("sqlFile.closeOnSuccess");
     toggleButton.click();
     await nextTick();
 
-    expect(localStorage.getItem("dbx-sql-file-close-on-success")).toBe("true");
+    expect(localStorage.getItem("linop-db-sql-file-close-on-success")).toBe("true");
 
     toggleButton.click();
     await nextTick();
 
-    expect(localStorage.getItem("dbx-sql-file-close-on-success")).toBe("false");
+    expect(localStorage.getItem("linop-db-sql-file-close-on-success")).toBe("false");
   });
 
   it("closes dialog upon successful completion when closeOnSuccess is on", async () => {
     const onOpenChange = vi.fn();
-    localStorage.setItem("dbx-sql-file-close-on-success", "true");
+    localStorage.setItem("linop-db-sql-file-close-on-success", "true");
     await mountReadyDialog(onOpenChange);
 
     mocks.executeSqlFiles.mockImplementationOnce(async (request) => {
@@ -1313,7 +1313,7 @@ describe("SqlFileExecutionDialog closeOnSuccess option (#12891)", () => {
   });
 
   it("keeps dialog open after successful execution when closeOnSuccess is false", async () => {
-    localStorage.setItem("dbx-sql-file-close-on-success", "false");
+    localStorage.setItem("linop-db-sql-file-close-on-success", "false");
     const onOpenChange = vi.fn();
     await mountReadyDialog(onOpenChange);
 
@@ -1329,7 +1329,7 @@ describe("SqlFileExecutionDialog closeOnSuccess option (#12891)", () => {
   });
 
   it("keeps dialog open after manual transaction commit when closeOnSuccess is false", async () => {
-    localStorage.setItem("dbx-sql-file-close-on-success", "false");
+    localStorage.setItem("linop-db-sql-file-close-on-success", "false");
     const onOpenChange = vi.fn();
     await mountReadyDialog(onOpenChange);
     const label = Array.from(root!.querySelectorAll("label")).find((item) => item.textContent?.includes("toolbar.manualTransaction"));

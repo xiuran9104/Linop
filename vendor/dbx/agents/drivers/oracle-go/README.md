@@ -11,9 +11,9 @@ go build -o agent .
 Cross-compile release builds use pure Go output:
 
 ```bash
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dbx-agent-oracle-linux-x64 .
-CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o dbx-agent-oracle-macos-aarch64 .
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o dbx-agent-oracle-windows-x64.exe .
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o linop-db-agent-oracle-linux-x64 .
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -trimpath -ldflags="-s -w" -o linop-db-agent-oracle-macos-aarch64 .
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o linop-db-agent-oracle-windows-x64.exe .
 ```
 
 ## Local DBX Test

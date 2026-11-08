@@ -99,10 +99,10 @@ afterEach(() => {
 });
 
 test("reads normalized WebDAV auto-upload config from localStorage", () => {
-  localStorage.setItem("dbx-webdav-endpoint", " https://dav.example.com/ ");
-  localStorage.setItem("dbx-webdav-username", " alice ");
-  localStorage.setItem("dbx-webdav-auto-upload-enabled", "true");
-  localStorage.setItem("dbx-webdav-auto-upload-interval-minutes", "0");
+  localStorage.setItem("linop-db-webdav-endpoint", " https://dav.example.com/ ");
+  localStorage.setItem("linop-db-webdav-username", " alice ");
+  localStorage.setItem("linop-db-webdav-auto-upload-enabled", "true");
+  localStorage.setItem("linop-db-webdav-auto-upload-interval-minutes", "0");
 
   const config = readWebDavAutoUploadConfig();
 
@@ -117,10 +117,10 @@ test("reads normalized WebDAV auto-upload config from localStorage", () => {
 });
 
 test("reads configured WebDAV user agent for client-restricted gateways", () => {
-  localStorage.setItem("dbx-webdav-endpoint", "https://dav.example.com/");
-  localStorage.setItem("dbx-webdav-user-agent", " Zotero/7.0.15 ");
-  localStorage.setItem("dbx-webdav-auto-upload-enabled", "true");
-  localStorage.setItem("dbx-webdav-auto-upload-interval-minutes", "1");
+  localStorage.setItem("linop-db-webdav-endpoint", "https://dav.example.com/");
+  localStorage.setItem("linop-db-webdav-user-agent", " Zotero/7.0.15 ");
+  localStorage.setItem("linop-db-webdav-auto-upload-enabled", "true");
+  localStorage.setItem("linop-db-webdav-auto-upload-interval-minutes", "1");
 
   const config = readWebDavAutoUploadConfig();
 
@@ -135,9 +135,9 @@ test("reads configured WebDAV user agent for client-restricted gateways", () => 
 });
 
 test("keeps WebDAV auto-upload running outside the settings dialog", async () => {
-  localStorage.setItem("dbx-webdav-endpoint", "https://dav.example.com/");
-  localStorage.setItem("dbx-webdav-auto-upload-enabled", "true");
-  localStorage.setItem("dbx-webdav-auto-upload-interval-minutes", "1");
+  localStorage.setItem("linop-db-webdav-endpoint", "https://dav.example.com/");
+  localStorage.setItem("linop-db-webdav-auto-upload-enabled", "true");
+  localStorage.setItem("linop-db-webdav-auto-upload-interval-minutes", "1");
 
   useWebDavAutoUpload();
 
@@ -152,7 +152,7 @@ test("keeps WebDAV auto-upload running outside the settings dialog", async () =>
   });
   assert.equal(webdavSyncUploadMock.mock.calls[0][3], false);
 
-  localStorage.setItem("dbx-webdav-auto-upload-enabled", "false");
+  localStorage.setItem("linop-db-webdav-auto-upload-enabled", "false");
   window.dispatchEvent(new Event("dbx:webdav-auto-upload-config-changed"));
   await vi.advanceTimersByTimeAsync(60_000);
 
@@ -160,9 +160,9 @@ test("keeps WebDAV auto-upload running outside the settings dialog", async () =>
 });
 
 test("triggers upload immediately on startup when last upload time is older than configured interval", async () => {
-  localStorage.setItem("dbx-webdav-endpoint", "https://dav.example.com/");
-  localStorage.setItem("dbx-webdav-auto-upload-enabled", "true");
-  localStorage.setItem("dbx-webdav-auto-upload-interval-minutes", "1440");
+  localStorage.setItem("linop-db-webdav-endpoint", "https://dav.example.com/");
+  localStorage.setItem("linop-db-webdav-auto-upload-enabled", "true");
+  localStorage.setItem("linop-db-webdav-auto-upload-interval-minutes", "1440");
 
   const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60_000;
   writeWebDavLastUploadAt(threeDaysAgo, false);
@@ -179,9 +179,9 @@ test("triggers upload immediately on startup when last upload time is older than
 });
 
 test("schedules upload for the remaining duration when last upload was within interval", async () => {
-  localStorage.setItem("dbx-webdav-endpoint", "https://dav.example.com/");
-  localStorage.setItem("dbx-webdav-auto-upload-enabled", "true");
-  localStorage.setItem("dbx-webdav-auto-upload-interval-minutes", "1440");
+  localStorage.setItem("linop-db-webdav-endpoint", "https://dav.example.com/");
+  localStorage.setItem("linop-db-webdav-auto-upload-enabled", "true");
+  localStorage.setItem("linop-db-webdav-auto-upload-interval-minutes", "1440");
 
   const tenHoursAgo = Date.now() - 10 * 60 * 60_000;
   writeWebDavLastUploadAt(tenHoursAgo, false);
@@ -196,9 +196,9 @@ test("schedules upload for the remaining duration when last upload was within in
 });
 
 test("manual upload resets the auto-upload countdown", async () => {
-  localStorage.setItem("dbx-webdav-endpoint", "https://dav.example.com/");
-  localStorage.setItem("dbx-webdav-auto-upload-enabled", "true");
-  localStorage.setItem("dbx-webdav-auto-upload-interval-minutes", "60");
+  localStorage.setItem("linop-db-webdav-endpoint", "https://dav.example.com/");
+  localStorage.setItem("linop-db-webdav-auto-upload-enabled", "true");
+  localStorage.setItem("linop-db-webdav-auto-upload-interval-minutes", "60");
 
   useWebDavAutoUpload();
 
@@ -216,9 +216,9 @@ test("manual upload resets the auto-upload countdown", async () => {
 
 test("retries after backoff when auto-upload fails instead of infinite loop", async () => {
   webdavSyncUploadMock.mockRejectedValueOnce(new Error("Network offline"));
-  localStorage.setItem("dbx-webdav-endpoint", "https://dav.example.com/");
-  localStorage.setItem("dbx-webdav-auto-upload-enabled", "true");
-  localStorage.setItem("dbx-webdav-auto-upload-interval-minutes", "1440");
+  localStorage.setItem("linop-db-webdav-endpoint", "https://dav.example.com/");
+  localStorage.setItem("linop-db-webdav-auto-upload-enabled", "true");
+  localStorage.setItem("linop-db-webdav-auto-upload-interval-minutes", "1440");
 
   const threeDaysAgo = Date.now() - 3 * 24 * 60 * 60_000;
   writeWebDavLastUploadAt(threeDaysAgo, false);
@@ -240,9 +240,9 @@ test("auto-upload in-flight switching target records old target success without 
   const targetA = { endpoint: "https://dav.a.example.com/" };
   const targetB = { endpoint: "https://dav.b.example.com/" };
 
-  localStorage.setItem("dbx-webdav-endpoint", targetA.endpoint);
-  localStorage.setItem("dbx-webdav-auto-upload-enabled", "true");
-  localStorage.setItem("dbx-webdav-auto-upload-interval-minutes", "60");
+  localStorage.setItem("linop-db-webdav-endpoint", targetA.endpoint);
+  localStorage.setItem("linop-db-webdav-auto-upload-enabled", "true");
+  localStorage.setItem("linop-db-webdav-auto-upload-interval-minutes", "60");
 
   let resolveUploadA!: (value: any) => void;
   webdavSyncUploadMock.mockImplementationOnce(
@@ -260,8 +260,8 @@ test("auto-upload in-flight switching target records old target success without 
   assert.equal(webdavSyncUploadMock.mock.calls[0][0].endpoint, targetA.endpoint);
 
   // While Target A upload is in flight, user switches target to Target B with 1440 min interval
-  localStorage.setItem("dbx-webdav-endpoint", targetB.endpoint);
-  localStorage.setItem("dbx-webdav-auto-upload-interval-minutes", "1440");
+  localStorage.setItem("linop-db-webdav-endpoint", targetB.endpoint);
+  localStorage.setItem("linop-db-webdav-auto-upload-interval-minutes", "1440");
   window.dispatchEvent(new Event("dbx:webdav-auto-upload-config-changed"));
 
   const targetBBaseline = readWebDavLastUploadAt(targetB);
@@ -284,9 +284,9 @@ test("auto-upload in-flight switching target records old target success without 
 });
 
 test("auto-upload in-flight disabling auto-upload prevents rescheduling", async () => {
-  localStorage.setItem("dbx-webdav-endpoint", "https://dav.example.com/");
-  localStorage.setItem("dbx-webdav-auto-upload-enabled", "true");
-  localStorage.setItem("dbx-webdav-auto-upload-interval-minutes", "60");
+  localStorage.setItem("linop-db-webdav-endpoint", "https://dav.example.com/");
+  localStorage.setItem("linop-db-webdav-auto-upload-enabled", "true");
+  localStorage.setItem("linop-db-webdav-auto-upload-interval-minutes", "60");
 
   let resolveUpload!: (value: any) => void;
   webdavSyncUploadMock.mockImplementationOnce(
@@ -302,7 +302,7 @@ test("auto-upload in-flight disabling auto-upload prevents rescheduling", async 
   assert.equal(webdavSyncUploadMock.mock.calls.length, 1);
 
   // Disable while upload is in progress
-  localStorage.setItem("dbx-webdav-auto-upload-enabled", "false");
+  localStorage.setItem("linop-db-webdav-auto-upload-enabled", "false");
   window.dispatchEvent(new Event("dbx:webdav-auto-upload-config-changed"));
 
   resolveUpload({ bytes: 42, remotePath: "DBX/sync/snapshot.json" });
@@ -317,9 +317,9 @@ test("manual upload in-flight switching target preserves target isolation", asyn
   const targetA = { endpoint: "https://dav.a.example.com/" };
   const targetB = { endpoint: "https://dav.b.example.com/" };
 
-  localStorage.setItem("dbx-webdav-endpoint", targetA.endpoint);
-  localStorage.setItem("dbx-webdav-auto-upload-enabled", "true");
-  localStorage.setItem("dbx-webdav-auto-upload-interval-minutes", "60");
+  localStorage.setItem("linop-db-webdav-endpoint", targetA.endpoint);
+  localStorage.setItem("linop-db-webdav-auto-upload-enabled", "true");
+  localStorage.setItem("linop-db-webdav-auto-upload-interval-minutes", "60");
 
   useWebDavAutoUpload();
 
@@ -329,7 +329,7 @@ test("manual upload in-flight switching target preserves target isolation", asyn
   // User starts manual sync for Target A
   const uploadConfig = { ...targetA };
   // While manual upload is running, user switches settings to Target B
-  localStorage.setItem("dbx-webdav-endpoint", targetB.endpoint);
+  localStorage.setItem("linop-db-webdav-endpoint", targetB.endpoint);
   window.dispatchEvent(new Event("dbx:webdav-auto-upload-config-changed"));
 
   // Manual sync completes for Target A; checks whether targetA is still current

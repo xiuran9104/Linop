@@ -13,7 +13,7 @@ describe("the export entry point", () => {
   it("says so when the document carries no payload at all", async () => {
     await import("../main");
     expect(document.querySelector("#app")?.textContent).toContain("could not be read");
-    expect(document.querySelector("#app")?.textContent).toContain("application/dbx-snapshot");
+    expect(document.querySelector("#app")?.textContent).toContain("application/linop-db-snapshot");
   });
 
   it("says so when the payload is present but not decodable", async () => {
@@ -22,7 +22,7 @@ describe("the export entry point", () => {
     // thrown above, so it is a genuinely different path through the catch —
     // and the reader must still get a sentence instead of a white screen.
     const node = document.createElement("script");
-    node.type = "application/dbx-snapshot";
+    node.type = "application/linop-db-snapshot";
     node.textContent = "not base64 at all!";
     document.body.appendChild(node);
 

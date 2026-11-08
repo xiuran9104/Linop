@@ -48,11 +48,11 @@ export type PluginCatalog = {
 // R2 responds with a dbxio.com CORS header, so the browser refresh path works too.
 export const PLUGIN_CATALOG_URLS = [
   "https://dl.dbxio.com/catalog/index.json",
-  "https://raw.githubusercontent.com/t8y2/dbx-store/main/catalog/index.json",
+  "https://raw.githubusercontent.com/t8y2/linop-db-store/main/catalog/index.json",
 ] as const;
 
-export const DBX_STORE_URL = "https://github.com/t8y2/dbx-store";
-export const DBX_STORE_CONTRIBUTING_URL = "https://github.com/t8y2/dbx-store/blob/main/CONTRIBUTING.md";
+export const DBX_STORE_URL = "https://github.com/t8y2/linop-db-store";
+export const DBX_STORE_CONTRIBUTING_URL = "https://github.com/t8y2/linop-db-store/blob/main/CONTRIBUTING.md";
 
 function isPluginCatalog(value: unknown): value is PluginCatalog {
   return (

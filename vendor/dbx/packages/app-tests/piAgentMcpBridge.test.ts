@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 
-const bridgePath = resolve("crates/dbx-ai-provider/assets/pi-mcp-bridge.mjs");
+const bridgePath = resolve("crates/linop-db-ai-provider/assets/pi-mcp-bridge.mjs");
 const envNames = ["DBX_PI_MCP_PROGRAM", "DBX_PI_MCP_ARGS", "DBX_PI_ENABLED_TOOLS", "DBX_PI_BRIDGE_READY_FILE"] as const;
 const originalEnv = Object.fromEntries(envNames.map((name) => [name, process.env[name]]));
 
@@ -21,7 +21,7 @@ afterEach(() => {
 
 describe("Pi Coding Agent MCP bridge", () => {
   it("registers an allowed DBX MCP tool and forwards its result", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "dbx-pi-bridge-test-"));
+    const directory = await mkdtemp(join(tmpdir(), "linop-db-pi-bridge-test-"));
     const readyPath = join(directory, "ready");
     const fakeMcp = String.raw`
       const readline = require("node:readline");
@@ -33,7 +33,7 @@ describe("Pi Coding Agent MCP bridge", () => {
         if (request.method === "tools/list") {
           result = {
             tools: [{
-              name: "dbx_ping",
+              name: "linop_db_ping",
               title: "DBX Ping",
               description: "Return a deterministic value",
               inputSchema: {
@@ -54,7 +54,7 @@ describe("Pi Coding Agent MCP bridge", () => {
     `;
     process.env.DBX_PI_MCP_PROGRAM = process.execPath;
     process.env.DBX_PI_MCP_ARGS = JSON.stringify(["-e", fakeMcp]);
-    process.env.DBX_PI_ENABLED_TOOLS = JSON.stringify(["dbx_ping"]);
+    process.env.DBX_PI_ENABLED_TOOLS = JSON.stringify(["linop_db_ping"]);
     process.env.DBX_PI_BRIDGE_READY_FILE = readyPath;
 
     const registeredTools: Array<{
@@ -74,7 +74,7 @@ describe("Pi Coding Agent MCP bridge", () => {
 
     try {
       expect(await readFile(readyPath, "utf8")).toBe("ready");
-      expect(registeredTools.map((tool) => tool.name)).toEqual(["dbx_ping"]);
+      expect(registeredTools.map((tool) => tool.name)).toEqual(["linop_db_ping"]);
       const result = await registeredTools[0].execute("call-1", { value: "ok" }, new AbortController().signal);
       expect(result.content).toEqual([{ type: "text", text: "pong:ok" }]);
       expect(result.details).toMatchObject({ isError: false });

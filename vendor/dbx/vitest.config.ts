@@ -7,7 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "apps/desktop/src"),
-      "@dbx-app/mongo-shell": path.resolve(import.meta.dirname, "packages/mongo-shell/src/index.ts"),
+      "@linop-db-app/mongo-shell": path.resolve(import.meta.dirname, "packages/mongo-shell/src/index.ts"),
       // sql-formatter's `exports` map only declares ".", so deep imports into its
       // bundled parser/tokenizer are rejected by Vite's exports handling. The
       // The default layout engine needs that AST; see lib/sql/layout/internals.ts.

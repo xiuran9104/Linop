@@ -86,7 +86,7 @@ Rust `BackendError` 的字段由 catalog 构造，字段定义如下（JSON 使�
 
 新增错误码时：
 
-1. 在 `crates/dbx-core/src/backend_error.rs` 的 catalog 中增加唯一 code、`messageKey` 和参数声明。
+1. 在 `crates/linop-db-core/src/backend_error.rs` 的 catalog 中增加唯一 code、`messageKey` 和参数声明。
 2. 为所有 locale 增加相同 key，并扩展 catalog 完整性测试。
 3. 增加 Rust 映射和序列化测试，以及前端 normalize/翻译测试。
 4. 若错误来自 Agent，先在 `AgentErrorContext` 中定义可验证的事实和合法组合，再添加 catalog 映射；不要用错误文本补分类。
@@ -109,11 +109,11 @@ Rust `BackendError` 的字段由 catalog 构造，字段定义如下（JSON 使�
 
 ### Tauri Desktop
 
-查询命令将 `QueryExecutionError` 映射为 `BackendError`。单语句和事务查询即使通过 `execute_multi` 命令执行，`dbx-core` 也会在整个 multi-query 核心链路中保留 `QueryExecutionError`，直到 Tauri 边界才转换为 `BackendError`；不得先降级为字符串再重建 envelope。`apps/desktop/src/lib/backend/tauri.ts` 在查询失败时抛出 `BackendErrorException`，前端因此可以同时取得 `messageKey` 和原始 `detail`。Tauri 的连接、传输、导入和导出边界也统一将拒绝结果转换为 `BackendErrorException`；未知对象只提取有长度上限的 `message`、`reason` 或 `detail`，内容为空时使用稳定摘要。
+查询命令将 `QueryExecutionError` 映射为 `BackendError`。单语句和事务查询即使通过 `execute_multi` 命令执行，`linop-db-core` 也会在整个 multi-query 核心链路中保留 `QueryExecutionError`，直到 Tauri 边界才转换为 `BackendError`；不得先降级为字符串再重建 envelope。`apps/desktop/src/lib/backend/tauri.ts` 在查询失败时抛出 `BackendErrorException`，前端因此可以同时取得 `messageKey` 和原始 `detail`。Tauri 的连接、传输、导入和导出边界也统一将拒绝结果转换为 `BackendErrorException`；未知对象只提取有长度上限的 `message`、`reason` 或 `detail`，内容为空时使用稳定摘要。
 
 ### HTTP Web
 
-`crates/dbx-web` 的 multi-query 路由也消费 typed 核心入口，并将 `AppError` 序列化为同一套 envelope；正常 HTTP 错误响应会保留按上述规则生成的 `detail`。`BackendError::without_detail()` 仅用于需要主动隐藏详情的兼容场景，不是默认响应路径。HTTP status 只表示传输结果，不能替代或改变 `BackendError.code`。
+`crates/linop-db-web` 的 multi-query 路由也消费 typed 核心入口，并将 `AppError` 序列化为同一套 envelope；正常 HTTP 错误响应会保留按上述规则生成的 `detail`。`BackendError::without_detail()` 仅用于需要主动隐藏详情的兼容场景，不是默认响应路径。HTTP status 只表示传输结果，不能替代或改变 `BackendError.code`。
 
 桌面端 HTTP 失败（包括 multipart、SSE、上传、下载和 Nacos 特殊接口）必须调用 `backendResponseError`，不能直接构造 `new Error(await response.text())`，否则会丢失 `BackendError v1` envelope。
 
@@ -160,10 +160,10 @@ translateBackendError(t, error)
 
 ```text
 cargo fmt --all -- --check
-cargo clippy -j 1 -p dbx-core --no-default-features --all-targets -- -D warnings
-cargo test -j 1 -p dbx-core --no-default-features --lib backend_error::tests
-cargo test -j 1 -p dbx-core --no-default-features --lib agent_recovery::tests
-cargo check -j 1 -p dbx-web --no-default-features
+cargo clippy -j 1 -p linop-db-core --no-default-features --all-targets -- -D warnings
+cargo test -j 1 -p linop-db-core --no-default-features --lib backend_error::tests
+cargo test -j 1 -p linop-db-core --no-default-features --lib agent_recovery::tests
+cargo check -j 1 -p linop-db-web --no-default-features
 pnpm typecheck
 pnpm vitest run apps/desktop/src/i18n/__tests__/backendErrors.spec.ts
 ```

@@ -15,7 +15,7 @@ export interface DatabaseBrowserMutation {
   operation: "empty" | "drop-tables" | "drop-database";
 }
 
-const mutationEvent = "dbx-database-browser-mutation";
+const mutationEvent = "linop-db-database-browser-mutation";
 
 export function notifyDatabaseBrowserMutation(mutation: DatabaseBrowserMutation): void {
   window.dispatchEvent(new CustomEvent(mutationEvent, { detail: mutation }));

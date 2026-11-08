@@ -308,7 +308,7 @@ const ORACLE_STICKY_TRANSACTION_TYPES: ReadonlySet<string> = new Set(["oracle", 
 
 /** Databases whose manual-transaction toolbar hides Commit/Rollback until an
  *  unproven statement dirties the session. Mirrors the Rust proof gate
- *  (crates/dbx-core/src/query/mod.rs + sql_risk.rs `prove_read_only_for_database`).
+ *  (crates/linop-db-core/src/query/mod.rs + sql_risk.rs `prove_read_only_for_database`).
  *  Every member must also be in TRANSACTION_SUPPORTED_TYPES above: a database
  *  cannot reach manual mode (and this UX) without explicit transaction control
  *  (#9018). The PostgreSQL family (PostgreSQL, GaussDB, openGauss, Kingbase) and

@@ -26,12 +26,12 @@
 
 | 文件 | 改动内容 |
 |------|----------|
-| `crates/dbx-core/src/db/mongo_driver.rs` | 新增 `MongoIndexKey`、`MongoIndexSpec` 结构体；`list_index_specs()`（原生驱动，raw `listIndexes` + 游标读取）；`index_spec_from_document()`、`index_spec_from_index_info()`；辅助函数 `index_key_direction` / `index_flag` / `index_number`；常量 `MODELED_INDEX_FIELDS`；+9 个单元测试 |
-| `crates/dbx-core/src/mongo_ops.rs` | 新增 `mongo_list_index_specs_core()`（原生驱动走 specs；Legacy Agent 走 `crate::schema::list_indexes_core` 降级并在 `properties_complete: false` 中标记） |
+| `crates/linop-db-core/src/db/mongo_driver.rs` | 新增 `MongoIndexKey`、`MongoIndexSpec` 结构体；`list_index_specs()`（原生驱动，raw `listIndexes` + 游标读取）；`index_spec_from_document()`、`index_spec_from_index_info()`；辅助函数 `index_key_direction` / `index_flag` / `index_number`；常量 `MODELED_INDEX_FIELDS`；+9 个单元测试 |
+| `crates/linop-db-core/src/mongo_ops.rs` | 新增 `mongo_list_index_specs_core()`（原生驱动走 specs；Legacy Agent 走 `crate::schema::list_indexes_core` 降级并在 `properties_complete: false` 中标记） |
 | `src-tauri/src/commands/mongo_cmd.rs` | 新增只读 Tauri 命令 `mongo_list_index_specs` |
 | `src-tauri/src/lib.rs` | 注册 `commands::mongo_cmd::mongo_list_index_specs`（~1806 行） |
-| `crates/dbx-web/src/routes/mongo.rs` | 新增只读路由 handler `list_index_specs`（POST，`ensure_scope` 读策略，返回 `Vec<MongoIndexSpec>`） |
-| `crates/dbx-web/src/main.rs` | 注册路由 `POST /api/mongo/list-index-specs` |
+| `crates/linop-db-web/src/routes/mongo.rs` | 新增只读路由 handler `list_index_specs`（POST，`ensure_scope` 读策略，返回 `Vec<MongoIndexSpec>`） |
+| `crates/linop-db-web/src/main.rs` | 注册路由 `POST /api/mongo/list-index-specs` |
 
 ### 2.1 编译验证结论（2026-08-13 已完成）
 
@@ -40,7 +40,7 @@
 - ✅ `mongo_driver.rs::list_index_specs` 中 `client.database(database).run_cursor_command(doc! { "listIndexes": collection })` 的 API 用法与同文件的 `aggregate_documents`（约 1186 行 `db.run_cursor_command(command)`）完全一致 —— 同样的 `Database::run_cursor_command(Document)` 签名 + `cursor.try_next()` 流式读取（依赖 `futures::TryStreamExt`，第 14 行已 import）。
 - ✅ `mongo_ops.rs` 中 `crate::schema::list_indexes_core(state, connection_id, database, database, collection)` 的调用签名与 `schema.rs:5515` 的定义 `list_indexes_core(state: &AppState, connection_id: &str, database: &str, schema: &str, table: &str)` 一致 —— `(state, connection_id, database, database [作 schema], collection [作 table])`，对应 Mongo 的库即 schema 语义。Legacy Agent 降级时正确写出 `properties_complete: false`。
 - ✅ `src-tauri/src/lib.rs` 中 `commands::mongo_cmd::mongo_list_index_specs` 注册在 1808 行 —— 与同模块的 `mongo_create_index`（1809）/`mongo_drop_indexes`（1810）相邻，且均位于 `tauri::generate_handler![...]` 同一个宏调用内，作用域正确。
-- ✅ `crates/dbx-web/src/main.rs:620` 注册的 `.route("/mongo/list-index-specs", post(routes::mongo::list_index_specs))` —— `list_index_specs` 是独立路径，不与 `create-index`/`drop-indexes` 等任何已有路由冲突；`routes::mongo::list_index_specs` 返回 `Vec<MongoIndexSpec>`，handler 不带写策略守卫（只读，符合预期）。
+- ✅ `crates/linop-db-web/src/main.rs:620` 注册的 `.route("/mongo/list-index-specs", post(routes::mongo::list_index_specs))` —— `list_index_specs` 是独立路径，不与 `create-index`/`drop-indexes` 等任何已有路由冲突；`routes::mongo::list_index_specs` 返回 `Vec<MongoIndexSpec>`，handler 不带写策略守卫（只读，符合预期）。
 
 ### 2.2 历史：本机曾被报告无法编译的根因
 
@@ -57,40 +57,40 @@ rust-lld: error: could not open 'kernel32.lib': no such file or directory
 - **复查结论（2026-08-13）**：上述「缺少 SDK」的诊断不成立 —— Windows 10 SDK 实际已安装在 `C:/Program Files (x86)/Windows Kits/10/Lib/{10.0.26100.0, 10.0.28000.0}`，MSVC 链接器也在 PATH（`/d/dev/ms/soft/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64`）。`cargo` 此前未找到，仅因 `~/.cargo/bin` 不在 PATH 中；加入后 `cargo check` / `cargo test` 均可运行。
 - 解决方式（任选其一，需网络/管理员权限）：
   1. 安装 **Visual Studio Build Tools**（勾选「使用 C++ 的桌面开发」+ Windows 10/11 SDK）；
-  2. 或在**有 SDK 的机器 / CI** 上跑 `cargo test -p dbx-core --lib mongo_driver::`。
+  2. 或在**有 SDK 的机器 / CI** 上跑 `cargo test -p linop-db-core --lib mongo_driver::`。
 
 ---
 
 ## 3. 验证清单（Rust 侧，已逐条执行 ✅）
 
 ```bash
-# 1. 编译 dbx-core
-cargo check -p dbx-core --lib
+# 1. 编译 linop-db-core
+cargo check -p linop-db-core --lib
 
 # 2. 跑新增的驱动单测（9 个）
-cargo test -p dbx-core --lib mongo_driver::index_spec_
+cargo test -p linop-db-core --lib mongo_driver::index_spec_
 
 # 3. 编译 Tauri 命令层
 cargo check --manifest-path src-tauri/Cargo.toml
 
 # 4. 编译 Web 路由层
-cargo check -p dbx-web
+cargo check -p linop-db-web
 ```
 
 需要重点人工复核的点：
 
-- [x] `crates/dbx-core/src/db/mongo_driver.rs` 中 `Client::database().run_cursor_command()` API 用法是否正确（`aggregate_documents` 里已有该用法作为参照，约 1000 行）；
+- [x] `crates/linop-db-core/src/db/mongo_driver.rs` 中 `Client::database().run_cursor_command()` API 用法是否正确（`aggregate_documents` 里已有该用法作为参照，约 1000 行）；
 - [x] `mongo_ops.rs` 里对 `crate::schema::list_indexes_core` 的调用签名（`(state, connection_id, database, schema, table)`）是否与 `schema.rs:5515` 一致（现在传的是 `database, database, collection`）；
 - [x] `src-tauri/src/lib.rs` 命令注册列表中新增项是否在 `generate_handler!` 宏（或多个 `invoke_handler`）的**正确作用域**内；
-- [x] `crates/dbx-web/src/main.rs` 路由注册处 `routes::mongo::list_index_specs` 是否有歧义冲突。
+- [x] `crates/linop-db-web/src/main.rs` 路由注册处 `routes::mongo::list_index_specs` 是否有歧义冲突。
 
 ### 3.1 实际验证记录（2026-08-13，本机）
 
 环境：`cargo 1.97.1` / `stable-x86_64-pc-windows-msvc`，MSVC 14.51 + Windows 10 SDK 10.0.26100.0 / 10.0.28000.0。
 
 ```text
-# 步骤 1：编译 dbx-core
-$ cargo check -p dbx-core --lib --no-default-features \
+# 步骤 1：编译 linop-db-core
+$ cargo check -p linop-db-core --lib --no-default-features \
     --features "duckdb-sidecar,mq-admin,system-fonts"
    Finished `dev` profile in 1m 08s
 ```
@@ -100,8 +100,8 @@ $ cargo check -p dbx-core --lib --no-default-features \
 > 在装有 Strawberry Perl / 完整 MSYS2 或预编译 OpenSSL 的 CI 上跑默认 features 即可。
 
 ```text
-# 步骤 2：编译 dbx-web（同上 --no-default-features 跳过 sqlcipher）
-$ cargo check -p dbx-web --no-default-features
+# 步骤 2：编译 linop-db-web（同上 --no-default-features 跳过 sqlcipher）
+$ cargo check -p linop-db-web --no-default-features
    Finished `dev` profile in 29.16s
 
 # 步骤 3：编译 Tauri 命令层
@@ -110,7 +110,7 @@ $ (cd src-tauri && cargo check --no-default-features \
    Finished `dev` profile in 9m 50s
 
 # 步骤 4：跑 mongo_driver 单测（含 9 个新增 index_spec_ 用例）
-$ cargo test -p dbx-core --lib --no-default-features \
+$ cargo test -p linop-db-core --lib --no-default-features \
     --features "duckdb-sidecar,mq-admin,system-fonts" mongo_driver::
    test result: ok. 97 passed; 0 failed; 0 ignored
 ```
@@ -127,8 +127,8 @@ $ cargo test -p dbx-core --lib --no-default-features \
 `index_spec_from_index_info_falls_back_to_columns_without_an_index_type`。
 
 编译期仅遗留两条**与本次改动无关的预存 warning**（已通过 `git stash` 在 HEAD 上单独复现，确认非本次引入）：
-- `crates/dbx-core/src/db/agent_driver.rs:3093` `unused import: spawn_agent_process`
-- `crates/dbx-core/src/mongo_ops.rs:677` `unused import: super::*`（仅 `#[cfg(test)]` 模块，`#[cfg(unix)]` 用例在 Windows 上不编译所致）
+- `crates/linop-db-core/src/db/agent_driver.rs:3093` `unused import: spawn_agent_process`
+- `crates/linop-db-core/src/mongo_ops.rs:677` `unused import: super::*`（仅 `#[cfg(test)]` 模块，`#[cfg(unix)]` 用例在 Windows 上不编译所致）
 
 ---
 
@@ -190,10 +190,10 @@ apps/desktop/src/i18n/locales/zh-CN.ts
 apps/desktop/src/i18n/locales/zh-TW.ts
 apps/desktop/src/composables/__tests__/useSidebarDatabaseSpecificMutationRuntime.mongo.spec.ts
 apps/desktop/src/lib/sidebar/__tests__/mongoCollectionMutation.spec.ts
-crates/dbx-core/src/db/mongo_driver.rs          (Rust，✅ 已编译/测试通过)
-crates/dbx-core/src/mongo_ops.rs                (Rust，✅ 已编译通过)
+crates/linop-db-core/src/db/mongo_driver.rs          (Rust，✅ 已编译/测试通过)
+crates/linop-db-core/src/mongo_ops.rs                (Rust，✅ 已编译通过)
 src-tauri/src/commands/mongo_cmd.rs             (Rust，✅ 已编译通过)
 src-tauri/src/lib.rs                            (Rust，✅ 已编译通过)
-crates/dbx-web/src/routes/mongo.rs              (Rust，✅ 已编译通过)
-crates/dbx-web/src/main.rs                      (Rust，✅ 已编译通过)
+crates/linop-db-web/src/routes/mongo.rs              (Rust，✅ 已编译通过)
+crates/linop-db-web/src/main.rs                      (Rust，✅ 已编译通过)
 ```

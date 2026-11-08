@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "dbx": {
-      "command": "dbx-mcp-server"
+      "command": "linop-db-mcp-server"
     }
   }
 }

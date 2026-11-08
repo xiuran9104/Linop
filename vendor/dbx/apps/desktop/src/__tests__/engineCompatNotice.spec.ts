@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 const indexHtml = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
 
 function probeScriptSource(): string {
-  const start = indexHtml.indexOf("<script data-dbx-compat-probe>");
+  const start = indexHtml.indexOf("<script data-linop-db-compat-probe>");
   expect(start).toBeGreaterThan(-1);
   return indexHtml.slice(start, indexHtml.indexOf("</script>", start));
 }
@@ -19,7 +19,7 @@ describe("engine compatibility notice", () => {
   const script = probeScriptSource();
 
   it("runs before the app bundle so a broken shell is never painted first", () => {
-    expect(indexHtml.indexOf("data-dbx-compat-probe")).toBeLessThan(indexHtml.indexOf('src="/src/main.ts"'));
+    expect(indexHtml.indexOf("data-linop-db-compat-probe")).toBeLessThan(indexHtml.indexOf('src="/src/main.ts"'));
   });
 
   it("styles the notice with inline styles only", () => {
@@ -55,8 +55,8 @@ describe("engine compatibility notice", () => {
 
   it("publishes the verdict for the bundle and for support", () => {
     expect(script).toContain("window.__DBX_WEBVIEW_COMPAT__ = report");
-    expect(script).toContain('"dbx-compat"');
-    expect(script).toContain("dbx-compat-bypass");
+    expect(script).toContain('"linop-db-compat"');
+    expect(script).toContain("linop-db-compat-bypass");
   });
 
   it("routes each audience to the upgrade that actually fixes it", () => {
@@ -78,7 +78,7 @@ describe("engine compatibility notice", () => {
   });
 
   it("records the verdict for support and keeps the two notices independent", () => {
-    expect(script).toContain('document.documentElement.setAttribute("data-dbx-compat", report.tier)');
+    expect(script).toContain('document.documentElement.setAttribute("data-linop-db-compat", report.tier)');
     expect(script).toContain('report.tier !== "ok" && !report.bypassed');
     // Dismissing the advisory banner must not silence the blocking gate.
     expect(script).toContain('const dismissedDegraded = report.tier === "degraded" && storage("localStorage", BANNER_KEY) === "1"');

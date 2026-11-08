@@ -353,8 +353,8 @@ test("generates TDengine stable rows with one child table identity and stable ta
     {
       tableName: "sensor_data",
       tableType: "STABLE",
-      schema: "dbx_issue4512",
-      database: "dbx_issue4512",
+      schema: "linop_db_issue4512",
+      database: "linop_db_issue4512",
       rowCount: 2,
       columns: [
         {
@@ -385,7 +385,7 @@ test("generates TDengine stable rows with one child table identity and stable ta
   );
 
   assert.deepEqual(result.columns, ["tbname", "ts", "temperature", "device_id"]);
-  assert.match(String(result.rows[0][0]), /^dbx_gen_[a-z0-9]+_[a-z0-9]+$/);
+  assert.match(String(result.rows[0][0]), /^linop_db_gen_[a-z0-9]+_[a-z0-9]+$/);
   assert.equal(result.rows[1][0], result.rows[0][0]);
   assert.deepEqual(
     result.rows.map((row) => row.slice(1)),
@@ -395,7 +395,7 @@ test("generates TDengine stable rows with one child table identity and stable ta
     ],
   );
   assert.match(result.sql, /^INSERT INTO `sensor_data` \(`tbname`, `ts`, `temperature`, `device_id`\) VALUES\n/);
-  assert.equal(result.sql.match(/'dbx_gen_[a-z0-9]+_[a-z0-9]+'/g)?.length, 2);
+  assert.equal(result.sql.match(/'linop_db_gen_[a-z0-9]+_[a-z0-9]+'/g)?.length, 2);
 });
 
 test("keeps ordinary TDengine table generation unchanged", () => {
@@ -403,8 +403,8 @@ test("keeps ordinary TDengine table generation unchanged", () => {
     {
       tableName: "sensor_data_001",
       tableType: "TABLE",
-      schema: "dbx_issue4512",
-      database: "dbx_issue4512",
+      schema: "linop_db_issue4512",
+      database: "linop_db_issue4512",
       rowCount: 1,
       columns: [
         {

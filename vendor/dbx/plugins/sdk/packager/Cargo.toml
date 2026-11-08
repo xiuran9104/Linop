@@ -1,5 +1,5 @@
 [package]
-name = "dbx-plugin-packager"
+name = "linop-db-plugin-packager"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
@@ -9,12 +9,12 @@ autobins = false
 [workspace]
 
 [lib]
-name = "dbx_plugin_packager"
+name = "linop_db_plugin_packager"
 path = "src/main.rs"
 
 [[bin]]
-name = "dbx-plugin-packager"
-path = "src/bin/dbx-plugin-packager.rs"
+name = "linop-db-plugin-packager"
+path = "src/bin/linop-db-plugin-packager.rs"
 
 [dependencies]
 base64 = "0.22"

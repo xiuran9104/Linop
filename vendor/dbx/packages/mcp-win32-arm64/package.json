@@ -1,5 +1,5 @@
 {
-  "name": "@dbx-app/mcp-win32-arm64",
+  "name": "@linop-db-app/mcp-win32-arm64",
   "version": "0.4.141",
   "description": "Precompiled DBX MCP Rust binary for win32 arm64",
   "license": "Apache-2.0",
@@ -15,7 +15,7 @@
     "arm64"
   ],
   "bin": {
-    "dbx-mcp-native": "bin/dbx-mcp.exe"
+    "linop-db-mcp-native": "bin/linop-db-mcp.exe"
   },
   "files": [
     "bin"

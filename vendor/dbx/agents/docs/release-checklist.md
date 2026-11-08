@@ -24,9 +24,9 @@ git status --short
 On this workspace, use the local JDKs under `/private/tmp`:
 
 ```bash
-env JAVA_HOME=/private/tmp/dbx-jdk/jdk-21.0.11+10/Contents/Home \
+env JAVA_HOME=/private/tmp/linop-db-jdk/jdk-21.0.11+10/Contents/Home \
   ./gradlew \
-  -Dorg.gradle.java.installations.paths=/private/tmp/dbx-jdk/jdk-21.0.11+10/Contents/Home,/private/tmp/dbx-jdk8/jdk8/Contents/Home \
+  -Dorg.gradle.java.installations.paths=/private/tmp/linop-db-jdk/jdk-21.0.11+10/Contents/Home,/private/tmp/linop-db-jdk8/jdk8/Contents/Home \
   test shadowJar --continue
 ```
 
@@ -189,7 +189,7 @@ After the GitHub release finishes:
 - Spot-check at least one agent jar manifest:
 
 ```bash
-unzip -p dbx-agent-h2.jar META-INF/MANIFEST.MF
+unzip -p linop-db-agent-h2.jar META-INF/MANIFEST.MF
 ```
 
 ## 10. Known Follow-Ups

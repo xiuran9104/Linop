@@ -893,10 +893,10 @@ export function tabIconClass(tab: QueryTab): string {
 // values at computed-value time, leaving the active tab with no background at
 // all — and it also fails to substitute var() references inside inline custom
 // properties, so the legacy branch resolves the theme token to concrete rgb
-// once per call instead of leaning on rgba(var(--dbx-foreground-rgb), …).
+// once per call instead of leaning on rgba(var(--linop-db-foreground-rgb), …).
 function foregroundRgb(): string {
   if (typeof document !== "undefined") {
-    const rgb = getComputedStyle(document.documentElement).getPropertyValue("--dbx-foreground-rgb").trim();
+    const rgb = getComputedStyle(document.documentElement).getPropertyValue("--linop-db-foreground-rgb").trim();
     if (rgb) return rgb;
   }
   return "10, 10, 10";

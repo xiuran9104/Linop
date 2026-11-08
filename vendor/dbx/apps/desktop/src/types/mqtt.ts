@@ -1,4 +1,4 @@
-// MQTT broker connection types, matching dbx-core/src/mqtt/types.rs
+// MQTT broker connection types, matching linop-db-core/src/mqtt/types.rs
 
 export type MqttProtocolVersion = "v3" | "v4" | "v5";
 export type MqttTransport = "tcp" | "websocket";

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use dbx_core::query::pl_debug::{
+use linop_db_core::query::pl_debug::{
     self, PlDebugAccess, PlDebugCompile, PlDebugCompileRef, PlDebugInspect, PlDebugOperation, PlDebugRead,
     PlDebugReceipt, PlDebugSessionRef, PlDebugStart,
 };

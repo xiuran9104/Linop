@@ -28,14 +28,14 @@
 
 ### Task 1: MySQL retry diagnostics
 
-**Files:** `crates/dbx-driver-mysql/src/mysql.rs` (production and existing tests), `crates/dbx-driver-mysql/Cargo.toml` and `Cargo.lock` (test-only direct reference to existing rustls).
+**Files:** `crates/linop-db-driver-mysql/src/mysql.rs` (production and existing tests), `crates/linop-db-driver-mysql/Cargo.toml` and `Cargo.lock` (test-only direct reference to existing rustls).
 
 **Interfaces:** Retain public `connect` and `connect_with_ca_cert` signatures, `mysql_error_should_retry_without_ssl(&str) -> bool`, and `ssl_fallback_url(&str) -> Option<String>`.
 
 - [x] Add failing tests for the exact reported classifier input and wire-protocol tests through `connect` for Preferred fallback failure/success and strict modes; test the final legacy-EOF retry result.
-- [x] Run `cargo test -p dbx-driver-mysql --lib --locked mysql_tls_`; expect regressions to fail for missing fallback/error preservation.
+- [x] Run `cargo test -p linop-db-driver-mysql --lib --locked mysql_tls_`; expect regressions to fail for missing fallback/error preservation.
 - [x] Recognize only the exact rustls incompatibility variant; store the initial error when fallback starts, assign the legacy-EOF result rather than returning early, and combine errors at the end.
-- [x] Run `cargo test -p dbx-driver-mysql --lib --locked`; expect all non-ignored driver tests to pass.
+- [x] Run `cargo test -p linop-db-driver-mysql --lib --locked`; expect all non-ignored driver tests to pass.
 - [x] Commit the driver change and regression tests.
 
 ### Task 2: Actionable localized hints

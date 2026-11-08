@@ -9,8 +9,8 @@ use std::{
     },
 };
 
-use dbx_core::{connection::AppState, storage::McpHttpServerSettings};
-use dbx_mcp::{serve_streamable_http_on_listener, DbxBackend, HttpAuth, HttpRuntimeConfig, LocalBackend};
+use linop_db_core::{connection::AppState, storage::McpHttpServerSettings};
+use linop_db_mcp::{serve_streamable_http_on_listener, DbxBackend, HttpAuth, HttpRuntimeConfig, LocalBackend};
 use serde::Serialize;
 use tauri::State;
 use tokio_util::sync::CancellationToken;
@@ -472,7 +472,7 @@ fn spawn_health_supervisor(state: Arc<AppState>, service: Arc<McpHttpServerState
 #[cfg(test)]
 mod tests {
     use super::{endpoint_for_settings, McpHttpServerState};
-    use dbx_core::storage::McpHttpServerSettings;
+    use linop_db_core::storage::McpHttpServerSettings;
 
     #[test]
     fn endpoint_uses_a_client_reachable_authority() {

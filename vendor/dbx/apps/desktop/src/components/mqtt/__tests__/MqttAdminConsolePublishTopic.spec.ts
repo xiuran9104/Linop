@@ -14,7 +14,7 @@ const { mqttListSavedTopicConfigsMock, mqttGetMessagesMock } = vi.hoisted(() => 
 vi.mock("@/lib/backend/api", () => ({
   mqttGetBrokerInfo: vi.fn(async (): Promise<MqttBrokerInfo> => ({
     brokerUrl: "mqtt://localhost:1883",
-    clientId: "dbx-test",
+    clientId: "linop-db-test",
     connected: true,
     protocolVersion: "5.0",
     subscriptionCount: 1,

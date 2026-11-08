@@ -84,7 +84,7 @@ describe("queryStore SQL Server explain", () => {
   it("executes all SHOWPLAN batches in an isolated session and closes it", async () => {
     const { useQueryStore } = await import("@/stores/queryStore");
     const store = useQueryStore();
-    const tabId = store.createTab("sqlserver-1", "dbx_explain_plan_test", "Query", "query", "dbo", undefined, undefined, { schemaQualifiesSql: true });
+    const tabId = store.createTab("sqlserver-1", "linop_db_explain_plan_test", "Query", "query", "dbo", undefined, undefined, { schemaQualifiesSql: true });
 
     await store.explainTabSql(tabId, sourceSql, "sqlserver");
 
@@ -94,9 +94,9 @@ describe("queryStore SQL Server explain", () => {
     const executionId = enableCall[4] as string;
     const clientSessionId = enableCall[5].clientSessionId as string;
     const tab = store.tabs.find((item) => item.id === tabId)!;
-    expect(enableCall.slice(0, 4)).toEqual(["sqlserver-1", "dbx_explain_plan_test", "SET SHOWPLAN_XML ON;", "dbo"]);
-    expect(planCall.slice(0, 4)).toEqual(["sqlserver-1", "dbx_explain_plan_test", sourceSql, "dbo"]);
-    expect(disableCall.slice(0, 4)).toEqual(["sqlserver-1", "dbx_explain_plan_test", "SET SHOWPLAN_XML OFF;", "dbo"]);
+    expect(enableCall.slice(0, 4)).toEqual(["sqlserver-1", "linop_db_explain_plan_test", "SET SHOWPLAN_XML ON;", "dbo"]);
+    expect(planCall.slice(0, 4)).toEqual(["sqlserver-1", "linop_db_explain_plan_test", sourceSql, "dbo"]);
+    expect(disableCall.slice(0, 4)).toEqual(["sqlserver-1", "linop_db_explain_plan_test", "SET SHOWPLAN_XML OFF;", "dbo"]);
     expect(planCall[4]).toBe(executionId);
     expect(disableCall[4]).toBeUndefined();
     expect(clientSessionId).toBe(`${tabId}:explain:${executionId}`);
@@ -107,7 +107,7 @@ describe("queryStore SQL Server explain", () => {
     expect(tab.explainPlan).toEqual(visualPlan);
     expect(tab.explainError).toBeUndefined();
     expect(tab.isExplaining).toBe(false);
-    await vi.waitFor(() => expect(mocks.closeClientConnectionSession).toHaveBeenCalledWith("sqlserver-1", "dbx_explain_plan_test", clientSessionId));
+    await vi.waitFor(() => expect(mocks.closeClientConnectionSession).toHaveBeenCalledWith("sqlserver-1", "linop_db_explain_plan_test", clientSessionId));
   });
 
   it("switches to STATISTICS XML when the autotrace toggle is on", async () => {
@@ -118,7 +118,7 @@ describe("queryStore SQL Server explain", () => {
     mocks.executeMulti.mockResolvedValue([rowsResult, planResult]);
     const { useQueryStore } = await import("@/stores/queryStore");
     const store = useQueryStore();
-    const tabId = store.createTab("sqlserver-1", "dbx_explain_plan_test", "Query", "query", "dbo", undefined, undefined, { schemaQualifiesSql: true });
+    const tabId = store.createTab("sqlserver-1", "linop_db_explain_plan_test", "Query", "query", "dbo", undefined, undefined, { schemaQualifiesSql: true });
 
     await store.explainTabSql(tabId, sourceSql, "sqlserver", "autotrace");
 
@@ -137,7 +137,7 @@ describe("queryStore SQL Server explain", () => {
   it("keeps SHOWPLAN when the autotrace toggle is off", async () => {
     const { useQueryStore } = await import("@/stores/queryStore");
     const store = useQueryStore();
-    const tabId = store.createTab("sqlserver-1", "dbx_explain_plan_test", "Query", "query", "dbo", undefined, undefined, { schemaQualifiesSql: true });
+    const tabId = store.createTab("sqlserver-1", "linop_db_explain_plan_test", "Query", "query", "dbo", undefined, undefined, { schemaQualifiesSql: true });
 
     await store.explainTabSql(tabId, sourceSql, "sqlserver", "explain");
 
@@ -150,7 +150,7 @@ describe("queryStore SQL Server explain", () => {
     mocks.sqlServerExplainResult.mockReturnValue({ error: "Invalid object name 'missing_table'" });
     const { useQueryStore } = await import("@/stores/queryStore");
     const store = useQueryStore();
-    const tabId = store.createTab("sqlserver-1", "dbx_explain_plan_test", "Query");
+    const tabId = store.createTab("sqlserver-1", "linop_db_explain_plan_test", "Query");
 
     await store.explainTabSql(tabId, sourceSql, "sqlserver");
 
@@ -168,7 +168,7 @@ describe("queryStore SQL Server explain", () => {
     mocks.executeQuery.mockReset().mockRejectedValueOnce(new Error("SHOWPLAN permission denied"));
     const { useQueryStore } = await import("@/stores/queryStore");
     const store = useQueryStore();
-    const tabId = store.createTab("sqlserver-1", "dbx_explain_plan_test", "Query");
+    const tabId = store.createTab("sqlserver-1", "linop_db_explain_plan_test", "Query");
 
     await store.explainTabSql(tabId, sourceSql, "sqlserver");
 
@@ -184,11 +184,11 @@ describe("queryStore SQL Server explain", () => {
     const { useQueryStore } = await import("@/stores/queryStore");
     const store = useQueryStore();
     // 恢复的页签 / 连接默认 schema：只用于浏览，不参与 SQL 改写。
-    const tabId = store.createTab("sqlserver-1", "dbx_explain_plan_test", "Query", "query", "dbo");
+    const tabId = store.createTab("sqlserver-1", "linop_db_explain_plan_test", "Query", "query", "dbo");
 
     await store.explainTabSql(tabId, sourceSql, "sqlserver");
 
-    expect(mocks.executeQuery.mock.calls[0]?.slice(0, 4)).toEqual(["sqlserver-1", "dbx_explain_plan_test", "SET SHOWPLAN_XML ON;", undefined]);
-    expect(mocks.executeMulti.mock.calls[0]?.slice(0, 4)).toEqual(["sqlserver-1", "dbx_explain_plan_test", sourceSql, undefined]);
+    expect(mocks.executeQuery.mock.calls[0]?.slice(0, 4)).toEqual(["sqlserver-1", "linop_db_explain_plan_test", "SET SHOWPLAN_XML ON;", undefined]);
+    expect(mocks.executeMulti.mock.calls[0]?.slice(0, 4)).toEqual(["sqlserver-1", "linop_db_explain_plan_test", sourceSql, undefined]);
   });
 });

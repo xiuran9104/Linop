@@ -8,7 +8,7 @@ const node: GraphNode = { id: "node-a", vid: { type: "string", value: "a" }, lab
 function page(text: string): QueryResult {
   return {
     columns: ["vertex"],
-    rows: [[{ __dbx_graph_cell: "nebula-v1", kind: "vertex", display: text, nodes: [node], edges: [] }]] as unknown as QueryResult["rows"],
+    rows: [[{ __linop_db_graph_cell: "nebula-v1", kind: "vertex", display: text, nodes: [node], edges: [] }]] as unknown as QueryResult["rows"],
     affected_rows: 0,
     execution_time_ms: 1,
   };

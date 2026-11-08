@@ -2,7 +2,7 @@
 
 This example exercises the complete manifest v1 path instead of mocking a contribution preview:
 
-- native Rust sidecar built with `dbx-plugin-sdk`;
+- native Rust sidecar built with `linop-db-plugin-sdk`;
 - protocol handshake and concurrent JSON-RPC requests;
 - saved `connection-provider` with common/config/secret field bindings;
 - test, connect, and disconnect lifecycle;
@@ -29,7 +29,7 @@ hello-workbench/
 └── smoke.mjs              # package + lifecycle smoke test
 ```
 
-The reusable smoke executables live at `crates/dbx-core/examples/plugin_package_smoke.rs` (package lifecycle) and `crates/dbx-core/examples/plugin_ai_tools_smoke.rs` (AI tool discovery and calls through the host) so they share DBX's workspace lockfile and dependency patches.
+The reusable smoke executables live at `crates/linop-db-core/examples/plugin_package_smoke.rs` (package lifecycle) and `crates/linop-db-core/examples/plugin_ai_tools_smoke.rs` (AI tool discovery and calls through the host) so they share DBX's workspace lockfile and dependency patches.
 
 ## Build an unsigned development package
 
@@ -109,8 +109,8 @@ node plugins/examples/hello-workbench/smoke.mjs \
 Official plugin authors skip this section because DBX Store signs approved candidates. To exercise the custom-repository flow, generate or load a repository key and sign the already-built candidate:
 
 ```bash
-dbx-plugin keygen example-repository
-source .dbx-repository-signing-key.env
+linop-db-plugin keygen example-repository
+source .linop-db-repository-signing-key.env
 node plugins/examples/hello-workbench/repository-sign.mjs
 ```
 

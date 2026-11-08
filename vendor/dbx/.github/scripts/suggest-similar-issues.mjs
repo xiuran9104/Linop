@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { databaseIssueDrivers } from "./database-issue-catalog.mjs";
 
 const API_VERSION = "2022-11-28";
-const COMMENT_MARKER = "<!-- dbx-similar-issues -->";
+const COMMENT_MARKER = "<!-- linop-db-similar-issues -->";
 const MAX_QUERY_LENGTH = 480;
 const MAX_CANDIDATES = 3;
 const SEARCH_RESULT_LIMIT = 20;

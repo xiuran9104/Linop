@@ -1,3 +1,3 @@
 fn main() {
-    dbx_plugin_packager::main_entry();
+    linop_db_plugin_packager::main_entry();
 }

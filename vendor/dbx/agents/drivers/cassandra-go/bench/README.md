@@ -11,7 +11,7 @@ already-connected process per candidate.
 
 ## Prepare the fixture
 
-The default workload expects `dbx_native_test.all_types` with at least 100 rows
+The default workload expects `linop_db_native_test.all_types` with at least 100 rows
 and an integer primary key named `id`. Override the SQL variables below when
 using another schema.
 
@@ -20,7 +20,7 @@ using another schema.
 From `agents/`:
 
 ```bash
-go build -o /tmp/dbx-cassandra-bench/cassandra-go ./drivers/cassandra-go
+go build -o /tmp/linop-db-cassandra-bench/cassandra-go ./drivers/cassandra-go
 ```
 
 Keep an archived JDBC Agent JAR as the baseline. The production Cassandra
@@ -29,13 +29,13 @@ module publishes only the native executable.
 ## Run
 
 ```bash
-GO_AGENT=/tmp/dbx-cassandra-bench/cassandra-go \
-JDBC_AGENT_JAR=/tmp/dbx-cassandra-bench/dbx-agent-cassandra.jar \
+GO_AGENT=/tmp/linop-db-cassandra-bench/cassandra-go \
+JDBC_AGENT_JAR=/tmp/linop-db-cassandra-bench/linop-db-agent-cassandra.jar \
 CASSANDRA_HOST=127.0.0.1 \
 CASSANDRA_PORT=9042 \
-CASSANDRA_KEYSPACE=dbx_native_test \
+CASSANDRA_KEYSPACE=linop_db_native_test \
 python3 drivers/cassandra-go/bench/agent_compare.py \
-  > /tmp/dbx-cassandra-bench/result.json
+  > /tmp/linop-db-cassandra-bench/result.json
 ```
 
 If Java is only available in a container, provide the full interactive command
@@ -43,7 +43,7 @@ as a JSON argv array so no shell is implied (pass `["sh", "-c", "..."]`
 explicitly when you need shell features):
 
 ```bash
-JDBC_AGENT_COMMAND='["docker","run","--rm","-i","--name","dbx-cassandra-jdbc-bench","-v","/tmp/dbx-cassandra-bench:/bench:ro","eclipse-temurin:21-jre","java","-jar","/bench/dbx-agent-cassandra.jar"]'
+JDBC_AGENT_COMMAND='["docker","run","--rm","-i","--name","linop-db-cassandra-jdbc-bench","-v","/tmp/linop-db-cassandra-bench:/bench:ro","eclipse-temurin:21-jre","java","-jar","/bench/linop-db-agent-cassandra.jar"]'
 ```
 
 ## Configuration

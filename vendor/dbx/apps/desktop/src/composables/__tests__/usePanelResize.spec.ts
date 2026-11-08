@@ -43,7 +43,7 @@ describe("usePanelResize", () => {
   });
 
   it("lets the AI panel consume the available editor width beyond the legacy 800px cap", () => {
-    localStorage.setItem("dbx-ai-panel-width", "360");
+    localStorage.setItem("linop-db-ai-panel-width", "360");
 
     const editor = document.createElement("div");
     const panel = document.createElement("div");
@@ -61,7 +61,7 @@ describe("usePanelResize", () => {
     document.dispatchEvent(pointerEvent("pointerup", -1000));
 
     expect(aiPanelWidth.value).toBe(1060);
-    expect(localStorage.getItem("dbx-ai-panel-width")).toBe("1060");
+    expect(localStorage.getItem("linop-db-ai-panel-width")).toBe("1060");
   });
 
   it.each([0, 360])("lets history use the editor width with a %ipx AI sibling", (aiWidth) => {
@@ -83,7 +83,7 @@ describe("usePanelResize", () => {
     expect(panel.style.width).toBe("1188px");
     document.dispatchEvent(pointerEvent("pointerup", -1000));
     expect(historyWidth.value).toBe(1188);
-    expect(localStorage.getItem("dbx-history-width")).toBeNull();
+    expect(localStorage.getItem("linop-db-history-width")).toBeNull();
 
     vi.spyOn(panel, "getBoundingClientRect").mockReturnValue(rect(300 + aiWidth, 1188));
     vi.spyOn(editor, "getBoundingClientRect").mockReturnValue(rect(300, 0));
@@ -94,13 +94,13 @@ describe("usePanelResize", () => {
   });
 
   it("starts at 60% on every application launch even when a legacy width is stored", () => {
-    localStorage.setItem("dbx-history-width", String(window.innerWidth));
+    localStorage.setItem("linop-db-history-width", String(window.innerWidth));
     const { historyWidth } = usePanelResize();
     expect(historyWidth.value).toBe(Math.round(window.innerWidth * 0.6));
   });
 
   it("resizes from the flex-shrunk width after a wide panel is restored in a narrow window", () => {
-    localStorage.setItem("dbx-ai-panel-width", "1060");
+    localStorage.setItem("linop-db-ai-panel-width", "1060");
 
     const editor = document.createElement("div");
     const panel = document.createElement("div");
@@ -118,7 +118,7 @@ describe("usePanelResize", () => {
     document.dispatchEvent(pointerEvent("pointerup", 400));
 
     expect(aiPanelWidth.value).toBe(600);
-    expect(localStorage.getItem("dbx-ai-panel-width")).toBe("600");
+    expect(localStorage.getItem("linop-db-ai-panel-width")).toBe("600");
   });
 
   it("keeps resizable panels wide enough for their toolbar actions", () => {
@@ -138,7 +138,7 @@ describe("usePanelResize", () => {
     document.dispatchEvent(pointerEvent("pointerup", 0));
 
     expect(sidebarWidth.value).toBe(240);
-    expect(localStorage.getItem("dbx-sidebar-width")).toBe("240");
+    expect(localStorage.getItem("linop-db-sidebar-width")).toBe("240");
   });
 
   it("removes the drag overlay when the window loses focus", () => {
@@ -157,8 +157,8 @@ describe("usePanelResize", () => {
   });
 
   it("raises persisted panel widths below the toolbar-safe minimum", () => {
-    localStorage.setItem("dbx-sidebar-width", "180");
-    localStorage.setItem("dbx-ai-panel-width", "200");
+    localStorage.setItem("linop-db-sidebar-width", "180");
+    localStorage.setItem("linop-db-ai-panel-width", "200");
 
     const { sidebarWidth, aiPanelWidth } = usePanelResize();
 
@@ -172,17 +172,17 @@ describe("usePanelResize", () => {
 
     first.setTabBarCollapsed(true);
     expect(first.tabBarCollapsed.value).toBe(true);
-    expect(localStorage.getItem("dbx-tab-bar-collapsed")).toBe("true");
+    expect(localStorage.getItem("linop-db-tab-bar-collapsed")).toBe("true");
 
     const restored = usePanelResize();
     expect(restored.tabBarCollapsed.value).toBe(true);
 
     restored.setTabBarCollapsed(false);
-    expect(localStorage.getItem("dbx-tab-bar-collapsed")).toBe("false");
+    expect(localStorage.getItem("linop-db-tab-bar-collapsed")).toBe("false");
   });
 
   it("updates the outer workspace tab rail width and flex while dragging (issue #9977)", () => {
-    localStorage.setItem("dbx-tab-bar-width", "240");
+    localStorage.setItem("linop-db-tab-bar-width", "240");
 
     const rail = document.createElement("div");
     rail.setAttribute("data-workspace-tab-navigation", "");
@@ -210,11 +210,11 @@ describe("usePanelResize", () => {
 
     document.dispatchEvent(pointerEvent("pointerup", 320));
     expect(tabBarWidth.value).toBe(320);
-    expect(localStorage.getItem("dbx-tab-bar-width")).toBe("320");
+    expect(localStorage.getItem("linop-db-tab-bar-width")).toBe("320");
   });
 
   it("shrinks a right-side tab rail toward the left edge while dragging", () => {
-    localStorage.setItem("dbx-tab-bar-width", "300");
+    localStorage.setItem("linop-db-tab-bar-width", "300");
 
     const rail = document.createElement("div");
     rail.setAttribute("data-special-page-navigation", "");

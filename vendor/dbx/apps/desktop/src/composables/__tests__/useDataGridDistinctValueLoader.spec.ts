@@ -50,7 +50,7 @@ function mountLoader() {
 }
 
 function result(rows: QueryResult["rows"]): QueryResult {
-  return { columns: ["dbx_value", "dbx_count"], rows };
+  return { columns: ["linop_db_value", "linop_db_count"], rows };
 }
 
 beforeEach(() => {

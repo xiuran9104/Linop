@@ -117,7 +117,7 @@ function buildMySqlProcedureExecutionSql(routine: string, sortedParameters: Rout
 
   sortedParameters.forEach((parameter, index) => {
     if (!returnsRoutineOutput(parameter)) return;
-    const variableName = `@dbx_output_${index + 1}`;
+    const variableName = `@linop_db_output_${index + 1}`;
     const initialValue = parameter.mode === "INOUT" ? routineParameterSqlValue("mysql", parameter) : "NULL";
     initializations.push(`SET ${variableName} = ${initialValue};`);
     outputBindings.set(parameter, {
@@ -149,7 +149,7 @@ function buildSqlServerProcedureExecutionSql(routine: string, sortedParameters: 
     const declarationType = parameter.dataType.trim();
     if (!declarationType) return;
 
-    const variableName = `@dbx_output_${index + 1}`;
+    const variableName = `@linop_db_output_${index + 1}`;
     const initialValue = parameter.mode === "INOUT" ? ` = ${routineParameterSqlValue("sqlserver", parameter)}` : "";
     declarations.push(`DECLARE ${variableName} ${declarationType}${initialValue};`);
     outputBindings.set(parameter, {
@@ -181,7 +181,7 @@ function buildOracleProcedureExecutionSql(databaseType: "oracle" | "oceanbase-or
 
   sortedParameters.forEach((parameter, index) => {
     if (!returnsRoutineOutput(parameter)) return;
-    const variableName = `dbx_output_${index + 1}`;
+    const variableName = `linop_db_output_${index + 1}`;
     const initialValue = parameter.mode === "INOUT" ? ` := ${routineParameterSqlValue(databaseType, parameter)}` : "";
     declarations.push(`  ${variableName} ${oracleVariableType(parameter.dataType)}${initialValue};`);
     outputBindings.set(parameter, variableName);

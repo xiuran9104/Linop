@@ -4,7 +4,7 @@
  * Kept in `@/types` because three layers share it: the bridge that enforces the
  * plugin permission, the backend transport that reaches DBX Core, and the
  * plugin SDK surface. The Rust side lives in
- * `crates/dbx-core/src/query/plugin_plan.rs`; field names are the serialized
+ * `crates/linop-db-core/src/query/plugin_plan.rs`; field names are the serialized
  * `camelCase` names of those structs.
  *
  * The plugin submits its own SQL and a connection reference. The host owns the

@@ -4,7 +4,7 @@
   "version": "0.1.52",
   "protocol_version": 1,
   "description": "Adds optional JDBC driver support to DBX.",
-  "executable": "bin/dbx-jdbc-plugin",
+  "executable": "bin/linop-db-jdbc-plugin",
   "drivers": [
     {
       "id": "jdbc",

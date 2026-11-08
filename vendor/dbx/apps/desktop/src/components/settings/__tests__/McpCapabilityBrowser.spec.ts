@@ -85,12 +85,12 @@ function toolset(id: string, names: string[], type = "mysql"): McpToolCatalogToo
 // Deliberately shuffled: navigation order comes from the product taxonomy.
 const catalog: McpToolCatalog = {
   toolsets: [
-    toolset("nacos.service", ["dbx_nacos_list_services"], "nacos"),
-    toolset("future.inspect", ["dbx_future_inspect"]),
-    toolset("sql.schema", ["dbx_list_tables"]),
-    toolset("core.discovery", ["dbx_list_connections"]),
-    toolset("nacos.config", ["dbx_nacos_get_config", "dbx_nacos_publish_config"], "nacos"),
-    toolset("sql.query", ["dbx_execute_query"]),
+    toolset("nacos.service", ["linop_db_nacos_list_services"], "nacos"),
+    toolset("future.inspect", ["linop_db_future_inspect"]),
+    toolset("sql.schema", ["linop_db_list_tables"]),
+    toolset("core.discovery", ["linop_db_list_connections"]),
+    toolset("nacos.config", ["linop_db_nacos_get_config", "linop_db_nacos_publish_config"], "nacos"),
+    toolset("sql.query", ["linop_db_execute_query"]),
   ],
 };
 
@@ -100,12 +100,12 @@ const plugin: PluginMcpView = {
   version: "1.0.0",
   authorAllowsExternal: true,
   hasSavedGrant: true,
-  grant: { external: true, ceiling: "write", approvedTools: { dbx_helper__inspect: "read" }, disabledTools: [] },
+  grant: { external: true, ceiling: "write", approvedTools: { linop_db_helper__inspect: "read" }, disabledTools: [] },
   discoveryError: null,
   toolsets: [{ id: "helpers", title: "辅助工具", description: "Nacos helpers" }],
   tools: [
-    { name: "dbx_helper__inspect", description: "Inspect deployment", access: "read", exposure: "exposed", toolset: "helpers", parameters: [] },
-    { name: "dbx_helper__update", description: "Update deployment", access: "write", exposure: "pendingApproval", toolset: "helpers", parameters: [] },
+    { name: "linop_db_helper__inspect", description: "Inspect deployment", access: "read", exposure: "exposed", toolset: "helpers", parameters: [] },
+    { name: "linop_db_helper__update", description: "Update deployment", access: "write", exposure: "pendingApproval", toolset: "helpers", parameters: [] },
   ],
 };
 
@@ -182,7 +182,7 @@ afterEach(() => {
 describe("McpCapabilityBrowser", () => {
   it("keeps toolset saving and the saved baseline connected in category, overview and search views", async () => {
     const saveToolset = vi.fn(async () => {});
-    const savedToolNames = ["dbx_nacos_get_config"];
+    const savedToolNames = ["linop_db_nacos_get_config"];
     const { mounted } = mountBrowser({ savedToolNames, saveToolset });
     for (const mode of ["manage", "overview"] as const) {
       dispatch(byData(mounted.root, "data-mcp-view-mode", mode), "click");
@@ -264,7 +264,7 @@ describe("McpCapabilityBrowser", () => {
   });
 
   it("switches to a grouped global overview without losing the selected category", async () => {
-    const { mounted, modelUpdates, setCategory, setToolset } = mountBrowser({ allowedToolNames: ["dbx_list_tables"] });
+    const { mounted, modelUpdates, setCategory, setToolset } = mountBrowser({ allowedToolNames: ["linop_db_list_tables"] });
     await select(mounted.root, "nacos");
     dispatch(byData(mounted.root, "data-mcp-view-mode", "overview"), "click");
     await nextTick();
@@ -318,7 +318,7 @@ describe("McpCapabilityBrowser", () => {
     await nextTick();
     dispatch(byData(mounted.root, "data-mcp-overview-plugin-open"), "click");
     expect(detailCalls.plugin).toHaveBeenCalledWith(plugin.pluginId, byData(mounted.root, "data-mcp-overview-plugin-open"));
-    await search(mounted.root, "dbx_nacos_get_config");
+    await search(mounted.root, "linop_db_nacos_get_config");
     expect(findAll(mounted.root, (node) => node.props["data-mcp-overview"] !== undefined)).toEqual([]);
     expect(findAll(mounted.root, (node) => node.props["data-mcp-category-batch"] !== undefined)).toEqual([]);
     expect(byData(mounted.root, "data-mcp-category", "nacos").props["aria-current"]).toBeUndefined();
@@ -383,7 +383,7 @@ describe("McpCapabilityBrowser", () => {
 
   it.each(["nacos", "no-matching-category"])("keeps compact category navigation available with sidebar filter %s", async (query) => {
     const { mounted, modelUpdates } = mountBrowser({
-      allowedToolNames: ["dbx_list_tables"],
+      allowedToolNames: ["linop_db_list_tables"],
       modelValue: { selected: "nacos", search: "", onlyEnabled: true, viewMode: "manage" },
     });
     const compactSelect = byData(mounted.root, "data-stub", "Select");
@@ -400,7 +400,7 @@ describe("McpCapabilityBrowser", () => {
 
     expect(modelUpdates).toHaveBeenLastCalledWith({ selected: "database", search: "", onlyEnabled: true, viewMode: "manage" });
     expect(builtin(mounted.root).props["visible-toolset-ids"]).toEqual(["sql.query", "sql.schema"]);
-    expect(builtin(mounted.root).props["allowed-tool-names"]).toEqual(["dbx_list_tables"]);
+    expect(builtin(mounted.root).props["allowed-tool-names"]).toEqual(["linop_db_list_tables"]);
     expect(byData(mounted.root, "data-mcp-builtin-filter").props.modelValue).toBe(query);
     dispatch(byData(mounted.root, "data-mcp-clear-builtin-filter"), "click");
     await nextTick();
@@ -432,23 +432,23 @@ describe("McpCapabilityBrowser", () => {
 
   it("searches across categories and opens a matching built-in tool with its category path and trigger", async () => {
     const { mounted } = mountBrowser();
-    await search(mounted.root, "dbx_nacos_get_config");
-    const result = byData(mounted.root, "data-mcp-search-result", "nacos.config/dbx_nacos_get_config");
+    await search(mounted.root, "linop_db_nacos_get_config");
+    const result = byData(mounted.root, "data-mcp-search-result", "nacos.config/linop_db_nacos_get_config");
     expect(hostText(result)).toContain("Nacos / 配置管理");
     expect(builtin(mounted.root).props["list-hidden"]).toBe(true);
     expect(findAll(mounted.root, (node) => node.props["data-mcp-category-batch"] !== undefined)).toEqual([]);
     dispatch(result, "click");
     await nextTick();
-    expect(detailCalls.builtin).toHaveBeenCalledWith("nacos.config", "tools", "dbx_nacos_get_config", result);
+    expect(detailCalls.builtin).toHaveBeenCalledWith("nacos.config", "tools", "linop_db_nacos_get_config", result);
     expect(builtin(mounted.root).props["title-path"]).toBe("Nacos");
   });
 
   it("opens plugin search matches through the plugin detail and tool handles", async () => {
     const { mounted } = mountBrowser();
-    await search(mounted.root, "dbx_helper__inspect");
-    const toolResult = byData(mounted.root, "data-mcp-search-result", `${plugin.pluginId}/dbx_helper__inspect`);
+    await search(mounted.root, "linop_db_helper__inspect");
+    const toolResult = byData(mounted.root, "data-mcp-search-result", `${plugin.pluginId}/linop_db_helper__inspect`);
     dispatch(toolResult, "click");
-    expect(detailCalls.pluginTool).toHaveBeenCalledWith(plugin.pluginId, "dbx_helper__inspect", toolResult);
+    expect(detailCalls.pluginTool).toHaveBeenCalledWith(plugin.pluginId, "linop_db_helper__inspect", toolResult);
     expect(detailCalls.builtin).not.toHaveBeenCalled();
     await search(mounted.root, plugin.pluginId);
     const pluginResult = byData(mounted.root, "data-mcp-search-result", plugin.pluginId);
@@ -459,7 +459,7 @@ describe("McpCapabilityBrowser", () => {
   it("restores the previous category when search is cleared", async () => {
     const { mounted } = mountBrowser();
     await select(mounted.root, "nacos");
-    await search(mounted.root, "dbx_list_tables");
+    await search(mounted.root, "linop_db_list_tables");
     expect(byData(mounted.root, "data-mcp-category", "nacos").props["aria-current"]).toBeUndefined();
     dispatch(byData(mounted.root, "data-mcp-clear-search"), "click");
     await nextTick();
@@ -478,11 +478,11 @@ describe("McpCapabilityBrowser", () => {
   });
 
   it("preserves category selection and navigation after the final enabled tool is turned off", async () => {
-    const { mounted, setTool } = mountBrowser({ allowedToolNames: ["dbx_list_tables"] });
+    const { mounted, setTool } = mountBrowser({ allowedToolNames: ["linop_db_list_tables"] });
     dispatch(byData(mounted.root, "data-mcp-only-enabled"), "change", { target: { checked: true } });
     await nextTick();
-    builtin(mounted.root).props["onSet:tool"]("dbx_list_tables", false);
-    expect(setTool).toHaveBeenCalledWith("dbx_list_tables", false);
+    builtin(mounted.root).props["onSet:tool"]("linop_db_list_tables", false);
+    expect(setTool).toHaveBeenCalledWith("linop_db_list_tables", false);
     await mounted.setProps({ allowedToolNames: [] });
     expect(byData(mounted.root, "data-mcp-category", "database").props["aria-current"]).toBe("page");
     expect(findAll(mounted.root, (node) => node.props["data-mcp-category"] !== undefined)).toHaveLength(9);
@@ -492,7 +492,7 @@ describe("McpCapabilityBrowser", () => {
   });
 
   it("emits a full category action even while only enabled tools are shown", async () => {
-    const { mounted, setCategory, setTool, setToolset } = mountBrowser({ allowedToolNames: ["dbx_list_tables"] });
+    const { mounted, setCategory, setTool, setToolset } = mountBrowser({ allowedToolNames: ["linop_db_list_tables"] });
     dispatch(byData(mounted.root, "data-mcp-only-enabled"), "change", { target: { checked: true } });
     await nextTick();
     dispatch(byData(mounted.root, "data-mcp-category-enable"), "click");
@@ -584,9 +584,9 @@ describe("McpCapabilityBrowser", () => {
   it("keeps built-in draft events and plugin persistence separate", async () => {
     const { mounted, setTool, setToolset, setCategory, savePlugin, savedPlugin } = mountBrowser();
     const entry = catalog.toolsets.find((item) => item.id === "sql.query")!;
-    builtin(mounted.root).props["onSet:tool"]("dbx_execute_query", false);
+    builtin(mounted.root).props["onSet:tool"]("linop_db_execute_query", false);
     builtin(mounted.root).props["onSet:toolset"](entry, false);
-    expect(setTool).toHaveBeenCalledExactlyOnceWith("dbx_execute_query", false);
+    expect(setTool).toHaveBeenCalledExactlyOnceWith("linop_db_execute_query", false);
     expect(setToolset).toHaveBeenCalledExactlyOnceWith(entry, false);
     expect(savePlugin).not.toHaveBeenCalled();
     await select(mounted.root, `plugin:${plugin.pluginId}`);
@@ -603,7 +603,7 @@ describe("McpCapabilityBrowser", () => {
   it("hides plugin navigation, results and source controls when plugins are unsupported", async () => {
     const { mounted } = mountBrowser({ showPlugins: false, pluginsError: "not supported" });
     expect(findAll(mounted.root, (node) => node.props["data-mcp-category"] === `plugin:${plugin.pluginId}` || node.props["data-stub"] === "PluginPanel" || node.props["data-mcp-plugin-source-status"] !== undefined)).toEqual([]);
-    await search(mounted.root, "dbx_helper__inspect");
+    await search(mounted.root, "linop_db_helper__inspect");
     expect(findAll(mounted.root, (node) => node.props["data-mcp-search-result"] !== undefined)).toEqual([]);
   });
 });

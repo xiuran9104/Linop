@@ -47,13 +47,13 @@ token and explicit base/head, so its selection matches `scripts/ci-plan.mjs`
 rather than a mutable PR file list. An unavailable push diff keeps conservative
 planner coverage. Renames include both paths and deleted paths remain visible. Rust package
 selection follows reverse dependencies, including build and test dependencies.
-Connection-type descriptors belong to `dbx-types`; dialect descriptors belong to
-`dbx-sql`. A changed core dependency also selects the standalone DuckDB Agent tests,
-whose development dependency is `dbx-core`.
+Connection-type descriptors belong to `linop-db-types`; dialect descriptors belong to
+`linop-db-sql`. A changed core dependency also selects the standalone DuckDB Agent tests,
+whose development dependency is `linop-db-core`.
 
 - Ordinary Rust PRs select foundation, driver, and application test groups from
   `scripts/ci-config.mjs`. Each group contains several packages, not one runner per
-  crate. The application group includes `dbx-tauri-consul` and `dbx-tauri-schema`.
+  crate. The application group includes `linop-db-tauri-consul` and `linop-db-tauri-schema`.
   At most three Rust test groups run concurrently; a contract checks the groups
   against actual workspace metadata so extracted crates cannot silently force
   every PR into the full-workspace fallback.

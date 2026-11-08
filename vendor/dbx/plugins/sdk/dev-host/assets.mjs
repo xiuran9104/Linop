@@ -1,7 +1,7 @@
 import { readFile, realpath, stat } from "node:fs/promises";
 import { resolve, relative, isAbsolute, extname } from "node:path";
 // Keep UI entrypoints and assets within the same bound as the installed host's
-// MAX_PLUGIN_UI_ASSET_BYTES (crates/dbx-plugin-runtime/src/plugins/assets.rs).
+// MAX_PLUGIN_UI_ASSET_BYTES (crates/linop-db-plugin-runtime/src/plugins/assets.rs).
 const MAX_PLUGIN_UI_ASSET_BYTES = 32 * 1024 * 1024;
 
 export async function readAsset(root, path) {

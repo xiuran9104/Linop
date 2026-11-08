@@ -50,9 +50,9 @@ vi.mock("@/stores/settingsStore", () => ({
 
 const CREATE = "CREATE DEFINER=`root`@`%` PROCEDURE `refresh_cache`(IN a INT)\nBEGIN\n  SELECT a + 100 AS v;\nEND";
 const REPLACE_SEQUENCE = [
-  "DROP PROCEDURE IF EXISTS `app`.`dbx_routine_check_1`;",
-  "CREATE DEFINER=`root`@`%` PROCEDURE `dbx_routine_check_1`(IN a INT)\nBEGIN\n  SELECT a + 100 AS v;\nEND;",
-  "DROP PROCEDURE IF EXISTS `app`.`dbx_routine_check_1`;",
+  "DROP PROCEDURE IF EXISTS `app`.`linop_db_routine_check_1`;",
+  "CREATE DEFINER=`root`@`%` PROCEDURE `linop_db_routine_check_1`(IN a INT)\nBEGIN\n  SELECT a + 100 AS v;\nEND;",
+  "DROP PROCEDURE IF EXISTS `app`.`linop_db_routine_check_1`;",
   "DROP PROCEDURE IF EXISTS `app`.`refresh_cache`;",
   `${CREATE};`,
 ];
@@ -97,7 +97,7 @@ describe("queryStore MySQL routine source Run", () => {
 
   it("covers functions with the same flow", async () => {
     const createFunction = "CREATE FUNCTION `active_count`() RETURNS int DETERMINISTIC RETURN 1";
-    const sequence = ["DROP FUNCTION IF EXISTS `app`.`dbx_routine_check_2`;", "CREATE FUNCTION `dbx_routine_check_2`() RETURNS int DETERMINISTIC RETURN 1;", "DROP FUNCTION IF EXISTS `app`.`dbx_routine_check_2`;", "DROP FUNCTION IF EXISTS `app`.`active_count`;", `${createFunction};`];
+    const sequence = ["DROP FUNCTION IF EXISTS `app`.`linop_db_routine_check_2`;", "CREATE FUNCTION `linop_db_routine_check_2`() RETURNS int DETERMINISTIC RETURN 1;", "DROP FUNCTION IF EXISTS `app`.`linop_db_routine_check_2`;", "DROP FUNCTION IF EXISTS `app`.`active_count`;", `${createFunction};`];
     buildExecutableObjectSourceStatements.mockResolvedValue(sequence);
     const { store, id } = await openSourceTab(createFunction, "FUNCTION", "active_count");
 

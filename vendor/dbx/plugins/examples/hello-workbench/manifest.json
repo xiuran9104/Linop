@@ -16,7 +16,7 @@
   "permissions": ["host.events", "host.filesystem", "host.data:read", "host.ai"],
   "entrypoints": {
     "backend": {
-      "executable": "bin/dbx-example-hello"
+      "executable": "bin/linop-db-example-hello"
     },
     "ui": {
       "root": "ui",

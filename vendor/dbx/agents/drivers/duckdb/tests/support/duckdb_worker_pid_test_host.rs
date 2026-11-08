@@ -4,7 +4,7 @@ fn main() {
     }
 
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create DuckDB worker test runtime");
-    if let Err(err) = runtime.block_on(dbx_duckdb_driver::run_stdio_worker()) {
+    if let Err(err) = runtime.block_on(linop_db_duckdb_driver::run_stdio_worker()) {
         eprintln!("DuckDB worker test host failed: {err}");
         std::process::exit(1);
     }

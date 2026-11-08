@@ -1,7 +1,7 @@
 export const rustGroups = {
-  foundation: ["dbx-types", "dbx-platform", "dbx-sql-core", "dbx-sql-dialect", "dbx-sql-data", "dbx-sql-schema", "dbx-sql", "dbx-formats", "dbx-ai-provider", "dbx-plugin-runtime"],
-  drivers: ["dbx-driver-support", "dbx-driver-agent", "dbx-driver-elasticsearch", "dbx-driver-mongodb", "dbx-driver-mysql", "dbx-driver-postgres", "dbx-driver-redis", "dbx-driver-sqlserver", "dbx-drivers", "dbx-sqlite-worker"],
-  application: ["dbx", "dbx-core", "dbx-web", "dbx-cli", "dbx-mcp", "dbx-tauri-consul", "dbx-tauri-schema"],
+  foundation: ["linop-db-types", "linop-db-platform", "linop-db-sql-core", "linop-db-sql-dialect", "linop-db-sql-data", "linop-db-sql-schema", "linop-db-sql", "linop-db-formats", "linop-db-ai-provider", "linop-db-plugin-runtime"],
+  drivers: ["linop-db-driver-support", "linop-db-driver-agent", "linop-db-driver-elasticsearch", "linop-db-driver-mongodb", "linop-db-driver-mysql", "linop-db-driver-postgres", "linop-db-driver-redis", "linop-db-driver-sqlserver", "linop-db-drivers", "linop-db-sqlite-worker"],
+  application: ["dbx", "linop-db-core", "linop-db-web", "linop-db-cli", "linop-db-mcp", "linop-db-tauri-consul", "linop-db-tauri-schema"],
 };
 
 export const goAgents = [

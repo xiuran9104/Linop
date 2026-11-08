@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use tauri::State;
 
-use dbx_core::connection::{AppState, SalesforceCurrentUser};
-use dbx_core::salesforce_oauth::{
+use linop_db_core::connection::{AppState, SalesforceCurrentUser};
+use linop_db_core::salesforce_oauth::{
     authorize_with_browser, device_authorization_request, device_poll, password_grant_token, refresh_access_token,
     SfDeviceAuthorization, SfDevicePoll, SfOauthParams, SfRefreshedToken, SfTokenSet,
 };

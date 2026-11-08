@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(root, "..", "..", "..");
 const target = platformTarget();
-const temporary = await mkdtemp(path.join(os.tmpdir(), "dbx-plugin-repository-smoke-"));
+const temporary = await mkdtemp(path.join(os.tmpdir(), "linop-db-plugin-repository-smoke-"));
 const candidateDirectory = path.join(temporary, "candidates");
 const candidate = path.join(candidateDirectory, `dbx.example.hello-1.0.0-${target}.dbxp`);
 const keyFile = path.join(temporary, "repository-key.env");

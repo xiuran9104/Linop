@@ -7,7 +7,7 @@ import type { EditorSettings } from "@/stores/settingsStore";
 
 type SettingsStoreLike = { editorSettings: EditorSettings };
 
-export const BACKGROUND_IMAGE_ACTIVE_CLASS = "dbx-bg-active";
+export const BACKGROUND_IMAGE_ACTIVE_CLASS = "linop-db-bg-active";
 
 const SURFACE_VAR_NAMES = new Set<string>(BACKGROUND_IMAGE_SURFACE_VARS);
 

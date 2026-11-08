@@ -1,13 +1,13 @@
 //! Tauri command layer for user-level SKILL.md skills (prd 09-21-public-skill-loader).
 //!
 //! The discovery, path-boundary and frontmatter logic lives in
-//! [`dbx_core::skills`] because the AI agent loop needs exactly the same rules
+//! [`linop_db_core::skills`] because the AI agent loop needs exactly the same rules
 //! (prd 09-30-skill-listing-use-skill). This module is only the transport
 //! adapter: it keeps the command names, parameter names and camelCase JSON
 //! shapes the frontend already depends on, and offloads the blocking
 //! filesystem work off the async runtime.
 
-use dbx_core::skills::{self, UserSkillsListResult, UserSkillsReadResult};
+use linop_db_core::skills::{self, UserSkillsListResult, UserSkillsReadResult};
 
 /// Lists skill metadata for both roots. The default root is always scanned;
 /// the custom root only when it is enabled in Settings. An absent root yields

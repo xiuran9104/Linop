@@ -55,7 +55,7 @@ describe("MQ topic column widths", () => {
     mount();
     drag("name", 300, 250);
     expect(resize.gridTemplateColumns.value.split(" ")[0]).toBe("550px");
-    expect(JSON.parse(localStorage.getItem(`dbx-mq-topic-column-widths:${system}`)!)).toEqual({ name: 550 });
+    expect(JSON.parse(localStorage.getItem(`linop-db-mq-topic-column-widths:${system}`)!)).toEqual({ name: 550 });
     app!.unmount();
     root.remove();
     mount();
@@ -85,14 +85,14 @@ describe("MQ topic column widths", () => {
   });
 
   it("clamps widths and tolerates corrupt or invalid stored values", () => {
-    localStorage.setItem("dbx-mq-topic-column-widths:rabbitmq", '{"name":1,"type":"wide","features":-5}');
+    localStorage.setItem("linop-db-mq-topic-column-widths:rabbitmq", '{"name":1,"type":"wide","features":-5}');
     mount();
     expect(resize.gridTemplateColumns.value.startsWith("180px 110px 170px")).toBe(true);
     drag("name", 300, -900);
     expect(resize.gridTemplateColumns.value.startsWith("180px ")).toBe(true);
     app!.unmount();
     root.remove();
-    localStorage.setItem("dbx-mq-topic-column-widths:rabbitmq", "invalid json");
+    localStorage.setItem("linop-db-mq-topic-column-widths:rabbitmq", "invalid json");
     mount();
     expect(resize.gridTemplateColumns.value.startsWith("minmax(180px, 1.6fr)")).toBe(true);
   });
@@ -105,7 +105,7 @@ describe("MQ topic column widths", () => {
     app!.unmount();
     expect(document.body.style.cursor).toBe(previousCursor);
     document.dispatchEvent(new MouseEvent("mouseup", { clientX: 700 }));
-    expect(localStorage.getItem("dbx-mq-topic-column-widths:rabbitmq")).toBeNull();
+    expect(localStorage.getItem("linop-db-mq-topic-column-widths:rabbitmq")).toBeNull();
   });
 
   it("cleans up drag listeners when the window loses focus", () => {
@@ -114,6 +114,6 @@ describe("MQ topic column widths", () => {
     window.dispatchEvent(new Event("blur"));
     expect(resize.resizingColumn.value).toBeNull();
     document.dispatchEvent(new MouseEvent("mouseup", { clientX: 700 }));
-    expect(localStorage.getItem("dbx-mq-topic-column-widths:rabbitmq")).toBeNull();
+    expect(localStorage.getItem("linop-db-mq-topic-column-widths:rabbitmq")).toBeNull();
   });
 });

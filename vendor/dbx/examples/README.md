@@ -4,7 +4,7 @@ Runnable samples for common DBX workflows.
 
 | Directory | What it shows |
 | --- | --- |
-| [cli/](cli/) | Terminal queries with `@dbx-app/cli` |
+| [cli/](cli/) | Terminal queries with `@linop-db-app/cli` |
 | [mcp/](mcp/) | MCP configs for Cursor and Claude Code |
 | [docker/](docker/) | Self-hosted Docker deployment |
 | [web-api/](web-api/) | Minimal HTTP API automation against DBX Web |
@@ -16,13 +16,13 @@ Runnable samples for common DBX workflows.
 3. For CLI examples, install the CLI:
 
 ```bash
-npm install -g @dbx-app/cli
+npm install -g @linop-db-app/cli
 ```
 
 4. For MCP examples, install the MCP server:
 
 ```bash
-npm install -g @dbx-app/mcp-server
+npm install -g @linop-db-app/mcp-server
 ```
 
 MCP connection access and execution permissions are configured centrally in **DBX Settings → MCP**. The client examples intentionally contain no permission or connection-scope environment variables.

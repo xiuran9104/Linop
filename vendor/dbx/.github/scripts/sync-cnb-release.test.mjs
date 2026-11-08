@@ -204,8 +204,8 @@ test("pruneReleaseAssets deletes files missing from the source release", async (
       id: "release-latest",
       assets: [
         { id: "registry", name: "agent-registry.json" },
-        { id: "old-jre", name: "dbx-jre-8-linux-x64.tar.gz" },
-        { id: "old-driver", name: "dbx-agent-h2-0.1.0.jar" },
+        { id: "old-jre", name: "linop-db-jre-8-linux-x64.tar.gz" },
+        { id: "old-driver", name: "linop-db-agent-h2-0.1.0.jar" },
       ],
     },
     new Set(["agent-registry.json"]),

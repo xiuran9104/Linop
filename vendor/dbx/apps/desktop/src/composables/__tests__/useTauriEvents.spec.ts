@@ -61,7 +61,7 @@ describe("useTauriEvents", () => {
     await setup;
 
     expect(setupResolved).toBe(true);
-    expect(listeners.has("dbx-open-connection-links")).toBe(true);
+    expect(listeners.has("linop-db-open-connection-links")).toBe(true);
     await listeners.get("mcp-reload-connections")!({ payload: undefined });
     expect(reloadFromDisk).toHaveBeenCalledOnce();
   });
@@ -78,7 +78,7 @@ describe("useTauriEvents", () => {
     });
 
     await events.setupTauriListeners();
-    listeners.get("dbx-close-active-tab")!({ payload: undefined });
+    listeners.get("linop-db-close-active-tab")!({ payload: undefined });
 
     expect(closeActiveSurface).toHaveBeenCalledOnce();
     events.cleanupTauriListeners();

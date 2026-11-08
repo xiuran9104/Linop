@@ -7,7 +7,7 @@
 ## 测试环境
 
 - 客户端：Windows 11 64 位，Intel Core i7-13620H（10 核、16 个逻辑处理器），31.7 GiB 内存。
-- 工具链：Rust 1.96.0，使用 release profile，`dbx-core` 通过 `--no-default-features` 构建。
+- 工具链：Rust 1.96.0，使用 release profile，`linop-db-core` 通过 `--no-default-features` 构建。
 - SQL Server：SQL Server 2022 `16.0.4265.3`，运行于本地 Docker 容器。
 - PostgreSQL：PostgreSQL `16.14`，远程可写测试实例；未隔离网络波动及服务器负载。
 - MySQL：MySQL `8.4.6`，远程可写测试实例，`max_allowed_packet = 64 MiB`；未隔离网络波动及服务器负载。
@@ -55,7 +55,7 @@ MySQL 补测在合并上游后重新独立构建，使用以下可执行文件�
 
 PostgreSQL COPY 累加器以有界的内存开销换取更少的网络往返次数。在这些数据集上，其峰值 RSS 中位数增加约 14～15 MiB；内存使用仍受 COPY 累加器、编码后批次、解析器和驱动缓冲区共同约束。远程 PostgreSQL 的 CSV 测试存在网络波动，优化版本的吞吐量范围为 17,600～42,300 行/秒；表中报告的 40,258.7 行/秒是中位数，而非最好成绩。
 
-MySQL 使用 10,000 行解析批次，使拆批前的候选 INSERT 约为 2 MiB，稳定超过 512 KiB SQL 目标。基线实现会反复序列化候选行并通过二分搜索确定拆分点；优化实现先将每行 SQL 值序列化一次，再按累计字节数线性拆批，因此本场景直接覆盖了被优化的路径。当前实现还会读取服务端 `max_allowed_packet` 并为单条 SQL 推导硬上限；本数据集没有触发 64 MiB 服务端包大小限制。大解析批次使 MySQL 两个版本的峰值 RSS 都明显高于 500 行场景，但优化版本的 CSV 和 XLSX 峰值 RSS 中位数分别降低 6.77 MiB 和 6.02 MiB。全部 MySQL 测试结束后再次查询测试 schema，`dbx_import_bench_%` 遗留表数量为 0。
+MySQL 使用 10,000 行解析批次，使拆批前的候选 INSERT 约为 2 MiB，稳定超过 512 KiB SQL 目标。基线实现会反复序列化候选行并通过二分搜索确定拆分点；优化实现先将每行 SQL 值序列化一次，再按累计字节数线性拆批，因此本场景直接覆盖了被优化的路径。当前实现还会读取服务端 `max_allowed_packet` 并为单条 SQL 推导硬上限；本数据集没有触发 64 MiB 服务端包大小限制。大解析批次使 MySQL 两个版本的峰值 RSS 都明显高于 500 行场景，但优化版本的 CSV 和 XLSX 峰值 RSS 中位数分别降低 6.77 MiB 和 6.02 MiB。全部 MySQL 测试结束后再次查询测试 schema，`linop_db_import_bench_%` 遗留表数量为 0。
 
 ## 边界场景补测
 
@@ -72,7 +72,7 @@ MySQL 使用 10,000 行解析批次，使拆批前的候选 INSERT 约为 2 MiB�
 宽字段场景可使用以下附加参数复现：
 
 ```powershell
-cargo run -p dbx-core --no-default-features --release `
+cargo run -p linop-db-core --no-default-features --release `
   --example table_import_live_bench -- `
   --database=sqlserver --format=csv --rows=6000 --columns=2 `
   --batch-size=5000 --text-bytes=30000
@@ -90,7 +90,7 @@ $env:DBX_BENCH_PASSWORD = '<password>'
 $env:DBX_BENCH_DATABASE = '<database>'
 $env:DBX_BENCH_SCHEMA = '<schema>'
 
-cargo run -p dbx-core --no-default-features --release `
+cargo run -p linop-db-core --no-default-features --release `
   --example table_import_live_bench -- `
   --database=postgres --format=csv --rows=200000 --columns=12 --batch-size=500
 ```

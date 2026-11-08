@@ -25,7 +25,7 @@ describe("DataGridAutoRefreshClock", () => {
 
     const hand = findHand(host.root);
     expect(hand.props.class).toContain("data-grid-auto-refresh-hand--sweeping");
-    expect(hand.props.style["--dbx-auto-refresh-sweep-duration"]).toBe("30s");
+    expect(hand.props.style["--linop-db-auto-refresh-sweep-duration"]).toBe("30s");
     expect(hand.props.style["transform-origin"]).toBeUndefined();
     host.unmount();
   });
@@ -50,7 +50,7 @@ describe("DataGridAutoRefreshClock", () => {
   it("falls back to a ten second turn for missing or unusable intervals", () => {
     for (const intervalSeconds of [undefined, Number.NaN, 0, -5]) {
       const host = mountComponent(DataGridAutoRefreshClock, { enabled: true, intervalSeconds });
-      expect(findHand(host.root).props.style["--dbx-auto-refresh-sweep-duration"]).toBe("10s");
+      expect(findHand(host.root).props.style["--linop-db-auto-refresh-sweep-duration"]).toBe("10s");
       host.unmount();
     }
   });

@@ -1,8 +1,8 @@
 import { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet } from "@/lib/backend/safeStorage";
 import type { DatabaseType } from "@/types/database";
 
-const STORAGE_PREFIX = "dbx-data-grid-column-layout:";
-const TABLE_STORAGE_PREFIX = "dbx-data-grid-table-column-order:";
+const STORAGE_PREFIX = "linop-db-data-grid-column-layout:";
+const TABLE_STORAGE_PREFIX = "linop-db-data-grid-table-column-order:";
 const STORAGE_VERSION = 1;
 
 export const TABLE_DATA_GRID_COLUMN_ORDER_CHANGED_EVENT = "dbx:table-data-grid-column-order-changed";
@@ -158,7 +158,7 @@ export function notifyTableDataGridColumnOrderChanged(scopeKey: string) {
   window.dispatchEvent(new CustomEvent<TableDataGridColumnOrderChangedDetail>(TABLE_DATA_GRID_COLUMN_ORDER_CHANGED_EVENT, { detail: { scopeKey } }));
 }
 
-const FROZEN_STORAGE_PREFIX = "dbx-data-grid-frozen-columns:";
+const FROZEN_STORAGE_PREFIX = "linop-db-data-grid-frozen-columns:";
 
 export interface DataGridColumnFrozenState {
   frozenCount: number;

@@ -15,7 +15,7 @@ struct AgentProcess {
 
 impl AgentProcess {
     fn spawn() -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_dbx-tdengine-driver"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_linop-db-tdengine-driver"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
@@ -143,7 +143,7 @@ fn tdengine_websocket_live_compatibility() {
     let Some(connect_params) = integration_params() else {
         return;
     };
-    let database = format!("dbx_rust_live_{}", std::process::id());
+    let database = format!("linop_db_rust_live_{}", std::process::id());
     let session_id = "tdengine-live";
     let mut agent = AgentProcess::spawn();
 
@@ -306,7 +306,7 @@ fn tdengine_websocket_live_paged_table_list_matches_the_full_list() {
     let Some(connect_params) = integration_params() else {
         return;
     };
-    let database = format!("dbx_rust_page_{}", std::process::id());
+    let database = format!("linop_db_rust_page_{}", std::process::id());
     let session_id = "tdengine-live-page";
     let page_size = 100usize;
     let mut agent = AgentProcess::spawn();

@@ -1,5 +1,5 @@
 {
-  "name": "@dbx-app/cli-linux-arm64-gnu",
+  "name": "@linop-db-app/cli-linux-arm64-gnu",
   "version": "0.4.141",
   "description": "Precompiled DBX CLI binary for Linux arm64 glibc",
   "license": "Apache-2.0",
@@ -18,7 +18,7 @@
     "glibc"
   ],
   "bin": {
-    "dbx-native": "bin/dbx"
+    "linop-db-native": "bin/dbx"
   },
   "files": [
     "bin"

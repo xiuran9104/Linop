@@ -38,7 +38,7 @@ describe("plugin external URL permissions", () => {
     const openUrl = vi.fn().mockResolvedValueOnce({ opened: false }).mockResolvedValueOnce({ opened: true });
     const plugin = { manifest: { id: "bookmarks", name: "Bookmarks", version: "1.0.0", permissions, drivers: [], contributions: [] }, compatibility: { compatible: true } } as InstalledPlugin;
     const bridge = new PluginHostBridge(plugin, { type: "workbench", id: "bookmarks.main", label: "Bookmarks" } as PluginWorkbenchContribution, {}, () => target, { invoke: vi.fn(), notify: vi.fn(), sendBinary: vi.fn(), readAsset: vi.fn(), openUrl });
-    const send = (url: string, id: string, source = target) => bridge.handleWindowMessage({ source, data: { source: "dbx-plugin", version: 1, type: "request", id, method: "host.openUrl", params: { url, pluginId: "different-plugin" } } } as MessageEvent);
+    const send = (url: string, id: string, source = target) => bridge.handleWindowMessage({ source, data: { source: "linop-db-plugin", version: 1, type: "request", id, method: "host.openUrl", params: { url, pluginId: "different-plugin" } } } as MessageEvent);
     send("https://evil.test", "1");
     await vi.waitFor(() => expect(responses).toHaveLength(1));
     expect(openUrl).not.toHaveBeenCalled();

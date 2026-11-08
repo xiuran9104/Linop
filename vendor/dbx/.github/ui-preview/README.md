@@ -8,10 +8,10 @@ carries the `ui-preview` label), the workflow does this:
 1. **publish.mjs detect** decides whether the PR is a UI change, and which lane it is:
    a diff that reaches `crates/`, `plugins/` or `src-tauri/` is a *rust* lane, anything else
    is a *web* lane. It puts a "recording…" note in a fixed block at the foot of the PR
-   description, between `<!-- dbx-ui-preview:begin -->` and `<!-- dbx-ui-preview:end -->`.
+   description, between `<!-- linop-db-ui-preview:begin -->` and `<!-- linop-db-ui-preview:end -->`.
 2. **The record job** builds the PR's frontend (`pnpm build`) and runs it against a backend:
-   the released dbx-web static binary (web lane — no Rust is built; the PR's `dist/` replaces
-   the embedded frontend via `DBX_STATIC_DIR`), or dbx-web built from the PR (rust lane).
+   the released linop-db-web static binary (web lane — no Rust is built; the PR's `dist/` replaces
+   the embedded frontend via `DBX_STATIC_DIR`), or linop-db-web built from the PR (rust lane).
    **run.sh** starts it headless (`DBX_DISABLE_PASSWORD=1`, an isolated home), then
    **seed.mjs** fills it with made-up data, so a change that only shows with data can be seen:
    - two SQLite databases with fixed, deterministic content (orders/products/customers with
@@ -45,11 +45,11 @@ runs the PR's code. The planner talks to any OpenAI-compatible endpoint
 `UI_PREVIEW_PLAN_MODEL` repo variable).
 
 Known limits: the recording is of the web build, so desktop-shell behaviour (detached tabs,
-OS dialogs) is not covered; in the web lane the backend is the released dbx-web, so a PR
+OS dialogs) is not covered; in the web lane the backend is the released linop-db-web, so a PR
 whose frontend calls an endpoint newer than the release records that call failing — the
 honest-notes fields are the place that shows up.
 
-To run it locally against a dbx-web that already runs somewhere (all of record.mjs, none of
+To run it locally against a linop-db-web that already runs somewhere (all of record.mjs, none of
 the starting):
 
 ```sh
@@ -60,7 +60,7 @@ PLAN_FILE=plan.json DBX_URL=… … node record.mjs           # or a hand-writte
 ```
 
 `seed.mjs dbs <dir>` writes the databases; `seed.mjs api <url> <dir> [--as <server path>]`
-seeds a running instance (pass `--as` when the databases live where dbx-web runs, not where
+seeds a running instance (pass `--as` when the databases live where linop-db-web runs, not where
 you run the script — testing over an SSH tunnel).
 
 To re-run it for a PR, use `gh workflow run ui-preview.yml -f pr=<n>`.

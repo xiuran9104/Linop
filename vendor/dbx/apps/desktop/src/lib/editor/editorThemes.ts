@@ -21,10 +21,10 @@ export const SQL_QUOTED_IDENTIFIER_HIGHLIGHT_TAG = tags.special(tags.string);
 type CodeMirrorStyleSpec = Parameters<typeof import("@codemirror/view").EditorView.theme>[0];
 type LucideIconNode = Array<[string, Record<string, string>]>;
 
-export const EDITOR_FONT_SIZE_CSS_VAR = "--dbx-editor-font-size";
+export const EDITOR_FONT_SIZE_CSS_VAR = "--linop-db-editor-font-size";
 export { EDITOR_FONT_FAMILY_CSS_VAR };
-export const SQL_TABLE_COLOR_CSS_VAR = "--dbx-sql-table-color";
-const EDITOR_SELECTION_BACKGROUND_CSS_VAR = "--dbx-editor-selection-background";
+export const SQL_TABLE_COLOR_CSS_VAR = "--linop-db-sql-table-color";
+const EDITOR_SELECTION_BACKGROUND_CSS_VAR = "--linop-db-editor-selection-background";
 
 export function createRunStatementButtonDom(ariaLabel = "Execute statement"): HTMLButtonElement {
   const marker = document.createElement("button");
@@ -681,7 +681,7 @@ function encodeSvgIcon(iconNode: LucideIconNode): string {
 function lucideCompletionIconMask(iconNode: LucideIconNode) {
   const mask = encodeSvgIcon(iconNode);
   return {
-    "--dbx-completion-icon-mask": mask,
+    "--linop-db-completion-icon-mask": mask,
   };
 }
 
@@ -938,7 +938,7 @@ export function buildEditorFontThemeRules(opts?: { fixedHeight?: boolean; scroll
       alignItems: "center",
       background: "transparent",
       border: "1px solid transparent",
-      borderRadius: "var(--dbx-radius-fixed-6)",
+      borderRadius: "var(--linop-db-radius-fixed-6)",
       boxSizing: "border-box",
       color: "transparent",
       display: "inline-flex",
@@ -1027,7 +1027,7 @@ export function buildSqlCompletionThemeRules(): CodeMirrorStyleSpec {
       background: "var(--popover)",
       backgroundClip: "padding-box",
       border: colorMixValue("1px solid var(--border)", "1px solid color-mix(in oklch, var(--border) 82%, var(--foreground) 18%)"),
-      borderRadius: "var(--dbx-radius-md)",
+      borderRadius: "var(--linop-db-radius-md)",
       boxShadow: "0 8px 18px rgb(0 0 0 / 0.14)",
       color: "var(--popover-foreground)",
       fontFamily: `var(${EDITOR_FONT_FAMILY_CSS_VAR}, var(--font-mono, monospace))`,
@@ -1057,7 +1057,7 @@ export function buildSqlCompletionThemeRules(): CodeMirrorStyleSpec {
     },
     ".cm-tooltip.cm-tooltip-autocomplete > ul > li": {
       alignItems: "center",
-      borderRadius: "var(--dbx-radius-sm)",
+      borderRadius: "var(--linop-db-radius-sm)",
       color: "var(--popover-foreground)",
       display: "flex",
       fontSize: `clamp(12px, var(${EDITOR_FONT_SIZE_CSS_VAR}, 13px), 14px)`,
@@ -1109,11 +1109,11 @@ export function buildSqlCompletionThemeRules(): CodeMirrorStyleSpec {
       left: "0",
       top: "0",
       position: "absolute",
-      WebkitMaskImage: "var(--dbx-completion-icon-mask)",
+      WebkitMaskImage: "var(--linop-db-completion-icon-mask)",
       WebkitMaskPosition: "center",
       WebkitMaskRepeat: "no-repeat",
       WebkitMaskSize: "14px 14px",
-      maskImage: "var(--dbx-completion-icon-mask)",
+      maskImage: "var(--linop-db-completion-icon-mask)",
       maskPosition: "center",
       maskRepeat: "no-repeat",
       maskSize: "14px 14px",

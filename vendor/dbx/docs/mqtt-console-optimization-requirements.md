@@ -911,17 +911,17 @@ MQTT 订阅配置不是敏感凭据，因此：
   - 为保存配置增加 `enabled`。
   - 补充订阅运行状态和同步类型。
 
-- `crates/dbx-core/src/mqtt/client.rs`
+- `crates/linop-db-core/src/mqtt/client.rs`
   - 区分保存配置、启用、停用、删除和当前已确认订阅。
   - 连接恢复时仅恢复 `enabled = true` 的配置。
 
-- `crates/dbx-core/src/storage.rs`
+- `crates/linop-db-core/src/storage.rs`
   - 提供完整保存、读取和替换 MQTT 订阅配置的能力。
   - 保证同步应用的原子性。
 
 ### 14.4 云同步
 
-- `crates/dbx-core/src/cloud_sync.rs`
+- `crates/linop-db-core/src/cloud_sync.rs`
   - 明确定义 MQTT 订阅同步字段。
   - 实现导入导出、兼容、校验和摘要规则。
   - 验证 MQTT 敏感信息清理。

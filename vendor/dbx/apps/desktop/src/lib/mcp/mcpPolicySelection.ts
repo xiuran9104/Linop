@@ -23,56 +23,56 @@ export const MCP_CAPABILITY_ROWS: readonly McpCapabilityRow[] = [
 ];
 
 export const MCP_TOOL_OPTIONS = [
-  { name: "dbx_list_connections", labelKey: "settings.mcpToolListConnections" },
-  { name: "dbx_list_databases", labelKey: "settings.mcpToolListDatabases" },
-  { name: "dbx_list_tables", labelKey: "settings.mcpToolListTables" },
-  { name: "dbx_describe_table", labelKey: "settings.mcpToolDescribeTable" },
-  { name: "dbx_list_routines", labelKey: "settings.mcpToolListRoutines" },
-  { name: "dbx_get_routine_source", labelKey: "settings.mcpToolGetRoutineSource" },
-  { name: "dbx_get_schema_context", labelKey: "settings.mcpToolGetSchemaContext" },
-  { name: "dbx_execute_query", labelKey: "settings.mcpToolExecuteQuery" },
-  { name: "dbx_execute_batch", labelKey: "settings.mcpToolExecuteBatch" },
-  { name: "dbx_open_session", labelKey: "settings.mcpToolOpenSession" },
-  { name: "dbx_begin_transaction", labelKey: "settings.mcpToolBeginTransaction" },
-  { name: "dbx_commit_transaction", labelKey: "settings.mcpToolCommitTransaction" },
-  { name: "dbx_rollback_transaction", labelKey: "settings.mcpToolRollbackTransaction" },
-  { name: "dbx_close_session", labelKey: "settings.mcpToolCloseSession" },
-  { name: "dbx_execute_redis_command", labelKey: "settings.mcpToolExecuteRedisCommand" },
-  { name: "dbx_salesforce_current_user", labelKey: "settings.mcpToolSalesforceCurrentUser" },
-  { name: "dbx_salesforce_prepare_write", labelKey: "settings.mcpToolSalesforcePrepareWrite" },
-  { name: "dbx_salesforce_apply_write", labelKey: "settings.mcpToolSalesforceApplyWrite" },
-  { name: "dbx_nacos_list_namespaces", labelKey: "settings.mcpToolNacosListNamespaces" },
-  { name: "dbx_nacos_list_configs", labelKey: "settings.mcpToolNacosListConfigs" },
-  { name: "dbx_nacos_search_configs", labelKey: "settings.mcpToolNacosSearchConfigs" },
-  { name: "dbx_nacos_get_config", labelKey: "settings.mcpToolNacosGetConfig" },
-  { name: "dbx_nacos_config_history", labelKey: "settings.mcpToolNacosConfigHistory" },
-  { name: "dbx_nacos_publish_config", labelKey: "settings.mcpToolNacosPublishConfig" },
-  { name: "dbx_nacos_rollback_config", labelKey: "settings.mcpToolNacosRollbackConfig" },
-  { name: "dbx_nacos_delete_config", labelKey: "settings.mcpToolNacosDeleteConfig" },
-  { name: "dbx_nacos_list_services", labelKey: "settings.mcpToolNacosListServices" },
-  { name: "dbx_nacos_get_service", labelKey: "settings.mcpToolNacosGetService" },
-  { name: "dbx_nacos_list_instances", labelKey: "settings.mcpToolNacosListInstances" },
-  { name: "dbx_nacos_update_instance", labelKey: "settings.mcpToolNacosUpdateInstance" },
-  { name: "dbx_nacos_register_instance", labelKey: "settings.mcpToolNacosRegisterInstance" },
-  { name: "dbx_nacos_deregister_instance", labelKey: "settings.mcpToolNacosDeregisterInstance" },
-  { name: "dbx_consul_kv_list", labelKey: "settings.mcpToolConsulKvList" },
-  { name: "dbx_consul_kv_get", labelKey: "settings.mcpToolConsulKvGet" },
-  { name: "dbx_consul_kv_put", labelKey: "settings.mcpToolConsulKvPut" },
-  { name: "dbx_consul_kv_delete", labelKey: "settings.mcpToolConsulKvDelete" },
-  { name: "dbx_consul_list_services", labelKey: "settings.mcpToolConsulListServices" },
-  { name: "dbx_consul_list_nodes", labelKey: "settings.mcpToolConsulListNodes" },
-  { name: "dbx_consul_service_health", labelKey: "settings.mcpToolConsulServiceHealth" },
-  { name: "dbx_consul_set_maintenance", labelKey: "settings.mcpToolConsulSetMaintenance" },
-  { name: "dbx_peek_messages", labelKey: "settings.mcpToolPeekMessages" },
-  { name: "dbx_send_message", labelKey: "settings.mcpToolSendMessage" },
-  { name: "dbx_add_connection", labelKey: "settings.mcpToolAddConnection" },
-  { name: "dbx_duplicate_connection", labelKey: "settings.mcpToolDuplicateConnection" },
-  { name: "dbx_remove_connection", labelKey: "settings.mcpToolRemoveConnection" },
-  { name: "dbx_open_table", labelKey: "settings.mcpToolOpenTable" },
-  { name: "dbx_execute_and_show", labelKey: "settings.mcpToolExecuteAndShow" },
-  { name: "dbx_plugin_list", labelKey: "settings.mcpToolPluginList" },
-  { name: "dbx_plugin_tools", labelKey: "settings.mcpToolPluginTools" },
-  { name: "dbx_plugin_call", labelKey: "settings.mcpToolPluginCall" },
+  { name: "linop_db_list_connections", labelKey: "settings.mcpToolListConnections" },
+  { name: "linop_db_list_databases", labelKey: "settings.mcpToolListDatabases" },
+  { name: "linop_db_list_tables", labelKey: "settings.mcpToolListTables" },
+  { name: "linop_db_describe_table", labelKey: "settings.mcpToolDescribeTable" },
+  { name: "linop_db_list_routines", labelKey: "settings.mcpToolListRoutines" },
+  { name: "linop_db_get_routine_source", labelKey: "settings.mcpToolGetRoutineSource" },
+  { name: "linop_db_get_schema_context", labelKey: "settings.mcpToolGetSchemaContext" },
+  { name: "linop_db_execute_query", labelKey: "settings.mcpToolExecuteQuery" },
+  { name: "linop_db_execute_batch", labelKey: "settings.mcpToolExecuteBatch" },
+  { name: "linop_db_open_session", labelKey: "settings.mcpToolOpenSession" },
+  { name: "linop_db_begin_transaction", labelKey: "settings.mcpToolBeginTransaction" },
+  { name: "linop_db_commit_transaction", labelKey: "settings.mcpToolCommitTransaction" },
+  { name: "linop_db_rollback_transaction", labelKey: "settings.mcpToolRollbackTransaction" },
+  { name: "linop_db_close_session", labelKey: "settings.mcpToolCloseSession" },
+  { name: "linop_db_execute_redis_command", labelKey: "settings.mcpToolExecuteRedisCommand" },
+  { name: "linop_db_salesforce_current_user", labelKey: "settings.mcpToolSalesforceCurrentUser" },
+  { name: "linop_db_salesforce_prepare_write", labelKey: "settings.mcpToolSalesforcePrepareWrite" },
+  { name: "linop_db_salesforce_apply_write", labelKey: "settings.mcpToolSalesforceApplyWrite" },
+  { name: "linop_db_nacos_list_namespaces", labelKey: "settings.mcpToolNacosListNamespaces" },
+  { name: "linop_db_nacos_list_configs", labelKey: "settings.mcpToolNacosListConfigs" },
+  { name: "linop_db_nacos_search_configs", labelKey: "settings.mcpToolNacosSearchConfigs" },
+  { name: "linop_db_nacos_get_config", labelKey: "settings.mcpToolNacosGetConfig" },
+  { name: "linop_db_nacos_config_history", labelKey: "settings.mcpToolNacosConfigHistory" },
+  { name: "linop_db_nacos_publish_config", labelKey: "settings.mcpToolNacosPublishConfig" },
+  { name: "linop_db_nacos_rollback_config", labelKey: "settings.mcpToolNacosRollbackConfig" },
+  { name: "linop_db_nacos_delete_config", labelKey: "settings.mcpToolNacosDeleteConfig" },
+  { name: "linop_db_nacos_list_services", labelKey: "settings.mcpToolNacosListServices" },
+  { name: "linop_db_nacos_get_service", labelKey: "settings.mcpToolNacosGetService" },
+  { name: "linop_db_nacos_list_instances", labelKey: "settings.mcpToolNacosListInstances" },
+  { name: "linop_db_nacos_update_instance", labelKey: "settings.mcpToolNacosUpdateInstance" },
+  { name: "linop_db_nacos_register_instance", labelKey: "settings.mcpToolNacosRegisterInstance" },
+  { name: "linop_db_nacos_deregister_instance", labelKey: "settings.mcpToolNacosDeregisterInstance" },
+  { name: "linop_db_consul_kv_list", labelKey: "settings.mcpToolConsulKvList" },
+  { name: "linop_db_consul_kv_get", labelKey: "settings.mcpToolConsulKvGet" },
+  { name: "linop_db_consul_kv_put", labelKey: "settings.mcpToolConsulKvPut" },
+  { name: "linop_db_consul_kv_delete", labelKey: "settings.mcpToolConsulKvDelete" },
+  { name: "linop_db_consul_list_services", labelKey: "settings.mcpToolConsulListServices" },
+  { name: "linop_db_consul_list_nodes", labelKey: "settings.mcpToolConsulListNodes" },
+  { name: "linop_db_consul_service_health", labelKey: "settings.mcpToolConsulServiceHealth" },
+  { name: "linop_db_consul_set_maintenance", labelKey: "settings.mcpToolConsulSetMaintenance" },
+  { name: "linop_db_peek_messages", labelKey: "settings.mcpToolPeekMessages" },
+  { name: "linop_db_send_message", labelKey: "settings.mcpToolSendMessage" },
+  { name: "linop_db_add_connection", labelKey: "settings.mcpToolAddConnection" },
+  { name: "linop_db_duplicate_connection", labelKey: "settings.mcpToolDuplicateConnection" },
+  { name: "linop_db_remove_connection", labelKey: "settings.mcpToolRemoveConnection" },
+  { name: "linop_db_open_table", labelKey: "settings.mcpToolOpenTable" },
+  { name: "linop_db_execute_and_show", labelKey: "settings.mcpToolExecuteAndShow" },
+  { name: "linop_db_plugin_list", labelKey: "settings.mcpToolPluginList" },
+  { name: "linop_db_plugin_tools", labelKey: "settings.mcpToolPluginTools" },
+  { name: "linop_db_plugin_call", labelKey: "settings.mcpToolPluginCall" },
 ] as const;
 
 export interface McpExecutionPolicyFields {
@@ -145,12 +145,12 @@ export function toggleMcpAllowedConnectionId(current: readonly string[] | null, 
 }
 
 /**
- * Allowlist entry that exposes every discovered plugin tool (`dbx_<prefix>__*`
+ * Allowlist entry that exposes every discovered plugin tool (`linop_db_<prefix>__*`
  * scopes to one plugin). Plugin tool names come from sidecars at runtime, so
  * the static options above cannot name them; the backend matcher expands the
  * wildcard, and static tool names never contain the `__` separator.
  */
-export const MCP_PLUGIN_TOOLS_WILDCARD = "dbx_*__*";
+export const MCP_PLUGIN_TOOLS_WILDCARD = "linop_db_*__*";
 
 export function toggleMcpAllowedToolName(current: readonly string[] | null, toolName: string, allowed: boolean): string[] {
   // A null allowlist means "everything", including every discovered plugin
@@ -163,7 +163,7 @@ export function toggleMcpAllowedToolName(current: readonly string[] | null, tool
   return [...selected];
 }
 
-/** Adds a free-form allowlist entry (a plugin tool name or a `dbx_<prefix>__*` wildcard). */
+/** Adds a free-form allowlist entry (a plugin tool name or a `linop_db_<prefix>__*` wildcard). */
 export function addMcpAllowedToolName(current: readonly string[] | null, rawName: string): { names: string[]; added: boolean } {
   const name = rawName.trim();
   if (!name) return { names: [...(current ?? MCP_TOOL_OPTIONS.map((tool) => tool.name))], added: false };

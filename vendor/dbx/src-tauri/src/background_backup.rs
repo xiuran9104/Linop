@@ -1,4 +1,4 @@
-use dbx_core::{
+use linop_db_core::{
     connection::AppState,
     scheduled_backup::{BackupCommand, BackupService},
     storage::Storage,
@@ -141,7 +141,7 @@ fn marker(data_dir: &Path) -> PathBuf {
 }
 fn name(data_dir: &Path) -> String {
     let hash = format!("{:x}", Sha256::digest(data_dir.to_string_lossy().as_bytes()));
-    format!("dbx-backup-{}", &hash[..16])
+    format!("linop-db-backup-{}", &hash[..16])
 }
 
 fn run(command: &mut Command) -> Result<(), String> {
@@ -387,10 +387,10 @@ pub fn run_if_requested() -> bool {
             return Ok(());
         }
         worker_logging(&dir)?;
-        let runtime = dbx_core::scheduled_backup::worker_runtime().map_err(|e| e.to_string())?;
+        let runtime = linop_db_core::scheduled_backup::worker_runtime().map_err(|e| e.to_string())?;
         let result = runtime.block_on(async {
             let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
-            dbx_core::sql_dialect::dialect_loader::register_core_dialects();
+            linop_db_core::sql_dialect::dialect_loader::register_core_dialects();
             let storage = Storage::open_unmigrated(&dir.join("dbx.db")).await?;
             let state = Arc::new(AppState::new_with_plugin_dir(storage, dir.join("plugins")));
             let stop = CancellationToken::new();
@@ -513,7 +513,7 @@ mod tests {
     #[tokio::test]
     async fn shutdown_stops_the_mock_supervisor_and_removes_only_its_lease() {
         let directory = tempfile::tempdir().unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&directory.path().join("dbx.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&directory.path().join("dbx.db")).await.unwrap();
         let state = Arc::new(AppState::new(storage));
         std::fs::create_dir_all(directory.path().join("database-backups")).unwrap();
         std::fs::write(marker(directory.path()), b"1").unwrap();

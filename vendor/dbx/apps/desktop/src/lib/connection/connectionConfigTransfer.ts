@@ -180,7 +180,7 @@ export function parseConnectionConfigObject(value: unknown): ConnectionConfigBun
     tunnelProfiles?: unknown;
   };
 
-  if (parsed.format === "dbx-config" && Array.isArray(parsed.connections)) {
+  if (parsed.format === "linop-db-config" && Array.isArray(parsed.connections)) {
     return { connections: parsed.connections as ConnectionConfig[] };
   }
 
@@ -218,7 +218,7 @@ export function prepareConnectionConfigImport(bundle: ConnectionConfigBundle, ex
   const sourceConnections = bundle.connections.map((connection, index) => ({
     ...connection,
     // Anonymous legacy entries need a stable key for layout/reference remapping.
-    id: connection.id?.trim() || `__dbx_import_${index}`,
+    id: connection.id?.trim() || `__linop_db_import_${index}`,
   }));
   const connectionIds = new Map<string, string>();
   const importedConnections: ConnectionConfig[] = [];

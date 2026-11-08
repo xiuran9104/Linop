@@ -19,7 +19,7 @@ describe("MySQL routine execution SQL", () => {
       ],
     });
 
-    expect(sql).toBe(["SET @dbx_output_2 = NULL;", "CALL `double_value`(5, @dbx_output_2);", "SELECT @dbx_output_2 AS `p_output`;"].join("\n"));
+    expect(sql).toBe(["SET @linop_db_output_2 = NULL;", "CALL `double_value`(5, @linop_db_output_2);", "SELECT @linop_db_output_2 AS `p_output`;"].join("\n"));
   });
 
   it("initializes INOUT variables and returns all output values", () => {
@@ -34,7 +34,7 @@ describe("MySQL routine execution SQL", () => {
       ],
     });
 
-    expect(sql).toBe(["SET @dbx_output_2 = 10;", "SET @dbx_output_3 = NULL;", "CALL `adjust_values`(5, @dbx_output_2, @dbx_output_3);", "SELECT @dbx_output_2 AS `p_total`, @dbx_output_3 AS `p_status`;"].join("\n"));
+    expect(sql).toBe(["SET @linop_db_output_2 = 10;", "SET @linop_db_output_3 = NULL;", "CALL `adjust_values`(5, @linop_db_output_2, @linop_db_output_3);", "SELECT @linop_db_output_2 AS `p_total`, @linop_db_output_3 AS `p_status`;"].join("\n"));
   });
 
   it("keeps input-only procedure calls unchanged", () => {
@@ -67,7 +67,7 @@ describe("MySQL routine execution SQL", () => {
         routineName: "double_value",
         parameters: parameters.map((parameter) => ({ ...parameter, value: parameter.mode === "IN" ? "5" : "" })),
       }),
-    ).toContain("CALL `double_value`(5, @dbx_output_2);");
+    ).toContain("CALL `double_value`(5, @linop_db_output_2);");
   });
 });
 
@@ -83,7 +83,7 @@ describe("SQL Server routine execution SQL", () => {
       ],
     });
 
-    expect(sql).toBe(["DECLARE @dbx_output_2 varchar(128);", "EXEC [dbo].[Sys_CreatePrimaryKeyValue] @tableName = 'users', @returnValue = @dbx_output_2 OUTPUT;", "SELECT @dbx_output_2 AS [returnValue];"].join("\n"));
+    expect(sql).toBe(["DECLARE @linop_db_output_2 varchar(128);", "EXEC [dbo].[Sys_CreatePrimaryKeyValue] @tableName = 'users', @returnValue = @linop_db_output_2 OUTPUT;", "SELECT @linop_db_output_2 AS [returnValue];"].join("\n"));
   });
 
   it("initializes INOUT parameters and keeps numeric values unquoted", () => {
@@ -94,7 +94,7 @@ describe("SQL Server routine execution SQL", () => {
       parameters: [{ name: "@amount", dataType: "decimal(18,4)", mode: "INOUT", ordinal: 1, value: "12.5000" }],
     });
 
-    expect(sql).toBe(["DECLARE @dbx_output_1 decimal(18,4) = 12.5000;", "EXEC [dbo].[adjust_amount] @amount = @dbx_output_1 OUTPUT;", "SELECT @dbx_output_1 AS [amount];"].join("\n"));
+    expect(sql).toBe(["DECLARE @linop_db_output_1 decimal(18,4) = 12.5000;", "EXEC [dbo].[adjust_amount] @amount = @linop_db_output_1 OUTPUT;", "SELECT @linop_db_output_1 AS [amount];"].join("\n"));
   });
 
   it("preserves IN parameters and omission of requested defaults", () => {
@@ -144,7 +144,7 @@ describe("SQL Server routine execution SQL", () => {
         routineName: "collect_outputs",
         parameters: parameters.map((parameter) => ({ ...parameter, value: "" })),
       }),
-    ).toContain(["DECLARE @dbx_output_1 varchar(64);", "DECLARE @dbx_output_2 varchar(max);", "DECLARE @dbx_output_3 decimal(18,4);"].join("\n"));
+    ).toContain(["DECLARE @linop_db_output_1 varchar(64);", "DECLARE @linop_db_output_2 varchar(max);", "DECLARE @linop_db_output_3 decimal(18,4);"].join("\n"));
 
     const metadataSql = routineParametersQuery({ database: "app", databaseType: "sqlserver", schema: "dbo", routineName: "save" });
     expect(metadataSql).toContain("JOIN sys.types t ON t.user_type_id = p.user_type_id");
@@ -173,7 +173,7 @@ describe("Oracle routine execution SQL", () => {
       ],
     });
 
-    expect(sql).toBe(["DECLARE", "  dbx_output_2 VARCHAR2(32767);", "BEGIN", '  "APP"."GET_NAME"(1, dbx_output_2);', "  DBMS_OUTPUT.PUT_LINE('P_NAME = ' || SUBSTR(dbx_output_2, 1, 4000));", "END;"].join("\n"));
+    expect(sql).toBe(["DECLARE", "  linop_db_output_2 VARCHAR2(32767);", "BEGIN", '  "APP"."GET_NAME"(1, linop_db_output_2);', "  DBMS_OUTPUT.PUT_LINE('P_NAME = ' || SUBSTR(linop_db_output_2, 1, 4000));", "END;"].join("\n"));
   });
 
   it("initializes IN OUT variables from the entered value", () => {
@@ -186,7 +186,7 @@ describe("Oracle routine execution SQL", () => {
         routineName: "BUMP",
         parameters: parameters.map((parameter) => ({ ...parameter, value: "5" })),
       }),
-    ).toBe(["DECLARE", "  dbx_output_1 NUMBER := 5;", "BEGIN", '  "APP"."BUMP"(dbx_output_1);', "  DBMS_OUTPUT.PUT_LINE('P_COUNTER = ' || dbx_output_1);", "END;"].join("\n"));
+    ).toBe(["DECLARE", "  linop_db_output_1 NUMBER := 5;", "BEGIN", '  "APP"."BUMP"(linop_db_output_1);', "  DBMS_OUTPUT.PUT_LINE('P_COUNTER = ' || linop_db_output_1);", "END;"].join("\n"));
   });
 
   it("binds several OUT parameters of different types", () => {
@@ -205,14 +205,14 @@ describe("Oracle routine execution SQL", () => {
     expect(sql).toBe(
       [
         "DECLARE",
-        "  dbx_output_2 NUMBER;",
-        "  dbx_output_3 VARCHAR2(32767);",
-        "  dbx_output_4 DATE;",
+        "  linop_db_output_2 NUMBER;",
+        "  linop_db_output_3 VARCHAR2(32767);",
+        "  linop_db_output_4 DATE;",
         "BEGIN",
-        '  "APP"."MULTI"(3, dbx_output_2, dbx_output_3, dbx_output_4);',
-        "  DBMS_OUTPUT.PUT_LINE('O_NUM = ' || dbx_output_2);",
-        "  DBMS_OUTPUT.PUT_LINE('O_TEXT = ' || SUBSTR(dbx_output_3, 1, 4000));",
-        "  DBMS_OUTPUT.PUT_LINE('O_DATE = ' || dbx_output_4);",
+        '  "APP"."MULTI"(3, linop_db_output_2, linop_db_output_3, linop_db_output_4);',
+        "  DBMS_OUTPUT.PUT_LINE('O_NUM = ' || linop_db_output_2);",
+        "  DBMS_OUTPUT.PUT_LINE('O_TEXT = ' || SUBSTR(linop_db_output_3, 1, 4000));",
+        "  DBMS_OUTPUT.PUT_LINE('O_DATE = ' || linop_db_output_4);",
         "END;",
       ].join("\n"),
     );
@@ -230,7 +230,7 @@ describe("Oracle routine execution SQL", () => {
       ],
     });
 
-    expect(sql).toContain('  "APP"."WITH_DEFAULT"("P_ID" => 1, "O_MSG" => dbx_output_3);');
+    expect(sql).toContain('  "APP"."WITH_DEFAULT"("P_ID" => 1, "O_MSG" => linop_db_output_3);');
   });
 
   it("sizes unconstrained types and skips values that cannot be printed", () => {
@@ -253,20 +253,20 @@ describe("Oracle routine execution SQL", () => {
     expect(sql).toBe(
       [
         "DECLARE",
-        "  dbx_output_1 CHAR(2000);",
-        "  dbx_output_2 NCHAR(1000);",
-        "  dbx_output_3 NVARCHAR2(10922);",
-        "  dbx_output_4 RAW(32767);",
-        "  dbx_output_5 SYS_REFCURSOR;",
-        "  dbx_output_6 BOOLEAN;",
-        "  dbx_output_7 BLOB;",
-        "  dbx_output_8 TIMESTAMP WITH TIME ZONE;",
+        "  linop_db_output_1 CHAR(2000);",
+        "  linop_db_output_2 NCHAR(1000);",
+        "  linop_db_output_3 NVARCHAR2(10922);",
+        "  linop_db_output_4 RAW(32767);",
+        "  linop_db_output_5 SYS_REFCURSOR;",
+        "  linop_db_output_6 BOOLEAN;",
+        "  linop_db_output_7 BLOB;",
+        "  linop_db_output_8 TIMESTAMP WITH TIME ZONE;",
         "BEGIN",
-        '  "APP"."TYPES"(dbx_output_1, dbx_output_2, dbx_output_3, dbx_output_4, dbx_output_5, dbx_output_6, dbx_output_7, dbx_output_8);',
-        "  DBMS_OUTPUT.PUT_LINE('O_CHAR = ' || SUBSTR(dbx_output_1, 1, 4000));",
-        "  DBMS_OUTPUT.PUT_LINE('O_NCHAR = ' || SUBSTR(dbx_output_2, 1, 4000));",
-        "  DBMS_OUTPUT.PUT_LINE('O_NVC = ' || SUBSTR(dbx_output_3, 1, 4000));",
-        "  DBMS_OUTPUT.PUT_LINE('O_TS = ' || dbx_output_8);",
+        '  "APP"."TYPES"(linop_db_output_1, linop_db_output_2, linop_db_output_3, linop_db_output_4, linop_db_output_5, linop_db_output_6, linop_db_output_7, linop_db_output_8);',
+        "  DBMS_OUTPUT.PUT_LINE('O_CHAR = ' || SUBSTR(linop_db_output_1, 1, 4000));",
+        "  DBMS_OUTPUT.PUT_LINE('O_NCHAR = ' || SUBSTR(linop_db_output_2, 1, 4000));",
+        "  DBMS_OUTPUT.PUT_LINE('O_NVC = ' || SUBSTR(linop_db_output_3, 1, 4000));",
+        "  DBMS_OUTPUT.PUT_LINE('O_TS = ' || linop_db_output_8);",
         "END;",
       ].join("\n"),
     );
@@ -294,7 +294,7 @@ describe("Oracle routine execution SQL", () => {
       parameters: [{ name: "P_NAME", dataType: "VARCHAR2", mode: "OUT", ordinal: 1, value: "" }],
     });
 
-    expect(sql).toContain('  "APP"."GET_NAME"(dbx_output_1);');
+    expect(sql).toContain('  "APP"."GET_NAME"(linop_db_output_1);');
   });
 });
 

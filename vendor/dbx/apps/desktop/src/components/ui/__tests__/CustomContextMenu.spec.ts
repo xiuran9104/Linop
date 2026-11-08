@@ -61,7 +61,7 @@ describe("CustomContextMenu lifecycle", () => {
     await nextTick();
     expect(close).toHaveBeenCalledOnce();
     expect(refresh).not.toHaveBeenCalled();
-    expect(document.querySelector("[data-dbx-context-menu]")).toBeNull();
+    expect(document.querySelector("[data-linop-db-context-menu]")).toBeNull();
     app.unmount();
   });
 
@@ -76,7 +76,7 @@ describe("CustomContextMenu lifecycle", () => {
     app.mount(host);
     host.querySelector("#tall-menu")?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
     await nextTick();
-    const menu = document.querySelector<HTMLElement>("[data-dbx-context-menu]")!;
+    const menu = document.querySelector<HTMLElement>("[data-linop-db-context-menu]")!;
     expect(menu.style.maxHeight).toBe("calc(100vh - 16px)");
     menu.dispatchEvent(new Event("scroll", { bubbles: true }));
     await nextTick();
@@ -477,7 +477,7 @@ describe("CustomContextMenu lifecycle", () => {
     copyTrigger?.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true, clientX: 20, clientY: 30 }));
     await nextTick();
 
-    const submenu = Array.from(document.body.querySelectorAll("[data-dbx-context-menu]")).find((el) => el.textContent?.includes("Copy option 0"));
+    const submenu = Array.from(document.body.querySelectorAll("[data-linop-db-context-menu]")).find((el) => el.textContent?.includes("Copy option 0"));
     expect(submenu).toBeTruthy();
     submenu?.dispatchEvent(new Event("scroll", { bubbles: true }));
     await nextTick();
@@ -511,7 +511,7 @@ describe("submenu pointer grace area", () => {
     const trigger = Array.from(document.body.querySelectorAll("button")).find((button) => button.textContent === "Data tools")!;
     trigger.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true, clientX: 150, clientY: 150 }));
     await nextTick();
-    const submenu = Array.from(document.body.querySelectorAll("[data-dbx-context-menu]")).at(-1) as HTMLElement;
+    const submenu = Array.from(document.body.querySelectorAll("[data-linop-db-context-menu]")).at(-1) as HTMLElement;
     submenu.getBoundingClientRect = () => SUBMENU_RECT;
     return { app, trigger };
   }
@@ -615,7 +615,7 @@ describe("submenu hand-over between rows", () => {
     await nextTick();
     rowButton("Data tools").dispatchEvent(new MouseEvent("mouseenter", { bubbles: true, clientX: 50, clientY: 140 }));
     await nextTick();
-    const submenu = Array.from(document.body.querySelectorAll("[data-dbx-context-menu]")).at(-1) as HTMLElement;
+    const submenu = Array.from(document.body.querySelectorAll("[data-linop-db-context-menu]")).at(-1) as HTMLElement;
     submenu.getBoundingClientRect = () => SUBMENU_RECT;
     return { app };
   }

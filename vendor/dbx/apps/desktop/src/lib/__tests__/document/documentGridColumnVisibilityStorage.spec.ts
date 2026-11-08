@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadDataGridColumnLayout } from "@/lib/dataGrid/dataGridColumnLayoutStorage";
 import { documentGridColumnVisibilityScopeKey, loadDocumentGridHiddenColumnKeys, migrateDocumentGridColumnVisibilityToLayout, saveDocumentGridHiddenColumnKeys } from "@/lib/document/documentGridColumnVisibilityStorage";
 
-const STORAGE_PREFIX = "dbx-document-grid-column-visibility:v1:";
+const STORAGE_PREFIX = "linop-db-document-grid-column-visibility:v1:";
 let storedValues: Map<string, string>;
 
 function installLocalStorage() {

@@ -11,7 +11,7 @@ export interface MqTopicColumn {
 
 /** Widths are keyed by column identity so the optional vhost column cannot shift them. */
 export function useMqTopicColumnResize(systemKind: MaybeRefOrGetter<MqSystemKind | undefined>, showNamespace: MaybeRefOrGetter<boolean>) {
-  const storageKey = computed(() => `dbx-mq-topic-column-widths:${toValue(systemKind) ?? "pulsar"}`);
+  const storageKey = computed(() => `linop-db-mq-topic-column-widths:${toValue(systemKind) ?? "pulsar"}`);
   const columns = computed<MqTopicColumn[]>(() => {
     const kind = toValue(systemKind);
     const rabbit = kind === "rabbitmq";

@@ -30,8 +30,8 @@ const schema: McpToolCatalogToolset = {
   scopeKind: "database",
   scopeKinds: ["database"],
   tools: [
-    { name: "dbx_list_tables", access: "read", accessMode: "static", coverageKind: "capability", databaseTypes: ["mysql", "postgres", "sqlite"], description: "", parameters: [] },
-    { name: "dbx_get_routine_source", access: "read", accessMode: "static", coverageKind: "capability", databaseTypes: ["mysql", "postgres"], description: "", parameters: [] },
+    { name: "linop_db_list_tables", access: "read", accessMode: "static", coverageKind: "capability", databaseTypes: ["mysql", "postgres", "sqlite"], description: "", parameters: [] },
+    { name: "linop_db_get_routine_source", access: "read", accessMode: "static", coverageKind: "capability", databaseTypes: ["mysql", "postgres"], description: "", parameters: [] },
   ],
 };
 
@@ -41,7 +41,7 @@ const query: McpToolCatalogToolset = {
   resourceKinds: ["database"],
   scopeKind: "database",
   scopeKinds: ["database"],
-  tools: [{ name: "dbx_execute_query", access: "full", accessMode: "classified", coverageKind: "capability", databaseTypes: ["mysql", "postgres", "sqlite", "redis"], description: "", parameters: [] }],
+  tools: [{ name: "linop_db_execute_query", access: "full", accessMode: "classified", coverageKind: "capability", databaseTypes: ["mysql", "postgres", "sqlite", "redis"], description: "", parameters: [] }],
 };
 
 const admin: McpToolCatalogToolset = {
@@ -50,8 +50,8 @@ const admin: McpToolCatalogToolset = {
   resourceKinds: [],
   scopeKinds: [],
   tools: [
-    { name: "dbx_add_connection", access: "write", accessMode: "static", coverageKind: "none", databaseTypes: [], description: "", parameters: [] },
-    { name: "dbx_remove_connection", access: "full", accessMode: "static", coverageKind: "none", databaseTypes: [], description: "", parameters: [] },
+    { name: "linop_db_add_connection", access: "write", accessMode: "static", coverageKind: "none", databaseTypes: [], description: "", parameters: [] },
+    { name: "linop_db_remove_connection", access: "full", accessMode: "static", coverageKind: "none", databaseTypes: [], description: "", parameters: [] },
   ],
 };
 
@@ -65,7 +65,7 @@ const connections = [
 
 describe("MCP toolset switches", () => {
   it("keeps allow-all unrestricted when the selected toolset has no effective change", () => {
-    expect(mergeMcpToolsetSelection(null, ["dbx_list_tables", "dbx_get_routine_source"], schema, catalog)).toBeNull();
+    expect(mergeMcpToolsetSelection(null, ["linop_db_list_tables", "linop_db_get_routine_source"], schema, catalog)).toBeNull();
   });
 
   it("exposes provider resource scope metadata", () => {
@@ -76,21 +76,21 @@ describe("MCP toolset switches", () => {
   });
   it("derives on/off/partial from the flat allowlist", () => {
     expect(mcpToolsetState(null, schema)).toBe("on");
-    expect(mcpToolsetState(["dbx_list_tables"], schema)).toBe("partial");
+    expect(mcpToolsetState(["linop_db_list_tables"], schema)).toBe("partial");
     expect(mcpToolsetState([], schema)).toBe("off");
   });
 
   it("materializes allow-all with the plugin wildcard before switching a toolset off", () => {
     const next = setMcpToolsetEnabled(null, schema, false, catalog);
     expect(next).toContain(MCP_PLUGIN_TOOLS_WILDCARD);
-    expect(next).toContain("dbx_execute_query");
-    expect(next).not.toContain("dbx_list_tables");
-    expect(next).not.toContain("dbx_get_routine_source");
+    expect(next).toContain("linop_db_execute_query");
+    expect(next).not.toContain("linop_db_list_tables");
+    expect(next).not.toContain("linop_db_get_routine_source");
     expect(next).toHaveLength(catalog.toolsets.flatMap((toolset) => toolset.tools).length - schema.tools.length + 1);
   });
 
   it("switches every tool of a toolset on without touching custom entries", () => {
-    expect(setMcpToolsetEnabled(["dbx_ssh__*"], schema, true, catalog)).toEqual(["dbx_ssh__*", "dbx_list_tables", "dbx_get_routine_source"]);
+    expect(setMcpToolsetEnabled(["linop_db_ssh__*"], schema, true, catalog)).toEqual(["linop_db_ssh__*", "linop_db_list_tables", "linop_db_get_routine_source"]);
   });
 
   it("badges classified tools as reaching write and high-risk levels", () => {
@@ -102,8 +102,8 @@ describe("MCP toolset switches", () => {
   it("maps toolset ids to camelCase message keys and tools to existing labels", () => {
     expect(mcpToolsetMessageKey("admin.connections", "title")).toBe("settings.mcpToolset.adminConnections.title");
     expect(mcpToolsetMessageKey("redis", "description")).toBe("settings.mcpToolset.redis.description");
-    expect(mcpToolLabelKey("dbx_list_tables")).toBe("settings.mcpToolListTables");
-    expect(mcpToolLabelKey("dbx_unknown")).toBeUndefined();
+    expect(mcpToolLabelKey("linop_db_list_tables")).toBe("settings.mcpToolListTables");
+    expect(mcpToolLabelKey("linop_db_unknown")).toBeUndefined();
   });
 });
 
@@ -112,7 +112,7 @@ describe("MCP capability categories", () => {
     return { ...schema, id, tools: names.map((name) => ({ ...schema.tools[0], name })) };
   }
   const complete: McpToolCatalog = {
-    toolsets: [query, schema, toolset("nacos.config", ["nacos_read", "nacos_write"]), toolset("consul.service", ["consul_services"]), toolset("core.discovery", ["dbx_list_connections"]), toolset("plugin.router", ["plugin_discover"]), toolset("future.toolset", ["new_runtime_tool"])],
+    toolsets: [query, schema, toolset("nacos.config", ["nacos_read", "nacos_write"]), toolset("consul.service", ["consul_services"]), toolset("core.discovery", ["linop_db_list_connections"]), toolset("plugin.router", ["plugin_discover"]), toolset("future.toolset", ["new_runtime_tool"])],
   };
 
   it("assigns every known group once and keeps unknown groups accessible", () => {
@@ -134,28 +134,28 @@ describe("MCP capability categories", () => {
 
   it("disables database tools without removing other products, shared discovery, future tools or plugins", () => {
     const next = setMcpCategoryEnabled(null, complete, "database", false);
-    expect(next).toEqual(["nacos_read", "nacos_write", "consul_services", "dbx_list_connections", "plugin_discover", "new_runtime_tool", MCP_PLUGIN_TOOLS_WILDCARD]);
-    expect(complete.toolsets[0].tools[0].name).toBe("dbx_execute_query");
+    expect(next).toEqual(["nacos_read", "nacos_write", "consul_services", "linop_db_list_connections", "plugin_discover", "new_runtime_tool", MCP_PLUGIN_TOOLS_WILDCARD]);
+    expect(complete.toolsets[0].tools[0].name).toBe("linop_db_execute_query");
   });
 
   it("uses the complete category even when only some tools are enabled or visible", () => {
-    const current = ["nacos_read", "dbx_ssh__*", "dbx_custom__tool", "custom_name"];
+    const current = ["nacos_read", "linop_db_ssh__*", "linop_db_custom__tool", "custom_name"];
     const all = setMcpCategoryEnabled(current, complete, "nacos", true);
     expect(all).toEqual([...current, "nacos_write"]);
     expect(setMcpCategoryEnabled(all, complete, "nacos", false)).toEqual(current.slice(1));
-    expect(current).toEqual(["nacos_read", "dbx_ssh__*", "dbx_custom__tool", "custom_name"]);
+    expect(current).toEqual(["nacos_read", "linop_db_ssh__*", "linop_db_custom__tool", "custom_name"]);
   });
 
   it("materializes a single tool and toolset from the same full runtime catalog", () => {
-    const single = setMcpToolsEnabled(null, complete, ["dbx_list_tables"], false);
+    const single = setMcpToolsEnabled(null, complete, ["linop_db_list_tables"], false);
     const group = setMcpToolsetEnabled(null, schema, false, complete);
     for (const names of [single, group]) {
       expect(names).toContain("new_runtime_tool");
       expect(names).toContain(MCP_PLUGIN_TOOLS_WILDCARD);
-      expect(names).not.toContain("dbx_list_tables");
+      expect(names).not.toContain("linop_db_list_tables");
     }
-    expect(single).toContain("dbx_get_routine_source");
-    expect(group).not.toContain("dbx_get_routine_source");
+    expect(single).toContain("linop_db_get_routine_source");
+    expect(group).not.toContain("linop_db_get_routine_source");
   });
 });
 
@@ -166,8 +166,8 @@ describe("MCP coverage summaries", () => {
     expect(summary.usableConnections.map((connection) => connection.id)).toEqual(["c1", "c2"]);
     expect(summary.partialConnections).toEqual([{ connection: connections[1], unsupportedTools: [schema.tools[1]] }]);
     expect(summary.distinctToolCounts.map(({ tools, typeCount }) => [tools.map((tool) => tool.name), typeCount])).toEqual([
-      [["dbx_list_tables"], 3],
-      [["dbx_get_routine_source"], 2],
+      [["linop_db_list_tables"], 3],
+      [["linop_db_get_routine_source"], 2],
     ]);
   });
 
@@ -189,8 +189,8 @@ describe("MCP coverage summaries", () => {
     const lightweight = rows.find((row) => row.category === "lightweight")!;
     expect(lightweight.types).toEqual(["sqlite"]);
     expect(lightweight.tools.map((entry) => [entry.tool.name, [...entry.supported]])).toEqual([
-      ["dbx_list_tables", ["sqlite"]],
-      ["dbx_get_routine_source", []],
+      ["linop_db_list_tables", ["sqlite"]],
+      ["linop_db_get_routine_source", []],
     ]);
   });
 

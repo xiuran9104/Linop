@@ -5,7 +5,7 @@ on:
   pull_request:
     paths:
       - "deploy/fnos/**"
-      - "crates/dbx-web/Cargo.toml"
+      - "crates/linop-db-web/Cargo.toml"
       - "docs/logo.png"
       - "docs/public/logo-64.png"
       - ".github/workflows/fnos-package.yml"
@@ -26,6 +26,6 @@ jobs:
       - name: Upload fnOS package
         uses: actions/upload-artifact@v7
         with:
-          name: dbx-fnos
+          name: linop-db-fnos
           path: dist/fnos/*
           if-no-files-found: error

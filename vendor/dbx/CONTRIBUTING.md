@@ -52,7 +52,7 @@ The first run creates a dedicated signing keychain and a self-signed certificate
 
 The runner is restricted to `debug/dbx`, preserves Cargo feature and application arguments, and does not run for Linux, Windows, or release packaging. Custom `CARGO_TARGET_*_RUNNER` variables must be unset for these macOS development entry points.
 
-Core, desktop and Web storage test fixtures use `dbx_core::persistence::test_storage` (the `test-support` dev-dependency feature). They resolve their own data-directory keys before migration preflight, without accessing the user's Keychain or inheriting `DBX_SECRET_KEY` / `DBX_SECRET_KEY_FILE`. Keep the fixture directory and its key together when testing database copies.
+Core, desktop and Web storage test fixtures use `linop_db_core::persistence::test_storage` (the `test-support` dev-dependency feature). They resolve their own data-directory keys before migration preflight, without accessing the user's Keychain or inheriting `DBX_SECRET_KEY` / `DBX_SECRET_KEY_FILE`. Keep the fixture directory and its key together when testing database copies.
 
 ```bash
 node --test scripts/dev-tauri.test.mjs
@@ -80,11 +80,11 @@ For a real local Java agent test, build the target `shadowJar`, back up and repl
 | --- | --- |
 | `apps/desktop/src/` | Vue frontend |
 | `src-tauri/` | Tauri desktop shell and command layer |
-| `crates/dbx-core/` | Shared Rust database logic |
-| `crates/dbx-web/` | Docker / Web HTTP backend |
-| `packages/cli/` | `@dbx-app/cli` |
-| `packages/mcp-server/` | `@dbx-app/mcp-server` |
-| `packages/plugin-cli/` | Precompiled `@dbx-app/plugin-cli` launcher and bundled plugin SDKs |
+| `crates/linop-db-core/` | Shared Rust database logic |
+| `crates/linop-db-web/` | Docker / Web HTTP backend |
+| `packages/cli/` | `@linop-db-app/cli` |
+| `packages/mcp-server/` | `@linop-db-app/mcp-server` |
+| `packages/plugin-cli/` | Precompiled `@linop-db-app/plugin-cli` launcher and bundled plugin SDKs |
 | `packages/mongo-shell/` | Private MongoDB editor parsing helpers |
 | `docs/` | Official documentation site |
 | `examples/` | Sample configs and automation scripts |

@@ -18,10 +18,10 @@
 
 ## 验证入口
 
-- Rust：dbx-core::query::sqlserver_manual_transaction 协议故障测试；dbx-driver-sqlserver 事务控制词法测试；已有 PostgreSQL/MySQL/Agent 手动事务测试。
+- Rust：linop-db-core::query::sqlserver_manual_transaction 协议故障测试；linop-db-driver-sqlserver 事务控制词法测试；已有 PostgreSQL/MySQL/Agent 手动事务测试。
 - Agent：common 的 JdbcExecutorTest，以及 sqlserver-legacy 的 SqlServerLegacyAgentTest；构建 sqlserver-legacy:shadowJar。
 - 前端：queryStore.manualTransactionExpiry、queryStore.defaultTransactionMode、databaseFeatureSupport、EditorToolbar.transactionMode；vue-tsc 与 Vite 构建。
-- 真实数据库：crates/dbx-core/tests/live_sqlserver_manual_transactions.rs（默认 ignored）。需要 DBX_TEST_SQLSERVER_HOST、PASSWORD、DATABASE、EXPECT_DRIVER，可选 USER、PORT、DRIVER_PROFILE。DATABASE 必须是可写的专用测试库。
+- 真实数据库：crates/linop-db-core/tests/live_sqlserver_manual_transactions.rs（默认 ignored）。需要 DBX_TEST_SQLSERVER_HOST、PASSWORD、DATABASE、EXPECT_DRIVER，可选 USER、PORT、DRIVER_PROFILE。DATABASE 必须是可写的专用测试库。
 
 legacy 实库测试使用 DRIVER_PROFILE=sqlserver-legacy，同时提供 DBX_TEST_SQLSERVER_AGENT_JAR、DBX_TEST_SQLSERVER_JAVA、DBX_TEST_SQLSERVER_JDBC_CLASS、DBX_TEST_SQLSERVER_JDBC_URL。测试向临时 Agent 目录导入此次 shadowJar，并使用指定 Java；不会覆盖用户安装的组件。EXPECT_DRIVER 必須非空并匹配服务器返回的实际驱动名，防止强制路径静默变成另一驱动。
 
@@ -31,10 +31,10 @@ legacy 实库测试使用 DRIVER_PROFILE=sqlserver-legacy，同时提供 DBX_TES
 
 通过 remote-shell MCP 连接 aliyun，使用服务器既有 Docker。数据库端口仅绑定远端 127.0.0.1:17542，本地测试经 MCP SSH 转发访问；本地没有启动 Docker。两个版本顺序运行，容器内存上限 2 GiB、MSSQL_MEMORY_LIMIT_MB=1536、CPU 上限 1.5。远端既有 campus 容器保持运行。
 
-测试数据库均为 dbx_manual_test，服务器使用 Developer Edition。固定镜像摘要用于复现，不以 mutable 的 latest 标签标记验证版本：
+测试数据库均为 linop_db_manual_test，服务器使用 Developer Edition。固定镜像摘要用于复现，不以 mutable 的 latest 标签标记验证版本：
 
-- SQL Server 2022：16.0.4295.3，CU27；容器 dbx-sqlserver-7542-2022；镜像 mcr.microsoft.com/mssql/server@sha256:4402d880dd4c34bfa7d8705e56a86cd6c88da80a1f6bbbe741f999e76264a090。
-- SQL Server 2019：15.0.4490.9，CU32；容器 dbx-sqlserver-7542-2019；镜像 mcr.microsoft.com/mssql/server@sha256:ef0b8db33970ecd01bed49c3a84a1d083c435a9891718df619298b67b352e74a。
+- SQL Server 2022：16.0.4295.3，CU27；容器 linop-db-sqlserver-7542-2022；镜像 mcr.microsoft.com/mssql/server@sha256:4402d880dd4c34bfa7d8705e56a86cd6c88da80a1f6bbbe741f999e76264a090。
+- SQL Server 2019：15.0.4490.9，CU32；容器 linop-db-sqlserver-7542-2019；镜像 mcr.microsoft.com/mssql/server@sha256:ef0b8db33970ecd01bed49c3a84a1d083c435a9891718df619298b67b352e74a。
 
 首轮每个版本分别强制以下路径，7 项基础用例在六种组合中全部通过，共 42 次用例执行：
 
@@ -57,7 +57,7 @@ legacy 实库测试使用 DRIVER_PROFILE=sqlserver-legacy，同时提供 DBX_TES
 六组完整日志保存在本地 target/sqlserver-7542-{native,microsoft,jtds}-{2019,2022}.log。可在已有 Rust 构建环境下执行：
 
 ```powershell
-cargo test -p dbx-core --test live_sqlserver_manual_transactions --no-default-features --features sqlite-bundled,test-support -- --ignored --nocapture --test-threads=1
+cargo test -p linop-db-core --test live_sqlserver_manual_transactions --no-default-features --features sqlite-bundled,test-support -- --ignored --nocapture --test-threads=1
 ```
 
 运行前设置上述环境变量，并先启动一个测试容器、建立 SSH 转发。测试使用 sa 执行专用库 fixture、DMV 检查及 KILL 自己创建的会话；不要指向业务库。
@@ -89,7 +89,7 @@ SQL Server 现有 legacy 路由使用单进程 Agent，兼容层的断开 RPC �
 
 遵照用户要求，旧版数据库安装和运行均在 aliyun 上完成；本机不运行本任务的数据库容器或虚拟机，仅作为 DBX/Java 测试客户端。远端没有可用 KVM，使用专用 QEMU TCG 客体（1 vCPU、512 MiB RAM、4 GiB 专用可增长系统盘）。客体为 Microsoft 官方 POSReady 2009 评估版，安装经 Microsoft 签名校验的 MSDE 2000 SP4。
 
-实际服务器返回：Microsoft SQL Server 2000 Desktop Engine 8.00.2039，Windows NT 5.1 Build 2600 SP3。SQL 端口仅监听远端 127.0.0.1:17540，MCP SSH 转发至本机 5566；测试库为独立创建的 dbx_manual_test。实际 JDBC 驱动均为 jTDS Type 4 1.3.1。
+实际服务器返回：Microsoft SQL Server 2000 Desktop Engine 8.00.2039，Windows NT 5.1 Build 2600 SP3。SQL 端口仅监听远端 127.0.0.1:17540，MCP SSH 转发至本机 5566；测试库为独立创建的 linop_db_manual_test。实际 JDBC 驱动均为 jTDS Type 4 1.3.1。
 
 完整验证结果：
 
@@ -105,7 +105,7 @@ SQL Server 现有 legacy 路由使用单进程 Agent，兼容层的断开 RPC �
 
 初始 execute_query 写入同样使用可取消的阻塞工作任务；发送与读取共享一次期限。请求尚未完整发送时取消/超时，只能强制释放进程，不追加 RPC、不重放或复用会话；结果保持 unknown。完整请求已经发送时继续使用 JDBC 取消走廊。自动化覆盖两种响应顺序、只有确认而无查询结果、重复确认、JSON 日志、取消请求的满管道、大请求发送时取消/超时、非 opt-in 行为和慢速写入后的总期限。其他数据库及 shared runtime 保持原取消策略。
 
-旧版客体环境与系统盘保留。再次启动仅使用服务器 /root/dbx-sqlserver-7542/sql2000/start-installed.py 从已有系统盘启动；不要复用安装/恢复介质启动脚本。
+旧版客体环境与系统盘保留。再次启动仅使用服务器 /root/linop-db-sqlserver-7542/sql2000/start-installed.py 从已有系统盘启动；不要复用安装/恢复介质启动脚本。
 
 原生 Tiberius 路径在同一 8.00.2039 实例上的最终矩阵：12 passed、0 failed，含执行中止释放服务器事务用例，日志 target/sqlserver-7542-native-2000-cleanup-final.log；当时唯一按过滤器排除的真实墙钟空闲用例已于 2026-10-04 晚补跑通过：301.395 秒真实空闲后后台 watchdog 主动回滚并确认 rolled_back，待提交数据为零、无请求重放，日志 target/sqlserver-7542-native-2000-wallclock-idle-final.log。至此 SQL2000 原生 13 项实库用例全部通过。
 
@@ -124,8 +124,8 @@ SQL Server 现有 legacy 路由使用单进程 Agent，兼容层的断开 RPC �
 ## 自动化验证结果
 
 - Rust 核心手动事务回归：33 passed（包含 SQL Server 协议故障用例和既有 Agent/SQL 文件事务回归）。
-- Rust dbx-driver-agent 最终回归：330 passed；另一个慢速请求写入的总期限集成测试 1 passed。新取消边界测试共 10 项。dbx-driver-sqlserver：142 passed、4 个已有实库用例 ignored。
-- Rust dbx-core 与桌面 dbx：裁剪功能 cargo check 通过；补验默认 features 的 pnpm exec tauri build --debug --no-bundle --ci 通过，产出 target/debug/dbx.exe。复用已通过 Vite 构建的前端 dist；未生成或安装发布安装包。
+- Rust linop-db-driver-agent 最终回归：330 passed；另一个慢速请求写入的总期限集成测试 1 passed。新取消边界测试共 10 项。linop-db-driver-sqlserver：142 passed、4 个已有实库用例 ignored。
+- Rust linop-db-core 与桌面 dbx：裁剪功能 cargo check 通过；补验默认 features 的 pnpm exec tauri build --debug --no-bundle --ci 通过，产出 target/debug/dbx.exe。复用已通过 Vite 构建的前端 dist；未生成或安装发布安装包。
 - Java common:test 与 sqlserver-legacy:test：通过；sqlserver-legacy:shadowJar 构建通过。JdbcExecutorTest 25 项、SqlServerLegacyAgentTest 最终 37 项。
 - 前端事务/能力/工具栏回归：5 个文件、108 passed。事务结果字段解析及文案回归：2 个文件、553 passed（两组包含重复的错误解析用例，不能相加作为独立测试总数）。
 - vue-tsc --noEmit 与前端 Vite 构建：通过。

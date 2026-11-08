@@ -145,7 +145,7 @@ describe("MeilisearchDocumentsPage identity and canonical documents", () => {
 
     await vi.waitFor(() => expect(mocks.deleteDocument).toHaveBeenCalledTimes(1));
     // The string id "123" must not round-trip as numeric 123.
-    expect(mocks.deleteDocument).toHaveBeenCalledWith("c1", "default", "movies", '__dbx_meilisearch_string_id__"123"');
+    expect(mocks.deleteDocument).toHaveBeenCalledWith("c1", "default", "movies", '__linop_db_meilisearch_string_id__"123"');
   });
 
   it("edits the canonical document instead of the partial search hit", async () => {
@@ -154,7 +154,7 @@ describe("MeilisearchDocumentsPage identity and canonical documents", () => {
     findButton(container, "meilisearch.editDocument").dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
     await vi.waitFor(() => expect(mocks.getDocument).toHaveBeenCalledTimes(1));
-    expect(mocks.getDocument).toHaveBeenCalledWith("c1", "movies", '__dbx_meilisearch_string_id__"123"');
+    expect(mocks.getDocument).toHaveBeenCalledWith("c1", "movies", '__linop_db_meilisearch_string_id__"123"');
     await vi.waitFor(() => {
       const editor = container.querySelector("[data-json-editor]");
       expect(editor?.textContent).toContain("internal_notes");

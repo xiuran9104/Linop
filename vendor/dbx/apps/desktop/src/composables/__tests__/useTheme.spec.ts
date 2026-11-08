@@ -41,7 +41,7 @@ function installBrowserStubs() {
 }
 
 async function loadTheme(mode: "light" | "dark" | "system" = "system") {
-  window.localStorage.setItem("dbx-theme", mode);
+  window.localStorage.setItem("linop-db-theme", mode);
   const { useTheme } = await import("@/composables/useTheme");
   return useTheme();
 }
@@ -134,21 +134,21 @@ describe("useTheme in Tauri", () => {
 
     expect(theme.themePalette.value).toBe("cobalt");
     expect(document.documentElement.classList.contains("theme-cobalt")).toBe(true);
-    expect(window.localStorage.getItem("dbx-theme-palette")).toBe("pearl");
+    expect(window.localStorage.getItem("linop-db-theme-palette")).toBe("pearl");
     expect(setTheme).not.toHaveBeenCalled();
 
     theme.clearThemePalettePreview();
 
     expect(theme.themePalette.value).toBe("pearl");
     expect(document.documentElement.classList.contains("theme-cobalt")).toBe(false);
-    expect(window.localStorage.getItem("dbx-theme-palette")).toBe("pearl");
+    expect(window.localStorage.getItem("linop-db-theme-palette")).toBe("pearl");
 
     theme.previewThemePalette("sage");
     theme.setThemePalette("sage");
     theme.clearThemePalettePreview();
 
     expect(theme.themePalette.value).toBe("sage");
-    expect(window.localStorage.getItem("dbx-theme-palette")).toBe("sage");
+    expect(window.localStorage.getItem("linop-db-theme-palette")).toBe("sage");
   });
 
   it("injects custom UI colors as inline CSS variables and removes them when leaving the custom palette", async () => {
@@ -160,7 +160,7 @@ describe("useTheme in Tauri", () => {
     expect(theme.themePalette.value).toBe("custom");
     expect(document.documentElement.style.getPropertyValue("--background")).toBe("rgb(18 52 86)");
     expect(document.documentElement.style.getPropertyValue("--primary")).toBe("rgb(171 205 239)");
-    expect(document.documentElement.style.getPropertyValue("--dbx-primary-rgb")).toBe("171, 205, 239");
+    expect(document.documentElement.style.getPropertyValue("--linop-db-primary-rgb")).toBe("171, 205, 239");
     expect(document.documentElement.style.getPropertyValue("--sidebar")).toBe("rgb(250 250 250)");
     // Derived paired foregrounds are applied and readable against their surfaces.
     expect(document.documentElement.style.getPropertyValue("--card-foreground")).toBe("rgb(10 10 10)");
@@ -169,7 +169,7 @@ describe("useTheme in Tauri", () => {
     theme.setThemePalette("pearl");
     await flushDynamicImport();
     expect(document.documentElement.style.getPropertyValue("--background")).toBe("");
-    expect(document.documentElement.style.getPropertyValue("--dbx-primary-rgb")).toBe("");
+    expect(document.documentElement.style.getPropertyValue("--linop-db-primary-rgb")).toBe("");
   });
 
   it("applies a separate custom color set in dark mode and switches sets with the mode", async () => {
@@ -207,39 +207,39 @@ describe("useTheme in Tauri", () => {
     const theme = await loadTheme("light");
     const before = theme.themeRevision.value;
 
-    theme.writeRootToken("--dbx-test-token", "1px");
+    theme.writeRootToken("--linop-db-test-token", "1px");
 
-    expect(document.documentElement.style.getPropertyValue("--dbx-test-token")).toBe("1px");
+    expect(document.documentElement.style.getPropertyValue("--linop-db-test-token")).toBe("1px");
     expect(theme.themeRevision.value).toBe(before + 1);
-    document.documentElement.style.removeProperty("--dbx-test-token");
+    document.documentElement.style.removeProperty("--linop-db-test-token");
   });
 
   it("writeRootToken coalesces rapid writes into one debounced bump", async () => {
     const theme = await loadTheme("light");
     const before = theme.themeRevision.value;
 
-    theme.writeRootToken("--dbx-test-token", "1px", { debounceMs: 30 });
-    theme.writeRootToken("--dbx-test-token", "2px", { debounceMs: 30 });
+    theme.writeRootToken("--linop-db-test-token", "1px", { debounceMs: 30 });
+    theme.writeRootToken("--linop-db-test-token", "2px", { debounceMs: 30 });
     // Neither bump has fired yet, but the write itself is immediate.
     expect(theme.themeRevision.value).toBe(before);
-    expect(document.documentElement.style.getPropertyValue("--dbx-test-token")).toBe("2px");
+    expect(document.documentElement.style.getPropertyValue("--linop-db-test-token")).toBe("2px");
 
     await new Promise((resolve) => setTimeout(resolve, 60));
     expect(theme.themeRevision.value).toBe(before + 1);
-    document.documentElement.style.removeProperty("--dbx-test-token");
+    document.documentElement.style.removeProperty("--linop-db-test-token");
   });
 
   it("writeRootToken with an immediate write supersedes a pending debounced bump", async () => {
     const theme = await loadTheme("light");
     const before = theme.themeRevision.value;
 
-    theme.writeRootToken("--dbx-test-token", "1px", { debounceMs: 30 });
-    theme.writeRootToken("--dbx-test-token", "2px");
+    theme.writeRootToken("--linop-db-test-token", "1px", { debounceMs: 30 });
+    theme.writeRootToken("--linop-db-test-token", "2px");
     expect(theme.themeRevision.value).toBe(before + 1);
 
     await new Promise((resolve) => setTimeout(resolve, 60));
     // The superseded timer must not fire a second bump.
     expect(theme.themeRevision.value).toBe(before + 1);
-    document.documentElement.style.removeProperty("--dbx-test-token");
+    document.documentElement.style.removeProperty("--linop-db-test-token");
   });
 });

@@ -28,7 +28,7 @@ opening the same key again kept the full editable value.
 
 ## Automated verification
 
-- 187 `dbx-driver-redis` unit tests passed.
+- 187 `linop-db-driver-redis` unit tests passed.
 - The ignored integration test against the local Redis server passed for text,
   UTF-8 Chinese content, and binary data: 64 KiB truncation, 256 KiB complete
   reads, exact-boundary reads, and complete raw downloads all preserved bytes.

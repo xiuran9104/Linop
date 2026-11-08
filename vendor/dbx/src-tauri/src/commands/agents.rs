@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use tauri::{Emitter, State};
 
-use dbx_core::agent_manager::{AgentDriverInfo, DriverStoreUsage, JavaRuntimeConfig, JavaRuntimeMode, DEFAULT_JRE_KEY};
-use dbx_core::agent_offline_export::{
+use linop_db_core::agent_manager::{AgentDriverInfo, DriverStoreUsage, JavaRuntimeConfig, JavaRuntimeMode, DEFAULT_JRE_KEY};
+use linop_db_core::agent_offline_export::{
     export_agents_offline as export_agents_offline_core,
     preview_agent_offline_export as preview_agent_offline_export_core, AgentOfflineExportPreview,
     AgentOfflineExportResult,
 };
-use dbx_core::agent_service::{
+use linop_db_core::agent_service::{
     batch_cancellation_key, build_agent_list, cancel_agent_batch_upgrade, cancel_agent_driver_install,
     clear_agent_download_cache, fetch_registry_from, fetch_registry_from_claimed, import_agent_driver,
     import_agents_from_package as import_agents_from_package_core, inspect_offline_package,
@@ -16,9 +16,9 @@ use dbx_core::agent_service::{
     uninstall_agent_driver, uninstall_agent_jre, upgrade_all_agent_drivers_from_claimed, AgentProgressEvent,
     OfflineImportPlan, UpgradeAllAgentDriversResult,
 };
-use dbx_core::connection::AppState;
-use dbx_core::driver_runtime::DriverRuntimeSummary;
-use dbx_core::DownloadSource;
+use linop_db_core::connection::AppState;
+use linop_db_core::driver_runtime::DriverRuntimeSummary;
+use linop_db_core::DownloadSource;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct AgentUpdateBlocker {
@@ -58,17 +58,17 @@ pub async fn clear_driver_download_cache(state: State<'_, Arc<AppState>>) -> Res
 
 #[tauri::command]
 pub async fn get_driver_runtime_summary(state: State<'_, Arc<AppState>>) -> Result<DriverRuntimeSummary, String> {
-    Ok(dbx_core::driver_runtime::collect_driver_runtime_summary(state.inner().as_ref()).await)
+    Ok(linop_db_core::driver_runtime::collect_driver_runtime_summary(state.inner().as_ref()).await)
 }
 
 #[tauri::command]
 pub async fn stop_driver_runtime(state: State<'_, Arc<AppState>>, runtime_id: String) -> Result<(), String> {
-    dbx_core::driver_runtime::stop_driver_runtime(state.inner().as_ref(), &runtime_id).await
+    linop_db_core::driver_runtime::stop_driver_runtime(state.inner().as_ref(), &runtime_id).await
 }
 
 #[tauri::command]
 pub async fn restart_driver_runtime(state: State<'_, Arc<AppState>>, runtime_id: String) -> Result<(), String> {
-    dbx_core::driver_runtime::restart_driver_runtime(state.inner().as_ref(), &runtime_id).await
+    linop_db_core::driver_runtime::restart_driver_runtime(state.inner().as_ref(), &runtime_id).await
 }
 
 #[tauri::command]
@@ -188,7 +188,7 @@ pub async fn set_agent_java_runtime_config(
 ) -> Result<JavaRuntimeConfig, String> {
     let am = &state.agent_manager;
     if config.mode == JavaRuntimeMode::Custom || config.mode == JavaRuntimeMode::System {
-        let candidate_state = dbx_core::agent_manager::AgentState { java_runtime: config.clone(), ..am.load_state() };
+        let candidate_state = linop_db_core::agent_manager::AgentState { java_runtime: config.clone(), ..am.load_state() };
         let resolved = am.resolve_java_runtime(&candidate_state, DEFAULT_JRE_KEY)?;
         if config.mode == JavaRuntimeMode::Custom {
             config.custom_java_path = Some(resolved.to_string_lossy().to_string());
@@ -235,7 +235,7 @@ pub async fn import_agents_from_zip(
     // the JDBC plugin directory (#12004).
     let plugins_root = state.plugins.root_dir().to_path_buf();
     run_blocking_agent_task("Failed to import the offline JDBC plugin", move || {
-        dbx_core::jdbc::import_offline_jdbc_payload(&plugins_root, &package_path)
+        linop_db_core::jdbc::import_offline_jdbc_payload(&plugins_root, &package_path)
     })
     .await?;
     let count = result.drivers_installed.len() as u32;
@@ -368,7 +368,7 @@ fn update_blockers_from_connections(
         .into_iter()
         .filter(|(key, _)| candidate_keys.contains(key.as_str()))
         .map(|(db_type, connections)| AgentUpdateBlocker {
-            label: dbx_core::agent_catalog::label_for_key(&db_type).unwrap_or(&db_type).to_string(),
+            label: linop_db_core::agent_catalog::label_for_key(&db_type).unwrap_or(&db_type).to_string(),
             db_type,
             connections,
         })

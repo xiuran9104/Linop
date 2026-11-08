@@ -49,7 +49,7 @@ export interface GraphResult {
 }
 
 interface GraphCellEnvelope {
-  __dbx_graph_cell: "nebula-v1" | "neo4j-v1";
+  __linop_db_graph_cell: "nebula-v1" | "neo4j-v1";
   kind: string;
   display: string;
   nodes: GraphNode[];
@@ -60,7 +60,7 @@ interface GraphCellEnvelope {
 export function isGraphCellEnvelope(value: unknown): value is GraphCellEnvelope {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const cell = value as Partial<GraphCellEnvelope>;
-  return (cell.__dbx_graph_cell === "nebula-v1" || cell.__dbx_graph_cell === "neo4j-v1") && typeof cell.display === "string" && typeof cell.kind === "string" && Array.isArray(cell.nodes) && Array.isArray(cell.edges);
+  return (cell.__linop_db_graph_cell === "nebula-v1" || cell.__linop_db_graph_cell === "neo4j-v1") && typeof cell.display === "string" && typeof cell.kind === "string" && Array.isArray(cell.nodes) && Array.isArray(cell.edges);
 }
 
 function mergeProperties(left: GraphProperty[], right: GraphProperty[]): GraphProperty[] {

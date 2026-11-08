@@ -13,7 +13,7 @@ export const DOCK_HEIGHT_PX = 320;
 export const DOCK_MIN_HEIGHT_PX = 140;
 /** One bound for the drag ceiling and the maximize height: a dragged dock must never shrink when the maximize button is pressed. */
 export const DOCK_MAX_VIEWPORT_RATIO = 0.8;
-const DOCK_HEIGHT_STORAGE_KEY = "dbx-plugin-dock-height";
+const DOCK_HEIGHT_STORAGE_KEY = "linop-db-plugin-dock-height";
 
 export interface PluginDockEntry {
   /** Host-generated stable instance id; doubles as the entry workbench's workbenchId. */

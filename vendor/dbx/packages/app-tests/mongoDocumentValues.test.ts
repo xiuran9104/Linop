@@ -395,8 +395,8 @@ test("serializes typed Mongo document ids while keeping their grid display compa
   assert.equal(mongoDocumentIdForGrid(objectId), "6743e4bfa3f6f84bc3fff6c8");
   assert.equal(serializeMongoDocumentId(42), "42");
   assert.equal(serializeMongoDocumentId(42.5), "42.5");
-  assert.equal(serializeMongoDocumentId("2048938405781032962"), '__dbx_mongo_string_id__"2048938405781032962"');
-  assert.equal(serializeMongoDocumentId('{"$numberLong":"2048938405781032962"}'), '__dbx_mongo_string_id__"{\\"$numberLong\\":\\"2048938405781032962\\"}"');
+  assert.equal(serializeMongoDocumentId("2048938405781032962"), '__linop_db_mongo_string_id__"2048938405781032962"');
+  assert.equal(serializeMongoDocumentId('{"$numberLong":"2048938405781032962"}'), '__linop_db_mongo_string_id__"{\\"$numberLong\\":\\"2048938405781032962\\"}"');
 });
 
 test("formats extended JSON int64 values as Mongo shell NumberLong literals", () => {

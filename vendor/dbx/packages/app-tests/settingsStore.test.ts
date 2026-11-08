@@ -34,7 +34,7 @@ vi.mock("../../apps/desktop/src/lib/backend/api", async (importOriginal) => {
   };
 });
 
-const OLD_FONT_SIZE_KEY = "dbx-query-editor-font-size";
+const OLD_FONT_SIZE_KEY = "linop-db-query-editor-font-size";
 
 beforeEach(() => {
   saveEditorSettingsMock.mockClear();
@@ -161,7 +161,7 @@ test("compact browser width persists and reloads through editor settings", async
     assert.equal(store.editorSettings.objectBrowserCompactWidth, 240);
     await vi.waitFor(() => {
       assert.equal(saveEditorSettingsMock.mock.calls.at(-1)?.[0]?.objectBrowserCompactWidth, 240);
-      assert.equal(JSON.parse(localStorage.getItem("dbx-app-state:editor_settings") || "{}").objectBrowserCompactWidth, 240);
+      assert.equal(JSON.parse(localStorage.getItem("linop-db-app-state:editor_settings") || "{}").objectBrowserCompactWidth, 240);
     });
     setActivePinia(createPinia());
     const restored = useSettingsStore();
@@ -265,20 +265,20 @@ test("updateEditorSettings persists the CSV quote mode", async () => {
 });
 
 test("migrates legacy execute-all settings to current once and preserves later explicit choices", async () => {
-  await withMockLocalStorage({ "dbx-app-state:editor_settings": JSON.stringify({ executeMode: "all" }) }, async () => {
+  await withMockLocalStorage({ "linop-db-app-state:editor_settings": JSON.stringify({ executeMode: "all" }) }, async () => {
     setActivePinia(createPinia());
     const migratedStore = useSettingsStore();
     await migratedStore.initEditorSettings();
 
     assert.equal(migratedStore.editorSettings.executeMode, "current");
-    let saved = JSON.parse(localStorage.getItem("dbx-app-state:editor_settings") || "{}");
+    let saved = JSON.parse(localStorage.getItem("linop-db-app-state:editor_settings") || "{}");
     assert.equal(saved.executeMode, "current");
     assert.equal(saved.executeModeDefaultVersion, EXECUTE_MODE_CURRENT_DEFAULT_VERSION);
 
     migratedStore.updateEditorSettings({ executeMode: "all" });
     assert.equal(migratedStore.editorSettings.executeMode, "all");
     await vi.waitFor(() => {
-      saved = JSON.parse(localStorage.getItem("dbx-app-state:editor_settings") || "{}");
+      saved = JSON.parse(localStorage.getItem("linop-db-app-state:editor_settings") || "{}");
       assert.equal(saved.executeMode, "all");
     });
     assert.equal(saved.executeModeDefaultVersion, EXECUTE_MODE_CURRENT_DEFAULT_VERSION);
@@ -304,22 +304,22 @@ test("CSV quote mode defaults to all fields and preserves a saved necessary mode
 });
 
 test("migrates the legacy saved export batch default to 2000 once", async () => {
-  await withMockLocalStorage({ "dbx-editor-settings": JSON.stringify({ exportBatchSize: 10000 }) }, async () => {
+  await withMockLocalStorage({ "linop-db-editor-settings": JSON.stringify({ exportBatchSize: 10000 }) }, async () => {
     setActivePinia(createPinia());
     const store = useSettingsStore();
     await store.initEditorSettings();
 
     assert.equal(store.editorSettings.exportBatchSize, 2000);
-    assert.equal(localStorage.getItem("dbx-editor-settings"), null);
-    assert.equal(JSON.parse(localStorage.getItem("dbx-app-state:editor_settings") || "{}").exportBatchSize, 2000);
+    assert.equal(localStorage.getItem("linop-db-editor-settings"), null);
+    assert.equal(JSON.parse(localStorage.getItem("linop-db-app-state:editor_settings") || "{}").exportBatchSize, 2000);
   });
 });
 
 test("keeps a manually saved 10000 export batch size after migration", async () => {
   await withMockLocalStorage(
     {
-      "dbx-editor-settings": JSON.stringify({ exportBatchSize: 10000 }),
-      "dbx-export-batch-size-default-migrated-v1": "1",
+      "linop-db-editor-settings": JSON.stringify({ exportBatchSize: 10000 }),
+      "linop-db-export-batch-size-default-migrated-v1": "1",
     },
     async () => {
       setActivePinia(createPinia());
@@ -577,7 +577,7 @@ test("preserves adjacent tab shortcuts and persists unbound history actions when
 
   await withMockLocalStorage(
     {
-      "dbx-app-state:editor_settings": JSON.stringify({
+      "linop-db-app-state:editor_settings": JSON.stringify({
         executeModeDefaultVersion: EXECUTE_MODE_CURRENT_DEFAULT_VERSION,
         shortcuts: legacyShortcuts,
       }),
@@ -629,7 +629,7 @@ test("preserves object browsing for legacy sidebar settings", () => {
 test("migrates existing settings once and preserves a later explicit opt-out", async () => {
   await withMockLocalStorage(
     {
-      "dbx-app-state:editor_settings": JSON.stringify({ sidebarBrowseObjectsOnDatabaseActivation: false }),
+      "linop-db-app-state:editor_settings": JSON.stringify({ sidebarBrowseObjectsOnDatabaseActivation: false }),
     },
     async () => {
       setActivePinia(createPinia());
@@ -639,7 +639,7 @@ test("migrates existing settings once and preserves a later explicit opt-out", a
       assert.equal(migratedStore.editorSettings.sidebarBrowseObjectsOnDatabaseActivation, true);
       assert.equal(migratedStore.editorSettings.sidebarBrowseObjectsOnDatabaseActivationMigrationVersion, SIDEBAR_BROWSE_OBJECTS_MIGRATION_VERSION);
       await vi.waitFor(() => {
-        const saved = JSON.parse(localStorage.getItem("dbx-app-state:editor_settings") || "{}") as Record<string, unknown>;
+        const saved = JSON.parse(localStorage.getItem("linop-db-app-state:editor_settings") || "{}") as Record<string, unknown>;
         assert.equal(saved.sidebarBrowseObjectsOnDatabaseActivation, true);
         assert.equal(saved.sidebarBrowseObjectsOnDatabaseActivationMigrationVersion, SIDEBAR_BROWSE_OBJECTS_MIGRATION_VERSION);
       });

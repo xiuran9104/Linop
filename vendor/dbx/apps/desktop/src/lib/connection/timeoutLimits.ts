@@ -6,7 +6,7 @@ export const DEFAULT_QUERY_TIMEOUT_SECS = 60;
 export const MAX_QUERY_TIMEOUT_SECS = 3600;
 export const DEFAULT_IDLE_TIMEOUT_SECS = 60;
 export const MAX_IDLE_TIMEOUT_SECS = 3600;
-// Mirrors dbx-types: idle window of a manual transaction before DBX rolls it back.
+// Mirrors linop-db-types: idle window of a manual transaction before DBX rolls it back.
 export const DEFAULT_MANUAL_TRANSACTION_TIMEOUT_SECS = 300;
 export const MIN_MANUAL_TRANSACTION_TIMEOUT_SECS = 30;
 export const MAX_MANUAL_TRANSACTION_TIMEOUT_SECS = 86400;

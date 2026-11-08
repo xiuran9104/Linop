@@ -16,13 +16,13 @@
  * Enabling:
  *  - `pnpm dev` builds sample by default.
  *  - Production builds: `window.__dbxSidebarLayoutMonitor.enable()` or set
- *    localStorage["dbx-sidebar-layout-monitor"] = "1" before the sidebar
+ *    localStorage["linop-db-sidebar-layout-monitor"] = "1" before the sidebar
  *    mounts. Enabling the in-app "debug logs" setting also arms the monitor.
  */
 
 import { isDebugLoggingEnabled } from "@/lib/backend/debugLog";
 
-export const SIDEBAR_LAYOUT_MONITOR_STORAGE_KEY = "dbx-sidebar-layout-monitor";
+export const SIDEBAR_LAYOUT_MONITOR_STORAGE_KEY = "linop-db-sidebar-layout-monitor";
 export const SIDEBAR_LAYOUT_MONITOR_LABEL = "[DBX][sidebar-layout-monitor]";
 
 export const SIDEBAR_LAYOUT_MONITOR_MAX_SAMPLES = 240;

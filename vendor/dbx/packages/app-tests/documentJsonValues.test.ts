@@ -34,7 +34,7 @@ test("retains MongoDB Extended JSON parsing for int64 fields", () => {
   const value = parseDocumentStoreInputValue("2018551659033767937", "mongodb");
 
   assert.deepEqual(value, { $numberLong: "2018551659033767937" });
-  assert.equal(serializeDocumentStoreId("2018551659033767937", "mongodb"), '__dbx_mongo_string_id__"2018551659033767937"');
+  assert.equal(serializeDocumentStoreId("2018551659033767937", "mongodb"), '__linop_db_mongo_string_id__"2018551659033767937"');
   assert.equal(stringifyDocumentStoreValue({ id: value }, "mongodb"), '{"id":{"$numberLong":"2018551659033767937"}}');
 });
 

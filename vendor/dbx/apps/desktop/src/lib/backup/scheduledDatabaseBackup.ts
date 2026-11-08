@@ -2,12 +2,12 @@ import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStor
 import { isSystemDatabaseName } from "@/lib/database/visibleDatabases";
 import type { DatabaseType } from "@/types/database";
 
-export const DATABASE_BACKUP_SCHEDULES_STORAGE_KEY = "dbx-database-backup-schedules";
-export const DATABASE_BACKUP_RUNS_STORAGE_KEY = "dbx-database-backup-runs";
+export const DATABASE_BACKUP_SCHEDULES_STORAGE_KEY = "linop-db-database-backup-schedules";
+export const DATABASE_BACKUP_RUNS_STORAGE_KEY = "linop-db-database-backup-runs";
 export const DATABASE_BACKUP_CONFIG_CHANGED_EVENT = "dbx:database-backup-config-changed";
 export const MAX_DATABASE_BACKUP_HISTORY = 200;
-export const DEFAULT_DATABASE_BACKUP_RUN_DIRECTORY_PATTERN = "dbx-backup__{schedule}__{timestamp}__{runId}";
-export const DEFAULT_DATABASE_BACKUP_FILE_NAME_PATTERN = "dbx-backup__{schedule}__{timestamp}__{database}__{runId}";
+export const DEFAULT_DATABASE_BACKUP_RUN_DIRECTORY_PATTERN = "linop-db-backup__{schedule}__{timestamp}__{runId}";
+export const DEFAULT_DATABASE_BACKUP_FILE_NAME_PATTERN = "linop-db-backup__{schedule}__{timestamp}__{database}__{runId}";
 
 export type DatabaseBackupFrequency = "hourly" | "daily" | "weekly";
 export type DatabaseBackupExportStatus = "Running" | "Done" | "Error" | "Cancelled";

@@ -44,11 +44,11 @@ After review, the repository operator signs the accepted candidate bytes and pub
 - SHA-256 and byte size of the signed package;
 - repository `signingKeyId`.
 
-The official implementation publishes these assets from a protected `dbx-store` workflow. A custom or private repository operates the same trust boundary with its own key and storage.
+The official implementation publishes these assets from a protected `linop-db-store` workflow. A custom or private repository operates the same trust boundary with its own key and storage.
 
 ### Official store Git repository
 
-`t8y2/dbx-store` contains reviewed catalog inputs, publisher identities, repository public keys, revocations, and generated catalog JSON. It does not contain plugin source trees, private keys, or `.dbxp` binaries.
+`t8y2/linop-db-store` contains reviewed catalog inputs, publisher identities, repository public keys, revocations, and generated catalog JSON. It does not contain plugin source trees, private keys, or `.dbxp` binaries.
 
 A store submission references:
 
@@ -62,15 +62,15 @@ Human review decides whether a plugin is allowed in the official catalog. SHA-25
 
 ## Author release workflow
 
-Install the precompiled CLI and run `dbx-plugin create <directory> --template frontend|rust|go` for a complete project, or copy `sdk/templates/github/plugin-release.yml`:
+Install the precompiled CLI and run `linop-db-plugin create <directory> --template frontend|rust|go` for a complete project, or copy `sdk/templates/github/plugin-release.yml`:
 
 ```bash
-npm install --global @dbx-app/plugin-cli@0.1.2
+npm install --global @linop-db-app/plugin-cli@0.1.2
 ```
 
 Pin both the reusable workflow reference and `plugin-cli-version`. The npm package contains the matching CLI binary, packager, and Rust/Go SDK sources. Building the CLI from a DBX checkout is reserved for SDK development and can be enabled with `install-plugin-cli-from-source: true` plus a reviewed `sdk-ref`.
 
-Before publishing a new CLI version, update the CLI and npm manifests together, merge them to `main`, then run the **Plugin CLI Release** workflow. The workflow creates `plugin-cli-v<version>`, builds six platform packages, publishes `@dbx-app/plugin-cli`, and verifies clean npm installation with frontend, Rust, and Go templates.
+Before publishing a new CLI version, update the CLI and npm manifests together, merge them to `main`, then run the **Plugin CLI Release** workflow. The workflow creates `plugin-cli-v<version>`, builds six platform packages, publishes `@linop-db-app/plugin-cli`, and verifies clean npm installation with frontend, Rust, and Go templates.
 
 For local CLI development only:
 
@@ -80,7 +80,7 @@ cargo install --locked --path plugins/sdk/cli
 
 When an author publishes a GitHub Release, the reusable workflow:
 
-1. installs the pinned precompiled `dbx-plugin` npm package and builds on the configured target runners;
+1. installs the pinned precompiled `linop-db-plugin` npm package and builds on the configured target runners;
 2. produces one unsigned `.dbxp` and `.artifact.json` per target;
 3. rejects candidates containing `signature.json` or metadata containing `signingKeyId`;
 4. validates unique targets, SHA-256 values, sizes, package names, and one shared Manifest identity;
@@ -90,12 +90,12 @@ The default native matrix covers `darwin-arm64`, `darwin-x64`, `windows-x64`, `l
 
 ## Official review and signing
 
-1. The author opens a Plugin submission Issue in `t8y2/dbx-store` with the source tag and `release-candidates.json` URL.
+1. The author opens a Plugin submission Issue in `t8y2/linop-db-store` with the source tag and `release-candidates.json` URL.
 2. Review the source tag, Manifest, permissions, release notes, and candidate metadata.
 3. Verify every candidate URL is immutable and matches `release-candidates.json`.
-4. Run the protected `dbx-store` signing workflow with the expected plugin ID, version, target, output filename, and reviewed DBX SDK ref.
+4. Run the protected `linop-db-store` signing workflow with the expected plugin ID, version, target, output filename, and reviewed DBX SDK ref.
 5. The workflow downloads the candidate, rejects pre-existing signatures, verifies Manifest identity, appends the DBX Store signature, and publishes the signed asset plus final metadata.
-6. The author opens the final catalog PR against `t8y2/dbx-store:main`, adding the final artifact URL, size, SHA-256, and repository `signingKeyId`.
+6. The author opens the final catalog PR against `t8y2/linop-db-store:main`, adding the final artifact URL, size, SHA-256, and repository `signingKeyId`.
 7. Run store validation and complete maintainer review before making the version visible.
 
 The protected GitHub Environment must require reviewer approval and provide matching `DBX_STORE_SIGNING_KEY` secret and `DBX_STORE_SIGNING_KEY_ID` variable values. The public key must already exist in `signing-keys.json` and must not be revoked.
@@ -105,8 +105,8 @@ The protected GitHub Environment must require reviewer approval and provide matc
 Repository operators may create a repository key with:
 
 ```bash
-dbx-plugin keygen company-plugins.release
-source .dbx-repository-signing-key.env
+linop-db-plugin keygen company-plugins.release
+source .linop-db-repository-signing-key.env
 cargo run --release \
   --manifest-path /path/to/dbx/plugins/sdk/packager/Cargo.toml \
   -- sign candidate.dbxp signed.dbxp \

@@ -174,7 +174,7 @@ describe("trigger source tab Save handler", () => {
 
   it("saves a MySQL trigger through the executable DROP+CREATE statements", async () => {
     const draft = openTriggerDraft("mysql");
-    // Statement generation lives in dbx-sql-core (see its trigger tests); here the
+    // Statement generation lives in linop-db-sql-core (see its trigger tests); here the
     // mocked builder stands in for the Rust DROP+CREATE output.
     vi.mocked(api.buildExecutableObjectSourceStatements).mockResolvedValueOnce(["DROP TRIGGER IF EXISTS `shop`.`trg_orders`;", `${draft.sql};`]);
     await expect(draft.save()).resolves.toBe(true);

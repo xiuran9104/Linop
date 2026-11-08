@@ -41,10 +41,10 @@ export function normalizeAiConversationTypography(value: Partial<AiConversationT
 export function aiConversationTypographyCssVariables(value: Partial<AiConversationTypography> | null | undefined): Record<string, string> {
   const typography = normalizeAiConversationTypography(value);
   const variables: Record<string, string> = {
-    "--dbx-ai-content-font-size": `${typography.fontSize}px`,
-    "--dbx-ai-code-font-size": `${Math.max(AI_CODE_FONT_SIZE_MIN, typography.fontSize)}px`,
-    "--dbx-ai-inline-code-font-size": `${Math.max(AI_CODE_FONT_SIZE_MIN, typography.fontSize - 1)}px`,
+    "--linop-db-ai-content-font-size": `${typography.fontSize}px`,
+    "--linop-db-ai-code-font-size": `${Math.max(AI_CODE_FONT_SIZE_MIN, typography.fontSize)}px`,
+    "--linop-db-ai-inline-code-font-size": `${Math.max(AI_CODE_FONT_SIZE_MIN, typography.fontSize - 1)}px`,
   };
-  if (typography.fontFamily) variables["--dbx-ai-content-font-family"] = typography.fontFamily;
+  if (typography.fontFamily) variables["--linop-db-ai-content-font-family"] = typography.fontFamily;
   return variables;
 }

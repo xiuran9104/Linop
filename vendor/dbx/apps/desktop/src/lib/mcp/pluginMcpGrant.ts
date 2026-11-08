@@ -2,7 +2,7 @@ import type { PluginMcpAccessLevel, PluginMcpGrant, PluginMcpToolView, PluginMcp
 
 /**
  * Pure helpers for the plugin cards of the MCP capability tab. The backend
- * (`dbx_core::plugin_mcp`) decides exposure; these only derive display state
+ * (`linop_db_core::plugin_mcp`) decides exposure; these only derive display state
  * and build the next grant to save.
  */
 

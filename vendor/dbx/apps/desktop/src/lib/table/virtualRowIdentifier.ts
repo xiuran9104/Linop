@@ -2,7 +2,7 @@ import { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet } from
 import { metadataSchemaForConnection, type JdbcDialectConnection } from "@/lib/database/jdbcDialect";
 import type { ColumnInfo } from "@/types/database";
 
-const STORAGE_PREFIX = "dbx-table-virtual-row-identifier:";
+const STORAGE_PREFIX = "linop-db-table-virtual-row-identifier:";
 const STORAGE_VERSION = 1;
 
 export interface VirtualRowIdentifierScope {

@@ -65,7 +65,7 @@ async function mountEditor(overrides: Partial<QueryEditorProps> = {}) {
 }
 
 function menuButton(labelFragment: string) {
-  const found = [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].find((candidate) => candidate.textContent?.includes(labelFragment));
+  const found = [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].find((candidate) => candidate.textContent?.includes(labelFragment));
   expect(found, labelFragment).toBeDefined();
   return found!;
 }

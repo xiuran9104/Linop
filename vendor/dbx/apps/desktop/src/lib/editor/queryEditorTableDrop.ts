@@ -36,10 +36,10 @@ function quoteColumnReferenceName(databaseType: DatabaseType | undefined, name: 
   return requiresMysqlIdentifierQuote(name) ? quoteTableIdentifier(databaseType, name) : name;
 }
 
-export const DBX_TABLE_REFERENCE_MIME = "application/x-dbx-table-reference";
-export const DBX_TABLE_REFERENCE_DROP_EVENT = "dbx-table-reference-drop";
-export const DBX_TABLE_REFERENCE_HOVER_EVENT = "dbx-table-reference-hover";
-export const DBX_TABLE_REFERENCE_DRAG_END_EVENT = "dbx-table-reference-drag-end";
+export const DBX_TABLE_REFERENCE_MIME = "application/x-linop-db-table-reference";
+export const DBX_TABLE_REFERENCE_DROP_EVENT = "linop-db-table-reference-drop";
+export const DBX_TABLE_REFERENCE_HOVER_EVENT = "linop-db-table-reference-hover";
+export const DBX_TABLE_REFERENCE_DRAG_END_EVENT = "linop-db-table-reference-drag-end";
 
 export interface QueryEditorTableReferenceEntry {
   schema?: string;
@@ -47,7 +47,7 @@ export interface QueryEditorTableReferenceEntry {
 }
 
 export interface QueryEditorTableReferencePayload {
-  kind: "dbx-table-reference";
+  kind: "linop-db-table-reference";
   connectionId: string;
   database: string;
   schema?: string;
@@ -125,7 +125,7 @@ export function createTableReferencePayload(options: {
   const referenceType = options.referenceType ?? (options.columnName ? "column" : "table");
   if (referenceType !== "database" && !options.tableName) return null;
   const payload: QueryEditorTableReferencePayload = {
-    kind: "dbx-table-reference",
+    kind: "linop-db-table-reference",
     connectionId: options.connectionId,
     database: options.database,
   };
@@ -155,7 +155,7 @@ export function createMultiTableReferencePayload(options: {
   const tableReferences = normalizeTableReferences(options.tableReferences);
   if (tableReferences.length === 0) return null;
   const payload: QueryEditorTableReferencePayload = {
-    kind: "dbx-table-reference",
+    kind: "linop-db-table-reference",
     connectionId: options.connectionId,
     database: options.database,
     referenceType: "table",
@@ -179,7 +179,7 @@ export function createColumnReferencePayload(options: { connectionId?: string; d
   const columnNames = normalizeColumnNames(options.columnNames);
   if (!options.connectionId || options.database == null || columnNames.length === 0) return null;
   const payload: QueryEditorTableReferencePayload = {
-    kind: "dbx-table-reference",
+    kind: "linop-db-table-reference",
     connectionId: options.connectionId,
     database: options.database,
     referenceType: "column",
@@ -197,12 +197,12 @@ export function parseTableReferencePayload(value: string | undefined | null): Qu
   if (!value) return null;
   try {
     const parsed = JSON.parse(value) as Partial<QueryEditorTableReferencePayload>;
-    if (parsed.kind !== "dbx-table-reference" || typeof parsed.connectionId !== "string" || typeof parsed.database !== "string" || !parsed.connectionId) {
+    if (parsed.kind !== "linop-db-table-reference" || typeof parsed.connectionId !== "string" || typeof parsed.database !== "string" || !parsed.connectionId) {
       return null;
     }
     if (parsed.referenceType === "database") {
       const payload: QueryEditorTableReferencePayload = {
-        kind: "dbx-table-reference",
+        kind: "linop-db-table-reference",
         connectionId: parsed.connectionId,
         database: parsed.database,
         referenceType: "database",
@@ -214,7 +214,7 @@ export function parseTableReferencePayload(value: string | undefined | null): Qu
     const columnNames = normalizeColumnNames(parsed.columnNames);
     if (columnNames.length > 0 && (parsed.referenceType === "column" || !parsed.tableName)) {
       const payload: QueryEditorTableReferencePayload = {
-        kind: "dbx-table-reference",
+        kind: "linop-db-table-reference",
         connectionId: parsed.connectionId,
         database: parsed.database,
         referenceType: "column",
@@ -226,7 +226,7 @@ export function parseTableReferencePayload(value: string | undefined | null): Qu
     const tableReferences = normalizeTableReferences(parsed.tableReferences);
     if (tableReferences.length > 1) {
       const payload: QueryEditorTableReferencePayload = {
-        kind: "dbx-table-reference",
+        kind: "linop-db-table-reference",
         connectionId: parsed.connectionId,
         database: parsed.database,
         referenceType: "table",
@@ -241,7 +241,7 @@ export function parseTableReferencePayload(value: string | undefined | null): Qu
     const columnName = typeof parsed.columnName === "string" && parsed.columnName ? parsed.columnName : undefined;
     const referenceType = parsed.referenceType === "column" || columnName || columnNames.length > 0 ? "column" : "table";
     const payload: QueryEditorTableReferencePayload = {
-      kind: "dbx-table-reference",
+      kind: "linop-db-table-reference",
       connectionId: parsed.connectionId,
       database: parsed.database,
       tableName: parsed.tableName,

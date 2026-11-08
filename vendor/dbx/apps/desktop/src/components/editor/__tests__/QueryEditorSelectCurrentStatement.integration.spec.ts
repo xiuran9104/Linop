@@ -121,7 +121,7 @@ describe("QueryEditor select current statement", () => {
     vi.spyOn(EditorView.prototype, "posAtCoords").mockReturnValue(null);
     document.querySelector("[data-query-editor-root]")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
     const copyButton = await vi.waitFor(() => {
-      const found = [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].find((b) => b.textContent?.includes("editor.contextMenu.copyCurrentStatement"));
+      const found = [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].find((b) => b.textContent?.includes("editor.contextMenu.copyCurrentStatement"));
       expect(found).toBeDefined();
       return found!;
     });

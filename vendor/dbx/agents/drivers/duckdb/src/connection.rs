@@ -157,7 +157,7 @@ mod tests {
 
     #[test]
     fn connect_path_replaces_empty_placeholder_file() {
-        let path = std::env::temp_dir().join(format!("dbx-duckdb-empty-{}.duckdb", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-duckdb-empty-{}.duckdb", uuid::Uuid::new_v4()));
         std::fs::write(&path, "").expect("write empty placeholder");
         assert_eq!(std::fs::metadata(&path).expect("placeholder metadata").len(), 0);
 

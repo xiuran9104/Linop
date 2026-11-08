@@ -1,7 +1,7 @@
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStorage";
 import { normalizeExternalSqlPath, relocateExternalSqlPathWithinFolder } from "@/lib/sql/sqlFileOpen";
 
-const STORAGE_KEY = "dbx-sql-file-manual-order";
+const STORAGE_KEY = "linop-db-sql-file-manual-order";
 export type SqlFileOrder = Record<string, string[]>;
 
 export function sqlFileParentPath(path: string): string {

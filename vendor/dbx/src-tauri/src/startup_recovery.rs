@@ -73,7 +73,7 @@ const FAST_FAIL_GRACE_MS_ENV: &str = "DBX_STARTUP_COMPAT_FAST_FAIL_GRACE_MS";
 const WINDOWS_APP_DATA_DIR_NAME: &str = "com.dbx.app";
 const COMPATIBILITY_MARKER_FILE: &str = "webview2-enterprise-compat.enabled";
 const COMPATIBILITY_PROFILE_DIR: &str = "webview2-enterprise-compat";
-const COMPATIBILITY_TEMP_PROFILE_DIR: &str = "dbx-webview2-compat";
+const COMPATIBILITY_TEMP_PROFILE_DIR: &str = "linop-db-webview2-compat";
 const STARTUP_LOG_BUFFER_CAPACITY: usize = 512;
 /// Standard startup: the app may legitimately take a while on cold/slow disks.
 const STARTUP_WATCHDOG_DELAY: Duration = Duration::from_secs(60);
@@ -93,7 +93,7 @@ enum CompatUserData {
     Default,
     /// Isolated folder: %LOCALAPPDATA%\com.dbx.app\webview2-enterprise-compat
     Isolated,
-    /// Per-user temp folder: %TEMP%\dbx-webview2-compat
+    /// Per-user temp folder: %TEMP%\linop-db-webview2-compat
     Temp,
 }
 
@@ -1143,7 +1143,7 @@ fn launch_compat_profile(profile: &CompatProfile, history: &str) -> Result<Compa
 
 fn copy_executable_to_temp() -> Result<PathBuf, String> {
     let executable = std::env::current_exe().map_err(|error| error.to_string())?;
-    let temp_dir = std::env::temp_dir().join("dbx-startup-compat");
+    let temp_dir = std::env::temp_dir().join("linop-db-startup-compat");
     std::fs::create_dir_all(&temp_dir).map_err(|error| format!("create temp dir failed: {error}"))?;
     let target = temp_dir.join(executable.file_name().unwrap_or_else(|| std::ffi::OsStr::new("DBX.exe")));
     std::fs::copy(&executable, &target).map_err(|error| format!("copy executable failed: {error}"))?;
@@ -1528,7 +1528,7 @@ mod tests {
             path,
             Some(
                 PathBuf::from(r"C:\Users\test\AppData\Local\Temp")
-                    .join("dbx-webview2-compat")
+                    .join("linop-db-webview2-compat")
                     .join(format!("profile-{}", temp_profile.index))
             )
         );
@@ -1627,7 +1627,7 @@ mod tests {
 
     #[test]
     fn recovery_child_receives_parent_handoff_without_disabling_single_instance() {
-        let mut command = std::process::Command::new("dbx-test");
+        let mut command = std::process::Command::new("linop-db-test");
         super::configure_recovery_child(&mut command, 4242);
         let envs = command.get_envs().collect::<Vec<_>>();
         assert!(envs

@@ -9,10 +9,10 @@ describe("buildTableSelectTemplate", () => {
       buildTableSelectTemplate({
         databaseType: "postgres",
         schema: "public",
-        tableName: "dbx_smoke",
+        tableName: "linop_db_smoke",
         quoteIdentifiers: false,
       }),
-    ).toBe("SELECT *\nFROM public.dbx_smoke;");
+    ).toBe("SELECT *\nFROM public.linop_db_smoke;");
   });
 
   it("honors lower keywordCase for a new-query table reference (#12933)", () => {
@@ -20,20 +20,20 @@ describe("buildTableSelectTemplate", () => {
       buildTableSelectTemplate({
         databaseType: "postgres",
         schema: "public",
-        tableName: "dbx_smoke",
+        tableName: "linop_db_smoke",
         quoteIdentifiers: false,
         keywordCase: "lower",
       }),
-    ).toBe("select *\nfrom public.dbx_smoke;");
+    ).toBe("select *\nfrom public.linop_db_smoke;");
     expect(
       buildTableSelectTemplate({
         databaseType: "postgres",
         schema: "public",
-        tableName: "dbx_smoke",
+        tableName: "linop_db_smoke",
         quoteIdentifiers: false,
         keywordCase: "upper",
       }),
-    ).toBe("SELECT *\nFROM public.dbx_smoke;");
+    ).toBe("SELECT *\nFROM public.linop_db_smoke;");
   });
 
   it("keeps required quotes for columns when identifier quoting is disabled", () => {

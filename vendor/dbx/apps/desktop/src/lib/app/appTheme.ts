@@ -1,10 +1,10 @@
 import type { Theme } from "@tauri-apps/api/window";
 
-export const APP_THEME_STORAGE_KEY = "dbx-theme";
-export const APP_THEME_PALETTE_STORAGE_KEY = "dbx-theme-palette";
-export const APP_CUSTOM_UI_STORAGE_KEY = "dbx-theme-custom-ui";
-export const APP_CUSTOM_UI_DARK_STORAGE_KEY = "dbx-theme-custom-ui-dark";
-export const APP_CORNER_STYLE_STORAGE_KEY = "dbx-corner-style";
+export const APP_THEME_STORAGE_KEY = "linop-db-theme";
+export const APP_THEME_PALETTE_STORAGE_KEY = "linop-db-theme-palette";
+export const APP_CUSTOM_UI_STORAGE_KEY = "linop-db-theme-custom-ui";
+export const APP_CUSTOM_UI_DARK_STORAGE_KEY = "linop-db-theme-custom-ui-dark";
+export const APP_CORNER_STYLE_STORAGE_KEY = "linop-db-corner-style";
 
 export type AppThemeMode = "light" | "dark" | "system";
 export type AppThemeAppearance = "light" | "dark";
@@ -45,7 +45,7 @@ export interface AppCustomUiColorDef {
 export const APP_CUSTOM_UI_COLOR_DEFS: readonly AppCustomUiColorDef[] = [
   { key: "background", varName: "--background", labelKey: "settings.customUiBackground" },
   { key: "foreground", varName: "--foreground", labelKey: "settings.customUiForeground" },
-  { key: "primary", varName: "--primary", rgbVarName: "--dbx-primary-rgb", labelKey: "settings.customUiPrimary" },
+  { key: "primary", varName: "--primary", rgbVarName: "--linop-db-primary-rgb", labelKey: "settings.customUiPrimary" },
   { key: "border", varName: "--border", labelKey: "settings.customUiBorder" },
   { key: "sidebar", varName: "--sidebar", labelKey: "settings.customUiSidebar" },
 ];
@@ -76,12 +76,12 @@ export const APP_CUSTOM_UI_DERIVED_VAR_NAMES: readonly string[] = [
   "--sidebar-ring",
   "--input",
   "--ring",
-  "--dbx-chrome",
-  "--dbx-chrome-muted",
-  "--dbx-content",
-  "--dbx-editor-toolbar",
-  "--dbx-gutter",
-  "--dbx-sidebar-header",
+  "--linop-db-chrome",
+  "--linop-db-chrome-muted",
+  "--linop-db-content",
+  "--linop-db-editor-toolbar",
+  "--linop-db-gutter",
+  "--linop-db-sidebar-header",
 ];
 
 export function mixHex(a: string, b: string, weight: number): string {
@@ -142,12 +142,12 @@ export function deriveCustomUiColors(colors: AppCustomUiColors): Record<string, 
     "--sidebar-ring": rgbValue(primary),
     "--input": rgbValue(border),
     "--ring": rgbValue(primary),
-    "--dbx-chrome": chrome,
-    "--dbx-chrome-muted": chromeMuted,
-    "--dbx-content": rgbValue(background),
-    "--dbx-editor-toolbar": toolbar,
-    "--dbx-gutter": gutter,
-    "--dbx-sidebar-header": sidebarHeader,
+    "--linop-db-chrome": chrome,
+    "--linop-db-chrome-muted": chromeMuted,
+    "--linop-db-content": rgbValue(background),
+    "--linop-db-editor-toolbar": toolbar,
+    "--linop-db-gutter": gutter,
+    "--linop-db-sidebar-header": sidebarHeader,
   };
 }
 

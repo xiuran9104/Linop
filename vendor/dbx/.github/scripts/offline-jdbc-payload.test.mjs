@@ -25,7 +25,7 @@ function run(command, args, options = {}) {
 }
 
 test("builds and verifies all platform ZIPs from the managed JDBC asset manifest", () => {
-  const root = mkdtempSync(join(tmpdir(), "dbx-offline-jdbc-builder-test-"));
+  const root = mkdtempSync(join(tmpdir(), "linop-db-offline-jdbc-builder-test-"));
   try {
     const releaseDir = join(root, "release");
     const pluginZip = join(root, "plugin.zip");
@@ -101,10 +101,10 @@ process.stdout.write(JSON.stringify(bundles[coordinate]));
     }
 
     writeFileSync(join(releaseDir, "agent-registry.json"), "{}\n");
-    for (const platform of PLATFORMS) writeFileSync(join(releaseDir, `dbx-jre-21-${platform}.tar.zst`), platform);
+    for (const platform of PLATFORMS) writeFileSync(join(releaseDir, `linop-db-jre-21-${platform}.tar.zst`), platform);
     run("bash", [ZIP_BUILDER, releaseDir]);
     run(process.execPath, [RELEASE_VERIFIER, releaseDir, testManifestPath]);
-    for (const platform of PLATFORMS) assert.equal(existsSync(join(releaseDir, `dbx-agents-offline-${platform}.zip`)), true);
+    for (const platform of PLATFORMS) assert.equal(existsSync(join(releaseDir, `linop-db-agents-offline-${platform}.zip`)), true);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

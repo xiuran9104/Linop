@@ -143,7 +143,7 @@ function localDateKey() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  localStorage.removeItem("dbx-filter-builder-value-shortcut-hint-days");
+  localStorage.removeItem("linop-db-filter-builder-value-shortcut-hint-days");
 });
 
 describe("DataGridSearchBar", () => {
@@ -701,7 +701,7 @@ describe("DataGridColumnHeader", () => {
     // The vivid 300-level dark-mode type palette is tuned for grid cells and
     // glares on the popover surface. The tooltip container re-defines the type
     // CSS variables with softer 400-level values while keeping the per-kind hue.
-    const tooltipContent = findOne(mounted.root, (node) => String(node.props?.class ?? "").includes("dbx-column-info-tooltip"));
+    const tooltipContent = findOne(mounted.root, (node) => String(node.props?.class ?? "").includes("linop-db-column-info-tooltip"));
     expect(tooltipContent).toBeDefined();
     const tooltipType = findOne(mounted.root, (node) => hostText(node) === "varchar(255)" && node.props["data-grid-header-type-line"] === undefined);
     expect(String(tooltipType.props.class ?? "")).toContain("data-grid-type-string");
@@ -1170,19 +1170,19 @@ describe("DataGridFilterBuilder", () => {
     dispatch(secondValueEditor, "blur");
     await nextTick();
     expect(hostText(mounted.root)).not.toContain("grid.filterBuilderValueShortcutHint");
-    expect(JSON.parse(localStorage.getItem("dbx-filter-builder-value-shortcut-hint-days") ?? "[]")).toEqual([{ date: localDateKey(), count: 1 }]);
+    expect(JSON.parse(localStorage.getItem("linop-db-filter-builder-value-shortcut-hint-days") ?? "[]")).toEqual([{ date: localDateKey(), count: 1 }]);
 
     dispatch(secondValueEditor, "focus");
     await nextTick();
     expect(hostText(mounted.root)).toContain("grid.filterBuilderValueShortcutHint");
-    expect(JSON.parse(localStorage.getItem("dbx-filter-builder-value-shortcut-hint-days") ?? "[]")).toEqual([{ date: localDateKey(), count: 2 }]);
+    expect(JSON.parse(localStorage.getItem("linop-db-filter-builder-value-shortcut-hint-days") ?? "[]")).toEqual([{ date: localDateKey(), count: 2 }]);
     dispatch(secondValueEditor, "blur");
     dispatch(secondValueEditor, "focus");
     await nextTick();
     expect(hostText(mounted.root)).not.toContain("grid.filterBuilderValueShortcutHint");
 
     localStorage.setItem(
-      "dbx-filter-builder-value-shortcut-hint-days",
+      "linop-db-filter-builder-value-shortcut-hint-days",
       JSON.stringify([
         { date: "2026-01-01", count: 2 },
         { date: "2026-01-02", count: 2 },
@@ -1193,10 +1193,10 @@ describe("DataGridFilterBuilder", () => {
     dispatch(thirdDaySecondValueEditor, "focus");
     await nextTick();
     expect(hostText(thirdDayMounted.root)).toContain("grid.filterBuilderValueShortcutHint");
-    expect(JSON.parse(localStorage.getItem("dbx-filter-builder-value-shortcut-hint-days") ?? "[]")).toHaveLength(3);
+    expect(JSON.parse(localStorage.getItem("linop-db-filter-builder-value-shortcut-hint-days") ?? "[]")).toHaveLength(3);
 
     localStorage.setItem(
-      "dbx-filter-builder-value-shortcut-hint-days",
+      "linop-db-filter-builder-value-shortcut-hint-days",
       JSON.stringify([
         { date: "2026-01-01", count: 2 },
         { date: "2026-01-02", count: 2 },
@@ -2722,7 +2722,7 @@ describe("cell detail surfaces", () => {
 
 describe("DataGridCopyColumnNamesDialog", () => {
   beforeEach(() => {
-    localStorage.removeItem("dbx-copy-column-names-separator");
+    localStorage.removeItem("linop-db-copy-column-names-separator");
   });
 
   function previewText(mounted: ReturnType<typeof mountComponent>) {
@@ -2752,7 +2752,7 @@ describe("DataGridCopyColumnNamesDialog", () => {
     );
     expect(copy).toHaveBeenCalledWith("`id`,\n`type`");
     expect(openChange).toHaveBeenCalledWith(false);
-    expect(localStorage.getItem("dbx-copy-column-names-separator")).toBe("comma-newline");
+    expect(localStorage.getItem("linop-db-copy-column-names-separator")).toBe("comma-newline");
   });
 
   it("hides the quote option for non-SQL databases and ignores invalid separators", async () => {
@@ -2878,7 +2878,7 @@ describe("EnumCellEditor boolean labels", () => {
 });
 
 describe("DataGrid large-table preview notice", () => {
-  const HIDDEN_KEY = "dbx-table-data-preview-notice-hidden";
+  const HIDDEN_KEY = "linop-db-table-data-preview-notice-hidden";
 
   function mountGrid() {
     setActivePinia(createPinia());

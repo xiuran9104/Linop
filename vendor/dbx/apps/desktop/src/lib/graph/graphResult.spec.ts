@@ -12,7 +12,7 @@ function result(rows: unknown[][]): QueryResult {
 
 describe("graph result transport", () => {
   it("extracts a typed graph cell while keeping the table display and is idempotent", () => {
-    const page = result([[{ __dbx_graph_cell: "nebula-v1", kind: "edge", display: "[:WORK_IN]", nodes: [a, b], edges: [edge] }], ["scalar"]]);
+    const page = result([[{ __linop_db_graph_cell: "nebula-v1", kind: "edge", display: "[:WORK_IN]", nodes: [a, b], edges: [edge] }], ["scalar"]]);
     extractGraphCells(page);
     expect(page.rows).toEqual([["[:WORK_IN]"], ["scalar"]]);
     expect(page.graph_data?.nodes).toHaveLength(2);
@@ -22,8 +22,8 @@ describe("graph result transport", () => {
   });
 
   it("deduplicates nodes and offsets cell references across pages", () => {
-    const first = extractGraphCells(result([[{ __dbx_graph_cell: "nebula-v1", kind: "vertex", display: "(a)", nodes: [b], edges: [] }]]));
-    const second = extractGraphCells(result([[{ __dbx_graph_cell: "nebula-v1", kind: "path", display: "<path>", nodes: [a, b], edges: [edge] }]]));
+    const first = extractGraphCells(result([[{ __linop_db_graph_cell: "nebula-v1", kind: "vertex", display: "(a)", nodes: [b], edges: [] }]]));
+    const second = extractGraphCells(result([[{ __linop_db_graph_cell: "nebula-v1", kind: "path", display: "<path>", nodes: [a, b], edges: [edge] }]]));
     const merged = mergeGraphResults(first.graph_data, second.graph_data, 1);
     expect(merged?.nodes).toHaveLength(2);
     expect(merged?.nodes.find((node) => node.id === "a")?.properties[0].value).toBe("Ada");

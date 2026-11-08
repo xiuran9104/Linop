@@ -28,7 +28,7 @@ vi.mock("vue-virtual-scroller", () => ({
 
 import PluginFileManager from "./PluginFileManager.vue";
 
-const SPLIT_SIZE_KEY = "dbx-plugin-file-manager-split-size";
+const SPLIT_SIZE_KEY = "linop-db-plugin-file-manager-split-size";
 const provider: PluginFilesystemProviderContribution = {
   type: "filesystem-provider",
   id: "ftp.files",
@@ -74,7 +74,7 @@ afterEach(() => {
   app?.unmount();
   app = undefined;
   document.body.replaceChildren();
-  document.body.classList.remove("dbx-is-resizing");
+  document.body.classList.remove("linop-db-is-resizing");
 });
 
 describe("PluginFileManager", () => {
@@ -106,11 +106,11 @@ describe("PluginFileManager", () => {
     pointer(window, "pointermove", 1200);
     await nextTick();
     expect(separator.getAttribute("aria-valuenow")).toBe("80");
-    expect(document.body.classList).toContain("dbx-is-resizing");
+    expect(document.body.classList).toContain("linop-db-is-resizing");
     pointer(window, "pointerup", 1200);
     await nextTick();
     expect(localStorage.getItem(SPLIT_SIZE_KEY)).toBe("80");
-    expect(document.body.classList).not.toContain("dbx-is-resizing");
+    expect(document.body.classList).not.toContain("linop-db-is-resizing");
 
     separator.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowRight" }));
     expect(separator.getAttribute("aria-valuenow")).toBe("80");

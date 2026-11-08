@@ -27,7 +27,7 @@ test("bridge delivers host-compatible environment, lifecycle and binary events",
   const w = dom.window;
   const send = (payload) => w.dispatchEvent(new w.MessageEvent("message", { source: w, data: hostMessage("test", payload) }));
   const events = [];
-  for (const type of ["init", "context", "env", "event", "binary"]) w.addEventListener(`dbx-plugin-${type}`, (event) => events.push(event));
+  for (const type of ["init", "context", "env", "event", "binary"]) w.addEventListener(`linop-db-plugin-${type}`, (event) => events.push(event));
   let initialized = 0,
     notifications = 0,
     binary;

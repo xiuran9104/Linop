@@ -51,7 +51,7 @@ export function buildSelectedSkillChips(ids: readonly string[], lookup: (id: str
 /**
  * Display names appearing more than once inside one source/root.
  *
- * Skill discovery is flat (`<root>/<dir>/SKILL.md`, `crates/dbx-core/src/skills.rs`),
+ * Skill discovery is flat (`<root>/<dir>/SKILL.md`, `crates/linop-db-core/src/skills.rs`),
  * so every entry in a root already has its own directory — a collision inside one
  * root is therefore always two directories declaring the same frontmatter `name`.
  * The model addresses skills by name + source (ADR Decision 6), so `use_skill`

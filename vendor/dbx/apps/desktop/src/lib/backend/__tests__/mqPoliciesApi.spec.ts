@@ -16,11 +16,11 @@ describe("mq policies tauri API", () => {
 
   it("invokes mq_list_policies with flattened filters", async () => {
     const { mqListPolicies } = await import("@/lib/backend/mq-tauri");
-    mocks.invoke.mockResolvedValue([{ name: "dbx-ttl", vhost: "/", pattern: "^dbx-", applyTo: "queues", priority: 0, definition: { "message-ttl": 60000 } }]);
+    mocks.invoke.mockResolvedValue([{ name: "linop-db-ttl", vhost: "/", pattern: "^linop-db-", applyTo: "queues", priority: 0, definition: { "message-ttl": 60000 } }]);
 
     const result = await mqListPolicies("conn-1", { virtualHost: "/" });
     expect(mocks.invoke).toHaveBeenCalledWith("mq_list_policies", { connectionId: "conn-1", virtualHost: "/", allVhosts: undefined });
-    expect(result[0]?.name).toBe("dbx-ttl");
+    expect(result[0]?.name).toBe("linop-db-ttl");
     expect(result[0]?.definition).toEqual({ "message-ttl": 60000 });
 
     await mqListPolicies("conn-1", { allVhosts: true });
@@ -34,26 +34,26 @@ describe("mq policies tauri API", () => {
     const { mqSetPolicy } = await import("@/lib/backend/mq-tauri");
     mocks.invoke.mockResolvedValue(undefined);
 
-    await mqSetPolicy("conn-1", "/", { name: "dbx-ttl", pattern: "^dbx-", applyTo: "queues", priority: 10, definition: { "message-ttl": 60000 } });
+    await mqSetPolicy("conn-1", "/", { name: "linop-db-ttl", pattern: "^linop-db-", applyTo: "queues", priority: 10, definition: { "message-ttl": 60000 } });
     expect(mocks.invoke).toHaveBeenCalledWith("mq_set_policy", {
       connectionId: "conn-1",
       virtualHost: "/",
-      name: "dbx-ttl",
-      pattern: "^dbx-",
+      name: "linop-db-ttl",
+      pattern: "^linop-db-",
       applyTo: "queues",
       priority: 10,
       definition: { "message-ttl": 60000 },
     });
 
-    await mqSetPolicy("conn-1", "/", { name: "dbx-dlx", pattern: ".*", definition: { "dead-letter-exchange": "dbx-dlx" } });
+    await mqSetPolicy("conn-1", "/", { name: "linop-db-dlx", pattern: ".*", definition: { "dead-letter-exchange": "linop-db-dlx" } });
     expect(mocks.invoke).toHaveBeenCalledWith("mq_set_policy", {
       connectionId: "conn-1",
       virtualHost: "/",
-      name: "dbx-dlx",
+      name: "linop-db-dlx",
       pattern: ".*",
       applyTo: undefined,
       priority: undefined,
-      definition: { "dead-letter-exchange": "dbx-dlx" },
+      definition: { "dead-letter-exchange": "linop-db-dlx" },
     });
   });
 
@@ -61,9 +61,9 @@ describe("mq policies tauri API", () => {
     const { mqDeletePolicy } = await import("@/lib/backend/mq-tauri");
     mocks.invoke.mockResolvedValue(undefined);
 
-    await mqDeletePolicy("conn-1", "/", "dbx-ttl");
+    await mqDeletePolicy("conn-1", "/", "linop-db-ttl");
 
-    expect(mocks.invoke).toHaveBeenCalledWith("mq_delete_policy", { connectionId: "conn-1", virtualHost: "/", name: "dbx-ttl" });
+    expect(mocks.invoke).toHaveBeenCalledWith("mq_delete_policy", { connectionId: "conn-1", virtualHost: "/", name: "linop-db-ttl" });
   });
 });
 
@@ -123,14 +123,14 @@ describe("mq policies/overview/nodes HTTP API", () => {
     await mqListPolicies("conn-1", { allVhosts: true });
     expect(lastCall(fetchMock)).toEqual({ url: "/api/mq/policies/list", body: { connectionId: "conn-1", virtualHost: undefined, allVhosts: true } });
 
-    await mqSetPolicy("conn-1", "/", { name: "dbx-ttl", pattern: "^dbx-", applyTo: "queues", priority: 10, definition: { "message-ttl": 60000 } });
+    await mqSetPolicy("conn-1", "/", { name: "linop-db-ttl", pattern: "^linop-db-", applyTo: "queues", priority: 10, definition: { "message-ttl": 60000 } });
     expect(lastCall(fetchMock)).toEqual({
       url: "/api/mq/policies/set",
-      body: { connectionId: "conn-1", virtualHost: "/", name: "dbx-ttl", pattern: "^dbx-", applyTo: "queues", priority: 10, definition: { "message-ttl": 60000 } },
+      body: { connectionId: "conn-1", virtualHost: "/", name: "linop-db-ttl", pattern: "^linop-db-", applyTo: "queues", priority: 10, definition: { "message-ttl": 60000 } },
     });
 
-    await mqDeletePolicy("conn-1", "/", "dbx-ttl");
-    expect(lastCall(fetchMock)).toEqual({ url: "/api/mq/policies/delete", body: { connectionId: "conn-1", virtualHost: "/", name: "dbx-ttl" } });
+    await mqDeletePolicy("conn-1", "/", "linop-db-ttl");
+    expect(lastCall(fetchMock)).toEqual({ url: "/api/mq/policies/delete", body: { connectionId: "conn-1", virtualHost: "/", name: "linop-db-ttl" } });
   });
 
   it("posts to the overview and nodes endpoints", async () => {
@@ -155,6 +155,6 @@ describe("mq policies/overview/nodes HTTP API", () => {
     );
     const { mqSetPolicy } = await import("@/lib/backend/mq-http");
 
-    await expect(mqSetPolicy("conn-1", "*", { name: "dbx-ttl", pattern: ".*", definition: {} })).rejects.toThrow('virtual host "*" is a listing sentinel');
+    await expect(mqSetPolicy("conn-1", "*", { name: "linop-db-ttl", pattern: ".*", definition: {} })).rejects.toThrow('virtual host "*" is a listing sentinel');
   });
 });

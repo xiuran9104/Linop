@@ -449,7 +449,7 @@ describe("connectionStore save_password opt-out", () => {
       external_config: {
         host: "localhost",
         port: 8883,
-        clientId: "dbx-test",
+        clientId: "linop-db-test",
         tls: true,
         auth: { kind: "certificate", caCertPath: "/ca.pem", clientCertPath: "/client.pem", clientKeyPath: "/client.key" },
       },

@@ -1,6 +1,6 @@
 import type { NacosReplaceHistoryEntry } from "./nacosReplaceHistory";
 
-const DB_NAME = "dbx-nacos-replace-history";
+const DB_NAME = "linop-db-nacos-replace-history";
 const KEY_ID = "encryption-key";
 interface EncryptedRow {
   id: string;

@@ -60,7 +60,7 @@ function withComposable<T>(run: (fallback: ReturnType<typeof useLargeSqlFileStre
 describe("useLargeSqlFileStreamingFallback", () => {
   it("routes oversized sql files to the streaming executor dialog", () => {
     const outcome = withComposable((fallback) => {
-      const handled = fallback.openInStreamingExecutorOnTooLarge("/tmp/dbx_export.sql", new ExternalSqlFileTooLargeError(100 * 1024 * 1024, 64 * 1024 * 1024));
+      const handled = fallback.openInStreamingExecutorOnTooLarge("/tmp/linop_db_export.sql", new ExternalSqlFileTooLargeError(100 * 1024 * 1024, 64 * 1024 * 1024));
       return { handled, error: null as unknown };
     });
 
@@ -68,7 +68,7 @@ describe("useLargeSqlFileStreamingFallback", () => {
     expect(mocks.store.sqlFileSource).toEqual({
       connectionId: "",
       database: "",
-      filePath: "/tmp/dbx_export.sql",
+      filePath: "/tmp/linop_db_export.sql",
     });
     expect(mocks.toast).toHaveBeenCalledTimes(1);
     expect(String(mocks.toast.mock.calls[0][0])).toContain("100.0 MB");
@@ -79,19 +79,19 @@ describe("useLargeSqlFileStreamingFallback", () => {
     mocks.queryStore.activeTabId = "tab-1";
     mocks.store.getConfig.mockImplementation((connectionId: string) => (connectionId === "postgres-1" ? { id: connectionId, db_type: "postgres" } : undefined));
 
-    const outcome = withComposable((fallback) => fallback.openInStreamingExecutorOnTooLarge("/tmp/dbx_export.sql", new ExternalSqlFileTooLargeError(100 * 1024 * 1024, 64 * 1024 * 1024)));
+    const outcome = withComposable((fallback) => fallback.openInStreamingExecutorOnTooLarge("/tmp/linop_db_export.sql", new ExternalSqlFileTooLargeError(100 * 1024 * 1024, 64 * 1024 * 1024)));
 
     expect(outcome).toBe(true);
     expect(mocks.store.sqlFileSource).toEqual({
       connectionId: "postgres-1",
       database: "app",
       schema: "reporting",
-      filePath: "/tmp/dbx_export.sql",
+      filePath: "/tmp/linop_db_export.sql",
     });
   });
 
   it("keeps unrelated open failures as errors", () => {
-    const outcome = withComposable((fallback) => fallback.openInStreamingExecutorOnTooLarge("/tmp/dbx_export.sql", new Error("disk failure")));
+    const outcome = withComposable((fallback) => fallback.openInStreamingExecutorOnTooLarge("/tmp/linop_db_export.sql", new Error("disk failure")));
 
     expect(outcome).toBe(false);
     expect(mocks.store.sqlFileSource).toBeNull();

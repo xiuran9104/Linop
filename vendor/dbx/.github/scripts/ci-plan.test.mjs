@@ -12,33 +12,33 @@ import { assertCoverage, parseCoverage } from "./ci-rust-coverage.mjs";
 
 const root = "/fixture";
 const graph = {
-  "dbx-types": [],
-  "dbx-platform": [],
-  "dbx-formats": [],
-  "dbx-sql-core": ["dbx-types"],
-  "dbx-sql-dialect": ["dbx-types"],
-  "dbx-sql-data": ["dbx-sql-core", "dbx-sql-dialect", "dbx-types"],
-  "dbx-sql-schema": ["dbx-sql-core", "dbx-sql-dialect", "dbx-types"],
-  "dbx-sql": ["dbx-sql-core", "dbx-sql-data", "dbx-sql-dialect", "dbx-sql-schema", "dbx-types"],
-  "dbx-ai-provider": ["dbx-platform"],
-  "dbx-plugin-runtime": ["dbx-platform", "dbx-types"],
-  "dbx-driver-support": ["dbx-platform", "dbx-types"],
-  "dbx-driver-agent": ["dbx-platform", "dbx-sql-core", "dbx-types"],
-  "dbx-driver-elasticsearch": ["dbx-driver-support", "dbx-types"],
-  "dbx-driver-mongodb": ["dbx-driver-support", "dbx-types"],
-  "dbx-driver-mysql": ["dbx-driver-support", "dbx-sql-core", "dbx-sql-dialect", "dbx-types"],
-  "dbx-driver-postgres": ["dbx-driver-support", "dbx-sql-core", "dbx-types"],
-  "dbx-driver-redis": ["dbx-driver-support", "dbx-types"],
-  "dbx-driver-sqlserver": ["dbx-driver-support", "dbx-sql-core", "dbx-sql-data", "dbx-types"],
-  "dbx-sqlite-worker": [],
-  "dbx-drivers": ["dbx-driver-agent", "dbx-driver-elasticsearch", "dbx-driver-mongodb", "dbx-driver-mysql", "dbx-driver-postgres", "dbx-driver-redis", "dbx-driver-sqlserver", "dbx-driver-support", "dbx-platform", "dbx-sql-core", "dbx-sql-data", "dbx-sql-dialect", "dbx-types", "dbx-sqlite-worker"],
-  "dbx-core": ["dbx-drivers", "dbx-sql", "dbx-types", "dbx-platform", "dbx-ai-provider", "dbx-plugin-runtime", "dbx-formats"],
-  "dbx-mcp": ["dbx-core"],
-  "dbx-cli": ["dbx-core", "dbx-mcp"],
-  "dbx-web": ["dbx-core", "dbx-mcp"],
-  dbx: ["dbx-core", "dbx-mcp", "dbx-tauri-consul", "dbx-tauri-schema"],
-  "dbx-tauri-consul": ["dbx-core"],
-  "dbx-tauri-schema": ["dbx-core"],
+  "linop-db-types": [],
+  "linop-db-platform": [],
+  "linop-db-formats": [],
+  "linop-db-sql-core": ["linop-db-types"],
+  "linop-db-sql-dialect": ["linop-db-types"],
+  "linop-db-sql-data": ["linop-db-sql-core", "linop-db-sql-dialect", "linop-db-types"],
+  "linop-db-sql-schema": ["linop-db-sql-core", "linop-db-sql-dialect", "linop-db-types"],
+  "linop-db-sql": ["linop-db-sql-core", "linop-db-sql-data", "linop-db-sql-dialect", "linop-db-sql-schema", "linop-db-types"],
+  "linop-db-ai-provider": ["linop-db-platform"],
+  "linop-db-plugin-runtime": ["linop-db-platform", "linop-db-types"],
+  "linop-db-driver-support": ["linop-db-platform", "linop-db-types"],
+  "linop-db-driver-agent": ["linop-db-platform", "linop-db-sql-core", "linop-db-types"],
+  "linop-db-driver-elasticsearch": ["linop-db-driver-support", "linop-db-types"],
+  "linop-db-driver-mongodb": ["linop-db-driver-support", "linop-db-types"],
+  "linop-db-driver-mysql": ["linop-db-driver-support", "linop-db-sql-core", "linop-db-sql-dialect", "linop-db-types"],
+  "linop-db-driver-postgres": ["linop-db-driver-support", "linop-db-sql-core", "linop-db-types"],
+  "linop-db-driver-redis": ["linop-db-driver-support", "linop-db-types"],
+  "linop-db-driver-sqlserver": ["linop-db-driver-support", "linop-db-sql-core", "linop-db-sql-data", "linop-db-types"],
+  "linop-db-sqlite-worker": [],
+  "linop-db-drivers": ["linop-db-driver-agent", "linop-db-driver-elasticsearch", "linop-db-driver-mongodb", "linop-db-driver-mysql", "linop-db-driver-postgres", "linop-db-driver-redis", "linop-db-driver-sqlserver", "linop-db-driver-support", "linop-db-platform", "linop-db-sql-core", "linop-db-sql-data", "linop-db-sql-dialect", "linop-db-types", "linop-db-sqlite-worker"],
+  "linop-db-core": ["linop-db-drivers", "linop-db-sql", "linop-db-types", "linop-db-platform", "linop-db-ai-provider", "linop-db-plugin-runtime", "linop-db-formats"],
+  "linop-db-mcp": ["linop-db-core"],
+  "linop-db-cli": ["linop-db-core", "linop-db-mcp"],
+  "linop-db-web": ["linop-db-core", "linop-db-mcp"],
+  dbx: ["linop-db-core", "linop-db-mcp", "linop-db-tauri-consul", "linop-db-tauri-schema"],
+  "linop-db-tauri-consul": ["linop-db-core"],
+  "linop-db-tauri-schema": ["linop-db-core"],
 };
 const metadata = {
   workspace_members: Object.keys(graph),
@@ -85,9 +85,9 @@ test("only an exact contributor snapshot diff skips desktop frontend validation"
 });
 
 test("foundation changes select transitive consumers and standalone DuckDB", () => {
-  const result = plan(["crates/dbx-types/src/lib.rs"]);
+  const result = plan(["crates/linop-db-types/src/lib.rs"]);
   assert.deepEqual(groups(result), ["foundation", "drivers", "application"]);
-  for (const name of ["dbx-types", "dbx-sql", "dbx-drivers", "dbx-core", "dbx-web", "dbx-cli", "dbx-mcp", "dbx"]) {
+  for (const name of ["linop-db-types", "linop-db-sql", "linop-db-drivers", "linop-db-core", "linop-db-web", "linop-db-cli", "linop-db-mcp", "dbx"]) {
     assert.ok(result.affected_packages.includes(name), name);
   }
   assert.deepEqual(result.agent_rust.include, [{ driver: "duckdb" }]);
@@ -98,35 +98,35 @@ test("foundation changes select transitive consumers and standalone DuckDB", () 
 });
 
 test("core and consumer changes do not pull unrelated foundation test groups", () => {
-  assert.deepEqual(groups(plan(["crates/dbx-core/src/query/mod.rs"])), ["application"]);
-  const cli = plan(["crates/dbx-cli/src/main.rs"]);
+  assert.deepEqual(groups(plan(["crates/linop-db-core/src/query/mod.rs"])), ["application"]);
+  const cli = plan(["crates/linop-db-cli/src/main.rs"]);
   assert.deepEqual(groups(cli), ["application"]);
   assert.equal(cli.agents, false);
-  assert.deepEqual(groups(plan(["crates/dbx-driver-postgres/src/postgres.rs"])), ["drivers", "application"]);
+  assert.deepEqual(groups(plan(["crates/linop-db-driver-postgres/src/postgres.rs"])), ["drivers", "application"]);
 });
 
 test("Win7 candidate follows the desktop package dependency graph", () => {
-  assert.equal(plan(["crates/dbx-core/src/query/mod.rs"]).windows_win7_candidate, true);
-  assert.equal(plan(["crates/dbx-drivers/src/lib.rs"]).windows_win7_candidate, true);
-  assert.equal(plan(["crates/dbx-cli/src/main.rs"]).windows_win7_candidate, false);
+  assert.equal(plan(["crates/linop-db-core/src/query/mod.rs"]).windows_win7_candidate, true);
+  assert.equal(plan(["crates/linop-db-drivers/src/lib.rs"]).windows_win7_candidate, true);
+  assert.equal(plan(["crates/linop-db-cli/src/main.rs"]).windows_win7_candidate, false);
 });
 
 test("ordinary desktop Rust changes keep Windows compilation without full Win7 packaging", () => {
   for (const file of [
-    "crates/dbx-core/src/query/mod.rs",
-    "crates/dbx-core/tests/runtime_diagnostic_history.rs",
-    "crates/dbx-drivers/src/lib.rs",
-    "crates/dbx-driver-postgres/src/postgres.rs",
-    "crates/dbx-driver-mysql/tests/query.rs",
+    "crates/linop-db-core/src/query/mod.rs",
+    "crates/linop-db-core/tests/runtime_diagnostic_history.rs",
+    "crates/linop-db-drivers/src/lib.rs",
+    "crates/linop-db-driver-postgres/src/postgres.rs",
+    "crates/linop-db-driver-mysql/tests/query.rs",
     "src-tauri/src/commands/query.rs",
-    "crates/dbx-tauri-consul/src/lib.rs",
-    "crates/dbx-tauri-schema/src/lib.rs",
+    "crates/linop-db-tauri-consul/src/lib.rs",
+    "crates/linop-db-tauri-schema/src/lib.rs",
   ]) {
     const result = plan([file]);
     assert.equal(result.windows_standard, true, file);
     assert.equal(result.windows_win7_bundle, false, file);
   }
-  for (const file of ["crates/dbx-cli/src/main.rs", "crates/dbx-web/src/routes/transfer.rs", "docs/README.md"]) {
+  for (const file of ["crates/linop-db-cli/src/main.rs", "crates/linop-db-web/src/routes/transfer.rs", "docs/README.md"]) {
     const result = plan([file]);
     assert.equal(result.windows_standard, false, file);
     assert.equal(result.windows_win7_bundle, false, file);
@@ -134,7 +134,7 @@ test("ordinary desktop Rust changes keep Windows compilation without full Win7 p
 });
 
 test("old Win7 Rust paths remain candidates through the dependency graph", () => {
-  for (const file of ["src-tauri/src/commands/update.rs", "crates/dbx-core/src/host/update.rs", "crates/dbx-driver-postgres/src/postgres.rs", "crates/dbx-platform/src/lib.rs"]) {
+  for (const file of ["src-tauri/src/commands/update.rs", "crates/linop-db-core/src/host/update.rs", "crates/linop-db-driver-postgres/src/postgres.rs", "crates/linop-db-platform/src/lib.rs"]) {
     assert.equal(plan([file]).windows_win7_candidate, true, file);
   }
 });
@@ -164,8 +164,8 @@ test("Win7 infrastructure changes remain candidates outside the Cargo graph", ()
     "src-tauri/tauri.conf.json",
     "src-tauri/tauri.windows.conf.json",
     "src-tauri/src/commands/update.rs",
-    "crates/dbx-core/src/host/update.rs",
-    "crates/dbx-platform/src/lib.rs",
+    "crates/linop-db-core/src/host/update.rs",
+    "crates/linop-db-platform/src/lib.rs",
   ]) {
     const result = plan([file]);
     assert.equal(result.windows_win7_candidate, true, file);
@@ -183,7 +183,7 @@ test("Windows stack test changes run the standard Windows checks", () => {
 });
 
 test("Win7 dependency inputs fail open", () => {
-  for (const file of ["Cargo.toml", "Cargo.lock", "src-tauri/Cargo.toml", "crates/dbx-cli/Cargo.toml"]) {
+  for (const file of ["Cargo.toml", "Cargo.lock", "src-tauri/Cargo.toml", "crates/linop-db-cli/Cargo.toml"]) {
     assert.equal(plan([file]).windows_win7_candidate, true, file);
     assert.equal(plan([file]).windows_standard, true, file);
     assert.equal(plan([file]).windows_win7_bundle, true, file);
@@ -200,7 +200,7 @@ test("unknown Rust changes and unknown diffs remain Win7 candidates", () => {
   const fixture = structuredClone(metadata);
   fixture.workspace_members.push("new-engine");
   fixture.packages.push({ id: "new-engine", name: "new-engine", manifest_path: `${root}/crates/new-engine/Cargo.toml`, dependencies: [] });
-  const result = plan(["crates/dbx-web/src/lib.rs"], { metadata: fixture });
+  const result = plan(["crates/linop-db-web/src/lib.rs"], { metadata: fixture });
   assert.equal(result.windows_standard, true);
   assert.equal(result.windows_win7_bundle, true);
   assert.equal(result.windows_win7_reasons.unknown_member, true);
@@ -222,9 +222,9 @@ test("Win7 affected packages stay independent from full Rust coverage", () => {
 test("Win7 candidate reports each routing reason", () => {
   assert.equal(plan([".github/scripts/assert-win7-pe-compat.ps1"]).windows_win7_reasons.infrastructure, true);
   assert.equal(plan(["Cargo.lock"]).windows_win7_reasons.dependency_input, true);
-  assert.equal(plan(["crates/dbx-core/src/lib.rs"]).windows_win7_reasons.desktop_dependency, true);
+  assert.equal(plan(["crates/linop-db-core/src/lib.rs"]).windows_win7_reasons.desktop_dependency, true);
   assert.equal(plan(["crates/new-engine/src/lib.rs"]).windows_win7_reasons.unknown_rust, true);
-  assert.deepEqual(plan(["crates/dbx-cli/src/main.rs"]).windows_win7_reasons, {
+  assert.deepEqual(plan(["crates/linop-db-cli/src/main.rs"]).windows_win7_reasons, {
     infrastructure: false,
     dependency_input: false,
     desktop_dependency: false,
@@ -237,8 +237,8 @@ test("code generation and test-only dependencies participate in impact analysis"
   assert.deepEqual(groups(plan(["plugins/connection-types/postgres.yaml"])), ["foundation", "drivers", "application"]);
   assert.deepEqual(groups(plan(["plugins/dialects/postgres.yaml"])), ["foundation", "drivers", "application"]);
   const fixture = structuredClone(metadata);
-  fixture.packages.find((pkg) => pkg.name === "dbx-types").dependencies.push({ name: "dbx-formats", kind: "dev" });
-  assert.ok(plan(["crates/dbx-formats/src/lib.rs"], { metadata: fixture }).affected_packages.includes("dbx-types"));
+  fixture.packages.find((pkg) => pkg.name === "linop-db-types").dependencies.push({ name: "linop-db-formats", kind: "dev" });
+  assert.ok(plan(["crates/linop-db-formats/src/lib.rs"], { metadata: fixture }).affected_packages.includes("linop-db-types"));
 });
 
 for (const file of [
@@ -247,7 +247,7 @@ for (const file of [
   ".cargo/config.toml",
   "rust-toolchain.toml",
   "vendor/wry/src/lib.rs",
-  "crates/dbx-sql/Cargo.toml",
+  "crates/linop-db-sql/Cargo.toml",
   ".github/workflows/ci.yml",
   ".github/scripts/ci-plan.mjs",
   ".github/scripts/ci-gate.test.mjs",
@@ -269,14 +269,14 @@ for (const file of [
 }
 
 test("main and unknown graph changes fail open to full test coverage", () => {
-  assert.deepEqual(groups(plan(["crates/dbx-core/src/lib.rs"], { eventName: "push" })), ["workspace"]);
+  assert.deepEqual(groups(plan(["crates/linop-db-core/src/lib.rs"], { eventName: "push" })), ["workspace"]);
   assert.deepEqual(groups(plan(["crates/new-engine/src/lib.rs"])), ["workspace"]);
   assert.deepEqual(groups(plan(null)), ["workspace"]);
   const fixture = structuredClone(metadata);
   fixture.packages.push({ name: "new-member", id: "new-member", manifest_path: `${root}/crates/new-member/Cargo.toml`, dependencies: [] });
   fixture.workspace_members.push("new-member");
-  assert.deepEqual(groups(plan(["crates/dbx-core/src/lib.rs"], { metadata: fixture })), ["workspace"]);
-  assert.equal(plan(["crates/dbx-core/src/lib.rs"], { metadata: fixture }).rust_groups_known, false);
+  assert.deepEqual(groups(plan(["crates/linop-db-core/src/lib.rs"], { metadata: fixture })), ["workspace"]);
+  assert.equal(plan(["crates/linop-db-core/src/lib.rs"], { metadata: fixture }).rust_groups_known, false);
   assert.deepEqual(groups(plan(["scripts/core-architecture.test.mjs"])), ["workspace"]);
 });
 
@@ -314,7 +314,7 @@ test("known JDBC driver changes only select Java agent tests", () => {
 });
 
 test("shared Agent inputs and unknown native modules never silently lose coverage", () => {
-  for (const file of ["agents/common/src/main/java/Protocol.java", "agents/scripts/validate_agents.py", "agents/build.gradle", "agents/drivers/new-driver/main.go", "crates/dbx-driver-agent/assets/agent-protocol-v2.json", ".github/workflows/agents-release.yml"]) {
+  for (const file of ["agents/common/src/main/java/Protocol.java", "agents/scripts/validate_agents.py", "agents/build.gradle", "agents/drivers/new-driver/main.go", "crates/linop-db-driver-agent/assets/agent-protocol-v2.json", ".github/workflows/agents-release.yml"]) {
     const result = plan([file]);
     assert.equal(result.agent_go.include.length, goAgents.length, file);
     assert.equal(result.agent_integration.include.length, 16, file);
@@ -366,7 +366,7 @@ test("Rust groups cover the actual workspace metadata, including extracted Tauri
   const actual = cargoMetadata(repository);
   const members = actual.packages.filter((pkg) => actual.workspace_members.includes(pkg.id)).map((pkg) => pkg.name);
   assert.deepEqual(Object.values(rustGroups).flat().toSorted(), members.toSorted());
-  const result = planCi({ files: ["crates/dbx-core/tests/runtime_diagnostic_history.rs", "crates/dbx-web/src/routes/transfer.rs"], metadata: actual, root: repository });
+  const result = planCi({ files: ["crates/linop-db-core/tests/runtime_diagnostic_history.rs", "crates/linop-db-web/src/routes/transfer.rs"], metadata: actual, root: repository });
   assert.equal(result.rust_groups_known, true);
   assert.equal(result.rust_full, false);
   assert.deepEqual(groups(result), ["application"]);
@@ -383,7 +383,7 @@ test("workspace Cargo flags preserve full versus fast coverage and strict clippy
     const features = command.at(-1).split(",");
     assert.ok(command.includes("--workspace"));
     assert.ok(command.includes("--locked"));
-    for (const pkg of ["dbx", "dbx-core", "dbx-web"]) {
+    for (const pkg of ["dbx", "linop-db-core", "linop-db-web"]) {
       for (const feature of ["duckdb-sidecar", "dynamodb", "mq-admin", "sqlite-sqlcipher"]) assert.ok(features.includes(`${pkg}/${feature}`));
       assert.equal(features.includes(`${pkg}/system-fonts`), mode === "full");
     }
@@ -467,7 +467,7 @@ test("the frontend gate checks every selected frontend job", () => {
 });
 
 test("git diff routing includes both sides of renames, deleted files, and unusual filenames", () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "dbx-ci-plan-"));
+  const directory = mkdtempSync(path.join(tmpdir(), "linop-db-ci-plan-"));
   const git = (...args) => execFileSync("git", args, { cwd: directory, encoding: "utf8", stdio: "pipe" }).trim();
   try {
     git("init");
@@ -529,8 +529,8 @@ test("the final gate requires both Windows jobs when the bundle routing is selec
 });
 
 test("the final gate independently requires standard Windows compilation without Win7 packaging", () => {
-  const needs = results(["crates/dbx-core/src/query/mod.rs"]);
-  const selected = plan(["crates/dbx-core/src/query/mod.rs"]);
+  const needs = results(["crates/linop-db-core/src/query/mod.rs"]);
+  const selected = plan(["crates/linop-db-core/src/query/mod.rs"]);
   needs.rust = needs.agents = { result: "success" };
   for (const [job, output] of Object.entries(routedJobs)) {
     needs.changes.outputs[output] = String(selected[output] ?? false);
@@ -552,13 +552,13 @@ test("coverage audit rejects lost features, omitted packages, and overlapping gr
   const coverage = { workspace: Object.fromEntries(Object.keys(graph).map((name) => [name, ["fixture"]])), ...Object.fromEntries(Object.entries(rustGroups).map(([group, packages]) => [group, Object.fromEntries(packages.map((name) => [name, ["fixture"]]))])) };
   assertCoverage(coverage);
   const lost = structuredClone(coverage);
-  lost.foundation["dbx-types"] = [];
+  lost.foundation["linop-db-types"] = [];
   assert.throws(() => assertCoverage(lost), /lost workspace features/);
   const missing = structuredClone(coverage);
-  delete missing.drivers["dbx-drivers"];
+  delete missing.drivers["linop-db-drivers"];
   assert.throws(() => assertCoverage(missing), /wrong packages/);
   const overlap = structuredClone(coverage);
-  overlap.foundation["dbx-core"] = ["fixture"];
+  overlap.foundation["linop-db-core"] = ["fixture"];
   assert.throws(() => assertCoverage(overlap), /wrong packages/);
-  assert.deepEqual(parseCoverage("dbx-core v0.1.0 (/fixture)|default,openapi\n"), { "dbx-core": ["default", "openapi"] });
+  assert.deepEqual(parseCoverage("linop-db-core v0.1.0 (/fixture)|default,openapi\n"), { "linop-db-core": ["default", "openapi"] });
 });

@@ -1,0 +1,10 @@
+[package]
+name = "linop-db-tauri-schema"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88.0"
+
+[dependencies]
+linop-db-core = { path = "../linop-db-core", default-features = false }
+tauri = "2.10.3"
+tokio = { version = "1", features = ["macros", "rt", "sync"] }

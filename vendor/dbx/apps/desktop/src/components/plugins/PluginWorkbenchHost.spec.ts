@@ -116,7 +116,7 @@ describe("PluginWorkbenchHost initialization", () => {
     expect(frame).toBeInstanceOf(HTMLIFrameElement);
     const target = frame!.contentWindow!;
     const postMessage = vi.spyOn(target, "postMessage").mockImplementation(() => {});
-    const ready = () => window.dispatchEvent(new MessageEvent("message", { source: target, data: { source: "dbx-plugin", version: 1, type: "ready" } }));
+    const ready = () => window.dispatchEvent(new MessageEvent("message", { source: target, data: { source: "linop-db-plugin", version: 1, type: "ready" } }));
     ready();
     await vi.waitFor(() => expect(mocks.repushPluginConnection).toHaveBeenCalled());
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -136,9 +136,9 @@ describe("PluginWorkbenchHost initialization", () => {
 
     const { frame } = await mountHost();
     const srcdoc = frame.getAttribute("srcdoc") ?? "";
-    expect(srcdoc).toContain('<script type="module" src="dbx-plugin://localhost/sample/entry/app.mjs"></script>');
-    expect(srcdoc).toContain('<base href="dbx-plugin://localhost/sample/entry/">');
-    expect(srcdoc).toContain("script-src 'unsafe-inline' blob: dbx-plugin:;");
+    expect(srcdoc).toContain('<script type="module" src="linop-db-plugin://localhost/sample/entry/app.mjs"></script>');
+    expect(srcdoc).toContain('<base href="linop-db-plugin://localhost/sample/entry/">');
+    expect(srcdoc).toContain("script-src 'unsafe-inline' blob: linop-db-plugin:;");
     expect(mocks.readPluginUiAsset).not.toHaveBeenCalled();
   });
 
@@ -427,20 +427,20 @@ describe("PluginWorkbenchHost initialization", () => {
     const frame = root.querySelector("iframe")!;
     const target = frame.contentWindow!;
     const postMessage = vi.spyOn(target, "postMessage").mockImplementation(() => {});
-    window.dispatchEvent(new MessageEvent("message", { source: target, data: { source: "dbx-plugin", version: 1, type: "ready" } }));
+    window.dispatchEvent(new MessageEvent("message", { source: target, data: { source: "linop-db-plugin", version: 1, type: "ready" } }));
     await vi.waitFor(() => expect(mocks.repushPluginConnection).toHaveBeenCalled());
     postMessage.mockClear();
 
     window.dispatchEvent(
       new MessageEvent("message", {
         source: target,
-        data: { source: "dbx-plugin", version: 1, type: "request", id: "conn-req-1", method: "host.getConnections", params: {} },
+        data: { source: "linop-db-plugin", version: 1, type: "request", id: "conn-req-1", method: "host.getConnections", params: {} },
       }),
     );
     await vi.waitFor(() =>
       expect(postMessage).toHaveBeenCalledWith(
         expect.objectContaining({
-          source: "dbx-host",
+          source: "linop-db-host",
           type: "response",
           id: "conn-req-1",
           result: expect.arrayContaining([expect.objectContaining({ id: "conn-mysql", name: "Prod MySQL", dbType: "mysql", dialect: "mysql", connected: true, isConnected: true }), expect.objectContaining({ id: "conn-sample", name: "Sample Connection", connected: false, isConnected: false })]),

@@ -88,7 +88,7 @@ function mountMenu(layout: "full" | "grouped" = "full") {
 }
 
 function button(label: string) {
-  const found = [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].find((candidate) => candidate.textContent?.includes(label));
+  const found = [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].find((candidate) => candidate.textContent?.includes(label));
   expect(found, label).toBeDefined();
   return found!;
 }
@@ -113,7 +113,7 @@ describe("QueryEditor extracted context menu", () => {
     state.executableSql = state.selectedSql;
     state.contextObjectTarget = { type: "table", name: "orders", database: "demo" };
     await open();
-    const labels = [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].map((entry) => entry.textContent!);
+    const labels = [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].map((entry) => entry.textContent!);
     expect(labels.indexOf("sidebarMenu.groups.structure")).toBeLessThan(labels.indexOf("sidebarMenu.groups.execution"));
     expect(labels.indexOf("sidebarMenu.groups.copy")).toBeLessThan(labels.indexOf("sidebarMenu.groups.execution"));
     expect(labels.some((label) => label.includes("editor.contextMenu.uppercaseSelection"))).toBe(true);
@@ -140,7 +140,7 @@ describe("QueryEditor extracted context menu", () => {
     await nextTick();
     expect(onClose).not.toHaveBeenCalled();
     expect(button("sidebarMenu.useFull").getAttribute("aria-pressed")).toBe("true");
-    expect(document.querySelector("[data-dbx-context-menu]")?.textContent).not.toContain("sidebarMenu.customize");
+    expect(document.querySelector("[data-linop-db-context-menu]")?.textContent).not.toContain("sidebarMenu.customize");
     expect(button("contextMenu.editStructure").disabled).toBe(false);
     button("sidebarMenu.useFull").click();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -160,11 +160,11 @@ describe("QueryEditor extracted context menu", () => {
     for (const label of ["toolbar.explainPlan", "editor.contextMenu.uppercaseSelection", "editor.contextMenu.lowercaseSelection", "editor.contextMenu.screenshotSelection"]) expect(button(label).disabled).toBe(false);
     settings.editorSettings.sidebarMenuHiddenPrimaryActions["sql-editor"] = ["editor.contextMenu.uppercaseSelection"];
     await open();
-    expect([...document.querySelectorAll("[data-dbx-context-menu] button")].some((entry) => entry.textContent === "editor.contextMenu.uppercaseSelection")).toBe(false);
+    expect([...document.querySelectorAll("[data-linop-db-context-menu] button")].some((entry) => entry.textContent === "editor.contextMenu.uppercaseSelection")).toBe(false);
     button("sidebarMenu.groups.sqlEditor").click();
     await nextTick();
     // Opting out hides the action for good; it must not reappear in its group (#12791).
-    expect([...document.querySelectorAll("[data-dbx-context-menu] button")].some((entry) => entry.textContent === "editor.contextMenu.uppercaseSelection")).toBe(false);
+    expect([...document.querySelectorAll("[data-linop-db-context-menu] button")].some((entry) => entry.textContent === "editor.contextMenu.uppercaseSelection")).toBe(false);
   });
 
   it("promotes saved editor actions without changing the preferences of table menus", async () => {
@@ -229,7 +229,7 @@ describe("QueryEditor extracted context menu", () => {
       state.hideExecutionControls = true;
       state.selectedSql = "SELECT 1";
     });
-    expect(document.querySelector("[data-dbx-context-menu]")!.textContent).not.toContain("editor.contextMenu.executeSelection");
+    expect(document.querySelector("[data-linop-db-context-menu]")!.textContent).not.toContain("editor.contextMenu.executeSelection");
     for (const name of ["cutSelection", "pasteFromClipboard", "commentSelection", "blockCommentSelection", "formatSelectionSql", "compressSelectionSql", "delimitedList", "deleteEmptyLines"]) {
       expect(button(`editor.contextMenu.${name}`).disabled, name).toBe(true);
     }

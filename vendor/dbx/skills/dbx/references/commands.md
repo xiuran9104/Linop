@@ -45,9 +45,9 @@ Prefer a table filter when the task concerns a known subset of the schema.
 
 ```bash
 dbx dbml <connection> --out schema.dbml
-dbx dbml <connection> --out schema.dbml --notes dbx-docs.json --tables users,orders
+dbx dbml <connection> --out schema.dbml --notes linop-db-docs.json --tables users,orders
 dbx docs <connection> --out schema.html --lang en
-dbx docs <connection> --out schema.html --notes dbx-docs.json --lang zh-CN
+dbx docs <connection> --out schema.html --notes linop-db-docs.json --lang zh-CN
 ```
 
 Both commands accept `--schema`, `--database`, and `--tables`. An explicitly supplied `--notes` file must exist.

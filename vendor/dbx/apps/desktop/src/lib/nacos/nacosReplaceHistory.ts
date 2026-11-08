@@ -28,7 +28,7 @@ export function nacosHistoryTarget(connection: Pick<ConnectionConfig, "id" | "ho
 
 export async function withNacosHistoryLock<T>(connectionId: string, action: () => Promise<T>): Promise<T> {
   if (!globalThis.navigator?.locks) throw new Error("nacos-history-storage-unavailable");
-  return navigator.locks.request(`dbx-nacos-replace:${connectionId}`, { ifAvailable: true }, async (lock) => {
+  return navigator.locks.request(`linop-db-nacos-replace:${connectionId}`, { ifAvailable: true }, async (lock) => {
     if (!lock) throw new Error("nacos-history-busy");
     return action();
   });

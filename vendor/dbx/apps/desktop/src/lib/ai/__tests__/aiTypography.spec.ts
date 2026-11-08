@@ -19,9 +19,9 @@ describe("AI conversation typography", () => {
       fontSize: AI_CONVERSATION_FONT_SIZE_DEFAULT,
     });
     expect(aiConversationTypographyCssVariables(undefined)).toEqual({
-      "--dbx-ai-content-font-size": "12px",
-      "--dbx-ai-code-font-size": "12px",
-      "--dbx-ai-inline-code-font-size": "11px",
+      "--linop-db-ai-content-font-size": "12px",
+      "--linop-db-ai-code-font-size": "12px",
+      "--linop-db-ai-inline-code-font-size": "11px",
     });
   });
 
@@ -40,10 +40,10 @@ describe("AI conversation typography", () => {
 
   it("creates scoped prose and monospace code sizes from a custom preference", () => {
     expect(aiConversationTypographyCssVariables({ fontFamily: "Georgia, serif", fontSize: 18 })).toEqual({
-      "--dbx-ai-content-font-family": "Georgia, serif",
-      "--dbx-ai-content-font-size": "18px",
-      "--dbx-ai-code-font-size": "18px",
-      "--dbx-ai-inline-code-font-size": "17px",
+      "--linop-db-ai-content-font-family": "Georgia, serif",
+      "--linop-db-ai-content-font-size": "18px",
+      "--linop-db-ai-code-font-size": "18px",
+      "--linop-db-ai-inline-code-font-size": "17px",
     });
   });
 });

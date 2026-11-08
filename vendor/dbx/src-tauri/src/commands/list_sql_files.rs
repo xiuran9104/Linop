@@ -1,4 +1,4 @@
-use dbx_core::sql::decode_sql_file_bytes;
+use linop_db_core::sql::decode_sql_file_bytes;
 use regex::Regex;
 use serde::Serialize;
 use std::collections::HashSet;
@@ -744,7 +744,7 @@ mod tests {
     async fn file_link_mutations_preserve_the_link_targets() {
         use std::os::unix::fs::symlink;
 
-        let base = std::env::temp_dir().join(format!("dbx-sql-file-links-{}", uuid::Uuid::new_v4()));
+        let base = std::env::temp_dir().join(format!("linop-db-sql-file-links-{}", uuid::Uuid::new_v4()));
         let root = base.join("root");
         std::fs::create_dir_all(&root).unwrap();
         let root_string = root.to_string_lossy().into_owned();
@@ -782,7 +782,7 @@ mod tests {
     async fn file_renames_do_not_replace_symbolic_links() {
         use std::os::unix::fs::symlink;
 
-        let root = std::env::temp_dir().join(format!("dbx-sql-file-link-target-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("linop-db-sql-file-link-target-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let source = root.join("source.sql");
         std::fs::write(&source, "SELECT 1;").unwrap();
@@ -807,7 +807,7 @@ mod tests {
     async fn linked_directories_keep_file_management_within_the_root() {
         use std::os::unix::fs::symlink;
 
-        let base = std::env::temp_dir().join(format!("dbx-sql-folder-link-manage-{}", uuid::Uuid::new_v4()));
+        let base = std::env::temp_dir().join(format!("linop-db-sql-folder-link-manage-{}", uuid::Uuid::new_v4()));
         let root = base.join("root");
         let outside = base.join("outside");
         std::fs::create_dir_all(&root).unwrap();
@@ -890,7 +890,7 @@ mod tests {
 
     #[tokio::test]
     async fn content_search_preserves_tree_filters_decoding_and_skipped_reasons() {
-        let root = std::env::temp_dir().join(format!("dbx-sql-content-search-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("linop-db-sql-content-search-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join("node_modules")).unwrap();
         std::fs::write(root.join(".gitignore"), "*.sql").unwrap();
         std::fs::write(root.join("README"), "请求方式").unwrap();
@@ -932,7 +932,7 @@ mod tests {
 
     #[test]
     fn scan_sql_files_skips_pruned_metadata_directories() {
-        let root = std::env::temp_dir().join(format!("dbx-sql-folder-scan-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("linop-db-sql-folder-scan-{}", uuid::Uuid::new_v4()));
         let idea = root.join(".idea");
         let nested = root.join("queries");
         std::fs::create_dir_all(&idea).unwrap();
@@ -963,7 +963,7 @@ mod tests {
 
     #[test]
     fn scan_sql_files_accepts_user_regular_expressions() {
-        let root = std::env::temp_dir().join(format!("dbx-file-folder-scan-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("linop-db-file-folder-scan-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         std::fs::write(root.join("query.sql"), "SELECT 1;").unwrap();
         std::fs::write(root.join("script.sh"), "echo hello").unwrap();
@@ -1002,7 +1002,7 @@ mod tests {
     fn scan_sql_files_follows_link_targets_without_losing_directory_aliases() {
         use std::os::unix::fs::symlink;
 
-        let workspace = std::env::temp_dir().join(format!("dbx-sql-links-{}", uuid::Uuid::new_v4()));
+        let workspace = std::env::temp_dir().join(format!("linop-db-sql-links-{}", uuid::Uuid::new_v4()));
         let root = workspace.join("root");
         let shared = workspace.join("shared");
         std::fs::create_dir_all(root.join("inside")).unwrap();
@@ -1041,7 +1041,7 @@ mod tests {
     fn scan_sql_files_stops_link_cycles_and_skips_broken_and_pruned_links() {
         use std::os::unix::fs::symlink;
 
-        let workspace = std::env::temp_dir().join(format!("dbx-sql-link-cycles-{}", uuid::Uuid::new_v4()));
+        let workspace = std::env::temp_dir().join(format!("linop-db-sql-link-cycles-{}", uuid::Uuid::new_v4()));
         let root = workspace.join("root");
         let shared = workspace.join("shared");
         std::fs::create_dir_all(root.join("nested")).unwrap();
@@ -1070,7 +1070,7 @@ mod tests {
     async fn content_search_follows_links_and_keeps_tree_display_paths() {
         use std::os::unix::fs::symlink;
 
-        let workspace = std::env::temp_dir().join(format!("dbx-sql-link-search-{}", uuid::Uuid::new_v4()));
+        let workspace = std::env::temp_dir().join(format!("linop-db-sql-link-search-{}", uuid::Uuid::new_v4()));
         let root = workspace.join("root");
         let shared = workspace.join("shared");
         std::fs::create_dir_all(root.join("inside")).unwrap();
@@ -1151,7 +1151,7 @@ mod tests {
 
     #[tokio::test]
     async fn renames_and_deletes_filtered_text_files_within_the_opened_root() {
-        let root = std::env::temp_dir().join(format!("dbx-text-file-manage-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("linop-db-text-file-manage-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let source = root.join("script.sh");
         std::fs::write(&source, "echo hello").unwrap();
@@ -1172,7 +1172,7 @@ mod tests {
 
     #[tokio::test]
     async fn manages_sql_files_within_the_opened_root() {
-        let root = std::env::temp_dir().join(format!("dbx-sql-file-manage-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("linop-db-sql-file-manage-{}", uuid::Uuid::new_v4()));
         let nested = root.join("queries");
         std::fs::create_dir_all(&nested).unwrap();
 
@@ -1197,7 +1197,7 @@ mod tests {
 
     #[tokio::test]
     async fn keeps_the_file_tree_path_representation_for_managed_files() {
-        let root = std::env::temp_dir().join(format!("dbx-sql-file-path-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("linop-db-sql-file-path-{}", uuid::Uuid::new_v4()));
         let nested = root.join("queries");
         let displayed_root = root.join(".");
         let displayed_directory = nested.join(".");
@@ -1223,7 +1223,7 @@ mod tests {
     #[cfg(windows)]
     #[tokio::test]
     async fn renames_files_when_only_the_case_changes() {
-        let root = std::env::temp_dir().join(format!("dbx-sql-file-case-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("linop-db-sql-file-case-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let source = root.join("draft.sql");
         std::fs::write(&source, "SELECT 1;").unwrap();

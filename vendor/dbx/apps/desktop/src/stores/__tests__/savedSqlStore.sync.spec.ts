@@ -4,7 +4,7 @@ import * as api from "@/lib/backend/api";
 import { useSavedSqlStore } from "@/stores/savedSqlStore";
 
 const mocks = vi.hoisted(() => ({
-  syncDir: { value: "/workspace/dbx-sql-sync" as string | null },
+  syncDir: { value: "/workspace/linop-db-sql-sync" as string | null },
 }));
 
 vi.mock("@/lib/backend/tauriRuntime", () => ({ isTauriRuntime: () => true }));
@@ -75,7 +75,7 @@ describe("savedSqlStore directory sync", () => {
     });
     setActivePinia(createPinia());
     vi.clearAllMocks();
-    mocks.syncDir.value = "/workspace/dbx-sql-sync";
+    mocks.syncDir.value = "/workspace/linop-db-sql-sync";
     vi.mocked(api.loadSavedSqlLibrary).mockResolvedValue(library(false));
     vi.mocked(api.loadSavedSqlFilesForSync).mockResolvedValue(library(true).files);
     vi.mocked(api.saveSavedSqlFile).mockImplementation(async (file) => file);
@@ -93,7 +93,7 @@ describe("savedSqlStore directory sync", () => {
     expect(api.loadSavedSqlFile).not.toHaveBeenCalled();
     expect(api.syncSavedSqlDirectory).toHaveBeenCalledTimes(2);
     expect(api.syncSavedSqlDirectory).toHaveBeenLastCalledWith({
-      targetDir: "/workspace/dbx-sql-sync",
+      targetDir: "/workspace/linop-db-sql-sync",
       entries: [
         { folderName: "Reports", fileName: "daily.sql", sql: "SELECT 1;" },
         { folderName: "Reports", fileName: "weekly.sql", sql: "SELECT 7;" },

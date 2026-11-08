@@ -1,9 +1,9 @@
-export const LEGACY_WEBVIEW_CLASS = "dbx-legacy-webview";
+export const LEGACY_WEBVIEW_CLASS = "linop-db-legacy-webview";
 
 /**
  * Verdict recorded by the inline probe in index.html, which runs before this bundle loads.
  * Reading it keeps a single source of truth, so the "upgrade your engine" notice and the
- * `dbx-legacy-webview` fallback layer can never disagree. Unlike the probes below, the inline
+ * `linop-db-legacy-webview` fallback layer can never disagree. Unlike the probes below, the inline
  * one also covers `@layer`, which is what decides whether the shell can be styled at all.
  */
 export type WebViewCompatTier = "ok" | "degraded" | "fatal";

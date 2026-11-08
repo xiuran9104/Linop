@@ -95,10 +95,10 @@ Chunk 体积不等于运行时内存，但能提示哪些功能首次打开会�
 
 代码证据：
 
-- `crates/dbx-core/src/data_compare.rs:227` 到 `250` 通过 `tokio::try_join!` 同时拉取源表和目标表 rows。
-- `crates/dbx-core/src/data_compare.rs:723` 到 `768` 虽然按 batch 查询，但最终 `rows.extend(result.rows)` 聚合到一个 `Vec<Vec<Value>>` 后返回。
-- `crates/dbx-core/src/data_compare.rs:422` 到 `489` 会把两边 rows 转为 compare rows，再收集到 HashMap/order，并 clone added / removed / modified 的 values。
-- `crates/dbx-core/src/data_compare.rs:376` 到 `400` 会生成 `sync_statements`，再 join 成完整 `sync_sql`，SQL 文本本身也可能很大。
+- `crates/linop-db-core/src/data_compare.rs:227` 到 `250` 通过 `tokio::try_join!` 同时拉取源表和目标表 rows。
+- `crates/linop-db-core/src/data_compare.rs:723` 到 `768` 虽然按 batch 查询，但最终 `rows.extend(result.rows)` 聚合到一个 `Vec<Vec<Value>>` 后返回。
+- `crates/linop-db-core/src/data_compare.rs:422` 到 `489` 会把两边 rows 转为 compare rows，再收集到 HashMap/order，并 clone added / removed / modified 的 values。
+- `crates/linop-db-core/src/data_compare.rs:376` 到 `400` 会生成 `sync_statements`，再 join 成完整 `sync_sql`，SQL 文本本身也可能很大。
 - `apps/desktop/src/components/diff/DataCompareDialog.vue:413` 到 `418` 会把 diff row 映射成 selectable diff。
 - `apps/desktop/src/components/diff/DataCompareDialog.vue:500` 到 `528` 会把选中的 diff 发送给后端重建 sync plan。
 - `apps/desktop/src/components/diff/DataCompareDialog.vue:538` 到 `692` 批量表对比会逐表 push 结果，最后 `batchResults.value = results`，完整 diff 留在前端状态里。

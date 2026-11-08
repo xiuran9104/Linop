@@ -180,12 +180,12 @@ describe("RedisValueViewer loose JSON view (issue #14384)", () => {
     await mountViewer();
     viewButton("UTF-8").click();
     await settle();
-    expect(localStorage.getItem("dbx-redis-value-format")).toBe("utf8");
+    expect(localStorage.getItem("linop-db-redis-value-format")).toBe("utf8");
 
     viewButton("redis.jsonView").click();
     await settle();
 
-    expect(localStorage.getItem("dbx-redis-value-format")).toBe("json");
+    expect(localStorage.getItem("linop-db-redis-value-format")).toBe("json");
     expect(document.querySelector("[data-redis-loose-json]")).not.toBeNull();
   });
 

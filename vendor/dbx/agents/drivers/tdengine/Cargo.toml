@@ -1,7 +1,7 @@
 [workspace]
 
 [package]
-name = "dbx-tdengine-driver"
+name = "linop-db-tdengine-driver"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"

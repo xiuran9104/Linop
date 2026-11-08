@@ -22,12 +22,12 @@ bias. Startup and connection samples always use a fresh Agent process.
 
 ## Prepare the fixture
 
-The defaults expect `dbx_agent_bench.agent_bench` with exactly 10,000 or more
+The defaults expect `linop_db_agent_bench.agent_bench` with exactly 10,000 or more
 rows and columns named `id` and `payload`:
 
 ```sql
-CREATE DATABASE IF NOT EXISTS dbx_agent_bench;
-CREATE TABLE IF NOT EXISTS dbx_agent_bench.agent_bench (
+CREATE DATABASE IF NOT EXISTS linop_db_agent_bench;
+CREATE TABLE IF NOT EXISTS linop_db_agent_bench.agent_bench (
   id BIGINT,
   payload STRING
 ) STORED AS ORC;
@@ -42,15 +42,15 @@ candidates.
 Functional parity probe:
 
 ```bash
-GO_AGENT=/tmp/dbx-hive-bench/hive-agent-linux-amd64 \
-JDBC_AGENT_JAR=/tmp/dbx-hive-bench/dbx-agent-hive.jar \
-JAVA_BIN=/tmp/dbx-hive-bench/jre21/bin/java \
+GO_AGENT=/tmp/linop-db-hive-bench/hive-agent-linux-amd64 \
+JDBC_AGENT_JAR=/tmp/linop-db-hive-bench/linop-db-agent-hive.jar \
+JAVA_BIN=/tmp/linop-db-hive-bench/jre21/bin/java \
 HIVE_HOST=127.0.0.1 \
 HIVE_PORT=10000 \
-HIVE_DATABASE=dbx_agent_bench \
+HIVE_DATABASE=linop_db_agent_bench \
 HIVE_URL_PARAMS=auth=noSasl \
 python3 agents/drivers/hive-go/bench/functional_probe.py \
-  > /tmp/dbx-hive-bench/functional-result.json
+  > /tmp/linop-db-hive-bench/functional-result.json
 ```
 
 The functional probe runs the Go candidate only by default. Set
@@ -60,14 +60,14 @@ needed.
 Performance benchmark:
 
 ```bash
-GO_AGENT=/tmp/dbx-hive-bench/hive-agent-linux-amd64 \
-JDBC_AGENT_JAR=/tmp/dbx-hive-bench/dbx-agent-hive.jar \
+GO_AGENT=/tmp/linop-db-hive-bench/hive-agent-linux-amd64 \
+JDBC_AGENT_JAR=/tmp/linop-db-hive-bench/linop-db-agent-hive.jar \
 HIVE_HOST=127.0.0.1 \
 HIVE_PORT=10000 \
-HIVE_DATABASE=dbx_agent_bench \
+HIVE_DATABASE=linop_db_agent_bench \
 HIVE_URL_PARAMS=auth=noSasl \
 python3 agents/drivers/hive-go/bench/agent_compare.py \
-  > /tmp/dbx-hive-bench/result.json
+  > /tmp/linop-db-hive-bench/result.json
 ```
 
 ## Configuration
@@ -97,5 +97,5 @@ credentials outside an isolated compatibility environment, and delete the
 generated directory after validation.
 
 ```bash
-go run ./bench/kdc_fixture -dir /tmp/dbx-hive-kerberos
+go run ./bench/kdc_fixture -dir /tmp/linop-db-hive-kerberos
 ```

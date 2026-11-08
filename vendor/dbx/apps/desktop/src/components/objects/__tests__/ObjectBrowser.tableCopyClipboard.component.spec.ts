@@ -212,7 +212,7 @@ describe("ObjectBrowser table copy", () => {
     columns[1]!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 12, clientY: 14 }));
     expect(mocks.copyToClipboard).not.toHaveBeenCalled();
     const action = await vi.waitFor(() => {
-      const button = [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].find((item) => item.textContent?.includes("contextMenu.copyAdvancedInfo"));
+      const button = [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].find((item) => item.textContent?.includes("contextMenu.copyAdvancedInfo"));
       expect(button).toBeDefined();
       return button!;
     });
@@ -221,7 +221,7 @@ describe("ObjectBrowser table copy", () => {
     columns[2]!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 12, clientY: 14 }));
     expect(mocks.copyToClipboard).toHaveBeenCalledTimes(1);
     const secondAction = await vi.waitFor(() => {
-      const button = [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].find((item) => item.textContent?.includes("contextMenu.copyAdvancedInfo"));
+      const button = [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].find((item) => item.textContent?.includes("contextMenu.copyAdvancedInfo"));
       expect(button).toBeDefined();
       return button!;
     });

@@ -12,16 +12,16 @@ DBX 的 MCP Server 最初只服务 SQL 类数据库，现在已经覆盖 Redis�
 
 | 维度 | 现状 | 代码位置 |
 |---|---|---|
-| 接入 | stdio（独立二进制 `dbx-mcp`）+ Streamable HTTP（单 Bearer Token），已经稳定 | `crates/dbx-mcp/src/{transport,http,http_auth}.rs` |
-| 内置工具 | 28 个静态工具，平铺在一个列表里 | `crates/dbx-mcp/src/server.rs` 的 `#[tool(name = ...)]` |
-| 工具开关 | `allowed_tool_names: Option<Vec<String>>` 扁平白名单；插件靠 `dbx_<prefix>__*` 通配符 | `server.rs::policy_allows_tool` |
-| 执行权限 | `read_only` + `allow_dangerous_sql` 两个布尔值，按 全局 → 分组 → 连接 → 单库 逐级覆盖 | `dbx-core/src/ai/mcp_policy.rs` |
+| 接入 | stdio（独立二进制 `linop-db-mcp`）+ Streamable HTTP（单 Bearer Token），已经稳定 | `crates/linop-db-mcp/src/{transport,http,http_auth}.rs` |
+| 内置工具 | 28 个静态工具，平铺在一个列表里 | `crates/linop-db-mcp/src/server.rs` 的 `#[tool(name = ...)]` |
+| 工具开关 | `allowed_tool_names: Option<Vec<String>>` 扁平白名单；插件靠 `linop_db_<prefix>__*` 通配符 | `server.rs::policy_allows_tool` |
+| 执行权限 | `read_only` + `allow_dangerous_sql` 两个布尔值，按 全局 → 分组 → 连接 → 单库 逐级覆盖 | `linop-db-core/src/ai/mcp_policy.rs` |
 | 资源范围 | 分组/连接白名单 + 连接下的 `database_scope`（All/Selected/None） | `persistence/storage.rs::McpConnectionPolicy` |
 | 特例开关 | `allow_salesforce_dml` 直接挂在连接策略上 | `storage.rs`、`mcp_policy.rs::connection_allows_salesforce_dml` |
-| 插件工具 | 插件作者在 manifest 里声明 `mcp.external_tools: true` 才会对外暴露；只读判定只看 `readOnlyHint`；暴露方式由环境变量 `DBX_MCP_PLUGIN_TOOLS=flat/lazy/both` 控制 | `dbx-mcp/src/plugin_tools.rs`、`plugin-runtime/.../manifest.rs` |
+| 插件工具 | 插件作者在 manifest 里声明 `mcp.external_tools: true` 才会对外暴露；只读判定只看 `readOnlyHint`；暴露方式由环境变量 `DBX_MCP_PLUGIN_TOOLS=flat/lazy/both` 控制 | `linop-db-mcp/src/plugin_tools.rs`、`plugin-runtime/.../manifest.rs` |
 | 插件 AI 开关 | 插件中心里有“内置 AI 可用”的用户开关（`ai_plugin_tool_plugins`）；**外部 MCP 没有用户侧开关** | `PluginAiAccessSection.vue` |
 | 确认 | `prompt_high_risk_sql`：安全写模式下，高危 SQL 需要桌面端确认 | `McpSqlApprovalDialog.vue` |
-| 非 SQL 产品 | Redis、MQ、Salesforce 各自零散地加了专用工具，没有统一规范；Nacos、Consul 等已有完整管理能力（`dbx-core/src/admin/*`），**MCP 还没接** | — |
+| 非 SQL 产品 | Redis、MQ、Salesforce 各自零散地加了专用工具，没有统一规范；Nacos、Consul 等已有完整管理能力（`linop-db-core/src/admin/*`），**MCP 还没接** | — |
 
 ### 1.2 核心问题
 
@@ -30,7 +30,7 @@ DBX 的 MCP Server 最初只服务 SQL 类数据库，现在已经覆盖 Redis�
 3. **工具列表平铺，而且跟连接类型无关。** 用户没有任何 Salesforce 连接，界面上照样出现 3 个 Salesforce 勾选项；28 个工具加上插件工具（上限 512 个），既让界面变得复杂，也会浪费客户端的上下文。
 4. **插件管理分散在两处。** 内置 AI 的开关在插件中心，外部 MCP 只能靠作者声明加上权限页里的通配符白名单，用户没法以插件为单位清楚地控制“这个插件对 MCP 是否开放、开放到什么程度”。
 5. **插件工具的风险只能二选一。** 只有“是否只读”，无法区分普通写入和破坏性操作，确认机制也只覆盖 SQL。
-6. **独立二进制存在版本差。** `dbx-mcp` 和桌面端分别升级，策略文件的格式一旦变化，老版本二进制必须仍然安全（不能因为看不懂新字段而放宽权限）。
+6. **独立二进制存在版本差。** `linop-db-mcp` 和桌面端分别升级，策略文件的格式一旦变化，老版本二进制必须仍然安全（不能因为看不懂新字段而放宽权限）。
 
 ## 2. 设计目标与原则
 
@@ -58,7 +58,7 @@ builtin:sql                  SQL 查询                         execute_query / 
 builtin:redis                Redis                           execute_redis_command
 builtin:mq                   消息队列                         peek_messages / send_message
 builtin:salesforce           Salesforce                      salesforce_current_user / prepare_write / apply_write
-builtin:<product>  (新)      按 §5 规范，每个产品一个提供方     dbx_<product>_* ……
+builtin:<product>  (新)      按 §5 规范，每个产品一个提供方     linop_db_<product>_* ……
   例 builtin:nacos           Nacos 配置 / Nacos 服务 / Nacos 管理（默认关闭）
   例 builtin:consul          Consul KV / Consul 服务 / Consul 管理（默认关闭）
   后续 etcd / zookeeper / elasticsearch / mqtt / milvus …… 同样方式接入
@@ -77,7 +77,7 @@ plugin:<pluginId>            由插件声明（默认一个工具集）       �
 
 ```rust
 pub struct ToolDescriptor {
-    pub name: &'static str,            // dbx_execute_query
+    pub name: &'static str,            // linop_db_execute_query
     pub provider: ProviderId,          // builtin:sql / plugin:io.dbx.ssh
     pub toolset: &'static str,         // sql.query
     /// 工具可能触及的最高访问级别。
@@ -93,9 +93,9 @@ pub struct ToolDescriptor {
 }
 ```
 
-- `access_mode = Classified`：工具本身声明最高级别为 Full，每次调用时由分类器给出实际级别。`execute_query` 继续复用 `sql_risk`：SELECT 判为 Read，普通 DML 判为 Write，DDL/DROP/TRUNCATE 判为 Full。`dbx_nacos_publish_config` 是静态的 Write，`dbx_nacos_delete_config` 是静态的 Full。
+- `access_mode = Classified`：工具本身声明最高级别为 Full，每次调用时由分类器给出实际级别。`execute_query` 继续复用 `sql_risk`：SELECT 判为 Read，普通 DML 判为 Write，DDL/DROP/TRUNCATE 判为 Full。`linop_db_nacos_publish_config` 是静态的 Write，`linop_db_nacos_delete_config` 是静态的 Full。
 - `resource.kinds` 声明适用的连接类型。如果当前**没有任何可见连接**属于这些类型，这个工具集就在 `tools/list` 和界面里自动隐藏（界面上灰显，并提示“无可用连接”）。这样同时解决了“Salesforce 勾选项常驻”和“工具太多”这两个问题。
-- `coverage = Capability(...)`：适用类型不写死，而是从驱动清单 `crates/dbx-core/assets/database-drivers.manifest.json` 中按能力位计算（例如 `queryExecution`、`objectSource`、`metadataBrowse`）。新增或调整一个驱动时，工具的覆盖范围和界面说明自动更新，不需要改 MCP 代码。
+- `coverage = Capability(...)`：适用类型不写死，而是从驱动清单 `crates/linop-db-core/assets/database-drivers.manifest.json` 中按能力位计算（例如 `queryExecution`、`objectSource`、`metadataBrowse`）。新增或调整一个驱动时，工具的覆盖范围和界面说明自动更新，不需要改 MCP 代码。
 
 ### 3.3 统一访问级别
 
@@ -217,7 +217,7 @@ argument = "namespace"         # 工具调用里承载范围的参数，由宿�
 在“能力 → 高级配置”提供默认折叠的设置，控制 DBX 如何向 MCP 客户端提供已授权的插件工具，点击底部“应用”后生效：
 
 - **直接列出（新配置默认）**：逐个提供已授权工具，对应 `flat`。
-- **按需发现**：通过 `dbx_plugin_list` / `dbx_plugin_tools` / `dbx_plugin_call` 查询与调用，对应 `lazy`，需开启“DBX 通用 → 插件发现与调用”。
+- **按需发现**：通过 `linop_db_plugin_list` / `linop_db_plugin_tools` / `linop_db_plugin_call` 查询与调用，对应 `lazy`，需开启“DBX 通用 → 插件发现与调用”。
 - **自动（兼容模式）**：保留原有行为，插件工具总数 ≤ 40 时直接列出，超过时按需发现。已有模式不迁移；旧配置缺少该字段时保持原有自动行为。
 
 环境变量继续保留，用于覆盖设置。
@@ -230,7 +230,7 @@ argument = "namespace"         # 工具调用里承载范围的参数，由宿�
 
 | 情况 | 做法 | 例子 |
 |---|---|---|
-| 多个产品共享一门 DBX 已经统一处理的查询语言 | 共用通用工具，由方言层处理差异 | 所有 SQL 数据库共用 `dbx_execute_query`、`dbx_describe_table` 等 |
+| 多个产品共享一门 DBX 已经统一处理的查询语言 | 共用通用工具，由方言层处理差异 | 所有 SQL 数据库共用 `linop_db_execute_query`、`linop_db_describe_table` 等 |
 | 产品有自己的数据模型、命令或 API | **按产品单独提供工具**，不做跨产品抽象 | Nacos、Consul、Redis、Elasticsearch、MQTT …… |
 
 按产品区分的原因：各产品功能虽然相近，但细节差异大（Nacos 的 dataId + group + namespace 与配置回滚；Consul KV 的 CAS / ModifyIndex 与 datacenter；etcd 的 revision 与 lease）。强行统一要么丢能力，要么参数里塞满“仅某产品有效”的字段，模型调用时容易出错。
@@ -242,13 +242,13 @@ argument = "namespace"         # 工具调用里承载范围的参数，由宿�
 | 项 | 要求 |
 |---|---|
 | 提供方 | id 为 `builtin:<product>`；声明适用的连接类型（`db_type`），默认一个连接类型对应一个提供方 |
-| 工具命名 | `dbx_<product>_<动作>_<对象>`，例如 `dbx_nacos_publish_config`。不得包含 `__`（`dbx_<prefix>__<tool>` 保留给插件） |
+| 工具命名 | `linop_db_<product>_<动作>_<对象>`，例如 `linop_db_nacos_publish_config`。不得包含 `__`（`linop_db_<prefix>__<tool>` 保留给插件） |
 | 工具集划分 | 按业务场景拆分，例如“配置”“服务”“KV”。日常场景的工具集默认开启；用户、角色、权限、命名空间增删等管理类操作统一放进“<产品> 管理”工具集，**默认关闭** |
 | 不暴露的操作 | 快照恢复、集群成员变更、License 写入、任意原始 API 透传等集群级或无法判定风险的操作，不提供 MCP 工具 |
 | 访问级别 | 每个工具在描述符里声明 Read / Write / Full（§3.3）。产品有自己的命令语言时（如 Redis），提供分类器逐次判定（`Classified`） |
 | 子范围 | 声明本产品的子范围种类（如 namespace、datacenter、db index、index、topic），并提供列举方法，供访问控制树懒加载；带子范围的工具必须把它作为显式参数，由宿主校验 |
 | 硬保护 | 复用连接只读保护、生产保护；产品自身已有的写保护（如 Consul 的 `ensure_writable_core`）继续生效 |
-| 实现位置 | 业务逻辑复用 `dbx-core/src/admin/<product>` 中已有的实现；MCP 层（`dbx-mcp/src/providers/<product>.rs`）只做参数映射、权限判定和结果整形，不重复实现业务 |
+| 实现位置 | 业务逻辑复用 `linop-db-core/src/admin/<product>` 中已有的实现；MCP 层（`linop-db-mcp/src/providers/<product>.rs`）只做参数映射、权限判定和结果整形，不重复实现业务 |
 | 确认预览 | Write / Full 工具需要给确认弹窗提供变更摘要：发布类给出前后 diff，批量删除类先预览影响范围 |
 | 界面与文案 | 工具集标题、说明和工具说明提供中英文 i18n；能力 Tab 自动生成卡片，不需要为产品单独写界面 |
 | 测试 | 描述符完整性测试（每个工具都有工具集、级别、适用连接类型）；权限判定测试（各级别 × 子范围）；至少一条正常调用的集成测试 |
@@ -261,46 +261,46 @@ argument = "namespace"         # 工具调用里承载范围的参数，由宿�
 
 #### 示例一：Nacos
 
-实现复用 `crates/dbx-core/src/admin/nacos` 中已有的 `nacos_*_core` 函数。子范围：namespace。
+实现复用 `crates/linop-db-core/src/admin/nacos` 中已有的 `nacos_*_core` 函数。子范围：namespace。
 
 | 工具集 | 工具 | 级别 | 对应现有实现 |
 |---|---|---|---|
-| Nacos 配置（默认开启） | `dbx_nacos_list_configs` | Read | `nacos_list_configs_core` |
-| | `dbx_nacos_get_config` | Read | `nacos_get_config_core` |
-| | `dbx_nacos_search_configs` | Read | `nacos_search_config_content_core` |
-| | `dbx_nacos_config_history` | Read | `nacos_list_config_history_core` / `nacos_get_config_history_core` |
-| | `dbx_nacos_publish_config` | Write | `nacos_publish_config_core` |
-| | `dbx_nacos_rollback_config` | Write | `nacos_rollback_config_core` |
-| | `dbx_nacos_delete_config` | Full | `nacos_delete_config_core` |
-| Nacos 服务（默认开启） | `dbx_nacos_list_services` | Read | `nacos_list_services_core` |
-| | `dbx_nacos_get_service` | Read | `nacos_get_service_core` |
-| | `dbx_nacos_list_instances` | Read | `nacos_list_instances_core` |
-| | `dbx_nacos_update_instance` | Write | `nacos_update_instance_core`（上下线、权重、元数据） |
-| | `dbx_nacos_register_instance` / `dbx_nacos_deregister_instance` | Write / Full | `nacos_register_instance_core` / `nacos_deregister_instance_core` |
-| Nacos 管理（默认关闭） | `dbx_nacos_list_namespaces` | Read | `nacos_list_namespaces_core` |
-| | `dbx_nacos_create_namespace` / `update` / `delete` | Write / Write / Full | `nacos_*_namespace_core` |
-| | `dbx_nacos_list_users` / 用户与角色变更 | Read / Full | `nacos_*_user_core`、`nacos_assign_role_core` 等 |
+| Nacos 配置（默认开启） | `linop_db_nacos_list_configs` | Read | `nacos_list_configs_core` |
+| | `linop_db_nacos_get_config` | Read | `nacos_get_config_core` |
+| | `linop_db_nacos_search_configs` | Read | `nacos_search_config_content_core` |
+| | `linop_db_nacos_config_history` | Read | `nacos_list_config_history_core` / `nacos_get_config_history_core` |
+| | `linop_db_nacos_publish_config` | Write | `nacos_publish_config_core` |
+| | `linop_db_nacos_rollback_config` | Write | `nacos_rollback_config_core` |
+| | `linop_db_nacos_delete_config` | Full | `nacos_delete_config_core` |
+| Nacos 服务（默认开启） | `linop_db_nacos_list_services` | Read | `nacos_list_services_core` |
+| | `linop_db_nacos_get_service` | Read | `nacos_get_service_core` |
+| | `linop_db_nacos_list_instances` | Read | `nacos_list_instances_core` |
+| | `linop_db_nacos_update_instance` | Write | `nacos_update_instance_core`（上下线、权重、元数据） |
+| | `linop_db_nacos_register_instance` / `linop_db_nacos_deregister_instance` | Write / Full | `nacos_register_instance_core` / `nacos_deregister_instance_core` |
+| Nacos 管理（默认关闭） | `linop_db_nacos_list_namespaces` | Read | `nacos_list_namespaces_core` |
+| | `linop_db_nacos_create_namespace` / `update` / `delete` | Write / Write / Full | `nacos_*_namespace_core` |
+| | `linop_db_nacos_list_users` / 用户与角色变更 | Read / Full | `nacos_*_user_core`、`nacos_assign_role_core` 等 |
 
 - 发布配置要求传入 `content` 和 `type`；如果当前配置存在，返回的结果里带上变更前后的摘要，方便确认弹窗展示 diff。
-- `dbx_nacos_list_namespaces` 在“管理”工具集关闭时，仍然会以只读方式出现在“Nacos 配置”工具集中（模型需要知道有哪些 namespace），但只列出访问控制树中可见的 namespace。
+- `linop_db_nacos_list_namespaces` 在“管理”工具集关闭时，仍然会以只读方式出现在“Nacos 配置”工具集中（模型需要知道有哪些 namespace），但只列出访问控制树中可见的 namespace。
 
 #### 示例二：Consul
 
-实现复用 `crates/dbx-core/src/admin/consul` 中已有的 `consul_*_core` 函数。子范围：暂无——一个 Consul 连接本身就对应一个 datacenter，按 datacenter 细分没有意义；KV 前缀级授权留待需要时再加。
+实现复用 `crates/linop-db-core/src/admin/consul` 中已有的 `consul_*_core` 函数。子范围：暂无——一个 Consul 连接本身就对应一个 datacenter，按 datacenter 细分没有意义；KV 前缀级授权留待需要时再加。
 
 | 工具集 | 工具 | 级别 | 对应现有实现 |
 |---|---|---|---|
-| Consul KV（默认开启） | `dbx_consul_kv_list` | Read | `consul_list_prefix_core` / `consul_list_recursive_core` |
-| | `dbx_consul_kv_get` | Read | `consul_get_core` |
-| | `dbx_consul_kv_put` | Write | `consul_put_core`（支持 `cas` ModifyIndex） |
-| | `dbx_consul_kv_delete` | Full | `consul_delete_core`；按前缀删除走 `consul_delete_prefix_preview_core` → `execute`，并强制确认 |
-| Consul 服务（默认开启） | `dbx_consul_list_services` | Read | `consul_catalog_services_core` |
-| | `dbx_consul_service_health` | Read | `consul_health_service_core` / `consul_health_checks_core` |
-| | `dbx_consul_list_nodes` | Read | `consul_catalog_nodes_core` |
-| | `dbx_consul_set_maintenance` | Write | `consul_agent_service_maintenance_core` |
-| Consul 管理（默认关闭） | `dbx_consul_acl_list` / `get` | Read | `consul_acl_list_core` / `consul_acl_get_core` |
-| | `dbx_consul_acl_apply` / `delete` | Full | `consul_acl_apply_core` / `consul_acl_delete_core` |
-| | `dbx_consul_intention_*` | Read / Full | `consul_mesh_intention_*_core` |
+| Consul KV（默认开启） | `linop_db_consul_kv_list` | Read | `consul_list_prefix_core` / `consul_list_recursive_core` |
+| | `linop_db_consul_kv_get` | Read | `consul_get_core` |
+| | `linop_db_consul_kv_put` | Write | `consul_put_core`（支持 `cas` ModifyIndex） |
+| | `linop_db_consul_kv_delete` | Full | `consul_delete_core`；按前缀删除走 `consul_delete_prefix_preview_core` → `execute`，并强制确认 |
+| Consul 服务（默认开启） | `linop_db_consul_list_services` | Read | `consul_catalog_services_core` |
+| | `linop_db_consul_service_health` | Read | `consul_health_service_core` / `consul_health_checks_core` |
+| | `linop_db_consul_list_nodes` | Read | `consul_catalog_nodes_core` |
+| | `linop_db_consul_set_maintenance` | Write | `consul_agent_service_maintenance_core` |
+| Consul 管理（默认关闭） | `linop_db_consul_acl_list` / `get` | Read | `consul_acl_list_core` / `consul_acl_get_core` |
+| | `linop_db_consul_acl_apply` / `delete` | Full | `consul_acl_apply_core` / `consul_acl_delete_core` |
+| | `linop_db_consul_intention_*` | Read / Full | `consul_mesh_intention_*_core` |
 
 - 快照恢复、Raft 操作、License 写入这类集群级危险操作**不暴露给 MCP**。
 - 已有的 `ensure_writable_core`（连接只读保护）继续作为硬保护生效。
@@ -309,8 +309,8 @@ argument = "namespace"         # 工具调用里承载范围的参数，由宿�
 
 | 产品 | 现状 | 对齐方式 |
 |---|---|---|
-| Redis | `dbx_execute_redis_command` | 归入 `builtin:redis`；命令分类器给出级别；子范围为 db index |
-| 消息队列 | `dbx_peek_messages` / `dbx_send_message` | 归入 `builtin:mq`；子范围为 topic / queue；补充描述符 |
+| Redis | `linop_db_execute_redis_command` | 归入 `builtin:redis`；命令分类器给出级别；子范围为 db index |
+| 消息队列 | `linop_db_peek_messages` / `linop_db_send_message` | 归入 `builtin:mq`；子范围为 topic / queue；补充描述符 |
 | Salesforce | 3 个专用工具 + `allow_salesforce_dml` 字段 | 归入 `builtin:salesforce`；写入由访问级别控制，专用字段按 §6.2 迁移后移除 |
 | etcd、ZooKeeper、Elasticsearch、MQTT、向量库等 | 未接入 MCP | 按需排期，接入时按 §5.2 清单执行，并在 §5.3 补示例表 |
 
@@ -333,7 +333,7 @@ SQL 类数据库是 §5.1 中“共用通用工具”的情况，**不按数据�
 | 确认 | 独立调用安全在授权后逐次确认高危调用，完全访问也遵循；旧 `prompt_high_risk_sql` 保留临时授权语义，主动切换才迁移 | 新策略与旧配置分别处理 |
 | 硬保护 | 连接只读保护、生产保护保持不变，永远是上限 | 不变 |
 
-**MongoDB**：现在也通过 `dbx_execute_query` 执行 shell 命令。近期保留这条路径以兼容现有配置，级别判定改用 MongoDB 命令分类；后续按 §5.2 新增 `builtin:mongodb` 提供专用工具，`dbx_execute_query` 对 MongoDB 的支持只保留兼容，不再扩展。
+**MongoDB**：现在也通过 `linop_db_execute_query` 执行 shell 命令。近期保留这条路径以兼容现有配置，级别判定改用 MongoDB 命令分类；后续按 §5.2 新增 `builtin:mongodb` 提供专用工具，`linop_db_execute_query` 对 MongoDB 的支持只保留兼容，不再扩展。
 
 #### 5.5.2 覆盖范围说明（界面提示）
 
@@ -402,7 +402,7 @@ SQL 类数据库是 §5.1 中“共用通用工具”的情况，**不按数据�
   ],
   "toolsets": {
     "sql.batch": { "enabled": false },
-    "sql.tx":    { "enabled": true, "tools": { "dbx_commit_transaction": false } }
+    "sql.tx":    { "enabled": true, "tools": { "linop_db_commit_transaction": false } }
   },
   "providers": {
     "plugin:io.dbx.ssh": { "mcp": true, "ai": true, "ceiling": "write", "approvedTools": ["sftp_list_dir", "ssh_exec"] }
@@ -439,7 +439,7 @@ SQL 类数据库是 §5.1 中“共用通用工具”的情况，**不按数据�
 1. `mcp_policy_v2`：新格式，是权威数据。
 2. `mcp_global_policy`（v1）：由 v2 **向下投影**得到，投影规则是“任何情况下都不比 v2 宽”。v1 表达不了的部分（例如按工具集收紧、新的 scope 种类）一律投影成更严的结果，例如直接关闭对应工具。
 
-新版二进制优先读 v2；老版二进制只认识 v1，因此仍然安全。再过两到三个版本后，可以在升级检查里提示用户更新 `dbx-mcp`，然后停写 v1。
+新版二进制优先读 v2；老版二进制只认识 v1，因此仍然安全。再过两到三个版本后，可以在升级检查里提示用户更新 `linop-db-mcp`，然后停写 v1。
 
 ## 7. 确认与审计
 
@@ -551,7 +551,7 @@ MCP Server  [可用]                                         [重新检查] [MCP
 | **P0 工具描述符** ✅ 已实现并完成收尾 | 后端注册内置工具描述符表；新增 `mcp_tool_catalog` 接口；能力 Tab 按工具集展示（底层仍写 `allowed_tool_names`）；从驱动清单计算每个工具的覆盖范围，卡片和抽屉展示覆盖说明（§5.5.2）；能力页中没有适用连接的工具集仍可提前配置；客户端工具列表按连接覆盖情况裁剪；`tools/list` 对外说明追加覆盖范围，不支持的连接类型会列出可用工具 | 无（只是界面重组） | `mcp_catalog.rs`、`server.rs`、`McpCapabilitiesPanel.vue`、`McpPluginCapabilities.vue` |
 | **P1 插件能力** ✅ 已实现 | manifest 新增 `toolsets` / `tools{toolset, access}`，`external_tools: true` 必须声明工具级别；外部 MCP 授权存储 `plugin_mcp_grants`（开关、授权上限、已确认工具及其级别、单工具关闭）；能力 Tab 插件卡片 + 首次授权弹窗 + 新增/升级工具待确认；插件中心显示外部 MCP 状态 | **严格契约**：未声明级别的工具永不暴露，未经用户授权的插件不暴露任何工具，声明级别覆盖 sidecar 自带标注 | `manifest.rs`、`plugin_mcp.rs`、`storage.rs`、`backend.rs`、`McpPluginCapabilities.vue` |
 | **P2 策略 v2** ✅ 已实现并完成收尾 | ① 全局默认权限（原快速预设已按简化方案移除）；② v2 访问模型 `mcp_access.rs` + `decide()`；③ v1↔v2 映射与等价性 / "只会更严" / 精确往返测试；④ 存储 `mcp_access_policy`，v1/v2 同步写入，v1 保存不会抹掉 v2 独有的插件子范围规则；⑤ 访问控制树替换四步向导；⑥ 三端统一读取 v2 策略，WebBackend 不再回退到 v1；⑦ **通用确认**：声明为 `full` 的插件工具、高危 Redis 命令在"高危操作需确认"开启时弹窗一次性确认（桌面不在线一律拒绝），弹窗与 SQL 共用队列和失效机制；⑧ **插件子范围** `mcp.scope`：manifest 声明 kind/title/argument，服务端按 v2 规则校验调用参数里的值，访问控制树里可按连接编辑；⑨ 插件工具暴露方式持久化为 `pluginToolsMode: auto|flat|lazy`，环境变量优先，在“能力 → 高级配置”可设置，新配置默认 `flat`，保留已有模式；⑩ 插件 `scope.list_method` 提供桌面 Tauri / Web 读取值列表接口和复选编辑；⑪ 内置工具描述符向设置页传递 `resourceKinds` / `scopeKind` 元数据 | 判定输入来自 v2；新调用安全先授权再确认，不提升权限；旧 `confirm=full` 临时授权保留且明确标识 | `mcp_access.rs`、`storage.rs`、`approval.rs`、`mcp_bridge.rs`、`mcp_catalog.rs`、`McpSqlApprovalDialog.vue`、`McpPluginScopeEditor.vue`、`app_settings.rs` |
-| **P3 产品能力接入** ✅ Nacos / Consul | 新增 `dbx-mcp/src/products.rs`（按产品分发到 `dbx-core/admin/<product>`）+ 服务端统一门 `run_product_tool`（工具白名单 → 连接类型 → v2 子范围准入与级别 → 连接只读 / 生产保护 → `full` 级走高危确认）。Nacos 14 个已接入工具（命名空间、配置搜索/读写删/历史/回滚、服务、实例注册/注销/上下线），`dbx_nacos_list_namespaces` 按连接的 `namespace` 子范围过滤；子范围 = namespace，访问控制树可按命名空间授权；Consul 8 个工具（KV 读写删带 CAS、服务、节点、健康、维护模式）。管理类（用户 / 角色 / ACL / 命名空间增删）、快照恢复、Raft 未开放。⏳ Redis / MQ / Salesforce 尚未迁到 `products.rs`（行为已符合规范：独立工具、声明级别、确认机制） | 新增能力；Nacos/Consul 在能力 Tab 自动出现工具集卡片 | `products.rs`、`server.rs`、`mcp_catalog.rs`、`McpAccessTree.vue` |
+| **P3 产品能力接入** ✅ Nacos / Consul | 新增 `linop-db-mcp/src/products.rs`（按产品分发到 `linop-db-core/admin/<product>`）+ 服务端统一门 `run_product_tool`（工具白名单 → 连接类型 → v2 子范围准入与级别 → 连接只读 / 生产保护 → `full` 级走高危确认）。Nacos 14 个已接入工具（命名空间、配置搜索/读写删/历史/回滚、服务、实例注册/注销/上下线），`linop_db_nacos_list_namespaces` 按连接的 `namespace` 子范围过滤；子范围 = namespace，访问控制树可按命名空间授权；Consul 8 个工具（KV 读写删带 CAS、服务、节点、健康、维护模式）。管理类（用户 / 角色 / ACL / 命名空间增删）、快照恢复、Raft 未开放。⏳ Redis / MQ / Salesforce 尚未迁到 `products.rs`（行为已符合规范：独立工具、声明级别、确认机制） | 新增能力；Nacos/Consul 在能力 Tab 自动出现工具集卡片 | `products.rs`、`server.rs`、`mcp_catalog.rs`、`McpAccessTree.vue` |
 | **P4 审计** ✅ 已实现 | 调用记录本已存在（每次 MCP 调用写入历史，含工具、连接、耗时、请求/响应摘要、失败原因，历史面板有 MCP 视图和按工具筛选）。本期补充：① 记录发起调用的 **MCP 客户端名称和版本**、传输方式（stdio / HTTP）、声明访问级别及权限模式、确认状态（取自 MCP 调用生命周期，仅记录不参与判定），历史详情显示"MCP 客户端"；② 设置页接入方式中，与接入类型同一行右侧的"查看 MCP 调用记录"，一键打开历史面板并切到 MCP 视图（经设置页的关闭确认流程）；③ 访问控制树的连接和库节点可以直接打开已按资源过滤的 MCP 历史 | 新增 | `server.rs`（call_tool）、`QueryHistory.vue`、`mcpCallHistory.ts`、`McpAccessTree.vue` |
 
 本轮按交接任务 T1→T8 完成收尾：补齐 Nacos 命名空间子范围过滤、只读资源下的静态写工具裁剪、覆盖范围说明和连接类型错误提示、插件工具暴露模式设置、能力页筛选、插件子范围值列表接口与复选编辑、授权文档重写及全部 13 种受支持语言文案。Rust 与前端验证均已执行；需要本地监听端口的既有测试在受限沙盒中会因 `Operation not permitted` 失败，详见 `tmp/codex-mcp-report.md`。

@@ -340,7 +340,7 @@ describe("connectionStore timeout recovery", () => {
     // the saved setting. The persisted blob already carries the value, so it must
     // win over the backup.
     localStorage.setItem(
-      "dbx-timeout-inheritance-backup-v1",
+      "linop-db-timeout-inheritance-backup-v1",
       JSON.stringify({
         version: 1,
         globalConnectTimeoutSecs: 10,
@@ -383,7 +383,7 @@ describe("connectionStore timeout recovery", () => {
     // the persisted settings predate the setting entirely (no global keys on
     // disk) — the case the backup precedence was originally written for.
     localStorage.setItem(
-      "dbx-timeout-inheritance-backup-v1",
+      "linop-db-timeout-inheritance-backup-v1",
       JSON.stringify({
         version: 1,
         globalConnectTimeoutSecs: 7,
@@ -443,7 +443,7 @@ describe("connectionStore timeout recovery", () => {
 
   it("preserves timeout inheritance across downgrade when snapshots are unchanged", async () => {
     localStorage.setItem(
-      "dbx-timeout-inheritance-backup-v1",
+      "linop-db-timeout-inheritance-backup-v1",
       JSON.stringify({
         version: 1,
         globalConnectTimeoutSecs: 7,
@@ -475,7 +475,7 @@ describe("connectionStore timeout recovery", () => {
 
   it("keeps timeout values changed by a downgraded version as local overrides", async () => {
     localStorage.setItem(
-      "dbx-timeout-inheritance-backup-v1",
+      "linop-db-timeout-inheritance-backup-v1",
       JSON.stringify({
         version: 1,
         globalConnectTimeoutSecs: 7,
@@ -587,7 +587,7 @@ describe("connectionStore timeout recovery", () => {
   });
 
   it("fails the export when writing the file fails instead of reporting success", async () => {
-    const save = vi.fn().mockResolvedValue("/home/user/dbx-connections.json");
+    const save = vi.fn().mockResolvedValue("/home/user/linop-db-connections.json");
     const writeTextFile = vi.fn().mockRejectedValue(new Error("disk full"));
     vi.doMock("@/lib/backend/tauriRuntime", () => ({ isTauriRuntime: () => true }));
     vi.doMock("@tauri-apps/plugin-dialog", () => ({ save }));

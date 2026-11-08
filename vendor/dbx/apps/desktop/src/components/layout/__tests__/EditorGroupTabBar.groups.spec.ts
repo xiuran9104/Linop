@@ -780,7 +780,7 @@ describe("EditorGroupTabBar group behavior", () => {
 
     host.querySelector<HTMLElement>(".tab-group-header")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
     await settle();
-    const menu = document.body.querySelector<HTMLElement>("[data-dbx-context-menu]")!;
+    const menu = document.body.querySelector<HTMLElement>("[data-linop-db-context-menu]")!;
     const collapseAll = Array.from(menu.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("Collapse all"));
     expect(collapseAll).toBeDefined();
     collapseAll!.click();
@@ -888,12 +888,12 @@ describe("EditorGroupTabBar group behavior", () => {
       await settle();
       // Current main nests tab batch actions in a submenu; the original base
       // exposes them directly. Exercise the actual menu in either layout.
-      const batchClose = Array.from(document.body.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")).find((button) => button.textContent?.includes("Close multiple tabs"));
+      const batchClose = Array.from(document.body.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")).find((button) => button.textContent?.includes("Close multiple tabs"));
       if (batchClose) {
         batchClose.click();
         await settle();
       }
-      const closeGroup = Array.from(document.body.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")).find((button) => button.textContent?.includes("Close group"));
+      const closeGroup = Array.from(document.body.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")).find((button) => button.textContent?.includes("Close group"));
       expect(closeGroup).toBeDefined();
       closeGroup!.click();
       await settle();
@@ -935,13 +935,13 @@ describe("EditorGroupTabBar group behavior", () => {
     pgPill.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
     await settle();
 
-    const menu = document.body.querySelector<HTMLElement>("[data-dbx-context-menu]")!;
+    const menu = document.body.querySelector<HTMLElement>("[data-linop-db-context-menu]")!;
     expect(menu).not.toBeNull();
     Array.from(menu.querySelectorAll<HTMLButtonElement>("button"))
       .find((button) => button.textContent?.includes("Close multiple tabs"))!
       .click();
     await settle();
-    const closeGroupItem = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")).find((button) => button.textContent?.includes("Close group"));
+    const closeGroupItem = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")).find((button) => button.textContent?.includes("Close group"));
     expect(closeGroupItem).toBeDefined();
     closeGroupItem!.click();
     await settle();
@@ -972,12 +972,12 @@ describe("EditorGroupTabBar group behavior", () => {
     const pgPill = host.querySelector<HTMLElement>(`[data-tab-id="${pgA}"]`)!;
     pgPill.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
     await settle();
-    const menu = document.body.querySelector<HTMLElement>("[data-dbx-context-menu]")!;
+    const menu = document.body.querySelector<HTMLElement>("[data-linop-db-context-menu]")!;
     Array.from(menu.querySelectorAll<HTMLButtonElement>("button"))
       .find((button) => button.textContent?.includes("Close multiple tabs"))!
       .click();
     await settle();
-    const closeGroupItem = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")).find((button) => button.textContent?.includes("Close group"));
+    const closeGroupItem = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")).find((button) => button.textContent?.includes("Close group"));
     expect(closeGroupItem).toBeDefined();
     closeGroupItem!.click();
     await settle();
@@ -1002,7 +1002,7 @@ describe("EditorGroupTabBar group behavior", () => {
     const openMenu = async (tabId: string) => {
       host.querySelector<HTMLElement>(`[data-tab-id="${tabId}"]`)!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
       await settle();
-      const menu = document.body.querySelector<HTMLElement>("[data-dbx-context-menu]")!;
+      const menu = document.body.querySelector<HTMLElement>("[data-linop-db-context-menu]")!;
       return Array.from(menu.querySelectorAll<HTMLButtonElement>("button"));
     };
 
@@ -1176,7 +1176,7 @@ describe("EditorGroupTabBar special page navigation", () => {
     expect(events).toEqual(["close-settings"]);
     tab.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 10, clientY: 10 }));
     await settle();
-    const menu = document.body.querySelector<HTMLElement>("[data-dbx-context-menu]")!;
+    const menu = document.body.querySelector<HTMLElement>("[data-linop-db-context-menu]")!;
     const closeOther = Array.from(menu.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.includes("Close other tabs"))!;
     expect(closeOther).toBeDefined();
     closeOther.click();

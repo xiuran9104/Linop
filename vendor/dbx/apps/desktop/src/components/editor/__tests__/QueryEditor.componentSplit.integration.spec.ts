@@ -510,12 +510,12 @@ describe("QueryEditor component split integration", () => {
     view.contentDOM.dispatchEvent(new MouseEvent("mousedown", { button: 0, detail: 1, clientX: 10, clientY: 10, ctrlKey: copy, bubbles: true, cancelable: true }));
     position.mockReturnValue(11);
     document.dispatchEvent(new MouseEvent("mousemove", { clientX: 30, clientY: 10, ctrlKey: copy, cancelable: true }));
-    expect(document.querySelector(".dbx-editor-selection-drop-cursor")).not.toBeNull();
+    expect(document.querySelector(".linop-db-editor-selection-drop-cursor")).not.toBeNull();
     document.dispatchEvent(new MouseEvent("mouseup", { clientX: 30, clientY: 10, ctrlKey: copy, cancelable: true }));
     await nextTick();
     expect(view.state.doc.toString()).toBe(copy ? "abc def ghidef" : "abc  ghidef");
     expect(props.modelValue).toBe(view.state.doc.toString());
-    expect(document.querySelector(".dbx-editor-selection-drop-cursor")).toBeNull();
+    expect(document.querySelector(".linop-db-editor-selection-drop-cursor")).toBeNull();
   });
 
   it.each(["native", "window"])("connects %s table-reference drops to document updates and caret cleanup", async (source) => {
@@ -525,7 +525,7 @@ describe("QueryEditor component split integration", () => {
     const position = vi.spyOn(view, "posAtCoords").mockReturnValue(7);
     vi.spyOn(view, "coordsAtPos").mockReturnValue({ left: 25, right: 26, top: 30, bottom: 48 });
     view.dispatch({ selection: { anchor: 7, head: 10 } });
-    const payload: QueryEditorTableReferencePayload = { kind: "dbx-table-reference", connectionId: "drop-test", database: "demo", tableName: "users", referenceType: "column", columnName: "id" };
+    const payload: QueryEditorTableReferencePayload = { kind: "linop-db-table-reference", connectionId: "drop-test", database: "demo", tableName: "users", referenceType: "column", columnName: "id" };
     setActiveTableReferencePayload(payload);
     window.dispatchEvent(createTableReferenceHoverEvent({ clientX: 30, clientY: 40 }));
     await nextTick();
@@ -545,7 +545,7 @@ describe("QueryEditor component split integration", () => {
     const root = host.querySelector("[data-query-editor-root]") as HTMLElement;
     vi.spyOn(root, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 200, 100));
     const position = vi.spyOn(view, "posAtCoords").mockReturnValue(10);
-    const payload: QueryEditorTableReferencePayload = { kind: "dbx-table-reference", connectionId: "drop-test", database: "demo", tableName: "users", referenceType: "column", columnName: "id" };
+    const payload: QueryEditorTableReferencePayload = { kind: "linop-db-table-reference", connectionId: "drop-test", database: "demo", tableName: "users", referenceType: "column", columnName: "id" };
     window.dispatchEvent(createTableReferenceDropEvent({ payload, clientX: 30, clientY: 40 }));
     expect(position).not.toHaveBeenCalled();
     expect(view.state.doc.toString()).toBe("SELECT old");

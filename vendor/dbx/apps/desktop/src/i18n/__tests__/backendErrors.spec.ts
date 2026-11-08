@@ -52,7 +52,7 @@ const STRUCTURED_BACKEND_ERROR_KEYS = [
   "backendErrors.unknown",
 ] as const;
 
-// Reproduces the exact string crates/dbx-driver-agent/src/agent_service.rs builds on
+// Reproduces the exact string crates/linop-db-driver-agent/src/agent_service.rs builds on
 // Windows: `\` line continuations strip the newline plus the following indent.
 const WINDOWS_JRE_REMOVE_ERROR = [
   "Failed to remove the old JRE directory: C:\\dbx\\jre21",
@@ -178,7 +178,7 @@ const CASES: { name: string; message: string; key: string; params?: Record<strin
     key: "mongo.import.legacyInsertUnsupported",
   },
   {
-    // crates/dbx-core/src/data/mongodb_import_export.rs attributes a batch-level failure to a row.
+    // crates/linop-db-core/src/data/mongodb_import_export.rs attributes a batch-level failure to a row.
     name: "MongoDB Legacy insertMany unsupported on a located row",
     message: "row 1: MongoDB Legacy Agent does not support insertMany; upgrade or reinstall the MongoDB Legacy driver",
     key: "mongo.import.legacyInsertUnsupported",
@@ -406,7 +406,7 @@ describe("backend error translation", () => {
       messageParams: { stage: "execute" },
       source: "jdbcAgent",
       operationOutcome: "unknown",
-      detail: "relation dbx_table_that_does_not_exist does not exist",
+      detail: "relation linop_db_table_that_does_not_exist does not exist",
     } as const;
 
     expect(normalizeBackendError(error)).toEqual(error);
@@ -424,7 +424,7 @@ describe("backend error translation", () => {
       messageParams: {},
       source: "jdbcAgentLegacy",
       operationOutcome: "unknown",
-      detail: "Table dbx_table_that_does_not_exist does not exist",
+      detail: "Table linop_db_table_that_does_not_exist does not exist",
     } as const;
 
     expect(translateBackendError(t, error)).toBe(`${t(error.messageKey)}\n\n${error.detail}`);
@@ -571,7 +571,7 @@ describe("backend error translation", () => {
   });
 
   test("renders plugin signature failures without exposing the JSON error envelope", () => {
-    const detail = "Plugin package is signed by untrusted key 'dbx-store-release-2026'";
+    const detail = "Plugin package is signed by untrusted key 'linop-db-store-release-2026'";
     const error = JSON.stringify({
       version: 1,
       code: "DBX-LEGACY-0001",
@@ -702,21 +702,21 @@ describe("backend error wording is pinned to the Rust sources", () => {
   const rust = (path: string) => readFileSync(new URL(`../../../../../${path}`, import.meta.url), "utf8");
 
   test.each([
-    ["crates/dbx-core/src/data/query_result_export.rs", "Streaming export cannot page through this query. Export a single SELECT statement, or load the full result first and export the loaded rows."],
-    ["crates/dbx-core/src/data/query_result_export.rs", "A manual transaction cannot use a result cursor, and this query cannot be split into pages. Commit or roll back the transaction, then export again."],
-    ["crates/dbx-sql-data/src/query_result_sql.rs", "This query requires an Agent result session for offset pagination"],
-    ["crates/dbx-core/src/data/query_result_export.rs", "Streaming export needs a result-set session, but this driver returned no session_id."],
-    ["crates/dbx-core/src/data/mongodb_import_export.rs", "MongoDB Legacy Agent does not support insertMany; upgrade or reinstall the MongoDB Legacy driver"],
-    ["crates/dbx-core/src/data/mongodb_import_export.rs", "MongoDB Legacy Agent returned an invalid find cursor"],
-    ["crates/dbx-core/src/query/mongo_ops.rs", "MongoDB Legacy Agent rejected "],
-    ["crates/dbx-driver-agent/src/agent_service.rs", "Failed to remove the old JRE directory: "],
-    ["crates/dbx-driver-agent/src/agent_service.rs", "is in use by drivers: "],
-    ["crates/dbx-driver-agent/src/agent_service.rs", "agent-registry.json not found in the ZIP; not a valid offline driver package."],
-    ["crates/dbx-core/src/admin/mq/adapters/kafka.rs", "Kafka does not support unloading topics"],
-    ["crates/dbx-plugin-runtime/src/plugins/installer.rs", "Plugin update source change requires confirmation:"],
-    ["crates/dbx-plugin-runtime/src/plugins/installer.rs", "Plugin downgrade to version "],
-    ["crates/dbx-web/src/auth.rs", "Please try again in {remaining}s"],
-    ["crates/dbx-web/src/routes/agents.rs", "Close these database connections before updating drivers: "],
+    ["crates/linop-db-core/src/data/query_result_export.rs", "Streaming export cannot page through this query. Export a single SELECT statement, or load the full result first and export the loaded rows."],
+    ["crates/linop-db-core/src/data/query_result_export.rs", "A manual transaction cannot use a result cursor, and this query cannot be split into pages. Commit or roll back the transaction, then export again."],
+    ["crates/linop-db-sql-data/src/query_result_sql.rs", "This query requires an Agent result session for offset pagination"],
+    ["crates/linop-db-core/src/data/query_result_export.rs", "Streaming export needs a result-set session, but this driver returned no session_id."],
+    ["crates/linop-db-core/src/data/mongodb_import_export.rs", "MongoDB Legacy Agent does not support insertMany; upgrade or reinstall the MongoDB Legacy driver"],
+    ["crates/linop-db-core/src/data/mongodb_import_export.rs", "MongoDB Legacy Agent returned an invalid find cursor"],
+    ["crates/linop-db-core/src/query/mongo_ops.rs", "MongoDB Legacy Agent rejected "],
+    ["crates/linop-db-driver-agent/src/agent_service.rs", "Failed to remove the old JRE directory: "],
+    ["crates/linop-db-driver-agent/src/agent_service.rs", "is in use by drivers: "],
+    ["crates/linop-db-driver-agent/src/agent_service.rs", "agent-registry.json not found in the ZIP; not a valid offline driver package."],
+    ["crates/linop-db-core/src/admin/mq/adapters/kafka.rs", "Kafka does not support unloading topics"],
+    ["crates/linop-db-plugin-runtime/src/plugins/installer.rs", "Plugin update source change requires confirmation:"],
+    ["crates/linop-db-plugin-runtime/src/plugins/installer.rs", "Plugin downgrade to version "],
+    ["crates/linop-db-web/src/auth.rs", "Please try again in {remaining}s"],
+    ["crates/linop-db-web/src/routes/agents.rs", "Close these database connections before updating drivers: "],
     ["src-tauri/src/commands/agents.rs", "Close these database connections before updating drivers: "],
     ["src-tauri/src/commands/fs_open.rs", "file does not exist: "],
   ])("%s still emits %j", (path, fragment) => {

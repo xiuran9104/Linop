@@ -1,9 +1,9 @@
-use dbx_ai_provider::ai::{build_ai_http_client, AiConfig};
+use linop_db_ai_provider::ai::{build_ai_http_client, AiConfig};
 
 mod registry;
 
 async fn core_call(config: AiConfig, mode: &str) -> serde_json::Value {
-    use dbx_ai_provider::ai::{complete, list_models_core, stream, test_connection_core, AiCompletionRequest};
+    use linop_db_ai_provider::ai::{complete, list_models_core, stream, test_connection_core, AiCompletionRequest};
     let request: AiCompletionRequest = serde_json::from_value(serde_json::json!({
         "config": config, "systemPrompt": "", "messages": [{"role":"user","content":"hello"}],
         "maxTokens": 16

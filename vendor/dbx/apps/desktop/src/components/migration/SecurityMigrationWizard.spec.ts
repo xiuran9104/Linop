@@ -25,7 +25,7 @@ describe("migration failure actions", () => {
       button("migration.exportDiagnostic").click();
       await nextTick();
       await nextTick();
-      expect(mocks.save).toHaveBeenCalledWith(expect.any(String), "dbx-migration-diagnostic.json", "JSON", "json");
+      expect(mocks.save).toHaveBeenCalledWith(expect.any(String), "linop-db-migration-diagnostic.json", "JSON", "json");
       expect(root.querySelector("textarea")?.value).toContain("statusFailed");
       expect(root.querySelector("textarea")?.value).not.toContain("private transport detail");
       button("migration.retryStatus").click();

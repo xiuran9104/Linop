@@ -89,7 +89,7 @@ BEGIN
    SELECT 1 + 2 INTO PRE_TRD_DATE FROM DUAL;
 END;`;
 
-const oracleConsecutiveNestedBlocks = `CREATE OR REPLACE PROCEDURE dbx_consecutive_blocks AS
+const oracleConsecutiveNestedBlocks = `CREATE OR REPLACE PROCEDURE linop_db_consecutive_blocks AS
 BEGIN
   BEGIN
     NULL;
@@ -100,7 +100,7 @@ BEGIN
   NULL;
 END;`;
 
-const gaussDbNestedProcedure = `CREATE OR REPLACE PROCEDURE public.dbx_issue_4318()
+const gaussDbNestedProcedure = `CREATE OR REPLACE PROCEDURE public.linop_db_issue_4318()
 AS
 BEGIN
   BEGIN
@@ -137,9 +137,9 @@ BEGIN
   );
 END;`;
 
-const gaussDbDollarQuotedFunctionScript = `DROP FUNCTION IF EXISTS dbx_issue_4572_tmp_md5_uuid;
+const gaussDbDollarQuotedFunctionScript = `DROP FUNCTION IF EXISTS linop_db_issue_4572_tmp_md5_uuid;
 
-CREATE OR REPLACE FUNCTION dbx_issue_4572_tmp_md5_uuid (v_str IN TEXT) RETURNS varchar(36) LANGUAGE PLPGSQL IMMUTABLE AS $function$
+CREATE OR REPLACE FUNCTION linop_db_issue_4572_tmp_md5_uuid (v_str IN TEXT) RETURNS varchar(36) LANGUAGE PLPGSQL IMMUTABLE AS $function$
 DECLARE
     str1 TEXT;
 BEGIN
@@ -147,7 +147,7 @@ BEGIN
     RETURN CAST(str1 AS varchar(36));
 END$function$;
 
-DROP FUNCTION IF EXISTS dbx_issue_4572_tmp_missing;`;
+DROP FUNCTION IF EXISTS linop_db_issue_4572_tmp_missing;`;
 
 const gaussDbIssue4573Script = `CREATE OR REPLACE PROCEDURE createIndex (
   dbName IN VARCHAR(32),
@@ -227,76 +227,76 @@ END;
 /
 SELECT 1 AS after_procedure;`;
 
-const postgresFamilyDollarQuotedFunctionScript = `CREATE OR REPLACE FUNCTION dbx_issue_8979_pg() RETURNS int AS $$
+const postgresFamilyDollarQuotedFunctionScript = `CREATE OR REPLACE FUNCTION linop_db_issue_8979_pg() RETURNS int AS $$
 BEGIN
     RETURN 1;
 END;
 $$ LANGUAGE plpgsql;
 /
-SELECT dbx_issue_8979_pg();`;
+SELECT linop_db_issue_8979_pg();`;
 
 const xuguProgrammableObjectFixtures = [
-  `CREATE OR REPLACE PROCEDURE dbx_xugu_procedure AS
+  `CREATE OR REPLACE PROCEDURE linop_db_xugu_procedure AS
   v_value INTEGER;
 BEGIN
   v_value := 1;
 END;`,
-  `CREATE PROCEDURE dbx_xugu_procedure_without_replace AS
+  `CREATE PROCEDURE linop_db_xugu_procedure_without_replace AS
   v_value INTEGER;
 BEGIN
   v_value := 1;
 END;`,
-  `CREATE OR REPLACE FUNCTION dbx_xugu_function RETURN INTEGER AS
+  `CREATE OR REPLACE FUNCTION linop_db_xugu_function RETURN INTEGER AS
 BEGIN
   RETURN 1;
 END;`,
-  `CREATE FUNCTION dbx_xugu_function_without_replace RETURN INTEGER AS
+  `CREATE FUNCTION linop_db_xugu_function_without_replace RETURN INTEGER AS
 BEGIN
   RETURN 1;
 END;`,
-  `CREATE OR REPLACE TRIGGER dbx_xugu_trigger
-BEFORE INSERT ON dbx_xugu_events
+  `CREATE OR REPLACE TRIGGER linop_db_xugu_trigger
+BEFORE INSERT ON linop_db_xugu_events
 FOR EACH ROW
 BEGIN
   NULL;
 END;`,
-  `CREATE TRIGGER dbx_xugu_trigger_without_replace
-BEFORE INSERT ON dbx_xugu_events
+  `CREATE TRIGGER linop_db_xugu_trigger_without_replace
+BEFORE INSERT ON linop_db_xugu_events
 FOR EACH ROW
 BEGIN
   NULL;
 END;`,
-  `CREATE OR REPLACE PACKAGE BODY dbx_xugu_package AS
+  `CREATE OR REPLACE PACKAGE BODY linop_db_xugu_package AS
   PROCEDURE ping AS
   BEGIN
     NULL;
   END ping;
-END dbx_xugu_package;`,
-  `CREATE PACKAGE BODY dbx_xugu_package_without_replace AS
+END linop_db_xugu_package;`,
+  `CREATE PACKAGE BODY linop_db_xugu_package_without_replace AS
   PROCEDURE ping AS
   BEGIN
     NULL;
   END ping;
-END dbx_xugu_package_without_replace;`,
-  `CREATE OR REPLACE FORCE PACKAGE BODY dbx_xugu_force_package AS
+END linop_db_xugu_package_without_replace;`,
+  `CREATE OR REPLACE FORCE PACKAGE BODY linop_db_xugu_force_package AS
   PROCEDURE ping AS
   BEGIN
     NULL;
   END ping;
-END dbx_xugu_force_package;`,
-  `CREATE OR REPLACE NOFORCE PACKAGE BODY dbx_xugu_noforce_package AS
+END linop_db_xugu_force_package;`,
+  `CREATE OR REPLACE NOFORCE PACKAGE BODY linop_db_xugu_noforce_package AS
   PROCEDURE ping AS
   BEGIN
     NULL;
   END ping;
-END dbx_xugu_noforce_package;`,
-  `CREATE OR REPLACE TYPE BODY dbx_xugu_type AS
+END linop_db_xugu_noforce_package;`,
+  `CREATE OR REPLACE TYPE BODY linop_db_xugu_type AS
   MEMBER PROCEDURE ping IS
   BEGIN
     NULL;
   END;
 END;`,
-  `CREATE TYPE BODY dbx_xugu_type_without_replace AS
+  `CREATE TYPE BODY linop_db_xugu_type_without_replace AS
   MEMBER PROCEDURE ping IS
   BEGIN
     NULL;
@@ -801,7 +801,7 @@ SELECT mask_fn(x) FROM t;`;
     ["LOOP", "LOOP\n    EXIT;\n  END LOOP;"],
     ["CASE", "CASE WHEN 1 = 1 THEN\n    NULL;\n  END CASE;"],
   ])("treats %s after a semicolon as a new Oracle scope", (_starter, scope) => {
-    const procedure = `CREATE OR REPLACE PROCEDURE dbx_delimited_scope AS
+    const procedure = `CREATE OR REPLACE PROCEDURE linop_db_delimited_scope AS
 BEGIN
   BEGIN
     NULL;
@@ -842,9 +842,9 @@ END big_pkg;`;
   it("separates GaussDB dollar-quoted functions from surrounding statements", () => {
     const ranges = splitSqlStatementRanges(gaussDbDollarQuotedFunctionScript, "gaussdb");
     expect(rangeSqlTexts(ranges)).toEqual([
-      "DROP FUNCTION IF EXISTS dbx_issue_4572_tmp_md5_uuid",
+      "DROP FUNCTION IF EXISTS linop_db_issue_4572_tmp_md5_uuid",
       gaussDbDollarQuotedFunctionScript.slice(gaussDbDollarQuotedFunctionScript.indexOf("CREATE"), gaussDbDollarQuotedFunctionScript.lastIndexOf(";\n\nDROP")),
-      "DROP FUNCTION IF EXISTS dbx_issue_4572_tmp_missing",
+      "DROP FUNCTION IF EXISTS linop_db_issue_4572_tmp_missing",
     ]);
   });
 
@@ -893,14 +893,14 @@ END pkg_utils_without_replace;`;
   });
 
   it("does not treat PostgreSQL dollar-quoted routines as Oracle-style bodies", () => {
-    const functionSql = `CREATE OR REPLACE FUNCTION dbx_issue_8979_pg() RETURNS int AS $$
+    const functionSql = `CREATE OR REPLACE FUNCTION linop_db_issue_8979_pg() RETURNS int AS $$
 BEGIN
     RETURN 1;
 END;
 $$ LANGUAGE plpgsql`;
 
     for (const databaseType of ["postgres", "opengauss"] as const) {
-      expect(rangeSqlTexts(splitSqlStatementRanges(postgresFamilyDollarQuotedFunctionScript, databaseType))).toEqual([functionSql, "SELECT dbx_issue_8979_pg()"]);
+      expect(rangeSqlTexts(splitSqlStatementRanges(postgresFamilyDollarQuotedFunctionScript, databaseType))).toEqual([functionSql, "SELECT linop_db_issue_8979_pg()"]);
       expect(statementRangeAtCursor(postgresFamilyDollarQuotedFunctionScript, indexOf(postgresFamilyDollarQuotedFunctionScript, "RETURN 1"), databaseType)?.sql.trim()).toBe(functionSql);
     }
   });
@@ -910,12 +910,12 @@ $$ LANGUAGE plpgsql`;
 SELECT 1;
 COMMIT;
 /
-CREATE FUNCTION dbx_issue_8979_sql() RETURNS int AS 'SELECT 1' LANGUAGE sql;
-CREATE TRIGGER dbx_issue_8979_trg AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f();
+CREATE FUNCTION linop_db_issue_8979_sql() RETURNS int AS 'SELECT 1' LANGUAGE sql;
+CREATE TRIGGER linop_db_issue_8979_trg AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f();
 
 SELECT 2;`;
 
-    expect(rangeSqlTexts(splitSqlStatementRanges(script, "postgres"))).toEqual(["BEGIN", "SELECT 1", "COMMIT", "CREATE FUNCTION dbx_issue_8979_sql() RETURNS int AS 'SELECT 1' LANGUAGE sql", "CREATE TRIGGER dbx_issue_8979_trg AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f()", "SELECT 2"]);
+    expect(rangeSqlTexts(splitSqlStatementRanges(script, "postgres"))).toEqual(["BEGIN", "SELECT 1", "COMMIT", "CREATE FUNCTION linop_db_issue_8979_sql() RETURNS int AS 'SELECT 1' LANGUAGE sql", "CREATE TRIGGER linop_db_issue_8979_trg AFTER INSERT ON t FOR EACH ROW EXECUTE FUNCTION f()", "SELECT 2"]);
   });
 
   it("keeps openGauss packages together while compatibility metadata is unknown", () => {
@@ -955,11 +955,11 @@ END packageName;`;
   });
 
   it("keeps Oracle-style CASE expressions inside Xugu and Oracle routines", () => {
-    const routine = `CREATE OR REPLACE FUNCTION dbx_case_expr RETURN NUMBER AS
+    const routine = `CREATE OR REPLACE FUNCTION linop_db_case_expr RETURN NUMBER AS
 BEGIN
   RETURN CASE WHEN 1 = 1 THEN CASE WHEN 2 = 2 THEN 1 ELSE 2 END ELSE 0 END;
 END;`;
-    const caseStatementRoutine = `CREATE OR REPLACE PROCEDURE dbx_case_statement AS
+    const caseStatementRoutine = `CREATE OR REPLACE PROCEDURE linop_db_case_statement AS
 BEGIN
   CASE WHEN 1 = 1 THEN NULL; ELSE NULL; END CASE;
 END;`;

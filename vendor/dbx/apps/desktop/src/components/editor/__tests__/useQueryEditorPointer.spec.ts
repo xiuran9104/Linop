@@ -83,7 +83,7 @@ describe("QueryEditor pointer ownership", () => {
     expect(view.state.selection.main.anchor).toBe(6);
     expect(view.state.selection.main.empty).toBe(true);
     expect(emit).toHaveBeenCalledWith("closeColumnPanel");
-    expect(document.querySelector(".dbx-editor-selection-drop-cursor")).toBeNull();
+    expect(document.querySelector(".linop-db-editor-selection-drop-cursor")).toBeNull();
   });
 
   it("keeps a click that drifts past the drag threshold on the selection a caret move", () => {
@@ -91,7 +91,7 @@ describe("QueryEditor pointer ownership", () => {
     expect(start().handled).toBe(true);
     position.mockReturnValue(6);
     move({ clientX: 20 });
-    expect(document.querySelector(".dbx-editor-selection-drop-cursor")).toBeNull();
+    expect(document.querySelector(".linop-db-editor-selection-drop-cursor")).toBeNull();
     expect(view.contentDOM.style.cursor).toBe("");
     release({ clientX: 20 });
     expect(view.state.doc.toString()).toBe("abc def ghi");
@@ -117,10 +117,10 @@ describe("QueryEditor pointer ownership", () => {
     position.mockReturnValue(11);
     move();
     expect(view.contentDOM.style.cursor).toBe("move");
-    expect(document.querySelector(".dbx-editor-selection-drop-cursor")).not.toBeNull();
+    expect(document.querySelector(".linop-db-editor-selection-drop-cursor")).not.toBeNull();
     window.dispatchEvent(new Event("blur"));
     expect(view.contentDOM.style.cursor).toBe("");
-    expect(document.querySelector(".dbx-editor-selection-drop-cursor")).toBeNull();
+    expect(document.querySelector(".linop-db-editor-selection-drop-cursor")).toBeNull();
   });
 
   it.each(["move", "control-copy", "command-copy"])("preserves %s text and selection mapping", (kind) => {
@@ -129,13 +129,13 @@ describe("QueryEditor pointer ownership", () => {
     start(modifiers);
     position.mockReturnValue(11);
     move(modifiers);
-    expect(document.querySelector(".dbx-editor-selection-drop-cursor")).not.toBeNull();
+    expect(document.querySelector(".linop-db-editor-selection-drop-cursor")).not.toBeNull();
     expect(view.contentDOM.style.cursor).toBe(kind === "move" ? "move" : "copy");
     release(modifiers);
     expect(view.state.doc.toString()).toBe(kind === "move" ? "abc  ghidef" : "abc def ghidef");
     expect(view.state.sliceDoc(view.state.selection.main.from, view.state.selection.main.to)).toBe("def");
     expect(view.contentDOM.style.cursor).toBe("");
-    expect(document.querySelector(".dbx-editor-selection-drop-cursor")).toBeNull();
+    expect(document.querySelector(".linop-db-editor-selection-drop-cursor")).toBeNull();
     if (kind !== "move") expect(emit).not.toHaveBeenCalled();
   });
 
@@ -147,7 +147,7 @@ describe("QueryEditor pointer ownership", () => {
     const remove = vi.spyOn(document, "removeEventListener");
     if (action === "escape") document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
     else pointer.dispose();
-    expect(document.querySelector(".dbx-editor-selection-drop-cursor")).toBeNull();
+    expect(document.querySelector(".linop-db-editor-selection-drop-cursor")).toBeNull();
     expect(view.contentDOM.style.cursor).toBe("");
     for (const event of ["mousemove", "mouseup", "keydown"]) expect(remove).toHaveBeenCalledWith(event, expect.any(Function), true);
     release();

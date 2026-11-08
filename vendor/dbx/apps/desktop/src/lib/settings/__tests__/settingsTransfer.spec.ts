@@ -90,7 +90,7 @@ describe("settingsTransfer", () => {
   });
 
   it("builds a dated transfer filename", () => {
-    expect(buildSettingsTransferFilename(new Date(2026, 8, 6))).toBe("dbx-settings-2026-09-06.json");
+    expect(buildSettingsTransferFilename(new Date(2026, 8, 6))).toBe("linop-db-settings-2026-09-06.json");
   });
 
   it("round-trips the default settings through serialize and parse", () => {

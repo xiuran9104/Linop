@@ -17,11 +17,11 @@ import {
 import type { InstalledPlugin, PluginMarketplacePlugin, PluginRepositoryCatalogResult } from "@/types/database";
 
 const result: PluginRepositoryCatalogResult = {
-  repository: { id: "dbx-official", name: "DBX Marketplace", kind: "official", enabled: true, managed: true },
+  repository: { id: "linop-db-official", name: "DBX Marketplace", kind: "official", enabled: true, managed: true },
   target: "darwin-arm64",
   catalog: {
     catalogVersion: 1,
-    repository: { id: "dbx-official", name: "DBX Marketplace" },
+    repository: { id: "linop-db-official", name: "DBX Marketplace" },
     plugins: [
       {
         id: "example.hello",
@@ -98,7 +98,7 @@ describe("plugin marketplace listings", () => {
     const listings = buildMarketplacePluginListings([result], [installed("1.0.0")], "zh-CN");
 
     expect(listings[0]).toMatchObject({ name: "你好工作台", status: "update", target: "darwin-arm64" });
-    expect(filterMarketplacePluginListings(listings, "验证", "dbx-official")).toHaveLength(1);
+    expect(filterMarketplacePluginListings(listings, "验证", "linop-db-official")).toHaveLength(1);
   });
 
   it("marks a plugin unsupported when the current target has no artifact", () => {
@@ -143,25 +143,25 @@ describe("plugin marketplace listings", () => {
   describe("resolveMarketplaceReleaseUrl", () => {
     it("resolves GitHub branch and tag tree URLs to root repository release tag", () => {
       // Regression for #12516: source with /tree/<ref> should not result in /tree/<ref>/releases/tag/...
-      expect(resolveMarketplaceReleaseUrl("https://github.com/Ezreal-byte/dbx-plugin-xxl-job-console/tree/v0.3.3", "0.3.3")).toBe("https://github.com/Ezreal-byte/dbx-plugin-xxl-job-console/releases/tag/v0.3.3");
+      expect(resolveMarketplaceReleaseUrl("https://github.com/Ezreal-byte/linop-db-plugin-xxl-job-console/tree/v0.3.3", "0.3.3")).toBe("https://github.com/Ezreal-byte/linop-db-plugin-xxl-job-console/releases/tag/v0.3.3");
 
-      expect(resolveMarketplaceReleaseUrl("https://github.com/Ezreal-byte/dbx-plugin-xxl-job-console/tree/v0.3.3/", "0.3.3")).toBe("https://github.com/Ezreal-byte/dbx-plugin-xxl-job-console/releases/tag/v0.3.3");
+      expect(resolveMarketplaceReleaseUrl("https://github.com/Ezreal-byte/linop-db-plugin-xxl-job-console/tree/v0.3.3/", "0.3.3")).toBe("https://github.com/Ezreal-byte/linop-db-plugin-xxl-job-console/releases/tag/v0.3.3");
 
       expect(resolveMarketplaceReleaseUrl("https://github.com/t8y2/dbx/tree/main/plugins/examples/hello-workbench", "0.1.0")).toBe("https://github.com/t8y2/dbx/releases/tag/v0.1.0");
     });
 
     it("resolves standard repository URLs with and without trailing slash or .git", () => {
-      expect(resolveMarketplaceReleaseUrl("https://github.com/jinpy/dbx-ssh-plugin", "3.0.0")).toBe("https://github.com/jinpy/dbx-ssh-plugin/releases/tag/v3.0.0");
-      expect(resolveMarketplaceReleaseUrl("https://github.com/jinpy/dbx-ssh-plugin/", "3.0.0")).toBe("https://github.com/jinpy/dbx-ssh-plugin/releases/tag/v3.0.0");
-      expect(resolveMarketplaceReleaseUrl("https://github.com/jinpy/dbx-ssh-plugin.git", "3.0.0")).toBe("https://github.com/jinpy/dbx-ssh-plugin/releases/tag/v3.0.0");
-      expect(resolveMarketplaceReleaseUrl("https://github.com/jinpy/dbx-ssh-plugin", "v3.0.0")).toBe("https://github.com/jinpy/dbx-ssh-plugin/releases/tag/v3.0.0");
+      expect(resolveMarketplaceReleaseUrl("https://github.com/jinpy/linop-db-ssh-plugin", "3.0.0")).toBe("https://github.com/jinpy/linop-db-ssh-plugin/releases/tag/v3.0.0");
+      expect(resolveMarketplaceReleaseUrl("https://github.com/jinpy/linop-db-ssh-plugin/", "3.0.0")).toBe("https://github.com/jinpy/linop-db-ssh-plugin/releases/tag/v3.0.0");
+      expect(resolveMarketplaceReleaseUrl("https://github.com/jinpy/linop-db-ssh-plugin.git", "3.0.0")).toBe("https://github.com/jinpy/linop-db-ssh-plugin/releases/tag/v3.0.0");
+      expect(resolveMarketplaceReleaseUrl("https://github.com/jinpy/linop-db-ssh-plugin", "v3.0.0")).toBe("https://github.com/jinpy/linop-db-ssh-plugin/releases/tag/v3.0.0");
     });
 
     it("resolves blob, releases, and ssh URLs", () => {
       expect(resolveMarketplaceReleaseUrl("https://github.com/owner/repo/blob/main/README.md", "1.0.0")).toBe("https://github.com/owner/repo/releases/tag/v1.0.0");
       expect(resolveMarketplaceReleaseUrl("https://github.com/owner/repo/releases", "1.0.0")).toBe("https://github.com/owner/repo/releases/tag/v1.0.0");
       expect(resolveMarketplaceReleaseUrl("https://github.com/owner/repo/releases/tag/v0.1.0", "1.0.0")).toBe("https://github.com/owner/repo/releases/tag/v1.0.0");
-      expect(resolveMarketplaceReleaseUrl("git@github.com:Ezreal-byte/dbx-plugin-xxl-job-console.git", "0.3.3")).toBe("https://github.com/Ezreal-byte/dbx-plugin-xxl-job-console/releases/tag/v0.3.3");
+      expect(resolveMarketplaceReleaseUrl("git@github.com:Ezreal-byte/linop-db-plugin-xxl-job-console.git", "0.3.3")).toBe("https://github.com/Ezreal-byte/linop-db-plugin-xxl-job-console/releases/tag/v0.3.3");
     });
 
     it("supports Gitee, GitLab, and CNB repository formats", () => {
@@ -189,8 +189,8 @@ describe("plugin marketplace listings", () => {
     });
 
     it("extracts base repository URL from various git URL formats", () => {
-      expect(extractRepositoryBaseUrl("https://github.com/Ezreal-byte/dbx-plugin-xxl-job-console/tree/v0.3.3")).toEqual({
-        baseUrl: "https://github.com/Ezreal-byte/dbx-plugin-xxl-job-console",
+      expect(extractRepositoryBaseUrl("https://github.com/Ezreal-byte/linop-db-plugin-xxl-job-console/tree/v0.3.3")).toEqual({
+        baseUrl: "https://github.com/Ezreal-byte/linop-db-plugin-xxl-job-console",
         host: "github.com",
       });
       expect(extractRepositoryBaseUrl("https://github.com/owner/repo.git")).toEqual({
@@ -219,12 +219,12 @@ describe("buildInstalledUpdateIndex", () => {
   });
 
   it("resolves duplicate plugin ids to one source: verifiable repository first, then the higher version", () => {
-    const official = repositoryResult("dbx-official", "DBX Marketplace", "1.1.0", true);
+    const official = repositoryResult("linop-db-official", "DBX Marketplace", "1.1.0", true);
     const custom = repositoryResult("acme", "Acme Repo", "1.3.0", false);
     // The unverified custom repository advertises a higher version, but the verifiable official
     // repository wins so the installed tab cannot silently steer users to an unverified source.
     const index = buildInstalledUpdateIndex(buildMarketplacePluginListings([custom, official], [installed("1.0.0")], "en"));
-    expect(index.get("example.hello")?.listing.repository.id).toBe("dbx-official");
+    expect(index.get("example.hello")?.listing.repository.id).toBe("linop-db-official");
 
     const customA = repositoryResult("acme-a", "Acme A", "1.2.0", false);
     const customB = repositoryResult("acme-b", "Acme B", "1.3.0", false);
@@ -239,7 +239,7 @@ describe("pluginSourceChange", () => {
     expect(pluginSourceChange(noProvenance)).toBeNull();
 
     const withProvenance = installed("1.0.0");
-    withProvenance.provenance = { repositoryId: "dbx-official", publisher: "DBX", signingKeyId: "dbx.release", source: "marketplace" };
+    withProvenance.provenance = { repositoryId: "linop-db-official", publisher: "DBX", signingKeyId: "dbx.release", source: "marketplace" };
     const same = buildMarketplacePluginListings([result], [withProvenance], "en")[0];
     expect(pluginSourceChange(same)).toBeNull();
   });
@@ -250,11 +250,11 @@ describe("pluginSourceChange", () => {
     expect(pluginSourceChange(buildMarketplacePluginListings([result], [moved], "en")[0])).toEqual({ repositoryChanged: true, publisherChanged: false, signingKeyChanged: false });
 
     const renamed = installed("1.0.0");
-    renamed.provenance = { repositoryId: "dbx-official", publisher: "Other", signingKeyId: "dbx.release", source: "marketplace" };
+    renamed.provenance = { repositoryId: "linop-db-official", publisher: "Other", signingKeyId: "dbx.release", source: "marketplace" };
     expect(pluginSourceChange(buildMarketplacePluginListings([result], [renamed], "en")[0])).toEqual({ repositoryChanged: false, publisherChanged: true, signingKeyChanged: false });
 
     const rekeyed = installed("1.0.0");
-    rekeyed.provenance = { repositoryId: "dbx-official", publisher: "DBX", signingKeyId: "dbx.release-2023", source: "marketplace" };
+    rekeyed.provenance = { repositoryId: "linop-db-official", publisher: "DBX", signingKeyId: "dbx.release-2023", source: "marketplace" };
     expect(pluginSourceChange(buildMarketplacePluginListings([result], [rekeyed], "en")[0])).toEqual({ repositoryChanged: false, publisherChanged: false, signingKeyChanged: true });
   });
 });
@@ -293,9 +293,9 @@ describe("sortMarketplacePluginListings", () => {
 
   function datedCatalog(plugins: DatedPluginSpec[]): PluginRepositoryCatalogResult {
     return {
-      repository: { id: "dbx-official", name: "DBX Marketplace", kind: "official", enabled: true, managed: true },
+      repository: { id: "linop-db-official", name: "DBX Marketplace", kind: "official", enabled: true, managed: true },
       target: "darwin-arm64",
-      catalog: { catalogVersion: 1, repository: { id: "dbx-official", name: "DBX Marketplace" }, plugins: plugins.map(datedPlugin) },
+      catalog: { catalogVersion: 1, repository: { id: "linop-db-official", name: "DBX Marketplace" }, plugins: plugins.map(datedPlugin) },
     };
   }
 

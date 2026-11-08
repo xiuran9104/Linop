@@ -11,7 +11,7 @@ fi
 : "${APPLE_SIGNING_IDENTITY:?Required Developer ID Application identity}"
 : "${APPLE_TEAM_ID:?Required signing team}"
 probe_root="${RUNNER_TEMP:-${TMPDIR:?Set TMPDIR to a private temporary directory}}"
-work_dir="$(mktemp -d "$probe_root/dbx-mcp-identity.XXXXXX")"
+work_dir="$(mktemp -d "$probe_root/linop-db-mcp-identity.XXXXXX")"
 trap 'rm -rf "$work_dir"' EXIT
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 security list-keychains -d user > "$work_dir/keychains-before"
@@ -29,11 +29,11 @@ for arch in arm64 x86_64; do
   codesign --verify --strict --all-architectures -R "$requirement" "$work_dir/$arch-2"
 
   mkdir "$work_dir/$arch-package" "$work_dir/$arch-unpacked"
-  cp "$work_dir/$arch-2" "$work_dir/$arch-package/dbx-mcp"
-  tar -C "$work_dir/$arch-package" -czf "$work_dir/$arch.tar.gz" dbx-mcp
+  cp "$work_dir/$arch-2" "$work_dir/$arch-package/linop-db-mcp"
+  tar -C "$work_dir/$arch-package" -czf "$work_dir/$arch.tar.gz" linop-db-mcp
   tar -C "$work_dir/$arch-unpacked" -xzf "$work_dir/$arch.tar.gz"
-  cmp "$work_dir/$arch-2" "$work_dir/$arch-unpacked/dbx-mcp"
-  node "$script_dir/sign-mcp-macos.mjs" verify "$work_dir/$arch-unpacked/dbx-mcp"
+  cmp "$work_dir/$arch-2" "$work_dir/$arch-unpacked/linop-db-mcp"
+  node "$script_dir/sign-mcp-macos.mjs" verify "$work_dir/$arch-unpacked/linop-db-mcp"
 
   cp "$work_dir/$arch-2" "$work_dir/tampered"
   node - "$work_dir/tampered" <<'NODE'

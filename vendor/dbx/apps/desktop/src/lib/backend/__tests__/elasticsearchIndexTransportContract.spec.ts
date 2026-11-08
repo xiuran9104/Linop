@@ -5,8 +5,8 @@ const tauri = readFileSync(new URL("../tauri.ts", import.meta.url), "utf8");
 const http = readFileSync(new URL("../http.ts", import.meta.url), "utf8");
 const api = readFileSync(new URL("../api.ts", import.meta.url), "utf8");
 const tauriRegistry = readFileSync(new URL("../../../../../../src-tauri/src/lib.rs", import.meta.url), "utf8");
-const webRegistry = readFileSync(new URL("../../../../../../crates/dbx-web/src/main.rs", import.meta.url), "utf8");
-const coreOps = readFileSync(new URL("../../../../../../crates/dbx-core/src/query/document_ops.rs", import.meta.url), "utf8");
+const webRegistry = readFileSync(new URL("../../../../../../crates/linop-db-web/src/main.rs", import.meta.url), "utf8");
+const coreOps = readFileSync(new URL("../../../../../../crates/linop-db-core/src/query/document_ops.rs", import.meta.url), "utf8");
 
 function functionBody(source: string, operation: string): string {
   const start = source.indexOf(`export async function ${operation}(`);
@@ -49,7 +49,7 @@ describe("Elasticsearch index action dual transport contract", () => {
 
   it("guards the destructive clear behind a backend write check", () => {
     const commands = readFileSync(new URL("../../../../../../src-tauri/src/commands/document_cmd.rs", import.meta.url), "utf8");
-    const routes = readFileSync(new URL("../../../../../../crates/dbx-web/src/routes/document_store.rs", import.meta.url), "utf8");
+    const routes = readFileSync(new URL("../../../../../../crates/linop-db-web/src/routes/document_store.rs", import.meta.url), "utf8");
     const tauriCommand = commands.slice(commands.indexOf("pub async fn elasticsearch_delete_all_documents("));
     const webRoute = routes.slice(routes.indexOf("pub async fn elasticsearch_delete_all_documents("));
     expect(tauriCommand.slice(0, tauriCommand.indexOf("\n}"))).toContain("ensure_connection_writable");

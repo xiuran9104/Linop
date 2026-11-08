@@ -111,7 +111,7 @@ export function backgroundImageStyle(settings: Pick<BackgroundImageSettings, "di
  * Card/popover/dialog surfaces stay opaque on purpose: floating panels keep
  * their text readable regardless of what the wallpaper shows behind them.
  */
-export const BACKGROUND_IMAGE_SURFACE_VARS = ["--background", "--sidebar", "--muted", "--secondary", "--accent", "--dbx-chrome", "--dbx-chrome-muted", "--dbx-content", "--dbx-editor-toolbar", "--dbx-gutter", "--dbx-sidebar-header"] as const;
+export const BACKGROUND_IMAGE_SURFACE_VARS = ["--background", "--sidebar", "--muted", "--secondary", "--accent", "--linop-db-chrome", "--linop-db-chrome-muted", "--linop-db-content", "--linop-db-editor-toolbar", "--linop-db-gutter", "--linop-db-sidebar-header"] as const;
 
 /**
  * Surface variables that are also consumed as *foreground* colors, and

@@ -2,7 +2,7 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const CONFIG_KEY = "dbx-data-compare-configs";
+const CONFIG_KEY = "linop-db-data-compare-configs";
 
 function snapshot(overrides: Record<string, unknown> = {}) {
   return {

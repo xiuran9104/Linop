@@ -1,8 +1,8 @@
-# 公开演示栈：dbx-web（DBX_DEMO_MODE）+ 三台仅供演示的数据库。
+# 公开演示栈：linop-db-web（DBX_DEMO_MODE）+ 三台仅供演示的数据库。
 # 整个网络标记 internal: true —— 容器间互通、对外只暴露 4224 端口，
-# dbx-web 自身无法主动出网（插件 URL 安装 / 探测外网端点在网络层就被挡掉）。
+# linop-db-web 自身无法主动出网（插件 URL 安装 / 探测外网端点在网络层就被挡掉）。
 services:
-  dbx-demo:
+  linop-db-demo:
     build: .
     # 中国大陆构建基镜像可改用：docker.cnb.cool/dbxio.com/dbx:latest（见 Dockerfile）
     ports:
@@ -12,7 +12,7 @@ services:
       DBX_DISABLE_PASSWORD: "1"
       DBX_MAX_UPLOAD_MB: "16"
     volumes:
-      - dbx-demo-data:/app/data
+      - linop-db-demo-data:/app/data
     depends_on:
       demo-postgres:
         condition: service_healthy
@@ -30,7 +30,7 @@ services:
       POSTGRES_USER: demo
       POSTGRES_PASSWORD: demo
     volumes:
-      - dbx-demo-postgres:/var/lib/postgresql/data
+      - linop-db-demo-postgres:/var/lib/postgresql/data
       # 目录挂载（而非单文件）：对 rootless docker 等环境更稳。
       - ./seed/sql/postgres:/docker-entrypoint-initdb.d:ro
     healthcheck:
@@ -48,7 +48,7 @@ services:
       MYSQL_PASSWORD: demo
       MYSQL_ROOT_PASSWORD: root-demo-only
     volumes:
-      - dbx-demo-mysql:/var/lib/mysql
+      - linop-db-demo-mysql:/var/lib/mysql
       - ./seed/sql/mysql:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-udemo", "-pdemo"]
@@ -62,9 +62,9 @@ services:
     restart: unless-stopped
 
 volumes:
-  dbx-demo-data:
-  dbx-demo-postgres:
-  dbx-demo-mysql:
+  linop-db-demo-data:
+  linop-db-demo-postgres:
+  linop-db-demo-mysql:
 
 networks:
   default:

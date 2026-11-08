@@ -10,7 +10,7 @@ const OBJECT_NAME_DDL_RE =
   /\b(?:CREATE|ALTER|DROP|RENAME)\s+(?:OR\s+REPLACE\s+)?(?:(?:(?:GLOBAL|LOCAL)\s+)?TEMP(?:ORARY)?\s+)?(?:MATERIALIZED\s+)?(?:TABLE|VIEW|SEQUENCE|PROCEDURE|FUNCTION|TRIGGER|TYPE)\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?((?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*)\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*))/i;
 const INDEX_TABLE_DDL_RE = /\bCREATE\s+(?:UNIQUE\s+)?INDEX\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*)\s+ON\s+((?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*)\s*\.\s*(?:"[^"]+"|`[^`]+`|\[[^\]]+\]|[A-Za-z_][\w$]*))/i;
 const SQLSERVER_TEMP_TABLE_TOKEN_RE = /(\b(?:CREATE|ALTER|DROP)\s+TABLE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?)(\[?)(##?)([A-Za-z_][\w$#]*)(\]?)/gi;
-const TEMP_HASH_PLACEHOLDER = "\u0000dbx-temp-hash\u0000";
+const TEMP_HASH_PLACEHOLDER = "\u0000linop-db-temp-hash\u0000";
 
 function stripSqlMetadataComments(sql: string): string {
   return sql

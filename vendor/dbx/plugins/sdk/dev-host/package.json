@@ -1,5 +1,5 @@
 {
-  "name": "@dbx-app/plugin-dev-host-source",
+  "name": "@linop-db-app/plugin-dev-host-source",
   "private": true,
   "type": "module",
   "scripts": {

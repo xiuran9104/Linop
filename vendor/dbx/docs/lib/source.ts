@@ -50,7 +50,7 @@ export const source = loader({
   i18n,
   plugins: [
     {
-      name: "dbx-sidebar-icons",
+      name: "linop-db-sidebar-icons",
       transformPageTree: {
         file(node) {
           const slug = node.url.split("/").filter(Boolean).at(-1);

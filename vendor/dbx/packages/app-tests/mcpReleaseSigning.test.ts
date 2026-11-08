@@ -43,7 +43,7 @@ afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: 
 function fixture(config = {}) {
   const root = mkdtempSync(join(tmpdir(), "mcp-signing-test-"));
   roots.push(root);
-  const binary = join(root, "dbx-mcp");
+  const binary = join(root, "linop-db-mcp");
   writeFileSync(binary, "first build");
   const state = join(root, "state.json");
   const log = join(root, "commands.jsonl");
@@ -67,7 +67,7 @@ if (security && op === 'create-keychain') {
   writeFileSync(keychain, 'temporary keychain');
   writeFileSync(state, JSON.stringify([...JSON.parse(readFileSync(state)), keychain]));
 }
-if (config.fail === op || (config.fail === 'restore' && op === 'list-keychains' && args.includes('-s') && !args[4]?.includes('dbx-mcp-signing-'))) process.exit(19);
+if (config.fail === op || (config.fail === 'restore' && op === 'list-keychains' && args.includes('-s') && !args[4]?.includes('linop-db-mcp-signing-'))) process.exit(19);
 if (security) {
   if (op === 'list-keychains') {
     if (args.includes('-s')) writeFileSync(state, JSON.stringify(args.slice(4)));
@@ -111,7 +111,7 @@ if (security) {
     commands: () => existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line)) : [],
     cleaned: () => {
       assert.deepEqual(JSON.parse(readFileSync(state, "utf8")), original);
-      assert.ok(!readdirSync(root).some((name) => name.startsWith("dbx-mcp-signing-")));
+      assert.ok(!readdirSync(root).some((name) => name.startsWith("linop-db-mcp-signing-")));
     },
   };
 }
@@ -138,7 +138,7 @@ test("imports only into an isolated keychain, signs and verifies in order, then 
   assert.ok(verify.includes("--strict") && verify.includes("--all-architectures"));
   assert.equal(verify[verify.indexOf("-R") + 1], `=${mcpRequirement("ABCDE12345")}`);
   assert.deepEqual(commands.at(-2).args.slice(4), scenario.original);
-  assert.match(commands.at(-1).args[1], /dbx-mcp-signing-.*\/signing.keychain-db$/);
+  assert.match(commands.at(-1).args[1], /linop-db-mcp-signing-.*\/signing.keychain-db$/);
 });
 
 test("distinct builds and renewed certificates keep the same signer-constrained requirement", async () => {
@@ -193,7 +193,7 @@ test.each([
 test.each(["restore", "delete-keychain"])("cleanup failure at %s fails the release and still removes temporary material", async (fail) => {
   const scenario = fixture({ fail });
   await assert.rejects(signMcp(scenario.binary, scenario.options), /cleanup failed/);
-  assert.ok(!readdirSync(scenario.root).some((name) => name.startsWith("dbx-mcp-signing-")));
+  assert.ok(!readdirSync(scenario.root).some((name) => name.startsWith("linop-db-mcp-signing-")));
   assert.equal(scenario.commands().at(-1).args[0], "delete-keychain");
 });
 
@@ -205,10 +205,10 @@ test("signature survives package staging and tar repacking, while tampering and 
   const unpacked = join(scenario.root, "unpacked");
   mkdirSync(staged, { recursive: true });
   mkdirSync(unpacked);
-  copyFileSync(scenario.binary, join(staged, "dbx-mcp"));
+  copyFileSync(scenario.binary, join(staged, "linop-db-mcp"));
   assert.equal(spawnSync("tar", ["-czf", join(scenario.root, "package.tgz"), "-C", scenario.root, "package"]).status, 0);
   assert.equal(spawnSync("tar", ["-xzf", join(scenario.root, "package.tgz"), "-C", unpacked]).status, 0);
-  const binary = join(unpacked, "package", "bin", "dbx-mcp");
+  const binary = join(unpacked, "package", "bin", "linop-db-mcp");
   assert.deepEqual(readFileSync(binary), readFileSync(scenario.binary));
   await verifyMcp(binary, scenario.options);
   writeFileSync(binary, readFileSync(binary, "utf8").replace("first build", "tampered build"));
@@ -244,7 +244,7 @@ if (args[0] === 'pack') {
   const staging = join(destination, 'input');
   const bin = join(staging, 'package/bin');
   mkdirSync(bin, { recursive: true });
-  const name = args[1].includes('win32') ? 'dbx-mcp.exe' : 'dbx-mcp';
+  const name = args[1].includes('win32') ? 'linop-db-mcp.exe' : 'linop-db-mcp';
   const source = args[1].startsWith('./') ? join(args[1], 'bin', name) : ${JSON.stringify(scenario.binary)};
   copyFileSync(source, join(bin, name));
   if (${Boolean(config.replacement)}) copyFileSync(${JSON.stringify(config.replacement ?? "")}, join(bin, name));
@@ -267,7 +267,7 @@ with zipfile.ZipFile(sys.argv[2], 'w') as archive:
     archive.write(sys.argv[3], os.path.basename(sys.argv[3]))
 `, { mode: 0o755 });
   return {
-    run: (script, leg = { target: "aarch64-apple-darwin", "package-dir": "mcp-darwin-arm64", "package-name": "@dbx-app/mcp-darwin-arm64", binary: "dbx-mcp", os: "macOS" }) => {
+    run: (script, leg = { target: "aarch64-apple-darwin", "package-dir": "mcp-darwin-arm64", "package-name": "@linop-db-app/mcp-darwin-arm64", binary: "linop-db-mcp", os: "macOS" }) => {
       const expanded = script.replace(/\$\{\{ matrix\.([^ }]+) \}\}/g, (_expression, key) => leg[key]).replaceAll("${{ runner.os }}", leg.os);
       const mockPath = `${mocks}:/usr/bin:/bin`;
       const isolatedScript = `export PATH=${JSON.stringify(mockPath)}\n[[ "$(command -v npm)" == ${JSON.stringify(join(mocks, "npm"))} ]]\n[[ "$(command -v node)" == ${JSON.stringify(join(mocks, "node"))} ]]\n${expanded}`;
@@ -283,7 +283,7 @@ test.each(["arm64", "x64"])("macOS %s workflow stages and publishes the exact si
   const scenario = fixture();
   const workflowScenario = workflowFixture(scenario);
   const leg = { target: arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin", "package-dir": `mcp-darwin-${arch}`,
-    "package-name": `@dbx-app/mcp-darwin-${arch}`, binary: "dbx-mcp", os: "macOS" };
+    "package-name": `@linop-db-app/mcp-darwin-${arch}`, binary: "linop-db-mcp", os: "macOS" };
   const release = join(scenario.root, "target", leg.target, "release");
   mkdirSync(release, { recursive: true });
   copyFileSync(scenario.binary, join(release, leg.binary));
@@ -317,7 +317,7 @@ test("an altered new npm tarball blocks publication", async () => {
   await signMcp(scenario.binary, scenario.options);
   const workflowScenario = workflowFixture(scenario, { corrupt: true });
   mkdirSync(join(scenario.root, "packages/mcp-darwin-arm64/bin"), { recursive: true });
-  copyFileSync(scenario.binary, join(scenario.root, "packages/mcp-darwin-arm64/bin/dbx-mcp"));
+  copyFileSync(scenario.binary, join(scenario.root, "packages/mcp-darwin-arm64/bin/linop-db-mcp"));
   const result = workflowScenario.run(workflow.jobs["publish-mcp-platforms"].steps.find((step) => step.name === "Publish platform package").run);
   assert.equal(result.status, 1);
   assert.ok(!workflowScenario.npmCommands().some((args) => args[0] === "publish"));
@@ -331,7 +331,7 @@ test("packaging cannot substitute a different valid signed build", async () => {
   await signMcp(replacement, scenario.options);
   const workflowScenario = workflowFixture(scenario, { replacement });
   mkdirSync(join(scenario.root, "packages/mcp-darwin-arm64/bin"), { recursive: true });
-  copyFileSync(scenario.binary, join(scenario.root, "packages/mcp-darwin-arm64/bin/dbx-mcp"));
+  copyFileSync(scenario.binary, join(scenario.root, "packages/mcp-darwin-arm64/bin/linop-db-mcp"));
   const result = workflowScenario.run(workflow.jobs["publish-mcp-platforms"].steps.find((step) => step.name === "Publish platform package").run);
   assert.equal(result.status, 1);
   assert.match(result.stdout, /differ/);
@@ -342,7 +342,7 @@ test.each(["Linux", "Windows"])("%s npm publication keeps its existing path with
   const scenario = fixture();
   const workflowScenario = workflowFixture(scenario);
   const result = workflowScenario.run(workflow.jobs["publish-mcp-platforms"].steps.find((step) => step.name === "Publish platform package").run,
-    { target: "unused", "package-dir": "mcp-fixture", "package-name": "@dbx-app/mcp-fixture", binary: "dbx-mcp", os });
+    { target: "unused", "package-dir": "mcp-fixture", "package-name": "@linop-db-app/mcp-fixture", binary: "linop-db-mcp", os });
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(workflowScenario.npmCommands().at(-1), ["publish", "./packages/mcp-fixture", "--access", "public", "--provenance"]);
   assert.deepEqual(scenario.commands(), []);
@@ -356,7 +356,7 @@ test("standalone archive workflow preserves npm signatures and produces Homebrew
   const result = workflowScenario.run(script);
   assert.equal(result.status, 0, result.stderr);
   for (const arch of ["arm64", "x64"]) {
-    const binary = spawnSync("tar", ["-xOzf", join(scenario.root, `release-assets/dbx-mcp-darwin-${arch}.tar.gz`), "dbx-mcp"]);
+    const binary = spawnSync("tar", ["-xOzf", join(scenario.root, `release-assets/linop-db-mcp-darwin-${arch}.tar.gz`), "linop-db-mcp"]);
     assert.equal(binary.status, 0);
     assert.deepEqual(binary.stdout, readFileSync(scenario.binary));
   }
@@ -382,7 +382,7 @@ test("interruption waits for the signing command to stop and restores the keycha
 
 test("all MCP build paths are covered and CLI jobs keep their original release behavior", () => {
   for (const [name, job] of Object.entries(workflow.jobs) as [string, any][]) {
-    const buildsMcp = job.steps?.some((step) => /cargo (?:build|zigbuild).* -p dbx-mcp\b/.test(step.run ?? ""));
+    const buildsMcp = job.steps?.some((step) => /cargo (?:build|zigbuild).* -p linop-db-mcp\b/.test(step.run ?? ""));
     if (buildsMcp) assert.equal(name, "publish-mcp-platforms", "A new MCP build path needs signing coverage");
     if (name.startsWith("publish-cli")) {
       assert.ok(!JSON.stringify(job).includes("sign-mcp-macos"));

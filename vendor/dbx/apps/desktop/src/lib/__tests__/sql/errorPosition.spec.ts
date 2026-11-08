@@ -124,7 +124,7 @@ describe("sqlErrorEditorOffset", () => {
 
     it("projects a pagination wrapper position back onto the inner statement", () => {
       const source = "SELECT * FROM t";
-      const executed = "SELECT * FROM (SELECT * FROM t) AS dbx_page LIMIT 100 OFFSET 0;";
+      const executed = "SELECT * FROM (SELECT * FROM t) AS linop_db_page LIMIT 100 OFFSET 0;";
       const tableOffset = executed.indexOf("FROM t") + "FROM ".length;
       const result = errorResult({
         editorStatement: source,
@@ -137,7 +137,7 @@ describe("sqlErrorEditorOffset", () => {
 
     it("projects an injected hidden-key column position back onto the source", () => {
       const source = "SELECT * FROM users";
-      const executed = 'SELECT *, "id" AS "__dbx_hidden_pk" FROM users LIMIT 100 OFFSET 0;';
+      const executed = 'SELECT *, "id" AS "__linop_db_hidden_pk" FROM users LIMIT 100 OFFSET 0;';
       const tableOffset = executed.indexOf("FROM users") + "FROM ".length;
       const result = errorResult({
         editorStatement: source,
@@ -150,7 +150,7 @@ describe("sqlErrorEditorOffset", () => {
 
     it("keeps a multi-line position aligned when the wrapper is on the first line only", () => {
       const source = "SELECT *\nFROM users\nWHERE id = 1";
-      const executed = `SELECT * FROM (${source}) AS dbx_page LIMIT 100 OFFSET 0;`;
+      const executed = `SELECT * FROM (${source}) AS linop_db_page LIMIT 100 OFFSET 0;`;
       const executedMissing = executed.indexOf("users");
       const result = errorResult({
         editorStatement: source,
@@ -200,7 +200,7 @@ describe("when the engine reports its position only in the error message", () =>
 
   it("maps both ends of a rewritten object back onto its selected source statement", () => {
     const source = 'SELECT * FROM "HR"."EMP_REF"';
-    const executed = `SELECT *, "ID" AS "__dbx_hidden_pk" FROM "HR"."EMP_REF" LIMIT 100`;
+    const executed = `SELECT *, "ID" AS "__linop_db_hidden_pk" FROM "HR"."EMP_REF" LIMIT 100`;
     const editorSql = `SELECT 1 FROM DUAL;\n${source};`;
     const from = editorSql.indexOf(source);
     const result = errorResult({ editorStatement: source, sourceFrom: from, sourceTo: from + source.length, executedStatement: executed, message: `ORA-00942 error occur at position: ${executed.indexOf('"HR"')}` });
@@ -242,7 +242,7 @@ describe("when the engine reports its position only in the error message", () =>
 
   it("projects a message offset back onto the source when DBX rewrote the statement", () => {
     const source = "SELECT * FROM users";
-    const executed = 'SELECT *, "id" AS "__dbx_hidden_pk" FROM users LIMIT 100 OFFSET 0;';
+    const executed = 'SELECT *, "id" AS "__linop_db_hidden_pk" FROM users LIMIT 100 OFFSET 0;';
     const result = errorResult({
       editorStatement: source,
       executedStatement: executed,

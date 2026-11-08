@@ -84,15 +84,15 @@ compareJsonCommand("schema describe", ["schema", "describe", connection, table, 
   );
 });
 
-compareJsonCommand("query", ["query", connection, "select 1 as dbx_cli_migration_check", "--json"], (legacy, rust) => {
+compareJsonCommand("query", ["query", connection, "select 1 as linop_db_cli_migration_check", "--json"], (legacy, rust) => {
   assert.deepEqual(rust.columns, legacy.columns);
   assert.deepEqual(normalizeRows(rust.rows), normalizeRows(legacy.rows));
   assert.equal(rust.row_count, legacy.row_count);
 });
 
-const temporaryDirectory = mkdtempSync(join(tmpdir(), "dbx-cli-migration-"));
+const temporaryDirectory = mkdtempSync(join(tmpdir(), "linop-db-cli-migration-"));
 const sqlFile = join(temporaryDirectory, "query.sql");
-writeFileSync(sqlFile, "select 1 as dbx_cli_file_check", "utf8");
+writeFileSync(sqlFile, "select 1 as linop_db_cli_file_check", "utf8");
 try {
   compareJsonCommand("file query", ["query", connection, "--file", sqlFile, "--json"], (legacy, rust) => {
     assert.deepEqual(rust.columns, legacy.columns);
@@ -167,7 +167,7 @@ assert.equal(missingDefault.status, 1);
 assert.equal(JSON.parse(missingDefault.stderr).error.code, "INVALID_ARGUMENT");
 console.log("PASS missing default connection");
 
-const temporaryConflictDirectory = mkdtempSync(join(tmpdir(), "dbx-cli-migration-conflict-"));
+const temporaryConflictDirectory = mkdtempSync(join(tmpdir(), "linop-db-cli-migration-conflict-"));
 const conflictFile = join(temporaryConflictDirectory, "query.sql");
 writeFileSync(conflictFile, "select 1", "utf8");
 try {

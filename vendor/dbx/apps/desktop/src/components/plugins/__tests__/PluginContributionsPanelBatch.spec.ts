@@ -413,23 +413,23 @@ describe("PluginContributionsPanel installed plugin pin controls", () => {
     pinButton.click();
     await nextTick();
     expect(state.selectedPluginId).toBe("a");
-    expect(localStorage.getItem("dbx-plugin-pinned-ids")).toBe('["b"]');
+    expect(localStorage.getItem("linop-db-plugin-pinned-ids")).toBe('["b"]');
     expect(pinButton.getAttribute("aria-pressed")).toBe("true");
 
     pinButton.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     await nextTick();
     expect(state.selectedPluginId).toBe("a");
-    expect(localStorage.getItem("dbx-plugin-pinned-ids")).toBe("[]");
+    expect(localStorage.getItem("linop-db-plugin-pinned-ids")).toBe("[]");
 
     pinButton.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true }));
     await nextTick();
     expect(state.selectedPluginId).toBe("a");
-    expect(localStorage.getItem("dbx-plugin-pinned-ids")).toBe('["b"]');
+    expect(localStorage.getItem("linop-db-plugin-pinned-ids")).toBe('["b"]');
 
     selectButton.click();
     await nextTick();
     expect(state.selectedPluginId).toBe("b");
-    expect(localStorage.getItem("dbx-plugin-pinned-ids")).toBe('["b"]');
+    expect(localStorage.getItem("linop-db-plugin-pinned-ids")).toBe('["b"]');
   });
 });
 
@@ -1159,7 +1159,7 @@ describe("PluginContributionsPanel marketplace sort", () => {
 
   it("restores the persisted mode on remount, shows the release date in both views, and persists changes", async () => {
     mocks.fetchPluginMarketplaceCatalogs.mockResolvedValue([datedCatalog()]);
-    localStorage.setItem("dbx-plugin-marketplace-sort-mode", "recently-updated");
+    localStorage.setItem("linop-db-plugin-marketplace-sort-mode", "recently-updated");
     await remount();
 
     expect(state.marketplaceSortMode).toBe("recently-updated");
@@ -1179,12 +1179,12 @@ describe("PluginContributionsPanel marketplace sort", () => {
     state.marketplaceSortMode = "name";
     await flushUi();
     expect(renderedOrder()).toEqual(["a.older", "b.newer"]);
-    expect(localStorage.getItem("dbx-plugin-marketplace-sort-mode")).toBe("name");
+    expect(localStorage.getItem("linop-db-plugin-marketplace-sort-mode")).toBe("name");
   });
 
   it("falls back to name order when the stored sort mode is unknown", async () => {
     mocks.fetchPluginMarketplaceCatalogs.mockResolvedValue([datedCatalog()]);
-    localStorage.setItem("dbx-plugin-marketplace-sort-mode", "not-a-mode");
+    localStorage.setItem("linop-db-plugin-marketplace-sort-mode", "not-a-mode");
     await remount();
 
     expect(state.marketplaceSortMode).toBe("name");
@@ -1665,7 +1665,7 @@ describe("marketplace detail update history", () => {
     const result = catalog("repo", ["a"]);
     const plugin = result.catalog!.plugins[0];
     plugin.latestVersion = "3.0.0";
-    plugin.source = "https://github.com/jinpy/dbx-ssh-plugin";
+    plugin.source = "https://github.com/jinpy/linop-db-ssh-plugin";
     const artifact = { target: "darwin-arm64", url: "https://example.invalid/plugin.dbxp", sha256: "a".repeat(64), signingKeyId: "test.key" };
     plugin.versions = [
       { version: "3.0.0", releasedAt: "2026-10-14T00:00:00.000Z", releaseNotes: "Third release notes", artifacts: [artifact] },
@@ -1718,14 +1718,14 @@ describe("marketplace detail update history", () => {
     expect(releaseButton).toBeDefined();
     releaseButton.click();
     await flushUi();
-    expect(openSpy).toHaveBeenCalledWith("https://github.com/jinpy/dbx-ssh-plugin/releases/tag/v3.0.0", "_blank", "noopener,noreferrer");
+    expect(openSpy).toHaveBeenCalledWith("https://github.com/jinpy/linop-db-ssh-plugin/releases/tag/v3.0.0", "_blank", "noopener,noreferrer");
     openSpy.mockRestore();
   });
 
   it("links expanded version to GitHub release page when source has a branch tree URL", async () => {
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
     const cat = multiVersionCatalog();
-    cat.catalog!.plugins[0].source = "https://github.com/Ezreal-byte/dbx-plugin-xxl-job-console/tree/v0.3.3";
+    cat.catalog!.plugins[0].source = "https://github.com/Ezreal-byte/linop-db-plugin-xxl-job-console/tree/v0.3.3";
     state.catalogResults = [cat];
     await flushUi();
     state.openMarketplaceDetails(state.marketplaceListings[0]);
@@ -1735,7 +1735,7 @@ describe("marketplace detail update history", () => {
     expect(releaseButton).toBeDefined();
     releaseButton.click();
     await flushUi();
-    expect(openSpy).toHaveBeenCalledWith("https://github.com/Ezreal-byte/dbx-plugin-xxl-job-console/releases/tag/v3.0.0", "_blank", "noopener,noreferrer");
+    expect(openSpy).toHaveBeenCalledWith("https://github.com/Ezreal-byte/linop-db-plugin-xxl-job-console/releases/tag/v3.0.0", "_blank", "noopener,noreferrer");
     openSpy.mockRestore();
   });
 });

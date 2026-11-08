@@ -33,7 +33,7 @@ jobs:
         id: bump
         shell: bash
         run: |
-          LEGACY_REPO="https://github.com/t8y2/dbx-agents.git"
+          LEGACY_REPO="https://github.com/t8y2/linop-db-agents.git"
           LEGACY_BASE_TAG="v0.2.33"
           PREV_TAG=$(git tag --sort=-creatordate | grep '^agents-v' | sed -n '2p')
           SKIP_BUMP=false
@@ -159,7 +159,7 @@ jobs:
         with:
           name: agent-jars
           path: |
-            agents/drivers/*/build/libs/dbx-agent-*.jar
+            agents/drivers/*/build/libs/linop-db-agent-*.jar
 
   build-oracle-native:
     needs: [bump-versions]
@@ -187,7 +187,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-oracle-${platform}"
+            output="../../../release-native/linop-db-agent-oracle-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -205,14 +205,14 @@ jobs:
         shell: bash
         working-directory: agents/drivers/oracle-go
         run: |
-          output="../../../release-native/dbx-agent-oracle-windows-x64.exe"
+          output="../../../release-native/linop-db-agent-oracle-windows-x64.exe"
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$output" .
           go version -m "$output" | tee /tmp/oracle-windows-x64-build-info.txt
           grep -q ': go1\.20\.14$' /tmp/oracle-windows-x64-build-info.txt
       - uses: actions/upload-artifact@v4
         with:
           name: oracle-native
-          path: "release-native/dbx-agent-oracle-*"
+          path: "release-native/linop-db-agent-oracle-*"
 
   # Oracle OCI（thick）变体：同一个 oracle-go 模块加上 `oci` 构建标记，用 CGO 链接
   # Oracle 客户端，因此需要 gcc（MinGW-w64）与 Instant Client 的 SDK（头文件 + 导入库）。
@@ -289,7 +289,7 @@ jobs:
         working-directory: agents/drivers/oracle-go
         run: |
           mkdir -p ../../../release-native
-          output="../../../release-native/dbx-agent-oracle-oci-windows-x64.exe"
+          output="../../../release-native/linop-db-agent-oracle-oci-windows-x64.exe"
           # go.mod 的 go 指令保持 1.20（thin 的 Windows 7 兼容线）；OCI 变体要求更高，
           # 因此允许就地更新 go.mod —— 只影响本任务的检出目录，不会被提交。
           go build -mod=mod -tags oci -trimpath -ldflags="-s -w" -o "$output" .
@@ -297,7 +297,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: oracle-oci-native
-          path: "release-native/dbx-agent-oracle-oci-*"
+          path: "release-native/linop-db-agent-oracle-oci-*"
 
   build-xugu-native:
     needs: [bump-versions]
@@ -326,7 +326,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-xugu-${platform}"
+            output="../../../release-native/linop-db-agent-xugu-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -337,7 +337,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: xugu-native
-          path: "release-native/dbx-agent-xugu-*"
+          path: "release-native/linop-db-agent-xugu-*"
 
   build-rabbitmq-native:
     needs: [bump-versions]
@@ -365,7 +365,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-rabbitmq-${platform}"
+            output="../../../release-native/linop-db-agent-rabbitmq-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -383,14 +383,14 @@ jobs:
         shell: bash
         working-directory: agents/drivers/rabbitmq
         run: |
-          output="../../../release-native/dbx-agent-rabbitmq-windows-x64.exe"
+          output="../../../release-native/linop-db-agent-rabbitmq-windows-x64.exe"
           CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o "$output" .
           go version -m "$output" | tee /tmp/rabbitmq-windows-x64-build-info.txt
           grep -q ': go1\.20\.14$' /tmp/rabbitmq-windows-x64-build-info.txt
       - uses: actions/upload-artifact@v4
         with:
           name: rabbitmq-native
-          path: "release-native/dbx-agent-rabbitmq-*"
+          path: "release-native/linop-db-agent-rabbitmq-*"
 
   build-rocketmq-native:
     needs: [bump-versions]
@@ -419,7 +419,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-rocketmq-${platform}"
+            output="../../../release-native/linop-db-agent-rocketmq-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -430,7 +430,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: rocketmq-native
-          path: "release-native/dbx-agent-rocketmq-*"
+          path: "release-native/linop-db-agent-rocketmq-*"
 
   build-etcd-native:
     needs: [bump-versions]
@@ -459,7 +459,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-etcd-${platform}"
+            output="../../../release-native/linop-db-agent-etcd-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -470,7 +470,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: etcd-native
-          path: "release-native/dbx-agent-etcd-*"
+          path: "release-native/linop-db-agent-etcd-*"
 
   build-etcd2-native:
     needs: [bump-versions]
@@ -499,7 +499,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-etcd2-${platform}"
+            output="../../../release-native/linop-db-agent-etcd2-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -510,7 +510,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: etcd2-native
-          path: "release-native/dbx-agent-etcd2-*"
+          path: "release-native/linop-db-agent-etcd2-*"
 
   build-zookeeper-native:
     needs: [bump-versions]
@@ -539,7 +539,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-zookeeper-${platform}"
+            output="../../../release-native/linop-db-agent-zookeeper-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -550,7 +550,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: zookeeper-native
-          path: "release-native/dbx-agent-zookeeper-*"
+          path: "release-native/linop-db-agent-zookeeper-*"
 
   build-cassandra-native:
     needs: [bump-versions]
@@ -579,7 +579,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-cassandra-${platform}"
+            output="../../../release-native/linop-db-agent-cassandra-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -590,7 +590,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: cassandra-native
-          path: "release-native/dbx-agent-cassandra-*"
+          path: "release-native/linop-db-agent-cassandra-*"
 
   build-hive-native:
     needs: [bump-versions]
@@ -619,7 +619,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-hive-${platform}"
+            output="../../../release-native/linop-db-agent-hive-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -630,7 +630,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: hive-native
-          path: "release-native/dbx-agent-hive-*"
+          path: "release-native/linop-db-agent-hive-*"
 
   build-argo-native:
     needs: [bump-versions]
@@ -659,7 +659,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-argo-${platform}"
+            output="../../../release-native/linop-db-agent-argo-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -670,7 +670,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: argo-native
-          path: "release-native/dbx-agent-argo-*"
+          path: "release-native/linop-db-agent-argo-*"
 
   build-kingbase-native:
     needs: [bump-versions]
@@ -699,7 +699,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-kingbase-${platform}"
+            output="../../../release-native/linop-db-agent-kingbase-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -710,7 +710,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: kingbase-native
-          path: "release-native/dbx-agent-kingbase-*"
+          path: "release-native/linop-db-agent-kingbase-*"
 
   build-vastbase-native:
     needs: [bump-versions]
@@ -739,7 +739,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-vastbase-${platform}"
+            output="../../../release-native/linop-db-agent-vastbase-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -750,7 +750,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: vastbase-native
-          path: "release-native/dbx-agent-vastbase-*"
+          path: "release-native/linop-db-agent-vastbase-*"
 
   build-neo4j-native:
     needs: [bump-versions]
@@ -778,7 +778,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-neo4j-${platform}"
+            output="../../../release-native/linop-db-agent-neo4j-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -793,11 +793,11 @@ jobs:
           cache-dependency-path: agents/drivers/neo4j-go/go.windows-legacy.sum
       - name: Build Windows-compatible Neo4j agent
         shell: bash
-        run: bash agents/drivers/neo4j-go/build-windows-legacy.sh "$GITHUB_WORKSPACE/release-native/dbx-agent-neo4j-windows-x64.exe"
+        run: bash agents/drivers/neo4j-go/build-windows-legacy.sh "$GITHUB_WORKSPACE/release-native/linop-db-agent-neo4j-windows-x64.exe"
       - uses: actions/upload-artifact@v4
         with:
           name: neo4j-native
-          path: "release-native/dbx-agent-neo4j-*"
+          path: "release-native/linop-db-agent-neo4j-*"
 
   build-nebula-native:
     needs: [bump-versions]
@@ -826,7 +826,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-nebula-${platform}"
+            output="../../../release-native/linop-db-agent-nebula-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -835,7 +835,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: nebula-native
-          path: "release-native/dbx-agent-nebula-*"
+          path: "release-native/linop-db-agent-nebula-*"
 
   build-iotdb-native:
     needs: [bump-versions]
@@ -864,7 +864,7 @@ jobs:
           )
           for platform in "${!TARGETS[@]}"; do
             IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
-            output="../../../release-native/dbx-agent-iotdb-${platform}"
+            output="../../../release-native/linop-db-agent-iotdb-${platform}"
             if [[ "$goos" == "windows" ]]; then
               output="${output}.exe"
             fi
@@ -875,7 +875,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: iotdb-native
-          path: "release-native/dbx-agent-iotdb-*"
+          path: "release-native/linop-db-agent-iotdb-*"
 
   build-duckdb-native:
     needs: [bump-versions]
@@ -977,7 +977,7 @@ jobs:
           if [ -n "${{ matrix.manylinux_image }}" ]; then
             docker run --rm \
               --user "$(id -u):$(id -g)" \
-              -e HOME=/tmp/dbx-rust-home \
+              -e HOME=/tmp/linop-db-rust-home \
               -e CARGO_INCREMENTAL=0 \
               -e CARGO_TARGET_DIR=/workspace/target/duckdb-driver \
               -e RUSTC_WRAPPER \
@@ -1012,7 +1012,7 @@ jobs:
                   --manifest-path Cargo.toml \
                   --locked \
                   --release \
-                  --bin dbx-duckdb-driver \
+                  --bin linop-db-duckdb-driver \
                   --target "${{ matrix.target }}"
                 if [ -n "${SCCACHE_BUCKET:-}" ]; then
                   sccache --show-stats || true
@@ -1028,25 +1028,25 @@ jobs:
               --manifest-path Cargo.toml \
               --locked \
               --release \
-              --bin dbx-duckdb-driver \
+              --bin linop-db-duckdb-driver \
               --target "${{ matrix.target }}" \
               "${BUILD_STD[@]}"
             popd
           fi
           mkdir -p release-native
           cp \
-            "target/duckdb-driver/${{ matrix.target }}/release/dbx-duckdb-driver${{ matrix.extension }}" \
-            "release-native/dbx-agent-duckdb-${{ matrix.platform }}${{ matrix.extension }}"
+            "target/duckdb-driver/${{ matrix.target }}/release/linop-db-duckdb-driver${{ matrix.extension }}" \
+            "release-native/linop-db-agent-duckdb-${{ matrix.platform }}${{ matrix.extension }}"
           if [ "${{ runner.os }}" = "Windows" ]; then
             python agents/scripts/validate_windows_pe_dependencies.py \
-              "release-native/dbx-agent-duckdb-${{ matrix.platform }}${{ matrix.extension }}"
+              "release-native/linop-db-agent-duckdb-${{ matrix.platform }}${{ matrix.extension }}"
           fi
           if [ -n "${{ matrix.manylinux_image }}" ]; then
             docker run --rm \
               --user "$(id -u):$(id -g)" \
               -v "${{ github.workspace }}/release-native:/driver:ro" \
               "${{ matrix.manylinux_image }}" \
-              "/driver/dbx-agent-duckdb-${{ matrix.platform }}" < /dev/null
+              "/driver/linop-db-agent-duckdb-${{ matrix.platform }}" < /dev/null
           fi
       - name: Show sccache stats
         if: always()
@@ -1056,7 +1056,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: duckdb-native-${{ matrix.platform }}
-          path: "release-native/dbx-agent-duckdb-*"
+          path: "release-native/linop-db-agent-duckdb-*"
 
   build-sqlite-worker-native:
     needs: [bump-versions]
@@ -1095,19 +1095,19 @@ jobs:
       - name: Build musl SQLite SSH worker
         env:
           RUSTFLAGS: ${{ matrix.rustflags }}
-        run: cargo zigbuild --release -p dbx-sqlite-worker --target ${{ matrix.target }}
+        run: cargo zigbuild --release -p linop-db-sqlite-worker --target ${{ matrix.target }}
 
       - name: Stage SQLite SSH worker
         run: |
           mkdir -p release-native
           cp \
-            "target/${{ matrix.target }}/release/dbx-sqlite-worker" \
-            "release-native/dbx-agent-sqlite-worker-${{ matrix.platform }}"
+            "target/${{ matrix.target }}/release/linop-db-sqlite-worker" \
+            "release-native/linop-db-agent-sqlite-worker-${{ matrix.platform }}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: sqlite-worker-native-${{ matrix.platform }}
-          path: "release-native/dbx-agent-sqlite-worker-*"
+          path: "release-native/linop-db-agent-sqlite-worker-*"
 
   build-tdengine-native:
     needs: [bump-versions]
@@ -1203,7 +1203,7 @@ jobs:
           if [ -n "${{ matrix.manylinux_image }}" ]; then
             docker run --rm \
               --user "$(id -u):$(id -g)" \
-              -e HOME=/tmp/dbx-rust-home \
+              -e HOME=/tmp/linop-db-rust-home \
               -e CARGO_INCREMENTAL=0 \
               -e CARGO_TARGET_DIR=/workspace/target/tdengine-driver \
               -e RUSTC_WRAPPER \
@@ -1238,7 +1238,7 @@ jobs:
                   --manifest-path agents/drivers/tdengine/Cargo.toml \
                   --locked \
                   --release \
-                  --bin dbx-tdengine-driver \
+                  --bin linop-db-tdengine-driver \
                   --target "${{ matrix.target }}"
                 if [ -n "${SCCACHE_BUCKET:-}" ]; then
                   sccache --show-stats || true
@@ -1253,22 +1253,22 @@ jobs:
               --manifest-path agents/drivers/tdengine/Cargo.toml \
               --locked \
               --release \
-              --bin dbx-tdengine-driver \
+              --bin linop-db-tdengine-driver \
               --target "${{ matrix.target }}" \
               "${BUILD_STD[@]}"
           fi
           mkdir -p release-native
           cp \
-            "target/tdengine-driver/${{ matrix.target }}/release/dbx-tdengine-driver${{ matrix.extension }}" \
-            "release-native/dbx-agent-tdengine-${{ matrix.platform }}${{ matrix.extension }}"
+            "target/tdengine-driver/${{ matrix.target }}/release/linop-db-tdengine-driver${{ matrix.extension }}" \
+            "release-native/linop-db-agent-tdengine-${{ matrix.platform }}${{ matrix.extension }}"
           if [ -n "${{ matrix.manylinux_image }}" ]; then
             docker run --rm \
               --user "$(id -u):$(id -g)" \
               -v "${{ github.workspace }}/release-native:/driver:ro" \
               "${{ matrix.manylinux_image }}" \
-              "/driver/dbx-agent-tdengine-${{ matrix.platform }}" < /dev/null
+              "/driver/linop-db-agent-tdengine-${{ matrix.platform }}" < /dev/null
           elif [ "${{ matrix.smoke }}" = "true" ]; then
-            "release-native/dbx-agent-tdengine-${{ matrix.platform }}${{ matrix.extension }}" < /dev/null
+            "release-native/linop-db-agent-tdengine-${{ matrix.platform }}${{ matrix.extension }}" < /dev/null
           fi
       - name: Show sccache stats
         if: always()
@@ -1278,7 +1278,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: tdengine-native-${{ matrix.platform }}
-          path: "release-native/dbx-agent-tdengine-*"
+          path: "release-native/linop-db-agent-tdengine-*"
 
   build-jre:
     needs: [bump-versions]
@@ -1304,9 +1304,9 @@ jobs:
           JLINK_OPTS="--strip-debug --no-header-files --no-man-pages --compress=zip-6"
           JRE_KEY="${{ matrix.jre-key }}"
 
-          jlink --add-modules $MODULES $JLINK_OPTS --output dbx-jre
-          tar cf - dbx-jre | zstd -q -19 -T0 -o dbx-jre-${JRE_KEY}-linux-x64.tar.zst
-          rm -rf dbx-jre
+          jlink --add-modules $MODULES $JLINK_OPTS --output linop-db-jre
+          tar cf - linop-db-jre | zstd -q -19 -T0 -o linop-db-jre-${JRE_KEY}-linux-x64.tar.zst
+          rm -rf linop-db-jre
 
           ADOPTIUM="https://api.adoptium.net/v3/binary/latest/${{ matrix.java-version }}/ga"
           declare -A PLATFORMS=(
@@ -1345,16 +1345,16 @@ jobs:
             else
               CROSS_OPTS="--disable-plugin strip-native-debug-symbols"
             fi
-            jlink --module-path "$JMODS" --add-modules $MODULES $JLINK_OPTS $CROSS_OPTS --output dbx-jre
-            tar cf - dbx-jre | zstd -q -19 -T0 -o dbx-jre-${JRE_KEY}-$platform.tar.zst
-            rm -rf dbx-jre jdk-$platform
+            jlink --module-path "$JMODS" --add-modules $MODULES $JLINK_OPTS $CROSS_OPTS --output linop-db-jre
+            tar cf - linop-db-jre | zstd -q -19 -T0 -o linop-db-jre-${JRE_KEY}-$platform.tar.zst
+            rm -rf linop-db-jre jdk-$platform
           done
 
-          ls -lh dbx-jre-*.tar.zst
+          ls -lh linop-db-jre-*.tar.zst
       - uses: actions/upload-artifact@v4
         with:
           name: jre-${{ matrix.jre-key }}
-          path: "dbx-jre-*.tar.zst"
+          path: "linop-db-jre-*.tar.zst"
 
   reuse-previous-assets:
     name: Reuse unchanged agent artifacts
@@ -1425,10 +1425,10 @@ jobs:
       - name: Flatten artifacts
         run: |
           mkdir -p release
-          find artifacts -type f -name 'dbx-agent-*.jar' -exec cp {} release/ \;
-          find artifacts -type f -name 'dbx-agent-*' ! -name '*.jar' ! -name '*.tar.zst' -exec cp {} release/ \;
-          find artifacts -type f -name 'dbx-agent-*.tar.zst' -exec cp {} release/ \;
-          find artifacts -name 'dbx-jre-*.tar.zst' -exec cp {} release/ \;
+          find artifacts -type f -name 'linop-db-agent-*.jar' -exec cp {} release/ \;
+          find artifacts -type f -name 'linop-db-agent-*' ! -name '*.jar' ! -name '*.tar.zst' -exec cp {} release/ \;
+          find artifacts -type f -name 'linop-db-agent-*.tar.zst' -exec cp {} release/ \;
+          find artifacts -name 'linop-db-jre-*.tar.zst' -exec cp {} release/ \;
           ls -lh release/
 
       - name: Extract reused raw agent artifacts
@@ -1491,7 +1491,7 @@ jobs:
 
           generate_native_entry() {
             local name="$1" label="$2" jre_key="$3" version="$4" native_json="$5" min_app_version="$6"
-            local legacy_jar_url="https://github.com/${REPO}/releases/download/${TAG}/dbx-agent-${name}-legacy-placeholder.jar"
+            local legacy_jar_url="https://github.com/${REPO}/releases/download/${TAG}/linop-db-agent-${name}-legacy-placeholder.jar"
             cat <<ENTRY
               "${name}": {
                 "version": "${version}",
@@ -1538,9 +1538,9 @@ jobs:
           generate_jre_platforms() {
             local jre_key="$1"
             local PLATFORMS=""
-            for f in release/dbx-jre-${jre_key}-*.tar.zst; do
+            for f in release/linop-db-jre-${jre_key}-*.tar.zst; do
               [ ! -f "$f" ] && continue
-              p=$(basename "$f" .tar.zst | sed "s/dbx-jre-${jre_key}-//")
+              p=$(basename "$f" .tar.zst | sed "s/linop-db-jre-${jre_key}-//")
               sha256=$(sha256sum "$f" | cut -d' ' -f1)
               size=$(stat -c%s "$f")
               url="https://github.com/${REPO}/releases/download/${TAG}/$(basename $f)"
@@ -1556,7 +1556,7 @@ jobs:
             for p in macos-aarch64 macos-x64 linux-aarch64 linux-x64 windows-aarch64 windows-x64; do
               extension=""
               [[ "$p" == windows-* ]] && extension=".exe"
-              f="release/dbx-agent-${name}-${version}-${p}${extension}"
+              f="release/linop-db-agent-${name}-${version}-${p}${extension}"
               [ ! -f "$f" ] && continue
               sha256=$(sha256sum "$f" | cut -d' ' -f1)
               size=$(stat -c%s "$f")
@@ -1579,7 +1579,7 @@ jobs:
           DRIVERS=""
           for name in $(module_names); do
             version=$(get_module_version "$name")
-            f="release/dbx-agent-${name}-${version}.jar"
+            f="release/linop-db-agent-${name}-${version}.jar"
             [ -f "$f" ] || continue
             label=$(unzip -p "$f" META-INF/MANIFEST.MF | awk -F': ' 'BEGIN{IGNORECASE=1} /^Agent-Label:/ {sub(/\r$/, "", $2); print $2; exit}' || echo "$name")
             [ -z "$label" ] && label="$name"
@@ -1592,7 +1592,7 @@ jobs:
           done
           for name in oracle oracle-oci xugu kingbase vastbase neo4j nebula iotdb duckdb sqlite-worker rabbitmq rocketmq zookeeper cassandra hive argo tdengine etcd etcd2; do
             version=$(get_module_version "$name")
-            [ -f "release/dbx-agent-${name}-${version}.jar" ] && continue
+            [ -f "release/linop-db-agent-${name}-${version}.jar" ] && continue
             native_json=$(generate_native_platforms "$name" "$version")
             [ -z "$native_json" ] && continue
             label=$(native_only_label "$name")
@@ -1629,8 +1629,8 @@ jobs:
           JDBC_VERSION="$(sed -nE "s/^version[[:space:]]*=[[:space:]]*'([^']+)'.*/\1/p" plugins/jdbc/build.gradle | head -n 1)"
           node agents/scripts/build_offline_jdbc_payload.mjs \
             release \
-            "plugins/jdbc/dist/dbx-jdbc-plugin-${JDBC_VERSION}.zip" \
-            "plugins/jdbc/dist/dbx-jdbc-plugin-${JDBC_VERSION}/bin/dbx-maven-resolver"
+            "plugins/jdbc/dist/linop-db-jdbc-plugin-${JDBC_VERSION}.zip" \
+            "plugins/jdbc/dist/linop-db-jdbc-plugin-${JDBC_VERSION}/bin/linop-db-maven-resolver"
 
       - name: Build offline ZIP bundles
         run: bash agents/scripts/build_offline_zip.sh release
@@ -1678,7 +1678,7 @@ jobs:
           }
           for name in $(module_names); do
             version=$(echo "$MODULE_VERSIONS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('$name',''))")
-            compgen -G "release/dbx-agent-${name}-${version}*.tar.zst" > /dev/null && DRIVER_NAMES+=("$name")
+            compgen -G "release/linop-db-agent-${name}-${version}*.tar.zst" > /dev/null && DRIVER_NAMES+=("$name")
           done
 
           native_only_label() {
@@ -1729,7 +1729,7 @@ jobs:
             new_ver=$(echo "$MODULE_VERSIONS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('$name',''))")
             [ "$old_ver" = "$new_ver" ] && continue
 
-            jar_file="release/dbx-agent-${name}-${new_ver}.jar"
+            jar_file="release/linop-db-agent-${name}-${new_ver}.jar"
             if [ -f "$jar_file" ]; then
               label=$(unzip -p "$jar_file" META-INF/MANIFEST.MF | awk -F': ' 'BEGIN{IGNORECASE=1} /^Agent-Label:/ {sub(/\r$/, "", $2); print $2; exit}' || echo "$name")
               [ -z "$label" ] && label="$name"
@@ -1756,7 +1756,7 @@ jobs:
             elif [ "$name" = "iotdb" ]; then
               LOG_PATH="agents/drivers/iotdb/"
             elif [ "$name" = "sqlite-worker" ]; then
-              LOG_PATH="crates/dbx-sqlite-worker/"
+              LOG_PATH="crates/linop-db-sqlite-worker/"
             elif [ -d "agents/drivers/$name" ]; then
               LOG_PATH="agents/drivers/$name/"
             else
@@ -1902,8 +1902,8 @@ jobs:
           # transient R2 failure instead of re-uploading every driver again.
           retry aws s3 sync release/ "$R2_BUCKET/agents/drivers/" \
             --exclude "*" \
-            --include "dbx-agent-*.tar.zst" \
-            --include "dbx-agent-*.tar.zst.delta" \
+            --include "linop-db-agent-*.tar.zst" \
+            --include "linop-db-agent-*.tar.zst.delta" \
             --size-only \
             --endpoint-url "$R2_ENDPOINT"
           echo "Uploaded single-driver packages"
@@ -1912,7 +1912,7 @@ jobs:
           retry aws s3 cp release/ "$R2_BUCKET/agents/jre/" \
             --recursive \
             --exclude "*" \
-            --include "dbx-jre-*.tar.zst" \
+            --include "linop-db-jre-*.tar.zst" \
             --endpoint-url "$R2_ENDPOINT"
           echo "Uploaded JRE packages"
 

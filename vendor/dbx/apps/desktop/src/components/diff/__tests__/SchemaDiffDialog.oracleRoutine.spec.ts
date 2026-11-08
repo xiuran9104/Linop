@@ -226,7 +226,7 @@ afterEach(() => {
   apps.splice(0).forEach((app) => app.unmount());
   sessions.splice(0).forEach(removeSchemaDiffSession);
   document.body.innerHTML = "";
-  localStorage.removeItem("dbx-schema-diff-size");
+  localStorage.removeItem("linop-db-schema-diff-size");
 });
 
 it("keeps external SQL and rollback previews separate from actual user edits, including clearing", async () => {
@@ -275,7 +275,7 @@ it.each([
   [{ width: "0px", height: "0px" }, "1100px", "820px"],
   [{ width: "1120px", height: "840px" }, "1120px", "840px"],
 ])("opens readable results while preserving a positive saved dialog size: %j", async (saved, width, height) => {
-  localStorage.setItem("dbx-schema-diff-size", JSON.stringify(saved));
+  localStorage.setItem("linop-db-schema-diff-size", JSON.stringify(saved));
   await mountComparison();
   const dialog = document.querySelector<HTMLElement>('[role="dialog"]')!;
   expect(dialog.style.width).toBe(width);
@@ -289,7 +289,7 @@ it("does not persist a hidden dialog's zero-sized resize observation", async () 
     class {
       constructor(private callback: ResizeObserverCallback) {}
       observe(target: Element) {
-        if (target.matches(".dbx-schema-diff-dialog")) resize = this.callback;
+        if (target.matches(".linop-db-schema-diff-dialog")) resize = this.callback;
       }
       unobserve() {}
       disconnect() {}
@@ -299,10 +299,10 @@ it("does not persist a hidden dialog's zero-sized resize observation", async () 
     await mountComparison();
     await vi.waitFor(() => expect(resize).toBeDefined());
     resize!([{ contentRect: { width: 1120, height: 840 } } as ResizeObserverEntry], {} as ResizeObserver);
-    await vi.waitFor(() => expect(JSON.parse(localStorage.getItem("dbx-schema-diff-size")!)).toEqual({ width: "1120px", height: "840px" }));
+    await vi.waitFor(() => expect(JSON.parse(localStorage.getItem("linop-db-schema-diff-size")!)).toEqual({ width: "1120px", height: "840px" }));
     resize!([{ contentRect: { width: 0, height: 0 } } as ResizeObserverEntry], {} as ResizeObserver);
     await new Promise((resolve) => setTimeout(resolve, 550));
-    expect(JSON.parse(localStorage.getItem("dbx-schema-diff-size")!)).toEqual({ width: "1120px", height: "840px" });
+    expect(JSON.parse(localStorage.getItem("linop-db-schema-diff-size")!)).toEqual({ width: "1120px", height: "840px" });
   } finally {
     vi.unstubAllGlobals();
   }

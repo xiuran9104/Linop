@@ -16,7 +16,7 @@ Proposed（设计已确认，待实现）
 
 > DBX does not alter an existing target table's columns during transfer — drop the target table or adjust its structure to match the source first.
 
-见 `crates/dbx-core/src/transfer.rs:1633-1662`（`validate_preexisting_target_columns`）。用户必须离开传输对话框、手工删表、再回来重跑。本功能把这句提示自动化。
+见 `crates/linop-db-core/src/transfer.rs:1633-1662`（`validate_preexisting_target_columns`）。用户必须离开传输对话框、手工删表、再回来重跑。本功能把这句提示自动化。
 
 `TransferMode`（`transfer.rs:71-78`）目前是 `Append | Overwrite | Upsert`，`Overwrite` 生成单条 `TRUNCATE TABLE`（`:7679-7690`，SQLite/CloudflareD1/DuckDb 用 `DELETE FROM`）。`create_table: bool`（`:189`）在 UI 上没有开关，由传输内容推导（`DataTransferDialog.vue:768`）。
 
@@ -103,7 +103,7 @@ yaml 里确实已有 `ddl_capabilities.templates.drop_table`（`mysql.yaml:116`�
 
 **任务 1.1 — `DdlDialectProfile` 新增四个数据字段**
 
-在 `crates/dbx-core/src/sql_dialect/ddl_profile.rs` 的 `DdlDialectProfile`（`:99-167`）新增：
+在 `crates/linop-db-core/src/sql_dialect/ddl_profile.rs` 的 `DdlDialectProfile`（`:99-167`）新增：
 
 - `drop_table_template: Option<&'static str>`（占位符 `{table}` / `{cascade}`，与既有 `FN_DROP:209` / `SEQ_DROP:214` 同风格）
 - `drop_table_supports_cascade: bool`
@@ -122,14 +122,14 @@ yaml 里确实已有 `ddl_capabilities.templates.drop_table`（`mysql.yaml:116`�
 
 **必须先定真源**：`oracle.yaml:109` 的模板是 `DROP TABLE {table} CASCADE CONSTRAINTS`，而 `supports_drop_table_cascade` 白名单**不含 Oracle**。三个 Oracle 系 yaml 之间也不一致（`dameng.yaml:101` 是 `IF EXISTS`），只因都被 `oracle.yaml` 覆盖才未暴露。本 PIP 以 Rust 侧现状为真源（Oracle 无 CASCADE），yaml 差异记为技术债。
 
-- 验收：单测挂 `db_admin_sql.rs:1573-1594` 现有 `builds_drop_and_clear_table_sql` 旁；覆盖 6 个 family + DuckDB；**Rust 生产调用方仅 2 个**（`src-tauri/src/commands/query.rs:632-635`、`crates/dbx-web/src/routes/query.rs:904-906`），签名不变故零改动
+- 验收：单测挂 `db_admin_sql.rs:1573-1594` 现有 `builds_drop_and_clear_table_sql` 旁；覆盖 6 个 family + DuckDB；**Rust 生产调用方仅 2 个**（`src-tauri/src/commands/query.rs:632-635`、`crates/linop-db-web/src/routes/query.rs:904-906`），签名不变故零改动
 - 工作量：1 人日
 
 **任务 1.3 — `TransferRequest` 新增字段与校验**
 
 `transfer.rs:176-203` 新增 `#[serde(default)] pub drop_target_before_create: bool`（紧邻 `create_table:189`）。`validate_transfer_request`（`:727-743`）拒绝 `drop_target_before_create && content == DataOnly`（措辞参照 `table_import.rs:5925-5935` 拒绝 `create_table` + `Truncate` 的先例）。
 
-Tauri 与 Web 共用 `dbx_core::transfer::TransferRequest`，一次改动双向生效。`crates/dbx-web/src/routes/transfer.rs:623-660` 的 fixture 需补字段。
+Tauri 与 Web 共用 `linop_db_core::transfer::TransferRequest`，一次改动双向生效。`crates/linop-db-web/src/routes/transfer.rs:623-660` 的 fixture 需补字段。
 
 - 验收：`#[serde(default)]` 保证旧任务反序列化不破；校验单测挂 `transfer.rs:8745` `transfer_validation_tests`
 - 工作量：0.5 人日
@@ -142,14 +142,14 @@ Tauri 与 Web 共用 `dbx_core::transfer::TransferRequest`，一次改动双向�
 
 **任务 1.5 — 备份表名生成器（新增）**
 
-读 `descriptor.rs:161 max_identifier_length`（目前零校验消费者），实现「截断 + 短哈希」。`{table}__dbx_bak` 比原名长 13 字符，Oracle 上限 30 意味着原名超过 17 字符即溢出。派生思路参照 `sqlite_rebuild.rs:493-496`（内容哈希，幂等），冲突预检参照 `:498-511`（命中即报错，不自动清理不重试换名）。
+读 `descriptor.rs:161 max_identifier_length`（目前零校验消费者），实现「截断 + 短哈希」。`{table}__linop_db_bak` 比原名长 13 字符，Oracle 上限 30 意味着原名超过 17 字符即溢出。派生思路参照 `sqlite_rebuild.rs:493-496`（内容哈希，幂等），冲突预检参照 `:498-511`（命中即报错，不自动清理不重试换名）。
 
 - 验收：Oracle（30）/ PG（63）/ MySQL（64）/ SQL Server（128）四个边界各一条单测；长表名不溢出且不同源表不碰撞
 - 工作量：0.75 人日
 
 **任务 1.6 — 接入生产库闸门（传输链路首次）**
 
-在 `src-tauri/src/commands/transfer.rs:26`（`ensure_connection_writable` 旁）与 `crates/dbx-web/src/routes/transfer.rs:81-89`（只读拒绝旁）新增：`drop_target_before_create && is_production_database(...)` 时要求请求携带显式确认标记，否则返回可辨识错误码供前端弹确认框。
+在 `src-tauri/src/commands/transfer.rs:26`（`ensure_connection_writable` 旁）与 `crates/linop-db-web/src/routes/transfer.rs:81-89`（只读拒绝旁）新增：`drop_target_before_create && is_production_database(...)` 时要求请求携带显式确认标记，否则返回可辨识错误码供前端弹确认框。
 
 - 工作量：0.5 人日
 
@@ -168,7 +168,7 @@ Tauri 与 Web 共用 `dbx_core::transfer::TransferRequest`，一次改动双向�
 
 rename 顺序（子表先）与 create/insert 顺序（父表先）相反，但现有编排是单趟 per-table 循环、一张表内部完成建表加写数据。改为：`drop_target_before_create` 为真时先按 `parents_first=false`（`transfer.rs:6770`）全量 rename 一趟，再走现有 `parents_first=true` 循环。进度事件需覆盖 rename 阶段（参照 `:8192` 的两步计数）。
 
-⚠️ **Tauri（`src-tauri/src/commands/transfer.rs:160-253`）与 Web（`crates/dbx-web/src/routes/transfer.rs:277-340`）两处必须同步改**，否则 Web API 行为与桌面端分歧。取消（`is_cancelled`，`transfer.rs:6673`）在 rename 预趟中同样生效；成环的表由 `:6846-6856` 追加到末尾而非报错，此行为保留。
+⚠️ **Tauri（`src-tauri/src/commands/transfer.rs:160-253`）与 Web（`crates/linop-db-web/src/routes/transfer.rs:277-340`）两处必须同步改**，否则 Web API 行为与桌面端分歧。取消（`is_cancelled`，`transfer.rs:6673`）在 rename 预趟中同样生效；成环的表由 `:6846-6856` 追加到末尾而非报错，此行为保留。
 
 - 工作量：1.5 人日（**架构风险集中点**，建议先跑通「无外键多表」再进 2.3）
 
@@ -265,7 +265,7 @@ rename 顺序（子表先）与 create/insert 顺序（父表先）相反，但�
 
 **任务 4.2 — live 集成测试**
 
-`crates/dbx-core/tests/live_mysql_transfer.rs` 的 `fn transfer_request()`（`:69-96`）是新字段第一个落点。**最佳断言范式在 `:707-741`**（插脏数据 → 传输 → 断言脏数据消失）。生命周期沿用 `:651-657` 建 AppState → `:660` `let test_result = async {...}.await` → `:779` 先 cleanup 再 `cleanup.unwrap(); test_result.unwrap();` 的 cleanup-before-assert 结构。
+`crates/linop-db-core/tests/live_mysql_transfer.rs` 的 `fn transfer_request()`（`:69-96`）是新字段第一个落点。**最佳断言范式在 `:707-741`**（插脏数据 → 传输 → 断言脏数据消失）。生命周期沿用 `:651-657` 建 AppState → `:660` `let test_result = async {...}.await` → `:779` 先 cleanup 再 `cleanup.unwrap(); test_result.unwrap();` 的 cleanup-before-assert 结构。
 
 ⚠️ **两处既有断言与新模式冲突，必须处理**：
 
@@ -274,7 +274,7 @@ rename 顺序（子表先）与 create/insert 顺序（父表先）相反，但�
 
 新增覆盖：结构不兼容目标 + 新模式 → 成功；父子外键两表 → rename 顺序正确；PG 索引与外键在重建后存在（对应任务 2.1 验收）；失败时备份表保留且错误含备份名。
 
-跑法：`make db DB=mysql@8.4` → 导出 `DBX_LIVE_MYSQL_TRANSFER_{HOST,PORT,USER,PASSWORD}` → `cargo test -p dbx-core --test live_mysql_transfer -- --ignored`。**`RUST_MIN_STACK=8388608` 必须设置**（transfer future 栈很深，`live_mysql_transfer.rs:104-118` 有 2MB 栈手工线程测试）。
+跑法：`make db DB=mysql@8.4` → 导出 `DBX_LIVE_MYSQL_TRANSFER_{HOST,PORT,USER,PASSWORD}` → `cargo test -p linop-db-core --test live_mysql_transfer -- --ignored`。**`RUST_MIN_STACK=8388608` 必须设置**（transfer future 栈很深，`live_mysql_transfer.rs:104-118` 有 2MB 栈手工线程测试）。
 
 - 工作量：1.5 人日
 
@@ -309,7 +309,7 @@ rename 顺序（子表先）与 create/insert 顺序（父表先）相反，但�
 
 ### 备份表命名与冲突
 
-- 命名：`{truncated_table}__dbx_bak_{short_hash}`，总长受 `descriptor.rs:161 max_identifier_length` 约束（Oracle 30 / PG 63 / MySQL 64 / SQL Server 128）
+- 命名：`{truncated_table}__linop_db_bak_{short_hash}`，总长受 `descriptor.rs:161 max_identifier_length` 约束（Oracle 30 / PG 63 / MySQL 64 / SQL Server 128）
 - 哈希从源表限定名 + 传输 id 派生，保证同一传输内幂等、不同源表不碰撞
 - 冲突预检：rename 前查询目标库是否已存在该名；命中即报错，**不自动清理、不重试换名**（沿用 `sqlite_rebuild.rs:498-511` 的判断——自动清理一个我们没创建的对象是不可接受的）
 

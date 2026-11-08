@@ -34,7 +34,7 @@ Use only an explicitly disposable Oracle tenant. In addition to the environment 
 
 ```sh
 pnpm exec tsx --tsconfig apps/desktop/tsconfig.json agents/drivers/oceanbase-oracle/scripts/verify-schema-objects.ts
-cargo test -p dbx-sql oceanbase_sequence_edit
+cargo test -p linop-db-sql oceanbase_sequence_edit
 ```
 
 Unlike the partition verifier, this script attempts to remove both fixture users in `finally`. It never drops an existing user with the same name after a failed CREATE. Inspect `agents/drivers/oceanbase-oracle/build/schema-object-evidence/verification.json` (or `OB_TEST_OUTPUT`) for the executed checks, errors and any cleanup needed. There must be no errors before calling the integration check passed. A cleanup error is also a test failure. No credentials are written to evidence files. Literal `CREATE PUBLIC DATABASE LINK`, reverse links, OCI connectivity and complete desktop-client acceptance are outside the successful path. OceanBase 4.2.5.7 rejects the Oracle-style `PUBLIC` keyword with ORA-00900; its accepted `CREATE DATABASE LINK` syntax already creates a tenant-visible public link.

@@ -418,9 +418,9 @@ describe("AiAssistant mount", () => {
     });
 
     const root = container.querySelector<HTMLElement>("[data-ai-assistant-root]");
-    expect(root?.style.getPropertyValue("--dbx-ai-content-font-family")).toBe("Georgia, serif");
-    expect(root?.style.getPropertyValue("--dbx-ai-content-font-size")).toBe("18px");
-    expect(root?.style.getPropertyValue("--dbx-ai-code-font-size")).toBe("18px");
+    expect(root?.style.getPropertyValue("--linop-db-ai-content-font-family")).toBe("Georgia, serif");
+    expect(root?.style.getPropertyValue("--linop-db-ai-content-font-size")).toBe("18px");
+    expect(root?.style.getPropertyValue("--linop-db-ai-code-font-size")).toBe("18px");
     expect(container.querySelector("[data-ai-user-message-content]")?.closest(".ai-conversation-text")).not.toBeNull();
     expect(container.querySelector("[data-ai-assistant-message-content]")?.classList.contains("ai-conversation-text")).toBe(true);
     expect(container.querySelector(".ai-markdown code")).not.toBeNull();

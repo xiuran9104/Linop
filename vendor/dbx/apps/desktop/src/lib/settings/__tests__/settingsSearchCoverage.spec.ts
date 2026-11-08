@@ -222,7 +222,7 @@ describe("settings search localization coverage", () => {
           const results = searchSettings(entries, String(messageAt(messages, `settings.${key}`)), locale, Infinity);
           expect(results).toEqual(expect.arrayContaining([expect.objectContaining({ targetId: "mcp-connections", route: { mcpManagementTab: "permissions" } })]));
         }
-        for (const query of [locale === "zh-CN" ? "通配符" : "wildcard", "dbx_ssh__*"]) {
+        for (const query of [locale === "zh-CN" ? "通配符" : "wildcard", "linop_db_ssh__*"]) {
           expect(searchSettings(entries, query, locale, Infinity)).toEqual(expect.arrayContaining([expect.objectContaining({ targetId: "mcp-capabilities", route: { mcpManagementTab: "capabilities", mcpCapabilityTarget: { kind: "advanced" } } })]));
         }
       }

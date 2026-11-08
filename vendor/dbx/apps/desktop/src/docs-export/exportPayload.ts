@@ -6,7 +6,7 @@ import type { ExportLocale } from "./exportTranslate";
  *
  * Task 6's Rust side serialises exactly this object as JSON, encodes it UTF-8
  * then base64, and writes it as the text of
- * `<script type="application/dbx-snapshot">`. Nothing else in the emitted
+ * `<script type="application/linop-db-snapshot">`. Nothing else in the emitted
  * document is read by the bundle.
  *
  * `lang` picks the starting locale only. The reader can change it — the
@@ -27,8 +27,8 @@ export interface ExportPayload {
  * the bundle reads.
  */
 export function readPayload(): ExportPayload {
-  const node = document.querySelector("script[type='application/dbx-snapshot']");
-  if (node === null) throw new Error("no <script type='application/dbx-snapshot'> in this document");
+  const node = document.querySelector("script[type='application/linop-db-snapshot']");
+  if (node === null) throw new Error("no <script type='application/linop-db-snapshot'> in this document");
   // `atob` yields one byte per character; the payload is UTF-8, so it must be
   // widened before decoding or every non-ASCII table name and note is mangled.
   const binary = atob((node.textContent ?? "").trim());

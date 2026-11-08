@@ -3,7 +3,7 @@ import { hasGbase8cConnectionDatabase } from "@/lib/connection/gbase8cDatabase";
 
 describe("hasGbase8cConnectionDatabase", () => {
   it("accepts a filled database name, trimming it", () => {
-    expect(hasGbase8cConnectionDatabase("  dbx_pg  ", undefined)).toBe(true);
+    expect(hasGbase8cConnectionDatabase("  linop_db_pg  ", undefined)).toBe(true);
   });
 
   it("rejects a missing or blank database", () => {

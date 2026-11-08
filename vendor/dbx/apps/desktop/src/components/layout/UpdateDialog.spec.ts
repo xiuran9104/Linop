@@ -533,11 +533,11 @@ describe("UpdateDialog release notes safety", () => {
   });
 
   it("hides HTML comments such as the CNB mirror marker instead of rendering them as text", async () => {
-    await mountDialog(0, { releaseNotes: "### 安装\n- 条目\n\n<!-- dbx-cnb-mirror -->\n> 国内下载：[CNB 镜像](https://cnb.cool/dbxio.com/dbx/-/releases)" });
+    await mountDialog(0, { releaseNotes: "### 安装\n- 条目\n\n<!-- linop-db-cnb-mirror -->\n> 国内下载：[CNB 镜像](https://cnb.cool/dbxio.com/dbx/-/releases)" });
     await vi.waitFor(() => {
       expect(document.body.querySelector('a[href^="https://cnb.cool"]')).not.toBeNull();
     });
-    expect(document.body.textContent).not.toContain("dbx-cnb-mirror");
+    expect(document.body.textContent).not.toContain("linop-db-cnb-mirror");
     expect(document.body.textContent).not.toContain("<!--");
   });
 });

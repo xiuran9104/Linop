@@ -19,7 +19,7 @@ async function run(args) {
 }
 
 async function fixture() {
-  const root = await mkdtemp(join(tmpdir(), "dbx-channel-manifest-"));
+  const root = await mkdtemp(join(tmpdir(), "linop-db-channel-manifest-"));
   const input = join(root, "input.json");
   const output = join(root, "output.json");
   await writeFile(input, JSON.stringify({ version: "0.6.60", platforms: { "darwin-aarch64": {} } }));

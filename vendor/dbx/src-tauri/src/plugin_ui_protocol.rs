@@ -1,15 +1,15 @@
-//! Serves installed plugin UI assets over the `dbx-plugin` scheme so the
+//! Serves installed plugin UI assets over the `linop-db-plugin` scheme so the
 //! sandboxed workbench document can lazy-load code-split chunks at runtime.
 //!
 //! URLs carry the plugin id as the first path segment with a fixed host
-//! (`dbx-plugin://localhost/<plugin-id>/<asset-path>`). The fixed host keeps
-//! the WebView2-mapped form (`http://dbx-plugin.localhost/...`) a single
+//! (`linop-db-plugin://localhost/<plugin-id>/<asset-path>`). The fixed host keeps
+//! the WebView2-mapped form (`http://linop-db-plugin.localhost/...`) a single
 //! constant origin, which the sandbox CSP can allow without wildcard hosts.
 
 use std::{sync::Arc, time::Duration};
 
 use base64::Engine;
-use dbx_core::plugins::PluginRegistry;
+use linop_db_core::plugins::PluginRegistry;
 use percent_encoding::percent_decode_str;
 use serde::Deserialize;
 use tauri::http::{HeaderValue, Method, Response, StatusCode, Uri};
@@ -18,7 +18,7 @@ use uuid::Uuid;
 
 use crate::commands::{connection::AppState, plugin_media::PluginMediaState};
 
-pub const PLUGIN_UI_SCHEME: &str = "dbx-plugin";
+pub const PLUGIN_UI_SCHEME: &str = "linop-db-plugin";
 
 /// Registered on the app builder; see `lib.rs`.
 pub fn handle<R: Runtime>(
@@ -194,7 +194,7 @@ pub(crate) fn serve_plugin_ui_asset(registry: &PluginRegistry, method: &Method, 
     }
 }
 
-/// Splits `dbx-plugin://localhost/<plugin-id>/<asset-path>` into its parts.
+/// Splits `linop-db-plugin://localhost/<plugin-id>/<asset-path>` into its parts.
 /// The asset path keeps its percent-decoding to the registry's traversal
 /// validation, which runs on the decoded components.
 pub(crate) fn parse_plugin_ui_uri(uri: &Uri) -> Option<(String, String)> {
@@ -291,7 +291,7 @@ mod tests {
 
     #[test]
     fn serves_assets_with_cors_headers() {
-        let response = get("dbx-plugin://localhost/sample/assets/chunk.js");
+        let response = get("linop-db-plugin://localhost/sample/assets/chunk.js");
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.headers()["access-control-allow-origin"], "*");
         assert_eq!(response.headers()["content-type"], "text/javascript; charset=utf-8");
@@ -304,7 +304,7 @@ mod tests {
         let response = serve_plugin_ui_asset(
             &test_registry(),
             &Method::HEAD,
-            &uri("dbx-plugin://localhost/sample/assets/chunk.js"),
+            &uri("linop-db-plugin://localhost/sample/assets/chunk.js"),
         );
         assert_eq!(response.status(), StatusCode::OK);
         assert!(response.body().is_empty());
@@ -314,7 +314,7 @@ mod tests {
     #[test]
     fn rejects_non_get_methods() {
         let response =
-            serve_plugin_ui_asset(&test_registry(), &Method::POST, &uri("dbx-plugin://localhost/sample/ui/index.html"));
+            serve_plugin_ui_asset(&test_registry(), &Method::POST, &uri("linop-db-plugin://localhost/sample/ui/index.html"));
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
     }
 
@@ -326,7 +326,7 @@ mod tests {
     #[test]
     fn rejects_paths_that_escape_the_plugin() {
         for path in
-            ["dbx-plugin://localhost/sample/../secret.txt", "dbx-plugin://localhost/sample/ui/../../manifest.json"]
+            ["linop-db-plugin://localhost/sample/../secret.txt", "linop-db-plugin://localhost/sample/ui/../../manifest.json"]
         {
             let response = get(path);
             assert_eq!(response.status(), StatusCode::NOT_FOUND, "path should be rejected: {path}");
@@ -335,36 +335,36 @@ mod tests {
 
     #[test]
     fn rejects_unknown_plugins_and_empty_paths() {
-        assert_eq!(get("dbx-plugin://localhost/other/ui/index.html").status(), StatusCode::NOT_FOUND);
-        assert!(parse_plugin_ui_uri(&uri("dbx-plugin://localhost/sample")).is_none());
-        assert!(parse_plugin_ui_uri(&uri("dbx-plugin://localhost/")).is_none());
+        assert_eq!(get("linop-db-plugin://localhost/other/ui/index.html").status(), StatusCode::NOT_FOUND);
+        assert!(parse_plugin_ui_uri(&uri("linop-db-plugin://localhost/sample")).is_none());
+        assert!(parse_plugin_ui_uri(&uri("linop-db-plugin://localhost/")).is_none());
     }
 
     #[test]
     fn decodes_percent_encoded_paths() {
-        let response = get("dbx-plugin://localhost/sample/%69ndex.html");
+        let response = get("linop-db-plugin://localhost/sample/%69ndex.html");
         assert_eq!(response.status(), StatusCode::OK);
         assert_eq!(response.body().as_slice(), b"<h1>Hello</h1>");
     }
 
     #[test]
     fn validates_plugin_ids() {
-        assert!(parse_plugin_ui_uri(&uri("dbx-plugin://localhost/..hidden/ui/index.html")).is_none());
-        assert!(parse_plugin_ui_uri(&uri("dbx-plugin://localhost/a%20b/ui/index.html")).is_none());
-        assert!(parse_plugin_ui_uri(&uri("dbx-plugin://localhost/ok.id-1/ui/index.html")).is_some());
+        assert!(parse_plugin_ui_uri(&uri("linop-db-plugin://localhost/..hidden/ui/index.html")).is_none());
+        assert!(parse_plugin_ui_uri(&uri("linop-db-plugin://localhost/a%20b/ui/index.html")).is_none());
+        assert!(parse_plugin_ui_uri(&uri("linop-db-plugin://localhost/ok.id-1/ui/index.html")).is_some());
     }
 
     #[test]
     fn media_urls_require_scoped_uuid_tokens() {
         let parsed =
-            parse_plugin_media_uri(&uri("dbx-plugin://localhost/sample/__media/550e8400-e29b-41d4-a716-446655440000"));
+            parse_plugin_media_uri(&uri("linop-db-plugin://localhost/sample/__media/550e8400-e29b-41d4-a716-446655440000"));
         assert_eq!(parsed, Some(("sample".to_string(), "550e8400-e29b-41d4-a716-446655440000".to_string())));
         let nested = parse_plugin_media_uri(&uri(
-            "dbx-plugin://localhost/sample/ui/__media/550e8400-e29b-41d4-a716-446655440000",
+            "linop-db-plugin://localhost/sample/ui/__media/550e8400-e29b-41d4-a716-446655440000",
         ));
         assert_eq!(nested, parsed);
-        assert!(parse_plugin_media_uri(&uri("dbx-plugin://localhost/sample/__media/not-a-token")).is_none());
-        assert!(parse_plugin_media_uri(&uri("dbx-plugin://localhost/sample/ui/index.html")).is_none());
+        assert!(parse_plugin_media_uri(&uri("linop-db-plugin://localhost/sample/__media/not-a-token")).is_none());
+        assert!(parse_plugin_media_uri(&uri("linop-db-plugin://localhost/sample/ui/index.html")).is_none());
     }
 
     #[test]

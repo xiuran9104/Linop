@@ -60,7 +60,7 @@ describe("SQL library search scopes", () => {
     await typeQuery(host, "needle");
     expect(visibleFiles(host)).toEqual(["name"]);
     expect(load).not.toHaveBeenCalled();
-    expect(host.querySelector(".dbx-sql-library-snippets")).toBeNull();
+    expect(host.querySelector(".linop-db-sql-library-snippets")).toBeNull();
     await typeQuery(host, "metadata-only");
     expect(visibleFiles(host)).toEqual([]);
   });
@@ -81,7 +81,7 @@ describe("SQL library search scopes", () => {
     await changeSearchMode(host, "name");
     expect(visibleFiles(host)).toContain("name");
     expect(visibleFiles(host)).not.toContain("body");
-    expect(host.querySelector(".dbx-sql-library-snippets")).toBeNull();
+    expect(host.querySelector(".linop-db-sql-library-snippets")).toBeNull();
   });
 
   it("shows pending and incomplete states, allows retry, and does not claim no matches", async () => {
@@ -127,7 +127,7 @@ describe("SQL library locate and search preferences", () => {
     expect(second.host.querySelector<HTMLInputElement>("[data-sql-library-search]")!.value).toBe("");
     expect(second.load).not.toHaveBeenCalled();
     await changeSearchMode(second.host, "name");
-    expect(localStorage.getItem("dbx-sql-library-search-mode")).toBe("name");
+    expect(localStorage.getItem("linop-db-sql-library-search-mode")).toBe("name");
   });
 
   it("locates the current nested file, clears a blocking search and preserves its mode", async () => {

@@ -379,7 +379,7 @@ it.each([
     .closest(".grid")!
     .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 20, clientY: 20 }));
   const text = i18n.global.t(action === "compile" ? "contextMenu.compileObject" : action === "enable" ? "contextMenu.enableTrigger" : "contextMenu.disableTrigger");
-  const menuButtons = () => [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")];
+  const menuButtons = () => [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")];
   await vi.waitFor(() => expect(menuButtons().some((item) => item.textContent?.trim() === i18n.global.t("contextMenu.viewSource"))).toBe(true));
   const menuItem = () => menuButtons().find((item) => item.textContent?.trim() === text);
   await vi.waitFor(() => expect(menuItem()).toBeDefined());
@@ -464,7 +464,7 @@ it.each(["menu", "keyboard", "batch-success", "batch-mixed", "batch-unknown", "b
     rowLabels()[0]
       .closest(".grid")!
       .dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 20, clientY: 20 }));
-    const drop = () => [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].find((button) => button.textContent?.trim() === i18n.global.t("contextMenu.dropTrigger"));
+    const drop = () => [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].find((button) => button.textContent?.trim() === i18n.global.t("contextMenu.dropTrigger"));
     await vi.waitFor(() => expect(drop()).toBeDefined());
     drop()!.click();
   } else {

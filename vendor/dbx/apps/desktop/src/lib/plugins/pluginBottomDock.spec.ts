@@ -52,20 +52,20 @@ describe("pluginBottomDock", () => {
 
   it("restores the persisted dock height clamped to the current viewport (chrome only, §8.4)", async () => {
     const dock = await loadModule();
-    localStorage.setItem("dbx-plugin-dock-height", "560");
+    localStorage.setItem("linop-db-plugin-dock-height", "560");
     expect(dock.restoreDockHeight(1000)).toBe(560);
     // an oversized stored height clamps to the shared drag/maximize bound.
-    localStorage.setItem("dbx-plugin-dock-height", "5000");
+    localStorage.setItem("linop-db-plugin-dock-height", "5000");
     expect(dock.restoreDockHeight(1000)).toBe(800);
     // a tiny viewport still honors the minimum height.
-    localStorage.setItem("dbx-plugin-dock-height", "560");
+    localStorage.setItem("linop-db-plugin-dock-height", "560");
     expect(dock.restoreDockHeight(100)).toBe(140);
     // nothing persisted, or garbage, falls back to the default height.
-    localStorage.removeItem("dbx-plugin-dock-height");
+    localStorage.removeItem("linop-db-plugin-dock-height");
     expect(dock.restoreDockHeight(1000)).toBe(320);
-    localStorage.setItem("dbx-plugin-dock-height", "not-a-number");
+    localStorage.setItem("linop-db-plugin-dock-height", "not-a-number");
     expect(dock.restoreDockHeight(1000)).toBe(320);
-    localStorage.removeItem("dbx-plugin-dock-height");
+    localStorage.removeItem("linop-db-plugin-dock-height");
   });
 
   it("keeps entries alive across hide/show and only clears the dock with its last entry", async () => {

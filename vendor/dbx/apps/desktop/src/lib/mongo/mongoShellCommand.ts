@@ -13,7 +13,7 @@ import {
   quoteUnquotedObjectKeys,
   splitTopLevel,
   type MongoAggregateCommand,
-} from "@dbx-app/mongo-shell";
+} from "@linop-db-app/mongo-shell";
 
 export type { MongoAggregateCommand };
 export { MONGO_SHELL_COMMAND_HINT, parseMongoAggregateCommand, quoteUnquotedObjectKeys };

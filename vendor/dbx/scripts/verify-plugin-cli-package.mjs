@@ -5,12 +5,12 @@ import { basename, dirname, join, resolve } from "node:path";
 
 const repositoryRoot = resolve(import.meta.dirname, "..");
 const platformPackages = {
-  "darwin-arm64": ["plugin-cli-darwin-arm64", "dbx-plugin"],
-  "darwin-x64": ["plugin-cli-darwin-x64", "dbx-plugin"],
-  "linux-arm64": ["plugin-cli-linux-arm64-gnu", "dbx-plugin"],
-  "linux-x64": ["plugin-cli-linux-x64-gnu", "dbx-plugin"],
-  "win32-arm64": ["plugin-cli-win32-arm64", "dbx-plugin.exe"],
-  "win32-x64": ["plugin-cli-win32-x64", "dbx-plugin.exe"],
+  "darwin-arm64": ["plugin-cli-darwin-arm64", "linop-db-plugin"],
+  "darwin-x64": ["plugin-cli-darwin-x64", "linop-db-plugin"],
+  "linux-arm64": ["plugin-cli-linux-arm64-gnu", "linop-db-plugin"],
+  "linux-x64": ["plugin-cli-linux-x64-gnu", "linop-db-plugin"],
+  "win32-arm64": ["plugin-cli-win32-arm64", "linop-db-plugin.exe"],
+  "win32-x64": ["plugin-cli-win32-x64", "linop-db-plugin.exe"],
 };
 const platformKey = `${process.platform}-${process.arch}`;
 const platformPackage = platformPackages[platformKey];
@@ -18,7 +18,7 @@ if (!platformPackage) {
   throw new Error(`No DBX Plugin CLI package smoke test is defined for ${platformKey}.`);
 }
 
-const temporaryRoot = mkdtempSync(join(tmpdir(), "dbx-plugin-cli-package-"));
+const temporaryRoot = mkdtempSync(join(tmpdir(), "linop-db-plugin-cli-package-"));
 const cargoTarget = join(temporaryRoot, "cargo-target");
 const tarballDirectory = join(temporaryRoot, "tarballs");
 const installDirectory = join(temporaryRoot, "install");
@@ -30,7 +30,7 @@ try {
   cpSync(join(repositoryRoot, "packages", platformPackage[0]), stagedPlatformDirectory, { recursive: true });
   const stagedBinaryDirectory = join(stagedPlatformDirectory, "bin");
   mkdirSync(stagedBinaryDirectory, { recursive: true });
-  const sourceBinary = join(cargoTarget, "release", process.platform === "win32" ? "dbx-plugin.exe" : "dbx-plugin");
+  const sourceBinary = join(cargoTarget, "release", process.platform === "win32" ? "linop-db-plugin.exe" : "linop-db-plugin");
   const stagedBinary = join(stagedBinaryDirectory, platformPackage[1]);
   copyFileSync(sourceBinary, stagedBinary);
   if (process.platform !== "win32") chmodSync(stagedBinary, 0o755);
@@ -47,13 +47,13 @@ try {
   }
 
   mkdirSync(installDirectory, { recursive: true });
-  writeFileSync(join(installDirectory, "package.json"), `${JSON.stringify({ name: "dbx-plugin-cli-package-smoke", private: true }, null, 2)}\n`);
+  writeFileSync(join(installDirectory, "package.json"), `${JSON.stringify({ name: "linop-db-plugin-cli-package-smoke", private: true }, null, 2)}\n`);
   run("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...tarballs], { cwd: installDirectory });
 
-  const command = join(installDirectory, "node_modules", ".bin", process.platform === "win32" ? "dbx-plugin.cmd" : "dbx-plugin");
+  const command = join(installDirectory, "node_modules", ".bin", process.platform === "win32" ? "linop-db-plugin.cmd" : "linop-db-plugin");
   const version = run(command, ["--version"], { cwd: installDirectory, capture: true });
   const expectedVersion = JSON.parse(readFileSync(join(repositoryRoot, "packages/plugin-cli/package.json"), "utf8")).version;
-  if (version.stdout.trim() !== `dbx-plugin ${expectedVersion}`) {
+  if (version.stdout.trim() !== `linop-db-plugin ${expectedVersion}`) {
     throw new Error(`Unexpected installed CLI version output: ${version.stdout.trim()}`);
   }
 
@@ -63,11 +63,11 @@ try {
     if (commandAvailable("go")) await verifyTemplate(command, installDirectory, "go");
   }
 
-  const installedManifest = JSON.parse(readFileSync(join(installDirectory, "node_modules/@dbx-app/plugin-cli/package.json"), "utf8"));
-  if (installedManifest.name !== "@dbx-app/plugin-cli") {
+  const installedManifest = JSON.parse(readFileSync(join(installDirectory, "node_modules/@linop-db-app/plugin-cli/package.json"), "utf8"));
+  if (installedManifest.name !== "@linop-db-app/plugin-cli") {
     throw new Error(`Installed unexpected npm package ${installedManifest.name}.`);
   }
-  console.log(`Verified @dbx-app/plugin-cli on ${platformKey} without compiling the CLI during npm install.`);
+  console.log(`Verified @linop-db-app/plugin-cli on ${platformKey} without compiling the CLI during npm install.`);
 } finally {
   rmSync(join(repositoryRoot, "packages/plugin-cli/sdk-root"), { recursive: true, force: true });
   rmSync(temporaryRoot, { recursive: true, force: true });
@@ -85,9 +85,9 @@ async function verifyTemplate(command, workingDirectory, template) {
 }
 
 async function verifyDev(workingDirectory, project, template) {
-  const packageRoot = join(workingDirectory, "node_modules/@dbx-app/plugin-cli");
+  const packageRoot = join(workingDirectory, "node_modules/@linop-db-app/plugin-cli");
   if (!existsSync(join(packageRoot, "dev-runtime/runtime.mjs")) || !existsSync(join(packageRoot, "dev-runtime/ui/index.html"))) throw new Error("Packed CLI has no dev runtime");
-  const child = spawn(process.execPath, [join(packageRoot, "bin/dbx-plugin.js"), "dev", "--path", project, "--port", "0"], {
+  const child = spawn(process.execPath, [join(packageRoot, "bin/linop-db-plugin.js"), "dev", "--path", project, "--port", "0"], {
     cwd: workingDirectory,
     env: { ...process.env, DBX_PLUGIN_DEV_RUNTIME: "", DBX_PLUGIN_NODE: "", DBX_PLUGIN_SDK_ROOT: "" },
     stdio: ["ignore", "pipe", "pipe"],
@@ -178,8 +178,8 @@ function run(command, args, options = {}) {
   if (process.platform === "win32" && command === "npm") {
     args = [process.env.npm_execpath || join(dirname(process.execPath), "node_modules/npm/bin/npm-cli.js"), ...args];
     command = process.execPath;
-  } else if (process.platform === "win32" && command.endsWith("dbx-plugin.cmd")) {
-    args = [join(dirname(command), "../@dbx-app/plugin-cli/bin/dbx-plugin.js"), ...args];
+  } else if (process.platform === "win32" && command.endsWith("linop-db-plugin.cmd")) {
+    args = [join(dirname(command), "../@linop-db-app/plugin-cli/bin/linop-db-plugin.js"), ...args];
     command = process.execPath;
   }
   const result = spawnSync(command, args, {

@@ -65,10 +65,10 @@ describe("queryStore USE database statement", () => {
     const store = useQueryStore();
     const tabId = store.createTab("mysql-1", "dbx", "Query", "query");
 
-    await store.executeTabSql(tabId, "USE dbx_dup;");
+    await store.executeTabSql(tabId, "USE linop_db_dup;");
 
     expect(mocks.executeMulti).toHaveBeenCalledTimes(1);
-    expect(store.tabs.find((tab) => tab.id === tabId)?.database).toBe("dbx_dup");
+    expect(store.tabs.find((tab) => tab.id === tabId)?.database).toBe("linop_db_dup");
     await vi.waitFor(() => expect(mocks.closeClientConnectionSession).toHaveBeenCalled());
   });
 

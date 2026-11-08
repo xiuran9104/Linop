@@ -2,8 +2,8 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const CONFIG_KEY = "dbx-schema-diff-configs";
-const HISTORY_KEY = "dbx-schema-diff-history";
+const CONFIG_KEY = "linop-db-schema-diff-configs";
+const HISTORY_KEY = "linop-db-schema-diff-history";
 
 function storedConfig(compareCharset?: boolean) {
   return {

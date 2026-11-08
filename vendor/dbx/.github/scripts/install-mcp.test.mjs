@@ -10,7 +10,7 @@ const installer = resolve("docs/public/install-mcp.sh");
 const platforms = ["darwin-arm64", "darwin-x64", "linux-arm64-gnu", "linux-x64-gnu"];
 
 function fixture(context, platform = "darwin-arm64") {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "dbx-mcp-test-")));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "linop-db-mcp-test-")));
   context.after(() => rmSync(root, { recursive: true, force: true }));
   const home = join(root, "DBX User's 中文");
   const mocks = join(root, "mocks");
@@ -18,12 +18,12 @@ function fixture(context, platform = "darwin-arm64") {
   mkdirSync(home);
   mkdirSync(mocks);
   mkdirSync(join(source, "package/bin"), { recursive: true });
-  const binary = join(source, "package/bin/dbx-mcp");
-  writeFileSync(binary, "#!/bin/sh\nprintf 'dbx-mcp 0.4.96\\n'\n", { mode: 0o755 });
-  copyFileSync(binary, join(source, "dbx-mcp"));
+  const binary = join(source, "package/bin/linop-db-mcp");
+  writeFileSync(binary, "#!/bin/sh\nprintf 'linop-db-mcp 0.4.96\\n'\n", { mode: 0o755 });
+  copyFileSync(binary, join(source, "linop-db-mcp"));
   for (const [archive, member] of [
-    ["npm.tgz", "package/bin/dbx-mcp"],
-    ["github.tar.gz", "dbx-mcp"],
+    ["npm.tgz", "package/bin/linop-db-mcp"],
+    ["github.tar.gz", "linop-db-mcp"],
   ]) {
     const result = spawnSync("tar", ["-czf", join(root, archive), "-C", source, member]);
     assert.equal(result.status, 0, result.stderr.toString());
@@ -47,16 +47,16 @@ function fixture(context, platform = "darwin-arm64") {
       { ref: "refs/tags/packages-v0.4.10", object: {} },
     ]),
   );
-  writeFileSync(join(root, "SHA256SUMS"), `${checksum}  dbx-mcp-${platform}.tar.gz\n`);
+  writeFileSync(join(root, "SHA256SUMS"), `${checksum}  linop-db-mcp-${platform}.tar.gz\n`);
   const routes = {};
   for (const registry of ["https://registry.npmjs.org", "https://registry.npmmirror.com"]) {
-    routes[`${registry}/@dbx-app/mcp-server/latest`] = "latest.json";
-    routes[`${registry}/@dbx-app/mcp-${platform}/0.4.96`] = "metadata.json";
-    routes[`${registry}/@dbx-app/mcp-${platform}/-/mcp-${platform}-0.4.96.tgz`] = "npm.tgz";
+    routes[`${registry}/@linop-db-app/mcp-server/latest`] = "latest.json";
+    routes[`${registry}/@linop-db-app/mcp-${platform}/0.4.96`] = "metadata.json";
+    routes[`${registry}/@linop-db-app/mcp-${platform}/-/mcp-${platform}-0.4.96.tgz`] = "npm.tgz";
   }
   routes["https://api.github.com/repos/t8y2/dbx/git/matching-refs/tags/packages-v"] = "refs.json";
   routes["https://github.com/t8y2/dbx/releases/download/packages-v0.4.96/SHA256SUMS"] = "SHA256SUMS";
-  routes[`https://github.com/t8y2/dbx/releases/download/packages-v0.4.96/dbx-mcp-${platform}.tar.gz`] = "github.tar.gz";
+  routes[`https://github.com/t8y2/dbx/releases/download/packages-v0.4.96/linop-db-mcp-${platform}.tar.gz`] = "github.tar.gz";
   writeFileSync(join(root, "routes.json"), JSON.stringify(routes));
   writeFileSync(
     join(mocks, "curl"),
@@ -94,8 +94,8 @@ console.error('designated => ' + (mode === 'hash-bound' ? 'cdhash H"' + 'ab'.rep
 `,
     { mode: 0o755 },
   );
-  const installedBinary = join(home, ".dbx/bin/dbx-mcp");
-  const marker = join(home, ".dbx/bin/.dbx-mcp-version");
+  const installedBinary = join(home, ".dbx/bin/linop-db-mcp");
+  const marker = join(home, ".dbx/bin/.linop-db-mcp-version");
   const run = (extra = {}) =>
     spawnSync("sh", [installer], {
       env: { ...process.env, HOME: home, SHELL: "/bin/zsh", ZDOTDIR: home, PATH: `${mocks}:${process.env.PATH}`, FIXTURE: root, FIXTURE_PLATFORM: platform, ...extra },
@@ -110,7 +110,7 @@ for (const platform of platforms) {
     const setup = fixture(context, platform);
     const result = setup.run();
     assert.equal(result.status, 0, result.stderr);
-    assert.equal(spawnSync(setup.binary, ["--version"], { encoding: "utf8" }).stdout.trim(), "dbx-mcp 0.4.96");
+    assert.equal(spawnSync(setup.binary, ["--version"], { encoding: "utf8" }).stdout.trim(), "linop-db-mcp 0.4.96");
     assert.equal(readFileSync(setup.marker, "utf8"), "0.4.96\n");
     const json = JSON.parse(result.stdout.split("\n").find((line) => line.startsWith('{"mcpServers"')));
     assert.equal(json.mcpServers.dbx.command, setup.binary);
@@ -119,7 +119,7 @@ for (const platform of platforms) {
       .find((line) => line.startsWith("command = "))
       .slice(10);
     assert.equal(JSON.parse(tomlCommand), setup.binary);
-    assert.deepEqual(readdirSync(join(setup.home, ".dbx/bin")).sort(), [".dbx-mcp-version", "dbx-mcp"]);
+    assert.deepEqual(readdirSync(join(setup.home, ".dbx/bin")).sort(), [".linop-db-mcp-version", "linop-db-mcp"]);
   });
 }
 
@@ -129,12 +129,12 @@ test("rerun is idempotent, binary version precedes marker, legacy marker enables
   writeFileSync(setup.marker, "0.4.95\n");
   const unchanged = setup.run();
   assert.equal(unchanged.status, 0, unchanged.stderr);
-  assert.match(unchanged.stdout, /dbx-mcp 0.4.96 already up to date/);
+  assert.match(unchanged.stdout, /linop-db-mcp 0.4.96 already up to date/);
   assert.equal(readFileSync(setup.marker, "utf8"), "0.4.95\n");
-  writeFileSync(setup.binary, "#!/bin/sh\nprintf 'dbx-mcp 0.4.96\\n'\nexit 1\n");
+  writeFileSync(setup.binary, "#!/bin/sh\nprintf 'linop-db-mcp 0.4.96\\n'\nexit 1\n");
   const updated = setup.run();
   assert.equal(updated.status, 0, updated.stderr);
-  assert.match(updated.stdout, /Installed dbx-mcp 0.4.96/);
+  assert.match(updated.stdout, /Installed linop-db-mcp 0.4.96/);
   assert.equal(readFileSync(setup.marker, "utf8"), "0.4.96\n");
   writeFileSync(setup.binary, "#!/bin/sh\nexit 1\n");
   assert.match(setup.run().stdout, /already up to date/);
@@ -163,7 +163,7 @@ test("download fallback retains the version selected by npmjs", (context) => {
 test("an older mirror version cannot downgrade an existing native installation", (context) => {
   const setup = fixture(context);
   assert.equal(setup.run().status, 0);
-  const newer = "#!/bin/sh\nprintf 'dbx-mcp 0.4.97\\n'\n";
+  const newer = "#!/bin/sh\nprintf 'linop-db-mcp 0.4.97\\n'\n";
   writeFileSync(setup.binary, newer);
   writeFileSync(setup.marker, "0.4.97\n");
   const result = setup.run({ FAIL_URL: "registry\\.npmjs\\.org" });
@@ -207,7 +207,7 @@ for (const platform of ["darwin-arm64", "darwin-x64"]) {
     test(`rejects ${mode} macOS signature before replacing an installation: ${platform}`, (context) => {
       const setup = fixture(context, platform);
       mkdirSync(join(setup.home, ".dbx/bin"), { recursive: true });
-      const original = "#!/bin/sh\nprintf 'dbx-mcp 0.4.95\\n'\n";
+      const original = "#!/bin/sh\nprintf 'linop-db-mcp 0.4.95\\n'\n";
       writeFileSync(setup.binary, original, { mode: 0o755 });
       writeFileSync(setup.marker, "0.4.95\n");
       const result = setup.run({ SIGNATURE_MODE: mode });
@@ -216,7 +216,7 @@ for (const platform of ["darwin-arm64", "darwin-x64"]) {
       assert.equal(readFileSync(setup.binary, "utf8"), original);
       assert.equal(readFileSync(setup.marker, "utf8"), "0.4.95\n");
       assert.ok(!existsSync(join(setup.home, ".zshrc")));
-      assert.ok(!readdirSync(join(setup.home, ".dbx/bin")).some((name) => name.startsWith(".dbx-mcp-install.")));
+      assert.ok(!readdirSync(join(setup.home, ".dbx/bin")).some((name) => name.startsWith(".linop-db-mcp-install.")));
     });
   }
 }
@@ -225,23 +225,23 @@ test("stale marker without binary reinstalls, and bash users get migration guida
   const setup = fixture(context);
   mkdirSync(join(setup.home, ".dbx/bin"), { recursive: true });
   writeFileSync(setup.marker, "0.4.96\n");
-  writeFileSync(join(setup.mocks, "dbx-mcp-server"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+  writeFileSync(join(setup.mocks, "linop-db-mcp-server"), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
   const result = setup.run({ SHELL: "/bin/bash" });
   assert.equal(result.status, 0, result.stderr);
   assert.ok(existsSync(setup.binary));
   assert.ok(existsSync(join(setup.home, ".bash_profile")));
-  assert.match(result.stdout, /npm rm -g @dbx-app\/mcp-server/);
+  assert.match(result.stdout, /npm rm -g @linop-db-app\/mcp-server/);
 });
 
 test("formula generator validates all hashes and both publishing workflows invoke it", (context) => {
   const setup = fixture(context);
   const sums = join(setup.root, "formula-sums");
-  const output = join(setup.root, "dbx-mcp.rb");
-  writeFileSync(sums, platforms.map((platform) => `${"a".repeat(64)}  dbx-mcp-${platform}.tar.gz`).join("\n"));
+  const output = join(setup.root, "linop-db-mcp.rb");
+  writeFileSync(sums, platforms.map((platform) => `${"a".repeat(64)}  linop-db-mcp-${platform}.tar.gz`).join("\n"));
   const generate = () => spawnSync(process.execPath, [".github/scripts/render-mcp-formula.mjs", "0.4.96", sums, output], { encoding: "utf8" });
   assert.equal(generate().status, 0);
   const formula = readFileSync(output, "utf8");
-  assert.match(formula, /bin.install "dbx-mcp"/);
+  assert.match(formula, /bin.install "linop-db-mcp"/);
   assert.doesNotMatch(formula, /__[A-Z_]+__/);
   assert.equal((formula.match(/sha256 /g) ?? []).length, 4);
   writeFileSync(sums, "invalid");
@@ -255,6 +255,6 @@ test("formula generator validates all hashes and both publishing workflows invok
     assert.notEqual(renderIndex, -1);
     assert.ok(checkoutIndex < renderIndex);
     assert.match(text, /render-mcp-formula.mjs/);
-    assert.match(text, /git add .*Formula\/dbx-mcp.rb/);
+    assert.match(text, /git add .*Formula\/linop-db-mcp.rb/);
   }
 });

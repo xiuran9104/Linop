@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use dbx_core::models::connection::TransportLayerConfig;
+use linop_db_core::models::connection::TransportLayerConfig;
 use tauri::State;
 
 use super::connection::AppState;
@@ -15,7 +15,7 @@ pub async fn save_tunnel_profiles(
     state: State<'_, Arc<AppState>>,
     profiles: Vec<TransportLayerConfig>,
 ) -> Result<(), String> {
-    use dbx_core::query::pl_debug::{pl_debug_claim_mutation_core, PlDebugAccess, PlDebugMutationScope};
+    use linop_db_core::query::pl_debug::{pl_debug_claim_mutation_core, PlDebugAccess, PlDebugMutationScope};
     let access = PlDebugAccess::desktop();
     for _ in 0..3 {
         let (expected, allowed) = {
@@ -46,10 +46,10 @@ pub async fn save_tunnel_profiles(
 }
 
 fn changed_profile_ids(
-    current: &dbx_core::storage::TunnelProfileSaveSnapshot,
+    current: &linop_db_core::storage::TunnelProfileSaveSnapshot,
     next: &[TransportLayerConfig],
 ) -> Result<Vec<String>, String> {
-    use dbx_core::db::transport_layer_tunnel::ResolvedTransportLayers;
+    use linop_db_core::db::transport_layer_tunnel::ResolvedTransportLayers;
     let mut changed = current.discarded_profile_ids();
     let current =
         current.profiles.iter().map(|profile| (profile.id(), profile)).collect::<std::collections::HashMap<_, _>>();
@@ -85,15 +85,15 @@ pub async fn test_tunnel_profile(
 #[tauri::command]
 pub async fn list_ssh_agent_identities(
     ssh_agent_sock_path: String,
-) -> Result<Vec<dbx_core::db::ssh_tunnel::AgentIdentityInfo>, String> {
-    dbx_core::db::ssh_tunnel::list_agent_identities(&ssh_agent_sock_path).await
+) -> Result<Vec<linop_db_core::db::ssh_tunnel::AgentIdentityInfo>, String> {
+    linop_db_core::db::ssh_tunnel::list_agent_identities(&ssh_agent_sock_path).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dbx_core::models::connection::{ConnectionConfig, DatabaseType};
-    use dbx_core::query::pl_debug::{
+    use linop_db_core::models::connection::{ConnectionConfig, DatabaseType};
+    use linop_db_core::query::pl_debug::{
         pl_debug_bootstrap_core, pl_debug_start_core, pl_debug_status_core, PlDebugAccess, PlDebugSessionRef,
         PlDebugStart,
     };
@@ -103,7 +103,7 @@ mod tests {
     #[tokio::test]
     async fn desktop_profile_save_without_debugger_keeps_the_existing_entry_usable() {
         let directory = tempfile::tempdir().unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new_with_plugin_dir(storage, directory.path().join("plugins")));
         let app = tauri::test::mock_builder()
             .manage(state.clone())
@@ -123,7 +123,7 @@ mod tests {
         for scenario in ["foreign", "own", "display"] {
             let directory = tempfile::tempdir().unwrap();
             let storage =
-                dbx_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
+                linop_db_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
             let state = Arc::new(AppState::new_with_plugin_dir(storage, directory.path().join("plugins")));
             let app = tauri::test::mock_builder()
                 .manage(state.clone())

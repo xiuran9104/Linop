@@ -61,8 +61,8 @@ SELECT 1 FROM dual;
 
 ```sh
 pnpm exec vitest run apps/desktop/src/lib/__tests__/sql/sqlDatabaseLinks.spec.ts apps/desktop/src/lib/__tests__/sql/sqlParameters.spec.ts apps/desktop/src/lib/__tests__/sql/sqlVariables.spec.ts apps/desktop/src/stores/__tests__/queryStore.manualTransactionCommit.spec.ts
-cargo test -p dbx-sql-core --lib --locked
-cargo test -p dbx-driver-agent --lib --locked batch_and_transaction_send_statement_timeout_to_agent
+cargo test -p linop-db-sql-core --lib --locked
+cargo test -p linop-db-driver-agent --lib --locked batch_and_transaction_send_statement_timeout_to_agent
 cd agents
 ./gradlew :common:test :oceanbase-oracle:test :oceanbase-oracle:shadowJar
 ```

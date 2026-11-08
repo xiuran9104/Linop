@@ -23,7 +23,7 @@ class MemoryStorage {
 }
 
 const localStorage = new MemoryStorage();
-localStorage.setItem("dbx-locale", "zh-CN");
+localStorage.setItem("linop-db-locale", "zh-CN");
 
 Object.defineProperty(globalThis, "localStorage", {
   value: localStorage,

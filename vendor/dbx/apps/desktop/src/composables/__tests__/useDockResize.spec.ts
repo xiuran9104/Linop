@@ -112,8 +112,8 @@ describe("useDockResize", () => {
   it("toggles the global resize freeze flag for heavy subtrees", () => {
     const { handle } = setup(320);
     handle.dispatchEvent(pointerEvent("pointerdown", 680));
-    expect(document.body.classList.contains("dbx-is-resizing")).toBe(true);
+    expect(document.body.classList.contains("linop-db-is-resizing")).toBe(true);
     document.dispatchEvent(pointerEvent("pointerup", 600));
-    expect(document.body.classList.contains("dbx-is-resizing")).toBe(false);
+    expect(document.body.classList.contains("linop-db-is-resizing")).toBe(false);
   });
 });

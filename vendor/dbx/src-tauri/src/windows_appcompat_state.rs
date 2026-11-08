@@ -118,9 +118,9 @@ mod tests {
     fn cleanup_only_removes_owned_values_even_when_foreign_values_match() {
         let registry = Registry::default();
         registry.write("other-app/msedgewebview2.exe", &win8()).unwrap();
-        assert!(set_if_unconfigured(&registry, "dbx-runtime", &win8()).unwrap());
+        assert!(set_if_unconfigured(&registry, "linop-db-runtime", &win8()).unwrap());
         assert_eq!(remove_owned(&registry), Ok(1));
-        assert_eq!(registry.current("dbx-runtime").unwrap(), None);
+        assert_eq!(registry.current("linop-db-runtime").unwrap(), None);
         assert_eq!(registry.current("other-app/msedgewebview2.exe").unwrap(), Some(win8()));
     }
 

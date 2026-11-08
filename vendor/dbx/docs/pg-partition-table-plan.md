@@ -11,7 +11,7 @@
 
 | 能力 | 位置 | 说明 |
 | --- | --- | --- |
-| 单表分区信息 | `crates/dbx-core/src/db/postgres.rs::get_table_partition_info` | 返回 `is_partition`、`parent_schema/table`、`bound`（`pg_get_expr(relpartbound)`）、`key`（`pg_get_partkeydef`）、是否外部表 |
+| 单表分区信息 | `crates/linop-db-core/src/db/postgres.rs::get_table_partition_info` | 返回 `is_partition`、`parent_schema/table`、`bound`（`pg_get_expr(relpartbound)`）、`key`（`pg_get_partkeydef`）、是否外部表 |
 | 分区树 | `postgres.rs::fetch_postgres_partition_tree` | 一条 `WITH RECURSIVE` 取回根 + 全部层级后代（含每节点 bound/key），有 PG 9.x 兼容降级 SQL |
 | 分区本地对象 | `postgres.rs::get_table_partition_local_objects(_for_relations)` | 分区自己独有的 PK/UNIQUE/FK/CHECK/索引/列默认值 |
 | 分区树 DDL | `schema.rs::pg_ddl_with_partitions` | 把整棵树渲染成多段 `CREATE TABLE ... PARTITION OF ... FOR VALUES ...` |
@@ -111,7 +111,7 @@ PARTITION BY HASH   (col)
 
 ## 4. 数据模型设计
 
-### 4.1 Rust：`crates/dbx-core/src/types.rs`（或新模块 `db/postgres/partition.rs`）
+### 4.1 Rust：`crates/linop-db-core/src/types.rs`（或新模块 `db/postgres/partition.rs`）
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -184,7 +184,7 @@ pub async fn get_table_partitioning_core(state, connection_id, database, schema,
 
 - `src-tauri/src/commands/schema.rs`：新增 `get_table_partitioning` 命令。
 - `src-tauri/src/commands/mod.rs` / `lib.rs` 的 `invoke_handler` 里注册。
-- `src-tauri/src/commands/mcp.rs`、`crates/dbx-mcp` 是否暴露：一期不暴露（可选后续）。
+- `src-tauri/src/commands/mcp.rs`、`crates/linop-db-mcp` 是否暴露：一期不暴露（可选后续）。
 
 ### 4.3 前端类型
 
@@ -215,7 +215,7 @@ API 封装（三处都要加，保持一致）：
 
 ## 5. DDL 生成设计
 
-### 5.1 新模块：`crates/dbx-core/src/table_structure_sql/partitions.rs`
+### 5.1 新模块：`crates/linop-db-core/src/table_structure_sql/partitions.rs`
 
 ```rust
 pub fn validate_partitioning(options) -> Vec<String>;                 // 非 PG 直接拒绝
@@ -366,7 +366,7 @@ pub struct TablePartitionDraft {
 
 ### 8.2 Rust 集成测试
 
-- 新增 `crates/dbx-core/tests/live_postgres_partitioning.rs`，沿用 `live_postgres_concurrent_index.rs` 的 env 约定（`DBX_LIVE_POSTGRES_*`，`#[ignore]`）。
+- 新增 `crates/linop-db-core/tests/live_postgres_partitioning.rs`，沿用 `live_postgres_concurrent_index.rs` 的 env 约定（`DBX_LIVE_POSTGRES_*`，`#[ignore]`）。
 - 场景：建分区父表 → 读树 → 生成新增分区 DDL 并执行 → 读回校验 → detach → drop。
 
 ### 8.3 前端测试
@@ -377,7 +377,7 @@ pub struct TablePartitionDraft {
 
 ### 8.4 契约/回归
 
-- `crates/dbx-core/tests/api_contract_verification.rs`、`packages/app-tests/*` 若枚举命令或页签，需同步更新。
+- `crates/linop-db-core/tests/api_contract_verification.rs`、`packages/app-tests/*` 若枚举命令或页签，需同步更新。
 - CI：`.github/workflows/database-environments.yml` 已支持多数据库环境，PG 场景加进 live 测试矩阵。
 
 ---
@@ -400,13 +400,13 @@ pub struct TablePartitionDraft {
 ## 10. 涉及文件清单（速查）
 
 **后端（Rust）**
-- `crates/dbx-core/src/db/postgres.rs`（策略查询、bound 解析、批量估算）
-- `crates/dbx-core/src/schema.rs`（`get_table_partitioning_core`）
-- `crates/dbx-core/src/types.rs`（分区模型）
-- `crates/dbx-core/src/table_structure_sql/partitions.rs`（新，DDL 生成）
-- `crates/dbx-core/src/table_structure_sql/{types.rs,create_table.rs,tests.rs,mod.rs}`
+- `crates/linop-db-core/src/db/postgres.rs`（策略查询、bound 解析、批量估算）
+- `crates/linop-db-core/src/schema.rs`（`get_table_partitioning_core`）
+- `crates/linop-db-core/src/types.rs`（分区模型）
+- `crates/linop-db-core/src/table_structure_sql/partitions.rs`（新，DDL 生成）
+- `crates/linop-db-core/src/table_structure_sql/{types.rs,create_table.rs,tests.rs,mod.rs}`
 - `src-tauri/src/commands/schema.rs` + 命令注册
-- `crates/dbx-core/tests/live_postgres_partitioning.rs`（新）
+- `crates/linop-db-core/tests/live_postgres_partitioning.rs`（新）
 
 **前端（Vue/TS）**
 - `apps/desktop/src/types/database.ts`

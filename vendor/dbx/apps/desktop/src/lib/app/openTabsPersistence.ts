@@ -2,8 +2,8 @@ import type { QueryResultSourceLabelKind, QueryTab, TabOutputView } from "@/type
 import { sanitizeTabUiState } from "@/lib/tabs/tabUiState";
 import { restoreOracleTypeManagementDraft } from "@/lib/table/oracleTypeManagement";
 
-export const OPEN_TABS_STORAGE_KEY = "dbx-open-tabs";
-export const ACTIVE_TAB_STORAGE_KEY = "dbx-active-tab";
+export const OPEN_TABS_STORAGE_KEY = "linop-db-open-tabs";
+export const ACTIVE_TAB_STORAGE_KEY = "linop-db-active-tab";
 
 export interface SavedQueryResultRun {
   id: string;

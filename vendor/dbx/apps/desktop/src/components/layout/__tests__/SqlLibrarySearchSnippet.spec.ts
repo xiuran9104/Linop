@@ -47,7 +47,7 @@ describe("SqlLibrarySearchSnippet", () => {
     const host = mountSnippet(sampleFile("SELECT 1;"), "orders");
     await nextTick();
 
-    const snippetContainer = host.querySelector(".dbx-sql-library-snippets");
+    const snippetContainer = host.querySelector(".linop-db-sql-library-snippets");
     expect(snippetContainer).toBeNull();
   });
 
@@ -57,7 +57,7 @@ describe("SqlLibrarySearchSnippet", () => {
     const host = mountSnippet(sampleFile(sql), "users");
     await nextTick();
 
-    const container = host.querySelector(".dbx-sql-library-snippets");
+    const container = host.querySelector(".linop-db-sql-library-snippets");
     expect(container).not.toBeNull();
 
     const snippetRows = host.querySelectorAll(".group\\/snippet");

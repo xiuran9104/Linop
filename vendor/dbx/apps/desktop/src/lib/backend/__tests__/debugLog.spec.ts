@@ -29,7 +29,7 @@ class MemoryStorage implements Storage {
   }
 }
 
-const DEBUG_LOG_ENABLED_KEY = "dbx-debug-logging-enabled";
+const DEBUG_LOG_ENABLED_KEY = "linop-db-debug-logging-enabled";
 
 let originalLocalStorage: PropertyDescriptor | undefined;
 
@@ -63,7 +63,7 @@ describe("debug log write batching", () => {
 
     for (let index = 0; index < 200; index += 1) appendDebugLog("info", `entry-${index}`);
 
-    const entryWrites = () => setItem.mock.calls.filter(([key]) => key === "dbx-debug-log-entries");
+    const entryWrites = () => setItem.mock.calls.filter(([key]) => key === "linop-db-debug-log-entries");
     expect(entryWrites().length).toBe(0);
     // Pending entries are readable before they are persisted.
     expect(getDebugLogText()).toContain("entry-199");
@@ -84,14 +84,14 @@ describe("debug log write batching", () => {
 
     appendDebugLog("error", "boom");
 
-    const writes = setItem.mock.calls.filter(([key]) => key === "dbx-debug-log-entries");
+    const writes = setItem.mock.calls.filter(([key]) => key === "linop-db-debug-log-entries");
     expect(writes.length).toBe(1);
     expect(String(writes[0][1])).toContain("boom");
   });
 
   it("re-reads the stored buffer when it changes underneath the cache", () => {
     localStorage.setItem(DEBUG_LOG_ENABLED_KEY, "1");
-    localStorage.setItem("dbx-debug-log-entries", JSON.stringify([{ timestamp: "t", level: "info", message: "external" }]));
+    localStorage.setItem("linop-db-debug-log-entries", JSON.stringify([{ timestamp: "t", level: "info", message: "external" }]));
 
     appendDebugLog("info", "local");
 

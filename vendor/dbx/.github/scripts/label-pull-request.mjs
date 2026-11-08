@@ -30,7 +30,7 @@ export const STATIC_LABEL_SPECS = {
   "tests-only": { color: "bfd4f2", description: "Changes only tests, fixtures, or snapshots" },
 };
 
-const CORE_CRATE_PATH = /^crates\/dbx-(?:core|driver(?:s|-[^/]+)|sql(?:-[^/]+)?|formats|types|platform|ai-provider|plugin-runtime)\//;
+const CORE_CRATE_PATH = /^crates\/linop-db-(?:core|driver(?:s|-[^/]+)|sql(?:-[^/]+)?|formats|types|platform|ai-provider|plugin-runtime)\//;
 
 const TYPE_LABELS = new Set(["bug", "enhancement", "documentation", "maintenance"]);
 const LABEL_PALETTE = ["0e8a16", "1d76db", "5319e7", "c2e0c6", "bfd4f2", "d4c5f9", "fef2c0", "fbca04", "f9d0c4", "e99695", "f29513", "c5def5"];
@@ -119,14 +119,14 @@ export function inferAreaLabels(changedFiles) {
   if (has((file) => CORE_CRATE_PATH.test(file) || file.startsWith("packages/node-core/"))) {
     labels.add("area/core");
   }
-  if (has((file) => file.startsWith("crates/dbx-web/") || file.startsWith("examples/web-api/"))) {
+  if (has((file) => file.startsWith("crates/linop-db-web/") || file.startsWith("examples/web-api/"))) {
     labels.add("area/web");
   }
   if (has((file) => file.startsWith("agents/"))) labels.add("area/agents");
-  if (has((file) => file.startsWith("crates/dbx-mcp/") || file.startsWith("packages/mcp-") || file.startsWith("packages/mcp-server/") || file.startsWith("examples/mcp/"))) {
+  if (has((file) => file.startsWith("crates/linop-db-mcp/") || file.startsWith("packages/mcp-") || file.startsWith("packages/mcp-server/") || file.startsWith("examples/mcp/"))) {
     labels.add("area/mcp");
   }
-  if (has((file) => file.startsWith("crates/dbx-cli/") || file.startsWith("packages/cli-") || file.startsWith("packages/cli/") || file.startsWith("skills/dbx/") || file.startsWith("examples/cli/"))) {
+  if (has((file) => file.startsWith("crates/linop-db-cli/") || file.startsWith("packages/cli-") || file.startsWith("packages/cli/") || file.startsWith("skills/dbx/") || file.startsWith("examples/cli/"))) {
     labels.add("area/cli");
   }
   if (has((file) => file.startsWith("plugins/"))) labels.add("area/plugins");
@@ -378,7 +378,7 @@ function loadEvent() {
 }
 
 function loadDatabaseCatalog() {
-  const manifestUrl = new URL("../../crates/dbx-core/assets/database-drivers.manifest.json", import.meta.url);
+  const manifestUrl = new URL("../../crates/linop-db-core/assets/database-drivers.manifest.json", import.meta.url);
   const manifest = JSON.parse(fs.readFileSync(manifestUrl, "utf8"));
   return new Map(manifest.drivers.map((driver) => [driver.dbType, driver.label]));
 }

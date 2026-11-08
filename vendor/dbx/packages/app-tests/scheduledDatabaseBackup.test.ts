@@ -132,7 +132,7 @@ test("due check respects enabled state and next run", () => {
 test("backup file names are unique and safe for schema-aware exports", () => {
   const path = databaseBackupFilePath("C:\\backups", "Nightly: prod", "app/private", new Date(2026, 6, 16, 2, 3, 4), "12345678-abcd");
 
-  assert.equal(path, "C:\\backups\\dbx-backup__Nightly_ prod__20260716-020304__app_private__12345678.sql");
+  assert.equal(path, "C:\\backups\\linop-db-backup__Nightly_ prod__20260716-020304__app_private__12345678.sql");
 });
 
 test("backup file names retain the target suffix without an implicit run suffix", () => {
@@ -164,7 +164,7 @@ test("scheduled runs render a user-defined relative directory template", () => {
 
   assert.equal(directory, "C:\\backups\\archives\\Nightly_ prod\\20260716\\20260716020304-12345678");
   assert.equal(databaseBackupRunDirectoryPatternIsValid("{schedule}/{runId}"), true);
-  assert.equal(databaseBackupRunDirectoryPatternIsValid("dbx-backup_{timestamp}"), true);
+  assert.equal(databaseBackupRunDirectoryPatternIsValid("linop-db-backup_{timestamp}"), true);
   assert.equal(databaseBackupRunDirectoryPatternIsValid("../{runId}"), false);
   assert.equal(databaseBackupRunDirectoryPatternIsValid("daily"), true);
 });

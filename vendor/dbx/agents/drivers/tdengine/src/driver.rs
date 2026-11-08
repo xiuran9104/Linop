@@ -31,7 +31,7 @@ const TABLE_CACHE_TTL: Duration = Duration::from_secs(60);
 /// 进程级表快照缓存。
 ///
 /// core 的侧栏翻页会为每次请求新开一个 ephemeral metadata session（随机 session id，
-/// 请求结束即关闭，见 `crates/dbx-core/src/schema/mod.rs` 的 `EphemeralAgentMetadataSession`），
+/// 请求结束即关闭，见 `crates/linop-db-core/src/schema/mod.rs` 的 `EphemeralAgentMetadataSession`），
 /// driver 随该会话创建和销毁，实例级缓存无法跨请求命中。快照因此放到进程级，按
 /// 「连接指纹 + 数据库」复用；键里带连接指纹，避免多个连接共用同一 agent 进程时串数据。
 static TABLE_SNAPSHOTS: LazyLock<StdMutex<HashMap<String, TableSnapshot>>> = LazyLock::new(Default::default);

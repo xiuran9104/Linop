@@ -25,12 +25,12 @@ Desktop builds use the platform credential store on macOS, Windows, and Linux.
 
 Windows portable builds instead use `data/.dbx/secret.key` so the complete data directory can move between computers. Existing portable ciphertext protected by Windows Credential Manager must be opened once by the new build on the original computer; DBX copies the old key only after verifying that it decrypts the data. If the original computer or key is unavailable, restore that key or a pre-migration backup. A replacement key cannot decrypt the ciphertext. Keeping the key beside the database trades protection against whole-drive copying or loss for portability.
 
-`dbx-web` uses `${DBX_DATA_DIR}/.dbx/secret.key` by default, whether it runs in Docker, under systemd, or directly from the binary. The key is created with restricted permissions only when migration starts or the first sensitive value is written. It is part of the same recovery unit as `dbx.db`; back up and restore both files together. A key stored in the data directory does not protect against disclosure of the entire data volume.
+`linop-db-web` uses `${LINOP_DB_DATA_DIR}/.dbx/secret.key` by default, whether it runs in Docker, under systemd, or directly from the binary. The key is created with restricted permissions only when migration starts or the first sensitive value is written. It is part of the same recovery unit as `dbx.db`; back up and restore both files together. A key stored in the data directory does not protect against disclosure of the entire data volume.
 
 Production deployments can require an externally managed key instead:
 
 ```text
-DBX_SECRET_KEY_FILE=/run/secrets/dbx_secret_key
+DBX_SECRET_KEY_FILE=/run/secrets/linop_db_secret_key
 ```
 
 `DBX_SECRET_KEY` may also be supplied by a secret manager. Explicit configuration takes precedence over the managed data-dir key and never falls back when it is unreadable or invalid. Do not replace the key across restarts or upgrades while encrypted data exists.
@@ -66,7 +66,7 @@ Scan counts have an independent source fingerprint. State transitions invalidate
 
 Preflight returns counts, statuses, non-sensitive key-source names, and file names only. It does not return passwords, tokens, private keys, or key paths. It checks connection, plugin, AI, tunnel, sync, and legacy JSON data plus key availability. If ciphertext already exists, preflight verifies that the selected key can decrypt it; it never creates a replacement key.
 
-Before changing data DBX creates a restricted `dbx-secret-migration-<uuid>/` directory. It contains a consistent SQLite backup and any legacy JSON files that exist. SQLite backup APIs are used so WAL state is not lost. If backup creation fails, migration does not start.
+Before changing data DBX creates a restricted `linop-db-secret-migration-<uuid>/` directory. It contains a consistent SQLite backup and any legacy JSON files that exist. SQLite backup APIs are used so WAL state is not lost. If backup creation fails, migration does not start.
 
 ### Migration and verification
 
@@ -112,7 +112,7 @@ Confirm that the installed build includes the migration-cache fix. Export the re
 
 ### Key unavailable
 
-Allow DBX Desktop to access the platform credential store. For Web/Docker, confirm that `${DBX_DATA_DIR}/.dbx/secret.key` is present with the data volume, or that an explicitly configured `DBX_SECRET_KEY_FILE` is readable. Do not delete or replace the key used to encrypt an existing database.
+Allow DBX Desktop to access the platform credential store. For Web/Docker, confirm that `${LINOP_DB_DATA_DIR}/.dbx/secret.key` is present with the data volume, or that an explicitly configured `DBX_SECRET_KEY_FILE` is readable. Do not delete or replace the key used to encrypt an existing database.
 
 For Windows portable builds, keep `data/.dbx/secret.key` beside `dbx.db`. When upgrading existing portable data, launch the new build once on the original computer before moving the USB drive. DBX cannot generate a replacement key for ciphertext whose original key has been lost.
 
@@ -124,12 +124,12 @@ The source data is retained. Fix the issue shown by the wizard and choose **Retr
 
 | Module | Responsibility |
 | --- | --- |
-| `crates/dbx-core/src/persistence/secret_codec.rs` | Local encryption, key providers, and key parsing |
-| `crates/dbx-core/src/persistence/storage.rs` | Migration state, preflight, backup, migration, and verification |
-| `crates/dbx-core/src/persistence/cloud_sync.rs` | Encrypted cross-device export/import |
+| `crates/linop-db-core/src/persistence/secret_codec.rs` | Local encryption, key providers, and key parsing |
+| `crates/linop-db-core/src/persistence/storage.rs` | Migration state, preflight, backup, migration, and verification |
+| `crates/linop-db-core/src/persistence/cloud_sync.rs` | Encrypted cross-device export/import |
 | `src-tauri/src/migration_gate.rs` | Desktop business-command gate |
-| `crates/dbx-web/src/routes/migration.rs` | Web/Docker migration API |
-| `crates/dbx-web/src/main.rs` | Web migration gate |
+| `crates/linop-db-web/src/routes/migration.rs` | Web/Docker migration API |
+| `crates/linop-db-web/src/main.rs` | Web migration gate |
 | `apps/desktop/src/StartupGate.vue` | Desktop startup routing and blocking |
 | `apps/desktop/src/components/migration/SecurityMigrationWizard.vue` | Wizard UI, locale switch, and diagnostics |
 | `apps/desktop/src/stores/migrationStore.ts` | Wizard state and action orchestration |

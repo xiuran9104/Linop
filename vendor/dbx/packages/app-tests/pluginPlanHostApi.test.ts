@@ -15,8 +15,8 @@ import { GAUSSDB_DWS_PRODUCT_PROFILE, GAUSSDB_DWS_PRODUCT_PROFILE_KEY } from "..
  * the Rust sources and compare them against what the bridge really sends.
  */
 
-const planCoreSource = readFileSync("crates/dbx-core/src/query/plugin_plan.rs", "utf8");
-const manifestSource = readFileSync("crates/dbx-plugin-runtime/src/plugins/manifest.rs", "utf8");
+const planCoreSource = readFileSync("crates/linop-db-core/src/query/plugin_plan.rs", "utf8");
+const manifestSource = readFileSync("crates/linop-db-plugin-runtime/src/plugins/manifest.rs", "utf8");
 const manifestSchema = JSON.parse(readFileSync("plugins/manifest.schema.json", "utf8"));
 
 /** Extracts `<name>`'s `pub` field names from a Rust source block. */
@@ -72,7 +72,7 @@ function sandbox() {
 function send(bridge: PluginHostBridge, target: Window, method: string, params: unknown, id = "1"): void {
   bridge.handleWindowMessage({
     source: target,
-    data: { source: "dbx-plugin", version: 1, type: "request", id, method, params },
+    data: { source: "linop-db-plugin", version: 1, type: "request", id, method, params },
   } as MessageEvent);
 }
 

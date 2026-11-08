@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::commands::connection::{ensure_connection_writable, AppState};
-use dbx_core::agent_kv::{KvDeleteResponse, KvGetResponse, KvListPrefixResponse, KvPutOptions, KvPutResponse, KvValue};
+use linop_db_core::agent_kv::{KvDeleteResponse, KvGetResponse, KvListPrefixResponse, KvPutOptions, KvPutResponse, KvValue};
 
 #[tauri::command]
 pub async fn zookeeper_list_prefix(
@@ -14,7 +14,7 @@ pub async fn zookeeper_list_prefix(
     continuation: Option<String>,
     recursive: Option<bool>,
 ) -> Result<KvListPrefixResponse, String> {
-    dbx_core::agent_kv::kv_list_prefix_core_with_options(
+    linop_db_core::agent_kv::kv_list_prefix_core_with_options(
         &state,
         &connection_id,
         &prefix,
@@ -31,7 +31,7 @@ pub async fn zookeeper_get(
     connection_id: String,
     key: String,
 ) -> Result<KvGetResponse, String> {
-    dbx_core::agent_kv::kv_get_core(&state, &connection_id, &key).await
+    linop_db_core::agent_kv::kv_get_core(&state, &connection_id, &key).await
 }
 
 #[tauri::command]
@@ -43,7 +43,7 @@ pub async fn zookeeper_put(
     options: Option<KvPutOptions>,
 ) -> Result<KvPutResponse, String> {
     ensure_connection_writable(&state, &connection_id, "Put").await?;
-    dbx_core::agent_kv::kv_put_core_with_options(&state, &connection_id, &key, value, options.unwrap_or_default()).await
+    linop_db_core::agent_kv::kv_put_core_with_options(&state, &connection_id, &key, value, options.unwrap_or_default()).await
 }
 
 #[tauri::command]
@@ -53,5 +53,5 @@ pub async fn zookeeper_delete(
     key: String,
 ) -> Result<KvDeleteResponse, String> {
     ensure_connection_writable(&state, &connection_id, "Delete").await?;
-    dbx_core::agent_kv::kv_delete_core(&state, &connection_id, &key).await
+    linop_db_core::agent_kv::kv_delete_core(&state, &connection_id, &key).await
 }

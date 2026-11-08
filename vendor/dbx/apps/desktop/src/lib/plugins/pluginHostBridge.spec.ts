@@ -34,10 +34,10 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "9", method: "host.listConnections", params: {} },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "9", method: "host.listConnections", params: {} },
     } as MessageEvent);
     await vi.waitFor(() => expect(listConnections).toHaveBeenCalledWith("sample"));
-    expect(messages[0]).toMatchObject({ source: "dbx-host", type: "response", id: "9", result: [{ id: "conn-1", name: "Prod", providerId: "sample.connection", readOnly: true }] });
+    expect(messages[0]).toMatchObject({ source: "linop-db-host", type: "response", id: "9", result: [{ id: "conn-1", name: "Prod", providerId: "sample.connection", readOnly: true }] });
   });
 
   it("host.getConnections and host.listConnections require host.connections:read for all connections", async () => {
@@ -57,11 +57,11 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "10", method: "host.getConnections", params: {} },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "10", method: "host.getConnections", params: {} },
     } as MessageEvent);
     await vi.waitFor(() => expect(listAllConnections).toHaveBeenCalled());
     expect(messages[0]).toMatchObject({
-      source: "dbx-host",
+      source: "linop-db-host",
       type: "response",
       id: "10",
       result: [
@@ -72,11 +72,11 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "11", method: "host.listConnections", params: {} },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "11", method: "host.listConnections", params: {} },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages.length).toBe(2));
     expect(messages[1]).toMatchObject({
-      source: "dbx-host",
+      source: "linop-db-host",
       type: "response",
       id: "11",
       result: [
@@ -100,10 +100,10 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "alias-1", method: "host.getConnections", params: {} },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "alias-1", method: "host.getConnections", params: {} },
     } as MessageEvent);
     await vi.waitFor(() => expect(listAllConnections).toHaveBeenCalled());
-    expect(messages[0]).toMatchObject({ source: "dbx-host", type: "response", id: "alias-1", result: [{ id: "c1", name: "Test" }] });
+    expect(messages[0]).toMatchObject({ source: "linop-db-host", type: "response", id: "alias-1", result: [{ id: "c1", name: "Test" }] });
   });
 
   it("rejects host.getConnections when host.connections:read is not declared", async () => {
@@ -119,11 +119,11 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "err-1", method: "host.getConnections", params: {} },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "err-1", method: "host.getConnections", params: {} },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages.length).toBe(1));
     expect(messages[0]).toMatchObject({
-      source: "dbx-host",
+      source: "linop-db-host",
       type: "response",
       id: "err-1",
       error: expect.stringContaining("host.connections:read"),
@@ -149,7 +149,7 @@ describe("PluginHostBridge", () => {
       downloadFile,
       cancelDownload,
     });
-    const send = (id: string, method: string, params: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
+    const send = (id: string, method: string, params: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
     bridge.sendInit();
     expect(messages[0].capabilities.downloadFile).toBe(true);
     send("open", "host.downloadFile", { downloadId: "download-1", fileName: "report.bin", params: { uri: "s3://bucket/report.bin" }, pluginId: "other" });
@@ -175,7 +175,7 @@ describe("PluginHostBridge", () => {
       downloadFile: vi.fn(() => new Promise<null>(() => {})),
       cancelDownload,
     });
-    bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id: "open", method: "host.downloadFile", params: { downloadId: "owned", params: {} } } } as MessageEvent);
+    bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id: "open", method: "host.downloadFile", params: { downloadId: "owned", params: {} } } } as MessageEvent);
     bridge.dispose();
     expect(cancelDownload).toHaveBeenCalledWith("sample", "owned");
   });
@@ -186,7 +186,7 @@ describe("PluginHostBridge", () => {
     const bridge = new PluginHostBridge(plugin(), workbench, {}, () => target, { invoke: vi.fn(), notify: vi.fn(), sendBinary: vi.fn(), readAsset: vi.fn() });
     bridge.sendInit();
     expect(messages[0].capabilities.downloadFile).toBe(false);
-    bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id: "open", method: "host.downloadFile", params: {} } } as MessageEvent);
+    bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id: "open", method: "host.downloadFile", params: {} } } as MessageEvent);
     await vi.waitFor(() => expect(messages[1].error).toContain("desktop host"));
   });
   it("opens the built-in AI conversation only with the declared permission and host-owned identity", async () => {
@@ -194,7 +194,7 @@ describe("PluginHostBridge", () => {
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
     const openAiConversation = vi.fn().mockResolvedValue(undefined);
     const api = { invoke: vi.fn(), notify: vi.fn(), sendBinary: vi.fn(), readAsset: vi.fn(), openAiConversation };
-    const request = { source: "dbx-plugin", version: 1, type: "request", id: "ai", method: "host.ai.openConversation", params: { title: "自选分析", prompt: "分析", context: { snapshotId: "s1" }, send: true, pluginId: "forged" } };
+    const request = { source: "linop-db-plugin", version: 1, type: "request", id: "ai", method: "host.ai.openConversation", params: { title: "自选分析", prompt: "分析", context: { snapshotId: "s1" }, send: true, pluginId: "forged" } };
     const denied = new PluginHostBridge(plugin(), workbench, {}, () => target, api);
     denied.handleWindowMessage({ source: target, data: request } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(1));
@@ -271,7 +271,7 @@ describe("PluginHostBridge", () => {
     bridge.handleWindowMessage({
       source: target,
       data: {
-        source: "dbx-plugin",
+        source: "linop-db-plugin",
         version: 1,
         type: "request",
         id: "set",
@@ -290,7 +290,7 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "clear", method: "host.ai.clearRecommendations", params: {} },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "clear", method: "host.ai.clearRecommendations", params: {} },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages.some((message) => message.id === "clear" && message.result === null)).toBe(true));
     expect(updates[updates.length - 1]).toMatchObject({ workbenchId: "wb-1", items: [] });
@@ -309,7 +309,7 @@ describe("PluginHostBridge", () => {
     });
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "bad", method: "host.ai.setRecommendations", params: { context: {}, items: [{ id: "bad", label: "Inspect {{resource..name}}", prompt: "Check" }] } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "bad", method: "host.ai.setRecommendations", params: { context: {}, items: [{ id: "bad", label: "Inspect {{resource..name}}", prompt: "Check" }] } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages[0]?.error).toContain("invalid placeholder"));
   });
@@ -328,13 +328,13 @@ describe("PluginHostBridge", () => {
     expect(
       bridge.handleWindowMessage({
         source: target,
-        data: { source: "dbx-plugin", version: 1, type: "request", id: "1", method: "backend.invoke", params: { method: "sample/hello", params: { name: "DBX" } } },
+        data: { source: "linop-db-plugin", version: 1, type: "request", id: "1", method: "backend.invoke", params: { method: "sample/hello", params: { name: "DBX" } } },
       } as MessageEvent),
     ).toBe(true);
     await vi.waitFor(() => expect(messages).toHaveLength(1));
 
     expect(invoke).toHaveBeenCalledWith("sample", "sample/hello", { name: "DBX" }, undefined);
-    expect(messages[0]).toMatchObject({ source: "dbx-host", type: "response", id: "1", result: { ok: true } });
+    expect(messages[0]).toMatchObject({ source: "linop-db-host", type: "response", id: "1", result: { ok: true } });
   });
 
   it("sends the current DBX locale in the init message", () => {
@@ -356,7 +356,7 @@ describe("PluginHostBridge", () => {
 
     bridge.sendInit();
 
-    expect(messages[0]).toMatchObject({ source: "dbx-host", type: "init", locale: "zh-CN", context: { connectionId: "connection" } });
+    expect(messages[0]).toMatchObject({ source: "linop-db-host", type: "init", locale: "zh-CN", context: { connectionId: "connection" } });
   });
 
   it("runs onReinit before the init message when the iframe reloads", async () => {
@@ -368,7 +368,7 @@ describe("PluginHostBridge", () => {
       sendBinary: vi.fn(),
       readAsset: vi.fn(),
     });
-    const ready = () => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "ready" } } as MessageEvent);
+    const ready = () => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "ready" } } as MessageEvent);
 
     const order: string[] = [];
     bridge.onReinit = () =>
@@ -398,7 +398,7 @@ describe("PluginHostBridge", () => {
     });
     const onReinit = vi.fn();
     bridge.onReinit = onReinit;
-    const ready = () => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "ready" } } as MessageEvent);
+    const ready = () => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "ready" } } as MessageEvent);
 
     ready();
     await vi.waitFor(() => expect(messages).toHaveLength(1));
@@ -481,7 +481,7 @@ describe("PluginHostBridge", () => {
 
     bridge.sendInit();
 
-    expect(messages[0]).toMatchObject({ source: "dbx-host", type: "init", pluginId: "sample", contributionId: "sample.graph", context: { connectionId: "connection", sql: "SELECT 1" } });
+    expect(messages[0]).toMatchObject({ source: "linop-db-host", type: "init", pluginId: "sample", contributionId: "sample.graph", context: { connectionId: "connection", sql: "SELECT 1" } });
   });
 
   it("rejects privileged host calls without manifest permission", async () => {
@@ -496,7 +496,7 @@ describe("PluginHostBridge", () => {
     });
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "2", method: "host.openWorkbench", params: { contributionId: "sample.other" } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "2", method: "host.openWorkbench", params: { contributionId: "sample.other" } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(messages[0]).toMatchObject({ id: "2", error: "Plugin has not declared permission 'host.workbench'" });
@@ -516,7 +516,7 @@ describe("PluginHostBridge", () => {
     const request = (id: string, params: unknown) =>
       bridge.handleWindowMessage({
         source: target,
-        data: { source: "dbx-plugin", version: 1, type: "request", id, method: "host.openWorkbench", params },
+        data: { source: "linop-db-plugin", version: 1, type: "request", id, method: "host.openWorkbench", params },
       } as MessageEvent);
 
     request("new", { contributionId: "sample.other", context: { connectionId: "c1" }, forceNew: true });
@@ -543,14 +543,14 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "t1", method: "host.setTitle", params: { title: "Custom Title" } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "t1", method: "host.setTitle", params: { title: "Custom Title" } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(messages[0]).toMatchObject({ id: "t1", error: "Plugin has not declared permission 'host.workbench'" });
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "t2", method: "host.getTitle" },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "t2", method: "host.getTitle" },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(2));
     expect(messages[1]).toMatchObject({ id: "t2", error: "Plugin has not declared permission 'host.workbench'" });
@@ -573,7 +573,7 @@ describe("PluginHostBridge", () => {
     const request = (id: string, method: string, params?: unknown) =>
       bridge.handleWindowMessage({
         source: target,
-        data: { source: "dbx-plugin", version: 1, type: "request", id, method, params },
+        data: { source: "linop-db-plugin", version: 1, type: "request", id, method, params },
       } as MessageEvent);
 
     request("set-1", "host.setTitle", { title: "  My Tab  " });
@@ -608,7 +608,7 @@ describe("PluginHostBridge", () => {
     });
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "3", method: "host.executeCommand", params: { commandId: "open-panel", context: { connectionId: "c1" } } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "3", method: "host.executeCommand", params: { commandId: "open-panel", context: { connectionId: "c1" } } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(executeCommand).toHaveBeenCalledWith("sample", "open-panel", { connectionId: "c1" });
@@ -630,7 +630,7 @@ describe("PluginHostBridge", () => {
     });
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "4", method: "host.executeCommand", params: { commandId: "open-panel" } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "4", method: "host.executeCommand", params: { commandId: "open-panel" } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(executeCommand).toHaveBeenCalledWith("sample", "open-panel", undefined);
@@ -650,7 +650,7 @@ describe("PluginHostBridge", () => {
     });
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "5", method: "host.executeCommand", params: { commandId: "open-panel" } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "5", method: "host.executeCommand", params: { commandId: "open-panel" } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(messages[0]).toMatchObject({ id: "5", error: "Plugin has not declared permission 'host.workbench'" });
@@ -671,7 +671,7 @@ describe("PluginHostBridge", () => {
     const request = (id: string, params: unknown) =>
       bridge.handleWindowMessage({
         source: target,
-        data: { source: "dbx-plugin", version: 1, type: "request", id, method: "host.reopenConnection", params },
+        data: { source: "linop-db-plugin", version: 1, type: "request", id, method: "host.reopenConnection", params },
       } as MessageEvent);
 
     request("reopen", { connectionId: "9f1c2a34-0000-4000-8000-abcdef012345" });
@@ -705,7 +705,7 @@ describe("PluginHostBridge", () => {
   function planCall(bridge: PluginHostBridge, target: Window, method: string, params: unknown, id: string): void {
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id, method, params },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id, method, params },
     } as MessageEvent);
   }
 
@@ -995,7 +995,7 @@ describe("PluginHostBridge", () => {
     bridge.handleWindowMessage({
       source: target,
       data: {
-        source: "dbx-plugin",
+        source: "linop-db-plugin",
         version: 1,
         type: "request",
         id: "filesystem",
@@ -1024,7 +1024,7 @@ describe("PluginHostBridge", () => {
     bridge.forwardBinary({ pluginId: "sample", channel: "pty", dataBase64: "AQI=" });
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "3", method: "backend.sendBinary", params: { channel: "pty", dataBase64: "AQI=" } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "3", method: "backend.sendBinary", params: { channel: "pty", dataBase64: "AQI=" } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(3));
 
@@ -1056,7 +1056,7 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: first,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "4", method: "backend.invoke", params: { method: "sample/slow" } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "4", method: "backend.invoke", params: { method: "sample/slow" } },
     } as MessageEvent);
     current = second;
     resolveInvoke({ ok: true });
@@ -1079,10 +1079,10 @@ describe("PluginHostBridge", () => {
     bridge.updateContext({ connectionId: "second", values: { path: "/tmp" } });
     bridge.updateLocale("ja");
 
-    expect(messages[0]).toMatchObject({ source: "dbx-host", type: "context", context: { connectionId: "second" } });
-    expect(messages[1]).toMatchObject({ source: "dbx-host", type: "env", locale: "ja" });
+    expect(messages[0]).toMatchObject({ source: "linop-db-host", type: "context", context: { connectionId: "second" } });
+    expect(messages[1]).toMatchObject({ source: "linop-db-host", type: "env", locale: "ja" });
 
-    bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id: "ctx", method: "host.getContext" } } as MessageEvent);
+    bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id: "ctx", method: "host.getContext" } } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(3));
     expect(messages[2]).toMatchObject({ type: "response", id: "ctx", result: { connectionId: "second", values: { path: "/tmp" } } });
   });
@@ -1108,7 +1108,7 @@ describe("PluginHostBridge", () => {
     const bytes = new Uint8Array([4, 5, 6]).buffer;
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "bin", method: "backend.sendBinary", params: { channel: "pty" }, data: bytes },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "bin", method: "backend.sendBinary", params: { channel: "pty" }, data: bytes },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(2));
     expect(sendBinary).toHaveBeenCalledWith("sample", "pty", "BAUG");
@@ -1126,7 +1126,7 @@ describe("PluginHostBridge", () => {
     });
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "denied", method: "backend.sendBinary", params: { channel: "pty" }, data: new Uint8Array([1]).buffer },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "denied", method: "backend.sendBinary", params: { channel: "pty" }, data: new Uint8Array([1]).buffer },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(messages[0]).toMatchObject({ id: "denied", error: "Plugin has not declared permission 'host.binary'" });
@@ -1139,10 +1139,10 @@ describe("PluginHostBridge", () => {
     expect(document).toContain("openFilesystem");
     expect(document).toContain("saveFile");
     expect(document).toContain("copy");
-    expect(document).toContain("document.dispatchEvent(new CustomEvent('dbx-plugin-env'");
+    expect(document).toContain("document.dispatchEvent(new CustomEvent('linop-db-plugin-env'");
     expect(document).toContain("shortcut: 'closeTab'");
     expect(document).toContain("connect-src 'none'");
-    expect(document).toContain(".dbx-btn");
+    expect(document).toContain(".linop-db-btn");
     expect(document).toContain("var(--color-background");
   });
 
@@ -1172,7 +1172,7 @@ describe("PluginHostBridge", () => {
     expect(
       bridge.handleWindowMessage({
         source: target,
-        data: { source: "dbx-plugin", version: 1, type: "shortcut", shortcut: "closeTab" },
+        data: { source: "linop-db-plugin", version: 1, type: "shortcut", shortcut: "closeTab" },
       } as MessageEvent),
     ).toBe(true);
     expect(closeTab).toHaveBeenCalledOnce();
@@ -1190,13 +1190,13 @@ describe("PluginHostBridge", () => {
   });
 
   it("injects a <base> and widens resource CSP sources for the plugin asset origin", () => {
-    const document = pluginSandboxDocument('<html><head></head><body><script type="module" src="dbx-plugin://localhost/io.github.t8y2.s3/entry/app.mjs"></script><script type="module" src="https://cdn.example.test/app.mjs"></script></body></html>', [], undefined, {
-      baseUrl: "dbx-plugin://localhost/io.github.t8y2.s3/assets/",
+    const document = pluginSandboxDocument('<html><head></head><body><script type="module" src="linop-db-plugin://localhost/io.github.t8y2.s3/entry/app.mjs"></script><script type="module" src="https://cdn.example.test/app.mjs"></script></body></html>', [], undefined, {
+      baseUrl: "linop-db-plugin://localhost/io.github.t8y2.s3/assets/",
     });
-    expect(document).toContain('<base href="dbx-plugin://localhost/io.github.t8y2.s3/assets/">');
-    expect(document).toContain("script-src 'unsafe-inline' blob: dbx-plugin:;");
-    expect(document).toContain("font-src data: blob: dbx-plugin:;");
-    expect(document).toContain('src="dbx-plugin://localhost/io.github.t8y2.s3/entry/app.mjs"');
+    expect(document).toContain('<base href="linop-db-plugin://localhost/io.github.t8y2.s3/assets/">');
+    expect(document).toContain("script-src 'unsafe-inline' blob: linop-db-plugin:;");
+    expect(document).toContain("font-src data: blob: linop-db-plugin:;");
+    expect(document).toContain('src="linop-db-plugin://localhost/io.github.t8y2.s3/entry/app.mjs"');
     const scriptPolicy = document.match(/script-src[^;]+;/)?.[0] ?? "";
     expect(scriptPolicy).not.toContain("https://cdn.example.test");
     // <base> leads the head injection so inlined CSS url() resolves against it.
@@ -1204,10 +1204,10 @@ describe("PluginHostBridge", () => {
   });
 
   it("allows the WebView2-mapped asset origin exactly", () => {
-    const document = pluginSandboxDocument('<html><head></head><body><script type="module" src="http://dbx-plugin.localhost/io.github.t8y2.s3/entry/app.mjs"></script></body></html>', [], undefined, { baseUrl: "http://dbx-plugin.localhost/io.github.t8y2.s3/assets/" });
-    expect(document).toContain("script-src 'unsafe-inline' blob: http://dbx-plugin.localhost;");
-    expect(document).toContain('<base href="http://dbx-plugin.localhost/io.github.t8y2.s3/assets/">');
-    expect(document).toContain('src="http://dbx-plugin.localhost/io.github.t8y2.s3/entry/app.mjs"');
+    const document = pluginSandboxDocument('<html><head></head><body><script type="module" src="http://linop-db-plugin.localhost/io.github.t8y2.s3/entry/app.mjs"></script></body></html>', [], undefined, { baseUrl: "http://linop-db-plugin.localhost/io.github.t8y2.s3/assets/" });
+    expect(document).toContain("script-src 'unsafe-inline' blob: http://linop-db-plugin.localhost;");
+    expect(document).toContain('<base href="http://linop-db-plugin.localhost/io.github.t8y2.s3/assets/">');
+    expect(document).toContain('src="http://linop-db-plugin.localhost/io.github.t8y2.s3/entry/app.mjs"');
   });
 
   it("rejects malformed asset base URLs without touching the CSP", () => {
@@ -1225,16 +1225,16 @@ describe("PluginHostBridge", () => {
 
   it("adds unsafe-eval to script-src only for the granted plugin", () => {
     const granted = pluginSandboxDocument("<html><head></head><body></body></html>", [], undefined, {
-      baseUrl: "http://dbx-plugin.localhost/io.github.t8y2.s3/assets/",
+      baseUrl: "http://linop-db-plugin.localhost/io.github.t8y2.s3/assets/",
       allowUnsafeEval: true,
     });
-    expect(granted).toContain("script-src 'unsafe-inline' 'unsafe-eval' blob: http://dbx-plugin.localhost;");
+    expect(granted).toContain("script-src 'unsafe-inline' 'unsafe-eval' blob: http://linop-db-plugin.localhost;");
     // The grant is scoped to script-src; no other directive picks it up.
     expect(granted).toContain("style-src 'unsafe-inline' blob:;");
-    expect(granted).not.toContain("img-src data: blob: http://dbx-plugin.localhost 'unsafe-eval'");
+    expect(granted).not.toContain("img-src data: blob: http://linop-db-plugin.localhost 'unsafe-eval'");
 
     const withheld = pluginSandboxDocument("<html><head></head><body></body></html>", [], undefined, {
-      baseUrl: "http://dbx-plugin.localhost/io.github.t8y2.s3/assets/",
+      baseUrl: "http://linop-db-plugin.localhost/io.github.t8y2.s3/assets/",
     });
     expect(withheld).not.toContain("unsafe-eval");
   });
@@ -1244,7 +1244,7 @@ describe("PluginHostBridge", () => {
     expect(themed).toContain("color-scheme: dark");
     expect(themed).toContain("--color-background: #131416");
     expect(themed).toContain("--color-foreground: rgb(215 215 219)");
-    expect(themed.indexOf("<style>:root{")).toBeGreaterThan(themed.indexOf(".dbx-btn"));
+    expect(themed.indexOf("<style>:root{")).toBeGreaterThan(themed.indexOf(".linop-db-btn"));
 
     const unthemed = pluginSandboxDocument("<html><head></head><body></body></html>");
     expect(unthemed).not.toContain("color-scheme: dark");
@@ -1295,7 +1295,7 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "save1", method: "host.saveFile", params: { fileName: "report.csv", contentType: "text/csv" }, data: new Uint8Array([1, 2, 3]).buffer },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "save1", method: "host.saveFile", params: { fileName: "report.csv", contentType: "text/csv" }, data: new Uint8Array([1, 2, 3]).buffer },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(saveFile).toHaveBeenCalledWith("sample", { fileName: "report.csv", contentType: "text/csv" }, new Uint8Array([1, 2, 3]));
@@ -1303,7 +1303,7 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "save2", method: "host.saveFile", params: { dataBase64: "AQID" } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "save2", method: "host.saveFile", params: { dataBase64: "AQID" } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(2));
     expect(saveFile).toHaveBeenLastCalledWith("sample", {}, new Uint8Array([1, 2, 3]));
@@ -1324,7 +1324,7 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "copy1", method: "host.copy", params: { text: "https://example.com/share?sig=1" } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "copy1", method: "host.copy", params: { text: "https://example.com/share?sig=1" } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(copyText).toHaveBeenCalledWith("sample", "https://example.com/share?sig=1");
@@ -1332,11 +1332,11 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "copy2", method: "host.copy", params: { text: "" } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "copy2", method: "host.copy", params: { text: "" } },
     } as MessageEvent);
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "copy3", method: "host.copy", params: { text: "x".repeat(2 * 1024 * 1024 + 1) } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "copy3", method: "host.copy", params: { text: "x".repeat(2 * 1024 * 1024 + 1) } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(3));
     const byId = new Map(messages.map((message) => [(message as { id?: string }).id, message]));
@@ -1357,7 +1357,7 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "nocopy", method: "host.copy", params: { text: "hello" } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "nocopy", method: "host.copy", params: { text: "hello" } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(messages[0]).toMatchObject({ id: "nocopy", error: "Host clipboard is unavailable" });
@@ -1367,7 +1367,7 @@ describe("PluginHostBridge", () => {
     const messages: unknown[] = [];
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
     const clipboardRead = vi.fn().mockResolvedValue("pasted text");
-    const send = (bridge: PluginHostBridge, id: string, method: string) => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method } } as MessageEvent);
+    const send = (bridge: PluginHostBridge, id: string, method: string) => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method } } as MessageEvent);
 
     // Without the permission the read is refused before the host clipboard is touched.
     const denied = new PluginHostBridge(plugin(), workbench, {}, () => target, {
@@ -1379,7 +1379,7 @@ describe("PluginHostBridge", () => {
     });
     denied.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "read-denied", method: "host.clipboardRead" },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "read-denied", method: "host.clipboardRead" },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(clipboardRead).not.toHaveBeenCalled();
@@ -1407,7 +1407,7 @@ describe("PluginHostBridge", () => {
   it("rejects host.clipboardRead when the host cannot read the clipboard and caps oversized reads", async () => {
     const messages: unknown[] = [];
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
-    const send = (bridge: PluginHostBridge, id: string, method: string) => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method } } as MessageEvent);
+    const send = (bridge: PluginHostBridge, id: string, method: string) => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method } } as MessageEvent);
 
     // Legacy or web host: no clipboardRead in the API surface.
     const noRead = new PluginHostBridge(plugin(["host.clipboard:read"]), workbench, {}, () => target, {
@@ -1442,7 +1442,7 @@ describe("PluginHostBridge", () => {
   it("shares clipboard consent with image reads and validates the image payload", async () => {
     const messages: unknown[] = [];
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
-    const send = (bridge: PluginHostBridge, id: string, method: string, params?: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
+    const send = (bridge: PluginHostBridge, id: string, method: string, params?: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
     const clipboardReadImage = vi.fn().mockResolvedValue({ contentType: "image/png", dataBase64: "AQIDBA==", width: 1, height: 1 });
     const bridge = new PluginHostBridge(plugin(["host.clipboard:read"]), workbench, {}, () => target, {
       invoke: vi.fn(),
@@ -1461,7 +1461,7 @@ describe("PluginHostBridge", () => {
   it("opens and revokes plugin-scoped media URLs", async () => {
     const messages: unknown[] = [];
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
-    const send = (bridge: PluginHostBridge, id: string, method: string, params?: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
+    const send = (bridge: PluginHostBridge, id: string, method: string, params?: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
     const openMedia = vi.fn().mockResolvedValue("550e8400-e29b-41d4-a716-446655440000");
     const closeMedia = vi.fn().mockResolvedValue(undefined);
     const bridge = new PluginHostBridge(plugin(), workbench, {}, () => target, {
@@ -1483,7 +1483,7 @@ describe("PluginHostBridge", () => {
   it("asks session consent before the first clipboard read and remembers a denial for the bridge lifetime", async () => {
     const messages: unknown[] = [];
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
-    const send = (bridge: PluginHostBridge, id: string, method: string) => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method } } as MessageEvent);
+    const send = (bridge: PluginHostBridge, id: string, method: string) => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method } } as MessageEvent);
 
     // Denial on the consent prompt: the read rejects and the host clipboard is never touched.
     const clipboardRead = vi.fn().mockResolvedValue("secret");
@@ -1553,7 +1553,7 @@ describe("PluginHostBridge", () => {
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
     const bridge = new PluginHostBridge(plugin(permissions), workbench, {}, () => target, api);
     const query = async (id: string, params: unknown) => {
-      bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method: "host.queryData", params } } as MessageEvent);
+      bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method: "host.queryData", params } } as MessageEvent);
       await vi.waitFor(() => expect(messages.some((message) => (message as { id?: string }).id === id)).toBe(true));
       return messages.find((message) => (message as { id?: string }).id === id) as { result?: unknown; error?: string };
     };
@@ -1622,7 +1622,7 @@ describe("PluginHostBridge", () => {
     });
     const { bridge, messages } = dataHarness(["host.data:read"], api);
     const target = (bridge as unknown as { targetWindow: () => Window }).targetWindow();
-    const start = (id: string) => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method: "host.queryData", params: { connectionId: "conn-1", sql: "SELECT 1" } } } as MessageEvent);
+    const start = (id: string) => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method: "host.queryData", params: { connectionId: "conn-1", sql: "SELECT 1" } } } as MessageEvent);
     for (let index = 0; index < MAX_CONCURRENT_PLUGIN_DATA_QUERIES; index += 1) start(`running-${index}`);
     await vi.waitFor(() => expect(api.queryData).toHaveBeenCalledTimes(MAX_CONCURRENT_PLUGIN_DATA_QUERIES));
     start("over-limit");
@@ -1658,7 +1658,7 @@ describe("PluginHostBridge", () => {
   it("denies clipboard reads on hosts without a consent surface and rate-limits repeated reads", async () => {
     const messages: unknown[] = [];
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
-    const send = (bridge: PluginHostBridge, id: string, method: string) => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method } } as MessageEvent);
+    const send = (bridge: PluginHostBridge, id: string, method: string) => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method } } as MessageEvent);
 
     // No consent surface: deny rather than silently allow (option-a hardening).
     const noSurface = new PluginHostBridge(plugin(["host.clipboard:read"]), workbench, {}, () => target, {
@@ -1725,7 +1725,7 @@ describe("PluginHostBridge", () => {
     const storageGet = vi.fn().mockResolvedValue({ mode: "dark" });
     const storageSet = vi.fn().mockResolvedValue(undefined);
     const storageDelete = vi.fn().mockResolvedValue(undefined);
-    const send = (bridge: PluginHostBridge, id: string, method: string, params: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
+    const send = (bridge: PluginHostBridge, id: string, method: string, params: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
 
     // No declared host.storage permission: every call is refused up front.
     const denied = new PluginHostBridge(plugin(), workbench, {}, () => target, {
@@ -1790,7 +1790,7 @@ describe("PluginHostBridge", () => {
     expect((messages[0] as { capabilities?: { storage?: boolean } }).capabilities?.storage).toBe(false);
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "nostorage", method: "host.storageGet", params: { key: "theme" } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "nostorage", method: "host.storageGet", params: { key: "theme" } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(2));
     expect(messages[1]).toMatchObject({ id: "nostorage", error: "Host storage is unavailable" });
@@ -1808,14 +1808,14 @@ describe("PluginHostBridge", () => {
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "empty", method: "host.saveFile", params: { fileName: "x.bin" } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "empty", method: "host.saveFile", params: { fileName: "x.bin" } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(1));
     expect(messages[0]).toMatchObject({ id: "empty", error: "host.saveFile requires transferred binary data or dataBase64" });
 
     bridge.handleWindowMessage({
       source: target,
-      data: { source: "dbx-plugin", version: 1, type: "request", id: "unsupported", method: "host.saveFile", params: { dataBase64: "AQID" } },
+      data: { source: "linop-db-plugin", version: 1, type: "request", id: "unsupported", method: "host.saveFile", params: { dataBase64: "AQID" } },
     } as MessageEvent);
     await vi.waitFor(() => expect(messages).toHaveLength(2));
     expect(messages[1]).toMatchObject({ id: "unsupported", error: "Host file saving is unavailable" });
@@ -1909,7 +1909,7 @@ describe("plugin SDK source", () => {
     const { dbxPlugin } = loadSdk(posted, { appearance: "dark", tokens: { "--color-background": "#131416" } });
 
     expect(dbxPlugin).toBeDefined();
-    expect(posted[0]).toMatchObject({ source: "dbx-plugin", type: "ready" });
+    expect(posted[0]).toMatchObject({ source: "linop-db-plugin", type: "ready" });
   });
 
   it("exposes the opened contribution after ready when init was already delivered and context is empty", async () => {
@@ -2041,7 +2041,7 @@ describe("plugin SDK source", () => {
     const bridge = new PluginHostBridge(plugin(), workbench, {}, () => target, api);
 
     const request = (id: string, method: string, params: unknown, data?: ArrayBuffer) => {
-      bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method, params, data } } as MessageEvent);
+      bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method, params, data } } as MessageEvent);
     };
     request("1", "host.pickFiles", { multiple: true });
     request("2", "host.readFileChunk", { handleId: "t1", offset: 0, length: 10 });
@@ -2065,7 +2065,7 @@ describe("plugin SDK source", () => {
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
     const bridge = new PluginHostBridge(plugin(), workbench, {}, () => target, { invoke: vi.fn(), notify: vi.fn(), sendBinary: vi.fn(), readAsset: vi.fn(), beginFileSave: vi.fn().mockResolvedValue(null) });
 
-    bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id: "1", method: "host.beginFileSave", params: { name: "out.bin" } } } as MessageEvent);
+    bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id: "1", method: "host.beginFileSave", params: { name: "out.bin" } } } as MessageEvent);
 
     await vi.waitFor(() => expect(messages.filter((message) => (message as { type?: string }).type === "response")).toHaveLength(1));
     expect(messages[0]).toMatchObject({ type: "response", id: "1", result: null });
@@ -2079,11 +2079,11 @@ describe("plugin SDK source", () => {
     bridge.forwardDragState(true, { x: 15, y: 25 });
     bridge.forwardFileDrop([{ handleId: "t1", name: "a.txt", size: 1, contentType: "text/plain" }], { dropId: "d1", truncated: false, position: { x: 15, y: 25 } });
 
-    expect(messages[0]).toMatchObject({ source: "dbx-host", version: 1, type: "dragstate", active: true, position: { x: 15, y: 25 } });
-    expect(messages[1]).toMatchObject({ source: "dbx-host", version: 1, type: "filedrop", files: [{ handleId: "t1", name: "a.txt" }], position: { x: 15, y: 25 } });
+    expect(messages[0]).toMatchObject({ source: "linop-db-host", version: 1, type: "dragstate", active: true, position: { x: 15, y: 25 } });
+    expect(messages[1]).toMatchObject({ source: "linop-db-host", version: 1, type: "filedrop", files: [{ handleId: "t1", name: "a.txt" }], position: { x: 15, y: 25 } });
   });
 
-  it("sdk delivers drag coordinates and drop position to listeners while keeping dbx-plugin-dragstate boolean", () => {
+  it("sdk delivers drag coordinates and drop position to listeners while keeping linop-db-plugin-dragstate boolean", () => {
     const posted: unknown[] = [];
     const sdkWindow = loadSdk(posted);
     const { dbxPlugin } = sdkWindow;
@@ -2101,7 +2101,7 @@ describe("plugin SDK source", () => {
 
     // 1. Drag enter with position
     sdkWindow.receiveHostMessage({
-      source: "dbx-host",
+      source: "linop-db-host",
       version: 1,
       type: "dragstate",
       active: true,
@@ -2110,14 +2110,14 @@ describe("plugin SDK source", () => {
     expect(dragEvents).toEqual([{ active: true, position: { x: 100, y: 200 } }]);
     expect(sdkWindow.document.dispatchEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "dbx-plugin-dragstate",
+        type: "linop-db-plugin-dragstate",
         detail: true,
       }),
     );
 
     // 2. Drag over with updated position
     sdkWindow.receiveHostMessage({
-      source: "dbx-host",
+      source: "linop-db-host",
       version: 1,
       type: "dragstate",
       active: true,
@@ -2127,7 +2127,7 @@ describe("plugin SDK source", () => {
 
     // 3. Drop with position
     sdkWindow.receiveHostMessage({
-      source: "dbx-host",
+      source: "linop-db-host",
       version: 1,
       type: "filedrop",
       files: [{ handleId: "h1", name: "test.txt", size: 10 }],
@@ -2143,7 +2143,7 @@ describe("plugin SDK source", () => {
     ]);
     expect(sdkWindow.document.dispatchEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "dbx-plugin-filedrop",
+        type: "linop-db-plugin-filedrop",
         detail: {
           files: [{ handleId: "h1", name: "test.txt", size: 10 }],
           drop: { dropId: "drop-1", truncated: false, position: { x: 150, y: 250 } },
@@ -2153,7 +2153,7 @@ describe("plugin SDK source", () => {
 
     // 4. Drag leave without position
     sdkWindow.receiveHostMessage({
-      source: "dbx-host",
+      source: "linop-db-host",
       version: 1,
       type: "dragstate",
       active: false,
@@ -2161,7 +2161,7 @@ describe("plugin SDK source", () => {
     expect(dragEvents[2]).toEqual({ active: false, position: undefined });
     expect(sdkWindow.document.dispatchEvent).toHaveBeenCalledWith(
       expect.objectContaining({
-        type: "dbx-plugin-dragstate",
+        type: "linop-db-plugin-dragstate",
         detail: false,
       }),
     );
@@ -2194,11 +2194,11 @@ describe("plugin SDK source", () => {
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
     const bridge = new PluginHostBridge(plugin(), workbench, { workbenchId: "wb-1" }, () => target, { invoke: vi.fn(), notify: vi.fn(), sendBinary: vi.fn(), readAsset: vi.fn() });
     // The new SDK advertises the handshake on ready.
-    bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "ready", features: ["workbench.close"] } } as MessageEvent);
+    bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "ready", features: ["workbench.close"] } } as MessageEvent);
 
     const pending = bridge.requestWorkbenchClose(200);
     expect(messages.some((message) => message.type === "workbench/close" && message.workbenchId === "wb-1")).toBe(true);
-    bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "workbench/close-ack", workbenchId: "wb-1" } } as MessageEvent);
+    bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "workbench/close-ack", workbenchId: "wb-1" } } as MessageEvent);
     await expect(pending).resolves.toBe(true);
   });
 
@@ -2206,18 +2206,18 @@ describe("plugin SDK source", () => {
     const messages: any[] = [];
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
     const bridge = new PluginHostBridge(plugin(), workbench, {}, () => target, { invoke: vi.fn(), notify: vi.fn(), sendBinary: vi.fn(), readAsset: vi.fn() });
-    bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "ready", features: ["workbench.close"] } } as MessageEvent);
+    bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "ready", features: ["workbench.close"] } } as MessageEvent);
 
     await expect(bridge.requestWorkbenchClose(5)).resolves.toBe(false);
     // A late ack after the deadline is ignored and must not throw.
-    expect(() => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "workbench/close-ack" } } as MessageEvent)).not.toThrow();
+    expect(() => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "workbench/close-ack" } } as MessageEvent)).not.toThrow();
   });
 
   it("requestWorkbenchClose skips the wait for SDKs without the handshake feature", async () => {
     const messages: any[] = [];
     const target = { postMessage: (message: unknown) => messages.push(message) } as unknown as Window;
     const bridge = new PluginHostBridge(plugin(), workbench, {}, () => target, { invoke: vi.fn(), notify: vi.fn(), sendBinary: vi.fn(), readAsset: vi.fn() });
-    bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "ready" } } as MessageEvent);
+    bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "ready" } } as MessageEvent);
 
     await expect(bridge.requestWorkbenchClose(5000)).resolves.toBe(false);
     expect(messages.some((message) => message.type === "workbench/close")).toBe(true);
@@ -2232,7 +2232,7 @@ describe("AI completion bridge", () => {
     let bridge = new PluginHostBridge(plugin([]), workbench, {}, () => target, api);
     const request = async (method: string, params: unknown = {}) => {
       const count = messages.length;
-      bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id: String(count), method, params } } as MessageEvent);
+      bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id: String(count), method, params } } as MessageEvent);
       await vi.waitFor(() => expect(messages.length).toBe(count + 1));
       return messages[count];
     };
@@ -2252,7 +2252,7 @@ describe("AI completion bridge", () => {
     const bridge = new PluginHostBridge(plugin(["host.ai"]), workbench, {}, () => target, { invoke: vi.fn(), notify: vi.fn(), sendBinary: vi.fn(), readAsset: vi.fn(), generateAiText });
     const request = async (params: unknown) => {
       const count = messages.length;
-      bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id: String(count), method: "host.ai.generateText", params } } as MessageEvent);
+      bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id: String(count), method: "host.ai.generateText", params } } as MessageEvent);
       await vi.waitFor(() => expect(messages.length).toBe(count + 1));
       return messages[count];
     };
@@ -2280,7 +2280,7 @@ describe("AI completion bridge", () => {
       });
     });
     const bridge = new PluginHostBridge(plugin(["host.ai"]), workbench, {}, () => target, { invoke: vi.fn(), notify: vi.fn(), sendBinary: vi.fn(), readAsset: vi.fn(), generateAiTextStream, cancelAiGeneration: vi.fn().mockResolvedValue(true) });
-    const send = (id: string, method: string, params: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
+    const send = (id: string, method: string, params: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
     const waitResponse = async (id: string) => {
       await vi.waitFor(() => expect(messages.some((message) => message.type === "response" && message.id === id)).toBe(true));
       return messages.find((message) => message.type === "response" && message.id === id);
@@ -2318,7 +2318,7 @@ describe("AI completion bridge", () => {
     const cancelAiGeneration = vi.fn().mockResolvedValue(true);
     // Without both stream and cancel the capability stays off and the call is refused.
     let bridge = new PluginHostBridge(plugin(["host.ai"]), workbench, {}, () => target, { ...baseApi(), generateAiTextStream });
-    const send = (b: PluginHostBridge, id: string, method: string, params: unknown) => b.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
+    const send = (b: PluginHostBridge, id: string, method: string, params: unknown) => b.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
     const waitResponse = async (id: string) => {
       await vi.waitFor(() => expect(messages.some((message) => message.type === "response" && message.id === id)).toBe(true));
       return messages.find((message) => message.type === "response" && message.id === id);
@@ -2352,7 +2352,7 @@ describe("AI completion bridge", () => {
     });
     const cancelAiGeneration = vi.fn().mockResolvedValue(true);
     const bridge = new PluginHostBridge(plugin(["host.ai"]), workbench, {}, () => target, { invoke: vi.fn(), notify: vi.fn(), sendBinary: vi.fn(), readAsset: vi.fn(), generateAiTextStream, cancelAiGeneration });
-    const send = (id: string, method: string, params: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
+    const send = (id: string, method: string, params: unknown) => bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id, method, params } } as MessageEvent);
     const waitResponse = async (id: string) => {
       await vi.waitFor(() => expect(messages.some((message) => message.type === "response" && message.id === id)).toBe(true));
       return messages.find((message) => message.type === "response" && message.id === id);
@@ -2384,7 +2384,7 @@ describe("AI completion bridge", () => {
       generateAiTextStream: vi.fn(() => new Promise<string>(() => undefined)),
       cancelAiGeneration,
     });
-    bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "request", id: "open", method: "host.ai.generateTextStream", params: { configId: "one", model: "a", prompt: "hi", requestId: "gen-1" } } } as MessageEvent);
+    bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "request", id: "open", method: "host.ai.generateTextStream", params: { configId: "one", model: "a", prompt: "hi", requestId: "gen-1" } } } as MessageEvent);
     await vi.waitFor(() => expect(cancelAiGeneration.mock.calls.length).toBeGreaterThanOrEqual(0));
     bridge.dispose();
     expect(cancelAiGeneration).toHaveBeenCalledWith("gen-1");
@@ -2405,7 +2405,7 @@ describe("AI completion bridge", () => {
       readAsset: vi.fn(),
       listAllConnections: vi.fn(() => []),
     });
-    bridge.handleWindowMessage({ source: target, data: { source: "dbx-plugin", version: 1, type: "ready" } } as MessageEvent);
+    bridge.handleWindowMessage({ source: target, data: { source: "linop-db-plugin", version: 1, type: "ready" } } as MessageEvent);
     expect(messages.some((m) => m.type === "init" && m.capabilities?.connectionsApi === true)).toBe(true);
   });
 });
@@ -2484,7 +2484,7 @@ describe("plugin close-tab shortcut vs. terminal key handling", () => {
 
     press(textarea, { key: "w", ctrlKey: true });
     expect(shortcuts()).toHaveLength(1);
-    expect(shortcuts()[0]).toMatchObject({ source: "dbx-plugin", type: "shortcut", shortcut: "closeTab" });
+    expect(shortcuts()[0]).toMatchObject({ source: "linop-db-plugin", type: "shortcut", shortcut: "closeTab" });
 
     press(textarea, { key: "w", metaKey: true });
     expect(shortcuts()).toHaveLength(2);

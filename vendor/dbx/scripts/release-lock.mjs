@@ -1,4 +1,4 @@
-const DESKTOP_PACKAGE_NAMES = new Set(["dbx", "dbx-web"]);
+const DESKTOP_PACKAGE_NAMES = new Set(["dbx", "linop-db-web"]);
 
 export function normalizeDesktopPackageVersions(lockfile) {
   let inPackage = false;

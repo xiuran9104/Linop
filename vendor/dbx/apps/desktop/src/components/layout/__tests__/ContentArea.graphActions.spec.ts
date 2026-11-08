@@ -50,7 +50,7 @@ function result(count = 1): QueryResult {
 }
 
 function response(value: string): QueryResult {
-  return { columns: ["dbx_value"], rows: [[value]], affected_rows: 0, execution_time_ms: 0 };
+  return { columns: ["linop_db_value"], rows: [[value]], affected_rows: 0, execution_time_ms: 0 };
 }
 
 function deferred<T>() {

@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use tauri::State;
 
-use dbx_core::connection::{AppState, PoolKind};
-use dbx_core::db::sqlite::{is_memory_database_path, SqliteHandle};
-use dbx_core::models::connection::DatabaseType;
-use dbx_core::sqlite_backup::{
+use linop_db_core::connection::{AppState, PoolKind};
+use linop_db_core::db::sqlite::{is_memory_database_path, SqliteHandle};
+use linop_db_core::models::connection::DatabaseType;
+use linop_db_core::sqlite_backup::{
     backup_sqlite_database as backup_sqlite_database_core, restore_sqlite_database as restore_sqlite_database_core,
     SqliteBackupOptions,
 };

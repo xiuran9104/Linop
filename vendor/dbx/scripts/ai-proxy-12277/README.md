@@ -1,7 +1,7 @@
 # Issue #12277：通过 aliyun 复现本地 AI 请求误走代理
 
 2026-10-16 在 Windows 上直接调用
-`dbx_ai_provider::ai::build_ai_http_client()` 完成修复前复现和修复后验证。
+`linop_db_ai_provider::ai::build_ai_http_client()` 完成修复前复现和修复后验证。
 客户端构建显式启用 `reqwest/system-proxy`，固定 reqwest 0.12.28、hyper-util 0.1.20。
 其他依赖由本目录独立的 Cargo.lock 固定，不修改主工作区依赖。
 

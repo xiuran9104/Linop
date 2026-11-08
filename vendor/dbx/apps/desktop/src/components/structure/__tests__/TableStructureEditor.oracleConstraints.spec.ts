@@ -923,11 +923,11 @@ describe("Oracle independent index execution", () => {
     container.querySelector<HTMLElement>('[role=tab][aria-selected="true"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true }));
     await vi.waitFor(() => expect(columnsTab!.getAttribute("aria-selected")).toBe("true"));
     await vi.waitFor(() => expect(container.querySelector("[data-column-row-index='0']")).toBeTruthy());
-    const typeTrigger = container.querySelector<HTMLElement>("[data-column-row-index='0'] .dbx-searchable-select-trigger");
+    const typeTrigger = container.querySelector<HTMLElement>("[data-column-row-index='0'] .linop-db-searchable-select-trigger");
     expect(typeTrigger).toBeTruthy();
     typeTrigger!.click();
-    await vi.waitFor(() => expect(document.querySelector(".dbx-searchable-select-list")).toBeTruthy());
-    const searchInput = document.querySelector<HTMLInputElement>(".dbx-searchable-select-list")?.parentElement?.querySelector("input");
+    await vi.waitFor(() => expect(document.querySelector(".linop-db-searchable-select-list")).toBeTruthy());
+    const searchInput = document.querySelector<HTMLInputElement>(".linop-db-searchable-select-list")?.parentElement?.querySelector("input");
     expect(searchInput).toBeTruthy();
     const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
     setInputValue?.call(searchInput, "VARCHAR2(40 CHAR)");
@@ -956,10 +956,10 @@ describe("Oracle independent index execution", () => {
       },
       "columns",
     );
-    const typeTrigger = container.querySelector<HTMLElement>("[data-column-row-index='0'] .dbx-searchable-select-trigger")!;
+    const typeTrigger = container.querySelector<HTMLElement>("[data-column-row-index='0'] .linop-db-searchable-select-trigger")!;
     typeTrigger.click();
-    await vi.waitFor(() => expect(document.querySelector(".dbx-searchable-select-list")).toBeTruthy());
-    const searchInput = document.querySelector(".dbx-searchable-select-list")!.parentElement!.querySelector<HTMLInputElement>("input")!;
+    await vi.waitFor(() => expect(document.querySelector(".linop-db-searchable-select-list")).toBeTruthy());
+    const searchInput = document.querySelector(".linop-db-searchable-select-list")!.parentElement!.querySelector<HTMLInputElement>("input")!;
     const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
     setInputValue?.call(searchInput, "VARCHAR2(40 CHAR)");
     searchInput.dispatchEvent(new Event("input", { bubbles: true }));
@@ -1120,10 +1120,10 @@ describe("Oracle independent index execution", () => {
       },
     );
     await started;
-    const typeTrigger = container.querySelector<HTMLElement>("[data-column-row-index='0'] .dbx-searchable-select-trigger")!;
+    const typeTrigger = container.querySelector<HTMLElement>("[data-column-row-index='0'] .linop-db-searchable-select-trigger")!;
     typeTrigger.click();
-    await vi.waitFor(() => expect(document.querySelector(".dbx-searchable-select-list")).toBeTruthy());
-    const searchInput = document.querySelector(".dbx-searchable-select-list")!.parentElement!.querySelector<HTMLInputElement>("input")!;
+    await vi.waitFor(() => expect(document.querySelector(".linop-db-searchable-select-list")).toBeTruthy());
+    const searchInput = document.querySelector(".linop-db-searchable-select-list")!.parentElement!.querySelector<HTMLInputElement>("input")!;
     const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
     setInputValue?.call(searchInput, "VARCHAR2(40 CHAR)");
     searchInput.dispatchEvent(new Event("input", { bubbles: true }));
@@ -1285,7 +1285,7 @@ describe("Oracle independent index execution", () => {
     cacheObjectBrowserRows(createObjectBrowserRowsCacheWriteToken(target), []);
     cacheObjectBrowserRows(createObjectBrowserRowsCacheWriteToken(other), []);
     const event = vi.fn();
-    window.addEventListener("dbx-refresh-object-browser", event);
+    window.addEventListener("linop-db-refresh-object-browser", event);
     try {
       expect(await editor!.applyChanges()).toBe(!rejectCreate);
       expect(fixture.ddl).toHaveLength(2);
@@ -1294,7 +1294,7 @@ describe("Oracle independent index execution", () => {
       expect(getCachedObjectBrowserRows(other)).toEqual([]);
       expect(event).toHaveBeenCalledWith(expect.objectContaining({ detail: expect.objectContaining(target) }));
     } finally {
-      window.removeEventListener("dbx-refresh-object-browser", event);
+      window.removeEventListener("linop-db-refresh-object-browser", event);
     }
   });
 });

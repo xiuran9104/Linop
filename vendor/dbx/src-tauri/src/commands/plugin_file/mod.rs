@@ -415,7 +415,7 @@ mod tests {
     const OTHER: &str = "io.dbx.other";
 
     fn temp_file(name: &str, contents: &[u8]) -> std::path::PathBuf {
-        let path = std::env::temp_dir().join(format!("dbx-plugin-file-{}-{name}", std::process::id()));
+        let path = std::env::temp_dir().join(format!("linop-db-plugin-file-{}-{name}", std::process::id()));
         std::fs::write(&path, contents).expect("write temp file");
         path
     }
@@ -485,7 +485,7 @@ mod tests {
 
     #[test]
     fn write_handle_can_target_a_file_that_does_not_exist_yet() {
-        let path = std::env::temp_dir().join(format!("dbx-plugin-file-{}-new.bin", std::process::id()));
+        let path = std::env::temp_dir().join(format!("linop-db-plugin-file-{}-new.bin", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let state = PluginFileState::new();
         let handle = open_plugin_file(&state, OWNER, path.to_string_lossy().as_ref(), true).expect("open write");
@@ -548,7 +548,7 @@ mod tests {
 
     #[test]
     fn dropped_folder_expands_to_its_files() {
-        let root = std::env::temp_dir().join(format!("dbx-plugin-folder-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("linop-db-plugin-folder-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("nested/deeper")).expect("mkdir");
         std::fs::write(root.join("b.txt"), b"second").expect("write");
@@ -591,7 +591,7 @@ mod tests {
 
     #[test]
     fn dropped_entries_stream_reads_without_holding_handles() {
-        let root = std::env::temp_dir().join(format!("dbx-plugin-lazy-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("linop-db-plugin-lazy-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("mkdir");
         // More files than the eager handle registry could ever hold: laziness
@@ -654,7 +654,7 @@ mod tests {
 
     #[test]
     fn dropped_folder_expansion_is_capped() {
-        let root = std::env::temp_dir().join(format!("dbx-plugin-folder-cap-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("linop-db-plugin-folder-cap-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).expect("mkdir");
         for index in 0..(MAX_DROP_FOLDER_FILES + 8) {
@@ -673,11 +673,11 @@ mod tests {
 
     #[test]
     fn dropped_folder_alias_is_not_expanded_but_a_file_alias_reads() {
-        let root = std::env::temp_dir().join(format!("dbx-plugin-alias-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("linop-db-plugin-alias-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("real")).expect("mkdir");
         std::fs::write(root.join("real/inside.txt"), b"inside").expect("write");
-        let outside_dir = std::env::temp_dir().join(format!("dbx-plugin-alias-target-{}", std::process::id()));
+        let outside_dir = std::env::temp_dir().join(format!("linop-db-plugin-alias-target-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&outside_dir);
         std::fs::create_dir_all(&outside_dir).expect("mkdir");
         std::fs::write(outside_dir.join("secret.txt"), b"secret").expect("write");
@@ -734,7 +734,7 @@ mod tests {
 
     #[test]
     fn dropped_folder_depth_truncation_stops_the_walk() {
-        let root = std::env::temp_dir().join(format!("dbx-plugin-deep-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("linop-db-plugin-deep-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let mut level = root.clone();
         for index in 0..(MAX_DROP_FOLDER_DEPTH + 3) {
@@ -791,12 +791,12 @@ mod tests {
 
     #[test]
     fn a_mixed_drop_delivers_every_openable_path() {
-        let folder = std::env::temp_dir().join(format!("dbx-plugin-mixed-{}", std::process::id()));
+        let folder = std::env::temp_dir().join(format!("linop-db-plugin-mixed-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         std::fs::create_dir_all(&folder).expect("mkdir");
         std::fs::write(folder.join("in.txt"), b"in").expect("write");
         let file = temp_file("mixed.bin", b"single");
-        let stale = std::env::temp_dir().join(format!("dbx-plugin-gone-{}.bin", std::process::id()));
+        let stale = std::env::temp_dir().join(format!("linop-db-plugin-gone-{}.bin", std::process::id()));
 
         let state = PluginFileState::new();
         state.register_dropped_paths(
@@ -914,7 +914,7 @@ mod tests {
 
     #[test]
     fn dropped_folder_walk_skips_dotfiles() {
-        let root = std::env::temp_dir().join(format!("dbx-plugin-dotfiles-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("linop-db-plugin-dotfiles-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join(".git/objects/ab")).expect("mkdir");
         std::fs::write(root.join(".git/objects/ab/cd"), b"git").expect("write");

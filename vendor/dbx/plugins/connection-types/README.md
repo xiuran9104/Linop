@@ -18,11 +18,11 @@ pnpm generate:connection-types
 
 The generator updates these derived files:
 
-- `crates/dbx-core/assets/database-drivers.manifest.json`
+- `crates/linop-db-core/assets/database-drivers.manifest.json`
 - `apps/desktop/src/types/generated/databaseTypes.ts`
 - `apps/desktop/src/types/generated/connectionProfiles.ts`
 
-Cargo reads the same YAML descriptors in `crates/dbx-core/build.rs` to generate `DatabaseType` and the embedded Rust manifest. Do not edit the generated JSON or TypeScript type list directly.
+Cargo reads the same YAML descriptors in `crates/linop-db-core/build.rs` to generate `DatabaseType` and the embedded Rust manifest. Do not edit the generated JSON or TypeScript type list directly.
 
 `pnpm generate:connection-types` validates the YAML and rewrites the committed JSON and TypeScript derivatives. Vite also watches the descriptor directory during development and regenerates after YAML changes. `pnpm check:connection-types` performs the same validation without modifying files, and `pnpm check` runs that read-only check automatically in CI so stale committed derivatives still fail verification.
 

@@ -89,10 +89,10 @@ make dev
 make dev-fast
 ```
 
-如果希望隔离开发数据，可在启动前设置 `DBX_DATA_DIR`：
+如果希望隔离开发数据，可在启动前设置 `LINOP_DB_DATA_DIR`：
 
 ```bash
-DBX_DATA_DIR=/tmp/dbx-desktop-dev \
+LINOP_DB_DATA_DIR=/tmp/linop-db-desktop-dev \
 RUST_BACKTRACE=1 \
 make dev
 ```
@@ -104,8 +104,8 @@ Tauri 开发端口由 `Makefile` 的 `TAURI_DEV_PORT` 控制，默认是 `1420`�
 先启动 Rust Web 后端：
 
 ```bash
-DBX_DATA_DIR=/tmp/dbx-web-dev \
-RUST_LOG=dbx_web=debug,tower_http=info \
+LINOP_DB_DATA_DIR=/tmp/linop-db-web-dev \
+RUST_LOG=linop_db_web=debug,tower_http=info \
 RUST_BACKTRACE=1 \
 make dev-backend
 ```

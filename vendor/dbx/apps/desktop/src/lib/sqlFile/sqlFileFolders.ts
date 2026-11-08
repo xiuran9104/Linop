@@ -3,8 +3,8 @@ import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStor
 
 export { getSqlFileSortOrder, saveSqlFileSortOrder, DEFAULT_SQL_FILE_SORT_ORDER, type SqlFileSortOrder } from "@/lib/sql/sqlFileTreeFilter";
 
-const STORAGE_KEY = "dbx-sql-file-folders";
-const FILTER_STORAGE_KEY = "dbx-sql-file-filter";
+const STORAGE_KEY = "linop-db-sql-file-folders";
+const FILTER_STORAGE_KEY = "linop-db-sql-file-filter";
 export const DEFAULT_SQL_FILE_FILTER = "(?i)\\.(sql|ddl)$";
 
 /**

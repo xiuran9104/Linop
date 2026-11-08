@@ -7,7 +7,7 @@ import { MCP_PLUGIN_TOOLS_WILDCARD, MCP_TOOL_OPTIONS } from "@/lib/mcp/mcpPolicy
 
 /**
  * View-model helpers for the MCP capability tab. The catalog itself comes from
- * the backend (`dbx_core::mcp_catalog`); everything here is pure so the tab
+ * the backend (`linop_db_core::mcp_catalog`); everything here is pure so the tab
  * stays a thin renderer. Tool permissions are still the flat
  * `allowedToolNames` allowlist — a toolset switch only edits that list.
  */

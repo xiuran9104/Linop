@@ -28,7 +28,7 @@ describe("grid snapshot rendering", () => {
       },
       { appearance: "light", showTrafficLights: false, showFieldNames: true, showRowNumbers: true },
     );
-    expect(html).toContain("dbx-grid-snapshot");
+    expect(html).toContain("linop-db-grid-snapshot");
     expect(html).toContain("&lt;Ada&gt;");
     expect(html).toContain(">NULL</td>");
     expect(html).toContain(">#</th>");
@@ -38,7 +38,7 @@ describe("grid snapshot rendering", () => {
     expect(html).not.toContain("Primary key");
     expect(html).toContain("width: max-content");
     expect(html).toContain("border-collapse: separate");
-    expect(html).not.toMatch(/<td[^>]*dbx-grid-snapshot__cell--wrapped/);
+    expect(html).not.toMatch(/<td[^>]*linop-db-grid-snapshot__cell--wrapped/);
   });
 
   it("optionally renders column types and details below field names", () => {
@@ -51,16 +51,16 @@ describe("grid snapshot rendering", () => {
       },
       { appearance: "dark", showColumnTypes: true, showColumnDetails: true, wrapCells: true },
     );
-    expect(html).toContain("dbx-grid-snapshot__column-meta");
+    expect(html).toContain("linop-db-grid-snapshot__column-meta");
     expect(html).toContain(">integer</span>");
     expect(html).toContain(">Primary key</span>");
-    expect(html).toMatch(/<td[^>]*dbx-grid-snapshot__cell--wrapped/);
+    expect(html).toMatch(/<td[^>]*linop-db-grid-snapshot__cell--wrapped/);
   });
 
   it("can render a compact data-only view", () => {
     const html = renderGridSnapshotHtml({ columns: ["value"], rows: [["x"]] }, { appearance: "dark", showFieldNames: false, showRowNumbers: false, compact: true });
     expect(html).not.toContain("<thead>");
-    expect(html).not.toMatch(/<td[^>]*dbx-grid-snapshot__cell--row-number/);
+    expect(html).not.toMatch(/<td[^>]*linop-db-grid-snapshot__cell--row-number/);
     expect(html).toContain("font-size:12px");
   });
 

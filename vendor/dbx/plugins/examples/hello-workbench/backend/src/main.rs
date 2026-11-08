@@ -3,7 +3,7 @@ use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
-use dbx_plugin_sdk::{PluginEmitter, PluginError, PluginHandler, PluginMetadata, PluginServer, RequestContext};
+use linop_db_plugin_sdk::{PluginEmitter, PluginError, PluginHandler, PluginMetadata, PluginServer, RequestContext};
 use serde_json::{json, Value};
 
 #[derive(Default)]

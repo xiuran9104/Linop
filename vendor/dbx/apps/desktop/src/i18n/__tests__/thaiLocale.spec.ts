@@ -75,7 +75,7 @@ describe("Thai locale", () => {
   it("loads Thai lazily and persists an explicit selection", async () => {
     globalThis.localStorage.clear();
     await setLocale("th");
-    expect(globalThis.localStorage.getItem("dbx-locale")).toBe("th");
+    expect(globalThis.localStorage.getItem("linop-db-locale")).toBe("th");
     expect(i18n.global.locale.value).toBe("th");
     expect(i18n.global.t("common.save")).toBe("บันทึก");
   });

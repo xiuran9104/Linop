@@ -86,7 +86,7 @@ test("sitemap XML escapes URLs", () => {
 });
 
 test("reads nested index exports while excluding root redirects, 404, and text routes", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "dbx-seo-"));
+  const directory = await mkdtemp(join(tmpdir(), "linop-db-seo-"));
   try {
     await mkdir(join(directory, "en/docs"), { recursive: true });
     await writeFile(join(directory, "en/docs/index.html"), '<html lang="en"><head></head></html>');

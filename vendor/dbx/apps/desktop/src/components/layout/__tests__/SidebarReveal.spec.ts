@@ -124,11 +124,11 @@ describe("sidebar hover preview", () => {
     expect(panel().style.display).toBe("none");
   });
 
-  it.each(["[data-dbx-context-menu]", '[role="menu"]', '[role="listbox"]', '[role="dialog"]', '[role="alertdialog"]'])("holds while a teleported %s is open, then closes without another mouse move", async (selector) => {
+  it.each(["[data-linop-db-context-menu]", '[role="menu"]', '[role="listbox"]', '[role="dialog"]', '[role="alertdialog"]'])("holds while a teleported %s is open, then closes without another mouse move", async (selector) => {
     await reveal();
     const surface = document.createElement("div");
     if (selector.startsWith("[role")) surface.setAttribute("role", selector.split('"')[1]!);
-    else surface.setAttribute("data-dbx-context-menu", "");
+    else surface.setAttribute("data-linop-db-context-menu", "");
     document.body.append(surface);
     pointer(panel(), "pointerleave");
     await advance(1000);

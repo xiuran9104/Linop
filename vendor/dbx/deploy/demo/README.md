@@ -1,6 +1,6 @@
 # DBX 公开演示环境
 
-一键拉起一个可对外暴露的 DBX Web 演示栈：dbx-web（演示模式）+ PostgreSQL +
+一键拉起一个可对外暴露的 DBX Web 演示栈：linop-db-web（演示模式）+ PostgreSQL +
 MySQL + Redis（均带示例数据）。访客打开 `http://<host>:4224` 即可免登录体验
 完整的产品功能（连接预置的演示库、执行 SQL、网格编辑、导出等）。
 
@@ -16,7 +16,7 @@ docker compose up -d --build
 ```bash
 chmod +x reset.sh
 # crontab -e
-# */15 * * * * cd /opt/dbx-demo && ./reset.sh >> /var/log/dbx-demo-reset.log 2>&1
+# */15 * * * * cd /opt/linop-db-demo && ./reset.sh >> /var/log/linop-db-demo-reset.log 2>&1
 ```
 
 建议挂在 Cloudflare 等反代之后，用 WAF/限流保护源站 4224 端口。
@@ -25,13 +25,13 @@ chmod +x reset.sh
 
 三层防线叠加，缺一不可：
 
-1. **`DBX_DEMO_MODE=1`（服务端封锁，见 `crates/dbx-web/src/demo.rs`）**：
+1. **`DBX_DEMO_MODE=1`（服务端封锁，见 `crates/linop-db-web/src/demo.rs`）**：
    - 封锁插件安装 / JDBC / 驱动管理（sidecar 原生进程 = 远程代码执行）；
    - 封锁连接探测与增删改（`connection/test*`、`connection/save`、
      `mq/nacos test-connection` 等 body 携带完整连接配置的 SSRF 入口）；
    - 封锁 AI 供应商配置与外呼、云同步凭据、口令改写、凭据解密；
    - `/connection/connect` 保留但要求连接已预置且端点身份与存储一致。
-2. **`internal: true` 网络（网络层兜底）**：dbx-web 容器无法主动出网，
+2. **`internal: true` 网络（网络层兜底）**：linop-db-web 容器无法主动出网，
    即使有遗漏的出网入口也在网络层被挡掉；对外只发布 4224。
 3. **定时重置**：`reset.sh` 销毁全部数据卷，任何数据破坏 15 分钟内自愈。
 

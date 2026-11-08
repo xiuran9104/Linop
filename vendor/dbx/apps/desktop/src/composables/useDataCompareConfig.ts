@@ -42,7 +42,7 @@ export interface DataCompareConfigSnapshot {
   keyColumnsByTable: Record<string, string[]>;
 }
 
-const STORAGE_KEY = "dbx-data-compare-configs";
+const STORAGE_KEY = "linop-db-data-compare-configs";
 const MAX_CONFIGS = 50;
 
 const configs = ref<DataCompareConfig[]>(loadConfigsFromStorage());

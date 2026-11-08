@@ -72,8 +72,8 @@ const plugin: InstalledPlugin = {
 /** The bounded snapshot `ContentArea.openPluginResultView` hands to the plugin UI. */
 const resultContext = {
   connectionId: "conn-1",
-  database: "dbx_test",
-  sql: "SELECT id, name FROM dbx_9597_orders",
+  database: "linop_db_test",
+  sql: "SELECT id, name FROM linop_db_9597_orders",
   result: { columns: ["id", "name"], rows: [[1, "alpha"]], truncated: false },
 };
 
@@ -181,7 +181,7 @@ describe("PluginWorkbenchTab contribution resolution", () => {
     window.dispatchEvent(
       new MessageEvent("message", {
         source: target,
-        data: { source: "dbx-plugin", version: 1, type: "request", id: "t-set", method: "host.setTitle", params: { title: "Custom Title" } },
+        data: { source: "linop-db-plugin", version: 1, type: "request", id: "t-set", method: "host.setTitle", params: { title: "Custom Title" } },
       }),
     );
     await vi.waitFor(() => expect(mocks.setPluginWorkbenchTabTitle).toHaveBeenCalledWith("tab-test-1", "Custom Title"));
@@ -190,14 +190,14 @@ describe("PluginWorkbenchTab contribution resolution", () => {
     window.dispatchEvent(
       new MessageEvent("message", {
         source: target,
-        data: { source: "dbx-plugin", version: 1, type: "request", id: "t-get", method: "host.getTitle" },
+        data: { source: "linop-db-plugin", version: 1, type: "request", id: "t-get", method: "host.getTitle" },
       }),
     );
     await vi.waitFor(() => expect(mocks.getPluginWorkbenchTabTitle).toHaveBeenCalledWith("tab-test-1"));
   });
 });
 
-// Restored-tab self-heal (dbx-plugin-ssh#144): a page refresh used to park the
+// Restored-tab self-heal (linop-db-plugin-ssh#144): a page refresh used to park the
 // tab on the reload prompt from a one-shot `start()` snapshot, so the plugin
 // could never re-establish its session even after the SPA's boot connect
 // replay landed. `start()` now recovers silently and only parks when silent

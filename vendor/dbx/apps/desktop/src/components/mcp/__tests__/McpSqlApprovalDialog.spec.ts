@@ -95,7 +95,7 @@ function request(id: string) {
 
 function toolRequest(id: string) {
   bridge.handlers["mcp-tool-approval"]?.({
-    payload: { id, kind: "plugin_tool", tool: "dbx_ssh__exec", plugin: "Terminal", connection_name: null, database: null, detail: '{ "command": "rm -rf /tmp/x" }' },
+    payload: { id, kind: "plugin_tool", tool: "linop_db_ssh__exec", plugin: "Terminal", connection_name: null, database: null, detail: '{ "command": "rm -rf /tmp/x" }' },
   });
 }
 
@@ -149,7 +149,7 @@ it("shows a visible countdown and drops the request when it expires", async () =
 });
 
 it("auto-approves remembered tools without showing the dialog", async () => {
-  localStorage.setItem("dbx.mcp-tool-approval.auto-approve", JSON.stringify([{ tool: "dbx_ssh__exec", until: Date.now() + 60_000 }]));
+  localStorage.setItem("dbx.mcp-tool-approval.auto-approve", JSON.stringify([{ tool: "linop_db_ssh__exec", until: Date.now() + 60_000 }]));
   toolRequest("tool-auto");
   await nextTick();
   expect(bridge.invoke).toHaveBeenCalledWith("respond_mcp_sql_approval", { id: "tool-auto", decision: "once" });
@@ -167,7 +167,7 @@ it("stores a 24h consent when remembering is checked before allowing once", asyn
   await nextTick();
   expect(bridge.invoke).toHaveBeenCalledWith("respond_mcp_sql_approval", { id: "tool-remember", decision: "once" });
   const consents = JSON.parse(localStorage.getItem("dbx.mcp-tool-approval.auto-approve")!) as { tool: string }[];
-  expect(consents.map((consent) => consent.tool)).toContain("dbx_ssh__exec");
+  expect(consents.map((consent) => consent.tool)).toContain("linop_db_ssh__exec");
 });
 
 it("confirms high-risk tool calls once only and queues them with SQL approvals", async () => {
@@ -175,7 +175,7 @@ it("confirms high-risk tool calls once only and queues them with SQL approvals",
   request("approval-3");
   await nextTick();
   expect(host.textContent).toContain("Confirm Terminal tool");
-  expect(host.textContent).toContain("dbx_ssh__exec");
+  expect(host.textContent).toContain("linop_db_ssh__exec");
   expect(host.textContent).toContain("rm -rf /tmp/x");
   const labels = Array.from(host.querySelectorAll("button")).map((button) => button.textContent);
   expect(labels).toEqual(["Deny", "Once"]);
@@ -199,7 +199,7 @@ it("offers only a single-call decision under the new SQL confirmation policy", a
 });
 
 it.each(["product_tool", "mongo_command", "connection_management"])("uses a generic title and supports denial for %s", async (kind) => {
-  bridge.handlers["mcp-tool-approval"]({ payload: { id: kind, kind, tool: "dbx_example", connection_name: "Local", detail: "Destructive operation" } });
+  bridge.handlers["mcp-tool-approval"]({ payload: { id: kind, kind, tool: "linop_db_example", connection_name: "Local", detail: "Destructive operation" } });
   await nextTick();
   expect(host.textContent).toContain("Confirm high-risk tool call");
   expect(host.textContent).not.toContain("plugin");

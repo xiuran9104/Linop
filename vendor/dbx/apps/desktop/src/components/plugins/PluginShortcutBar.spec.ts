@@ -62,7 +62,7 @@ describe("plugin shortcut bar", () => {
     mount("right-top");
     container.querySelector("nav")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
-    const buttons = () => [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")];
+    const buttons = () => [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")];
     buttons()[0].click();
     await flush();
     expect(buttons()[0].getAttribute("aria-pressed")).toBe("false");
@@ -89,7 +89,7 @@ describe("plugin shortcut bar", () => {
     mount("right-top");
     container.querySelector("nav")!.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
-    const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")];
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")];
     expect(buttons.map((button) => button.textContent?.trim())).toEqual(["Plugin a", "Plugin b", "Plugin c"]);
     buttons[1].click();
     await flush();
@@ -106,7 +106,7 @@ describe("plugin shortcut bar", () => {
     expect(bar).not.toBeNull();
     bar.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
     await flush();
-    expect(document.querySelectorAll("[data-dbx-context-menu] button")).toHaveLength(3);
+    expect(document.querySelectorAll("[data-linop-db-context-menu] button")).toHaveLength(3);
   });
 
   it("keeps the remaining sidebar shortcuts when one plugin visibility changes", async () => {

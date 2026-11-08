@@ -9,7 +9,7 @@ interface TabUiStateContext {
   update: (patch: TabPageUiState) => void;
 }
 
-const TAB_UI_STATE_KEY: InjectionKey<() => TabUiStateContext> = Symbol("dbx-tab-ui-state");
+const TAB_UI_STATE_KEY: InjectionKey<() => TabUiStateContext> = Symbol("linop-db-tab-ui-state");
 
 export function provideTabUiState(capture: () => TabUiStateContext): void {
   provide(TAB_UI_STATE_KEY, capture);

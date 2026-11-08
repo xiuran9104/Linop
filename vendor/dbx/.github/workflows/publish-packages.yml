@@ -241,7 +241,7 @@ jobs:
           SHA_ARM64="${{ steps.hashes.outputs.sha_dmg_arm64 }}"
           SHA_X64="${{ steps.hashes.outputs.sha_dmg_x64 }}"
 
-          MCP_VERSION="$(curl -fsSL https://registry.npmjs.org/@dbx-app/mcp-server/latest | jq -er '.version')"
+          MCP_VERSION="$(curl -fsSL https://registry.npmjs.org/@linop-db-app/mcp-server/latest | jq -er '.version')"
           [[ "$MCP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
           gh release download "packages-v${MCP_VERSION}" --repo "${GITHUB_REPOSITORY}" \
             --pattern SHA256SUMS --dir artifacts --clobber
@@ -290,11 +290,11 @@ jobs:
 
           mkdir -p Formula
           node "$GITHUB_WORKSPACE/.github/scripts/render-mcp-formula.mjs" \
-            "${MCP_VERSION}" "$GITHUB_WORKSPACE/artifacts/SHA256SUMS" Formula/dbx-mcp.rb
+            "${MCP_VERSION}" "$GITHUB_WORKSPACE/artifacts/SHA256SUMS" Formula/linop-db-mcp.rb
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Casks/dbx.rb Formula/dbx-mcp.rb
+          git add Casks/dbx.rb Formula/linop-db-mcp.rb
 
           if git diff --cached --quiet; then
             echo "Homebrew Cask is already up to date."
@@ -692,7 +692,7 @@ jobs:
           node .github/scripts/set-release-version.mjs "v${VERSION}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml crates/dbx-web/Cargo.toml Cargo.lock
+          git add package.json src-tauri/tauri.conf.json src-tauri/Cargo.toml crates/linop-db-web/Cargo.toml Cargo.lock
           git commit -m "chore(release): sync source version to ${VERSION} [skip ci]"
           for attempt in 1 2 3; do
             if git push origin HEAD:main; then

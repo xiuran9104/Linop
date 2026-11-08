@@ -2,7 +2,7 @@ import type { PluginFieldCondition, PluginFormField, PluginFormFieldValue } from
 
 /**
  * Canonical string form of a form value, matching the Rust host
- * (`condition_value_text` in `crates/dbx-plugin-runtime/src/plugins/manifest.rs`).
+ * (`condition_value_text` in `crates/linop-db-plugin-runtime/src/plugins/manifest.rs`).
  * `false` renders as `"false"` and `22.0` as `"22"`.
  */
 export function pluginConditionValueText(value: PluginFormFieldValue): string {
@@ -18,7 +18,7 @@ export type PluginFieldValueReader = (key: string) => PluginFormFieldValue;
  * buttons, required-field errors). Strings are trimmed so stray whitespace
  * does not satisfy a required text field — except `type: "password"` inputs:
  * whitespace is significant in secrets (a single space is a real password,
- * jinpy666/dbx-plugin-ssh#215), so only undefined/null/"" count as missing.
+ * jinpy666/linop-db-plugin-ssh#215), so only undefined/null/"" count as missing.
  */
 export function pluginFieldHasValue(field: Pick<PluginFormField, "type">, value: PluginFormFieldValue): boolean {
   if (typeof value !== "string") return value !== undefined;

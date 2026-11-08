@@ -89,11 +89,11 @@ afterEach(() => {
 // 返回捕获 open-connection-settings 事件的监听器，供动作点击断言使用。
 async function mountAndFailExpand(error: unknown, openConnectionSettings: (connectionId: string) => void) {
   const database: TreeNode = {
-    id: "mysql:dbx_test",
-    label: "dbx_test",
+    id: "mysql:linop_db_test",
+    label: "linop_db_test",
     type: "database",
     connectionId: "mysql",
-    database: "dbx_test",
+    database: "linop_db_test",
     isExpanded: false,
     children: [],
   };

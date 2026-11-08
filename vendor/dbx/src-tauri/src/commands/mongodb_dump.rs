@@ -2,7 +2,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::connection::{ensure_connection_writable, AppState};
-use dbx_core::mongodb_dump::{
+use linop_db_core::mongodb_dump::{
     self, MongoDatabaseDumpProgress, MongoDatabaseDumpRequest, MongoDatabaseRestoreRequest, MongoDumpCatalog,
     MongoRestoreSourcePreview, MongoRestoreSourceRequest,
 };
@@ -43,14 +43,14 @@ pub async fn dump_mongodb_database(
                 &request,
                 |id| {
                     let id = id.to_string();
-                    Box::pin(async move { dbx_core::transfer::is_cancelled(&id).await })
+                    Box::pin(async move { linop_db_core::transfer::is_cancelled(&id).await })
                 },
                 |progress| {
                     let _ = app.emit("mongo-database-dump-progress", progress);
                 },
             )
             .await;
-            dbx_core::transfer::clear_cancelled(&request.task_id).await;
+            linop_db_core::transfer::clear_cancelled(&request.task_id).await;
             result
         })
     })
@@ -74,14 +74,14 @@ pub async fn restore_mongodb_database(
                 &request,
                 |id| {
                     let id = id.to_string();
-                    Box::pin(async move { dbx_core::transfer::is_cancelled(&id).await })
+                    Box::pin(async move { linop_db_core::transfer::is_cancelled(&id).await })
                 },
                 |progress| {
                     let _ = app.emit("mongo-database-dump-progress", progress);
                 },
             )
             .await;
-            dbx_core::transfer::clear_cancelled(&request.task_id).await;
+            linop_db_core::transfer::clear_cancelled(&request.task_id).await;
             result
         })
     })
@@ -91,6 +91,6 @@ pub async fn restore_mongodb_database(
 
 #[tauri::command]
 pub async fn cancel_mongodb_database_dump(task_id: String) -> bool {
-    dbx_core::transfer::set_cancelled(&task_id).await;
+    linop_db_core::transfer::set_cancelled(&task_id).await;
     true
 }

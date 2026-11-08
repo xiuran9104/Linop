@@ -120,7 +120,7 @@ function toolset(id: string, names: string[]): McpToolCatalogToolset {
   return { id, provider: `builtin:${id.split(".")[0]}`, resourceKinds: [], scopeKinds: [], tools: names.map((name) => ({ name, access: "read", accessMode: "static", coverageKind: "none", databaseTypes: [], description: "", parameters: [] })) };
 }
 
-const catalog: McpToolCatalog = { toolsets: [toolset("sql.query", ["dbx_execute_query", "dbx_future_query"]), toolset("nacos.config", ["dbx_nacos_get_config", "dbx_nacos_publish_config"]), toolset("nacos.service", ["dbx_nacos_list_services"]), toolset("admin.connections", ["dbx_add_connection"])] };
+const catalog: McpToolCatalog = { toolsets: [toolset("sql.query", ["linop_db_execute_query", "linop_db_future_query"]), toolset("nacos.config", ["linop_db_nacos_get_config", "linop_db_nacos_publish_config"]), toolset("nacos.service", ["linop_db_nacos_list_services"]), toolset("admin.connections", ["linop_db_add_connection"])] };
 
 const plugin: PluginMcpView = {
   pluginId: "io.dbx.helper",
@@ -128,7 +128,7 @@ const plugin: PluginMcpView = {
   version: "1.0.0",
   authorAllowsExternal: true,
   hasSavedGrant: true,
-  grant: { external: false, ceiling: "read", approvedTools: { dbx_helper__inspect: "read" }, disabledTools: [] },
+  grant: { external: false, ceiling: "read", approvedTools: { linop_db_helper__inspect: "read" }, disabledTools: [] },
   toolsets: [{ id: "default", title: null, description: null }],
   tools: [],
   discoveryError: null,
@@ -389,7 +389,7 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
     h.onMcpExecutionModeChange("safe_write");
     h.onMcpConnectionExecutionModeChange("c1", "safe_write");
     h.onMcpGroupExecutionModeChange("group", "safe_write");
-    h.onMcpToolAllowedChange("dbx_execute_query", false);
+    h.onMcpToolAllowedChange("linop_db_execute_query", false);
     h.mcpPolicyDraft.value.queryTimeoutSecs = 99;
     const access: McpDatabaseAccess = { databaseScope: "selected", allowedDatabases: ["aaa", "abc"], databasePolicies: [{ databaseName: "aaa", readOnly: true, allowDangerousSql: false }] };
     h.onMcpDatabaseAccessChange("c2", { ...access, allowedDatabases: ["other"], databasePolicies: [] });
@@ -528,22 +528,22 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
   it("applies only the current toolset, keeping other tool, permission and custom-entry drafts for a later Apply", async () => {
     const harness = createHarness({ configured: true, readOnly: true, queryTimeoutSecs: 30, pluginToolsMode: "auto" });
     harness.stageMcpPolicy({ pluginToolsMode: "flat" });
-    harness.onMcpToolAllowedChange("dbx_nacos_publish_config", false);
-    harness.onMcpToolAllowedChange("dbx_execute_query", false);
+    harness.onMcpToolAllowedChange("linop_db_nacos_publish_config", false);
+    harness.onMcpToolAllowedChange("linop_db_execute_query", false);
     harness.onMcpExecutionModeChange("safe_write");
     harness.onMcpConnectionExecutionModeChange("c1", "safe_write");
     harness.mcpPolicyDraft.value.queryTimeoutSecs = 99;
-    harness.mcpCustomToolInput.value = "dbx_custom__inspect";
+    harness.mcpCustomToolInput.value = "linop_db_custom__inspect";
     harness.onMcpCustomToolAdd();
     const draft = normalizeMcpGlobalPolicy(harness.mcpPolicyDraft.value);
 
     await harness.applyMcpToolset("nacos.config");
     const saved = harness.settingsStore.mcpGlobalPolicy;
     expect(harness.settingsStore.updateMcpGlobalPolicy).toHaveBeenCalledWith({ allowedToolNames: expect.any(Array) });
-    expect(saved.allowedToolNames).not.toContain("dbx_nacos_publish_config");
-    expect(saved.allowedToolNames).toContain("dbx_execute_query");
+    expect(saved.allowedToolNames).not.toContain("linop_db_nacos_publish_config");
+    expect(saved.allowedToolNames).toContain("linop_db_execute_query");
     expect(saved.allowedToolNames).toContain(MCP_PLUGIN_TOOLS_WILDCARD);
-    expect(saved.allowedToolNames).not.toContain("dbx_custom__inspect");
+    expect(saved.allowedToolNames).not.toContain("linop_db_custom__inspect");
     expect(saved).toMatchObject({ readOnly: true, connectionPolicies: [], queryTimeoutSecs: 30, pluginToolsMode: "auto" });
     expect(harness.mcpPolicyDraft.value).toEqual(draft);
     expect(harness.mcpPolicyBaseline.value).toEqual(saved);
@@ -556,12 +556,12 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
   });
 
   it("discarding remaining drafts keeps the toolset already applied from its details", async () => {
-    const harness = createHarness({ readOnly: true, allowedToolNames: ["dbx_execute_query", "dbx_nacos_get_config", "dbx_helper__*", "custom-tool"] });
-    harness.onMcpToolAllowedChange("dbx_nacos_publish_config", true);
-    harness.onMcpToolAllowedChange("dbx_execute_query", false);
+    const harness = createHarness({ readOnly: true, allowedToolNames: ["linop_db_execute_query", "linop_db_nacos_get_config", "linop_db_helper__*", "custom-tool"] });
+    harness.onMcpToolAllowedChange("linop_db_nacos_publish_config", true);
+    harness.onMcpToolAllowedChange("linop_db_execute_query", false);
     harness.onMcpExecutionModeChange("safe_write");
     await harness.applyMcpToolset("nacos.config");
-    expect(harness.settingsStore.mcpGlobalPolicy.allowedToolNames).toEqual(["dbx_execute_query", "dbx_nacos_get_config", "dbx_helper__*", "custom-tool", "dbx_nacos_publish_config"]);
+    expect(harness.settingsStore.mcpGlobalPolicy.allowedToolNames).toEqual(["linop_db_execute_query", "linop_db_nacos_get_config", "linop_db_helper__*", "custom-tool", "linop_db_nacos_publish_config"]);
     harness.discardUnsavedSettingsAndClose();
     expect(harness.mcpPolicyDraft.value).toEqual(harness.settingsStore.mcpGlobalPolicy);
     expect(harness.mcpPolicyDraft.value.readOnly).toBe(true);
@@ -570,8 +570,8 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
 
   it("clears the outer dirty state after applying toolsets in a different order from their edits", async () => {
     const harness = createHarness({ allowedToolNames: [] });
-    harness.onMcpToolAllowedChange("dbx_nacos_get_config", true);
-    harness.onMcpToolAllowedChange("dbx_execute_query", true);
+    harness.onMcpToolAllowedChange("linop_db_nacos_get_config", true);
+    harness.onMcpToolAllowedChange("linop_db_execute_query", true);
     await harness.applyMcpToolset("sql.query");
     expect(harness.mcpPolicyHasUnsavedChanges()).toBe(true);
     await harness.applyMcpToolset("nacos.config");
@@ -581,7 +581,7 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
 
   it("preserves the baseline and draft after failure and saves the same toolset on retry", async () => {
     const harness = createHarness();
-    harness.onMcpToolAllowedChange("dbx_nacos_publish_config", false);
+    harness.onMcpToolAllowedChange("linop_db_nacos_publish_config", false);
     const baseline = normalizeMcpGlobalPolicy(harness.mcpPolicyBaseline.value);
     const draft = normalizeMcpGlobalPolicy(harness.mcpPolicyDraft.value);
     harness.settingsStore.updateMcpGlobalPolicy.mockRejectedValueOnce(new Error("disk full"));
@@ -603,7 +603,7 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
     await expect(harness.applyMcpToolset("unknown")).rejects.toThrow();
     const pending = deferred<void>();
     harness.settingsStore.updateMcpGlobalPolicy.mockReturnValueOnce(pending.promise);
-    harness.onMcpToolAllowedChange("dbx_execute_query", false);
+    harness.onMcpToolAllowedChange("linop_db_execute_query", false);
     const saving = harness.applyMcpToolset("sql.query");
     expect(harness.mcpPolicySaving.value).toBe(true);
     await expect(harness.applyMcpToolset("nacos.config")).rejects.toThrow();
@@ -686,7 +686,7 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
   it("changes only global execution defaults, preserving tool switches and resource exceptions until Apply", async () => {
     const harness = createHarness({
       readOnly: true,
-      allowedToolNames: ["dbx_execute_query", "dbx_helper__inspect"],
+      allowedToolNames: ["linop_db_execute_query", "linop_db_helper__inspect"],
       allowedConnectionIds: ["c1", "c2", "inherited"],
       groupPolicies: [{ groupId: "team", readOnly: true, allowDangerousSql: false }],
       connectionPolicies: [
@@ -750,7 +750,7 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
   it("keeps a pending safety migration when applying only a toolset", async () => {
     const h = createHarness({ configured: true, promptHighRiskSql: true });
     h.onMcpHighRiskConfirmationChange(true);
-    h.onMcpToolAllowedChange("dbx_execute_query", false);
+    h.onMcpToolAllowedChange("linop_db_execute_query", false);
     await h.applyMcpToolset("sql.query");
     expect(h.settingsStore.mcpGlobalPolicy.promptHighRiskSql).toBe(true);
     expect(h.mcpPolicyDraft.value.callConfirmation).toBe("high_risk");
@@ -758,7 +758,7 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
   });
 
   it("discards default permission and confirmation edits without changing saved settings", () => {
-    const harness = createHarness({ readOnly: false, promptHighRiskSql: true, allowedToolNames: ["dbx_execute_query"] });
+    const harness = createHarness({ readOnly: false, promptHighRiskSql: true, allowedToolNames: ["linop_db_execute_query"] });
     const original = structuredClone(harness.settingsStore.mcpGlobalPolicy);
     harness.onMcpHighRiskConfirmationChange(false);
     harness.onMcpExecutionModeChange("read_only");
@@ -887,7 +887,7 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
   });
 
   it("restores inheritance at each resource level without rewriting the default or enabled tools", () => {
-    const harness = createHarness({ readOnly: true, allowedToolNames: ["dbx_execute_query"] });
+    const harness = createHarness({ readOnly: true, allowedToolNames: ["linop_db_execute_query"] });
     harness.onMcpGroupExecutionModeChange("team", "safe_write");
     harness.onMcpConnectionExecutionModeChange("c1", "safe_write");
     const connection = harness.mcpPolicyDraft.value.connectionPolicies[0];
@@ -898,7 +898,7 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
     harness.onMcpDatabaseExecutionModeChange("c1", "billing", "inherit");
     harness.onMcpConnectionExecutionModeChange("c1", "inherit");
     harness.onMcpGroupExecutionModeChange("team", "inherit");
-    expect(harness.mcpPolicyDraft.value).toMatchObject({ readOnly: true, allowedToolNames: ["dbx_execute_query"], groupPolicies: [], connectionPolicies: [{ executionModeConfigured: false, databaseScope: "selected", allowedDatabases: ["billing"], databasePolicies: [] }] });
+    expect(harness.mcpPolicyDraft.value).toMatchObject({ readOnly: true, allowedToolNames: ["linop_db_execute_query"], groupPolicies: [], connectionPolicies: [{ executionModeConfigured: false, databaseScope: "selected", allowedDatabases: ["billing"], databasePolicies: [] }] });
   });
 
   it("stages a whole category and discards it without writing either persistence boundary", () => {
@@ -906,7 +906,7 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
     const original = structuredClone(harness.settingsStore.mcpGlobalPolicy);
     harness.onMcpCategoryAllowedChange("nacos", false);
     expect(harness.mcpPolicyHasUnsavedChanges()).toBe(true);
-    expect(harness.mcpPolicyDraft.value.allowedToolNames).toEqual(["dbx_execute_query", "dbx_future_query", "dbx_add_connection", MCP_PLUGIN_TOOLS_WILDCARD]);
+    expect(harness.mcpPolicyDraft.value.allowedToolNames).toEqual(["linop_db_execute_query", "linop_db_future_query", "linop_db_add_connection", MCP_PLUGIN_TOOLS_WILDCARD]);
     expect(harness.mcpPolicyDraft.value).toMatchObject({ readOnly: true, allowedConnectionIds: ["production"], allowedGroupIds: ["team"] });
     expect(harness.settingsStore.mcpGlobalPolicy).toEqual(original);
     harness.requestCloseSettings(false);
@@ -926,7 +926,7 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
     expect(harness.settingsStore.updateMcpGlobalPolicy).not.toHaveBeenCalled();
     expect(await harness.applySettingsForResult()).toBe(true);
     expect(harness.settingsStore.updateMcpGlobalPolicy).toHaveBeenCalledTimes(1);
-    expect(harness.settingsStore.mcpGlobalPolicy.allowedToolNames).toEqual(["dbx_execute_query", "dbx_future_query", "dbx_add_connection", MCP_PLUGIN_TOOLS_WILDCARD]);
+    expect(harness.settingsStore.mcpGlobalPolicy.allowedToolNames).toEqual(["linop_db_execute_query", "linop_db_future_query", "linop_db_add_connection", MCP_PLUGIN_TOOLS_WILDCARD]);
     expect(harness.mcpPolicyDraft.value).toEqual(harness.settingsStore.mcpGlobalPolicy);
     expect(harness.mcpPolicyBaseline.value).toEqual(harness.settingsStore.mcpGlobalPolicy);
     expect(harness.mcpPolicyHasUnsavedChanges()).toBe(false);
@@ -1107,9 +1107,9 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
 
   it("adding a custom tool preserves the complete runtime catalog and plugin wildcard from an unrestricted policy", () => {
     const harness = createHarness();
-    harness.mcpCustomToolInput.value = "  dbx_custom__inspect  ";
+    harness.mcpCustomToolInput.value = "  linop_db_custom__inspect  ";
     harness.onMcpCustomToolAdd();
-    expect(harness.mcpPolicyDraft.value.allowedToolNames).toEqual(["dbx_execute_query", "dbx_future_query", "dbx_nacos_get_config", "dbx_nacos_publish_config", "dbx_nacos_list_services", "dbx_add_connection", MCP_PLUGIN_TOOLS_WILDCARD, "dbx_custom__inspect"]);
+    expect(harness.mcpPolicyDraft.value.allowedToolNames).toEqual(["linop_db_execute_query", "linop_db_future_query", "linop_db_nacos_get_config", "linop_db_nacos_publish_config", "linop_db_nacos_list_services", "linop_db_add_connection", MCP_PLUGIN_TOOLS_WILDCARD, "linop_db_custom__inspect"]);
     expect(harness.mcpCustomToolInput.value).toBe("");
     expect(harness.settingsStore.mcpGlobalPolicy.allowedToolNames).toBeNull();
     expect(harness.settingsStore.updateMcpGlobalPolicy).not.toHaveBeenCalled();
@@ -1117,14 +1117,14 @@ describe("EditorSettingsDialog MCP capability persistence integration", () => {
 
   it.each(["missing", "loading", "error", "policy"])("does not add a custom tool or clear its input while the catalog is locked: %s", (reason) => {
     const harness = createHarness();
-    harness.mcpCustomToolInput.value = "dbx_custom__inspect";
+    harness.mcpCustomToolInput.value = "linop_db_custom__inspect";
     if (reason === "missing") harness.mcpToolCatalog.value = null;
     if (reason === "loading") harness.mcpToolCatalogLoading.value = true;
     if (reason === "error") harness.mcpToolCatalogError.value = "catalog unavailable";
     if (reason === "policy") harness.controlsDisabled.value = true;
     harness.onMcpCustomToolAdd();
     expect(harness.mcpPolicyDraft.value.allowedToolNames).toBeNull();
-    expect(harness.mcpCustomToolInput.value).toBe("dbx_custom__inspect");
+    expect(harness.mcpCustomToolInput.value).toBe("linop_db_custom__inspect");
     expect(harness.mcpPolicyHasUnsavedChanges()).toBe(false);
     expect(harness.settingsStore.updateMcpGlobalPolicy).not.toHaveBeenCalled();
   });

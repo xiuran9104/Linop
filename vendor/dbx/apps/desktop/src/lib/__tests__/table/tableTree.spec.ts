@@ -90,44 +90,44 @@ describe("case-sensitive database objects", () => {
   });
 
   const views: ObjectInfo[] = [
-    { name: "dbx_issue4529_case_V1", object_type: "VIEW", schema: "dbx_test" },
-    { name: "dbx_issue4529_case_v1", object_type: "VIEW", schema: "dbx_test" },
+    { name: "linop_db_issue4529_case_V1", object_type: "VIEW", schema: "linop_db_test" },
+    { name: "linop_db_issue4529_case_v1", object_type: "VIEW", schema: "linop_db_test" },
   ];
 
   it("keeps table metadata entries whose names differ only by case", () => {
     const tables: TableInfo[] = views.map((view) => ({ name: view.name, table_type: "VIEW", comment: null }));
 
-    const merged = mergeTableInfosIntoObjects([], tables, "dbx_test");
+    const merged = mergeTableInfosIntoObjects([], tables, "linop_db_test");
 
-    expect(merged.map((object) => object.name)).toEqual(["dbx_issue4529_case_V1", "dbx_issue4529_case_v1"]);
+    expect(merged.map((object) => object.name)).toEqual(["linop_db_issue4529_case_V1", "linop_db_issue4529_case_v1"]);
   });
 
   it("keeps simple tree nodes whose names differ only by case", () => {
-    const nodes = buildSimpleObjectTreeNodes({ ...context, schema: "dbx_test", objects: views });
+    const nodes = buildSimpleObjectTreeNodes({ ...context, schema: "linop_db_test", objects: views });
 
-    expect(nodes.map((node) => node.label)).toEqual(["dbx_issue4529_case_V1", "dbx_issue4529_case_v1"]);
+    expect(nodes.map((node) => node.label)).toEqual(["linop_db_issue4529_case_V1", "linop_db_issue4529_case_v1"]);
     expect(new Set(nodes.map((node) => node.id)).size).toBe(2);
   });
 
   it("keeps grouped tree nodes whose names differ only by case", () => {
-    const groups = buildGroupedObjectTreeNodes({ ...context, schema: "dbx_test", objects: views });
+    const groups = buildGroupedObjectTreeNodes({ ...context, schema: "linop_db_test", objects: views });
     const viewGroup = groups.find((node) => node.type === "group-views");
 
     expect(viewGroup?.objectCount).toBe(2);
-    expect(viewGroup?.children?.map((node) => node.label)).toEqual(["dbx_issue4529_case_V1", "dbx_issue4529_case_v1"]);
+    expect(viewGroup?.children?.map((node) => node.label)).toEqual(["linop_db_issue4529_case_V1", "linop_db_issue4529_case_v1"]);
     expect(new Set(viewGroup?.children?.map((node) => node.id) ?? []).size).toBe(2);
   });
 
   it("preserves view validity in simple and grouped trees", () => {
     const objects: ObjectInfo[] = [
-      { name: "VALID_VIEW", object_type: "VIEW", schema: "dbx_test", valid: true },
-      { name: "INVALID_VIEW", object_type: "VIEW", schema: "dbx_test", valid: false },
+      { name: "VALID_VIEW", object_type: "VIEW", schema: "linop_db_test", valid: true },
+      { name: "INVALID_VIEW", object_type: "VIEW", schema: "linop_db_test", valid: false },
     ];
 
-    const simple = buildSimpleObjectTreeNodes({ ...context, schema: "dbx_test", objects });
+    const simple = buildSimpleObjectTreeNodes({ ...context, schema: "linop_db_test", objects });
     expect(simple.map((node) => node.valid)).toEqual([false, true]);
 
-    const grouped = buildGroupedObjectTreeNodes({ ...context, schema: "dbx_test", objects });
+    const grouped = buildGroupedObjectTreeNodes({ ...context, schema: "linop_db_test", objects });
     expect(grouped.find((node) => node.type === "group-views")?.children?.map((node) => node.valid)).toEqual([false, true]);
   });
 
@@ -138,7 +138,7 @@ describe("case-sensitive database objects", () => {
     ];
     const nodes = buildTableTreeNodes({
       ...context,
-      schema: "dbx_test",
+      schema: "linop_db_test",
       tables,
     });
 
@@ -146,8 +146,8 @@ describe("case-sensitive database objects", () => {
 
     const grouped = buildGroupedObjectTreeNodes({
       ...context,
-      schema: "dbx_test",
-      objects: mergeTableInfosIntoObjects([], tables, "dbx_test"),
+      schema: "linop_db_test",
+      objects: mergeTableInfosIntoObjects([], tables, "linop_db_test"),
     });
     expect(grouped.find((node) => node.type === "group-views")?.children?.map((node) => node.valid)).toEqual([false, true]);
   });
@@ -172,18 +172,18 @@ describe("case-sensitive database objects", () => {
   it("keeps table nodes whose names differ only by case across pages", () => {
     const firstPage = buildTableTreeNodes({
       ...context,
-      schema: "dbx_test",
-      tables: [{ name: "dbx_issue4529_case_T1", table_type: "BASE TABLE", comment: null }],
+      schema: "linop_db_test",
+      tables: [{ name: "linop_db_issue4529_case_T1", table_type: "BASE TABLE", comment: null }],
     });
     const secondPage = buildTableTreeNodes({
       ...context,
-      schema: "dbx_test",
-      tables: [{ name: "dbx_issue4529_case_t1", table_type: "BASE TABLE", comment: null }],
+      schema: "linop_db_test",
+      tables: [{ name: "linop_db_issue4529_case_t1", table_type: "BASE TABLE", comment: null }],
     });
 
     const merged = mergeTableTreePageChildren(firstPage, secondPage, context.connectionId, context.database);
 
-    expect(merged.map((node) => node.label)).toEqual(["dbx_issue4529_case_T1", "dbx_issue4529_case_t1"]);
+    expect(merged.map((node) => node.label)).toEqual(["linop_db_issue4529_case_T1", "linop_db_issue4529_case_t1"]);
   });
 });
 

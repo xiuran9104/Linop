@@ -61,7 +61,7 @@ describe("query result transfer", () => {
   it.each(["UNIQUE NULLS DISTINCT", "UNIQUE NULLS NOT DISTINCT", "UNIQUE NULLS ALL DISTINCT", "HASH", "SPATIAL"])("rewrites the H2 SCRIPT index modifier %s without changing its semantics", (modifiers) => {
     const ddl = `CREATE MEMORY TABLE "PUBLIC"."APIS" ("NAME" VARCHAR(32)); CREATE ${modifiers} INDEX "PUBLIC"."IDX_NAME" ON "PUBLIC"."APIS"("NAME" NULLS FIRST);`;
     const rewritten = rewriteCreateTableName(ddl, '"TARGET"."COPY"', "h2");
-    expect(rewritten).toContain(`CREATE ${modifiers} INDEX "COPY_IDX_NAME_dbx_`);
+    expect(rewritten).toContain(`CREATE ${modifiers} INDEX "COPY_IDX_NAME_linop_db_`);
     expect(rewritten).toContain('ON "TARGET"."COPY"("NAME" NULLS FIRST)');
     expect(rewritten).not.toContain('"PUBLIC"');
   });
@@ -107,7 +107,7 @@ describe("query result transfer", () => {
   });
 
   it("builds an idempotent cleanup statement for a staging table", () => {
-    expect(queryResultTransferStagingCleanupSql("`db`.`apis__dbx_transfer_abc`")).toBe("DROP TABLE IF EXISTS `db`.`apis__dbx_transfer_abc`");
+    expect(queryResultTransferStagingCleanupSql("`db`.`apis__linop_db_transfer_abc`")).toBe("DROP TABLE IF EXISTS `db`.`apis__linop_db_transfer_abc`");
   });
 
   it("cleans up newly created Oracle-family tables after non-transactional DDL failures", () => {
@@ -128,7 +128,7 @@ describe("query result transfer", () => {
   it("rewrites table references in every statement of a reusable PostgreSQL DDL", () => {
     const ddl = ['CREATE TABLE "public"."apis" ("id" bigint);', 'COMMENT ON TABLE "public"."apis" IS \'source table\';', 'CREATE INDEX "idx_apis_id" ON "public"."apis" ("id");'].join("\n");
     expect(rewriteCreateTableName(ddl, '"archive"."aaa_apis"', "postgres", "public", "apis")).toContain('COMMENT ON TABLE "archive"."aaa_apis"');
-    expect(rewriteCreateTableName(ddl, '"archive"."aaa_apis"', "postgres", "public", "apis")).toMatch(/CREATE INDEX "aaa_apis_idx_apis_id_dbx_[a-f0-9]+" ON "archive"\."aaa_apis"/);
+    expect(rewriteCreateTableName(ddl, '"archive"."aaa_apis"', "postgres", "public", "apis")).toMatch(/CREATE INDEX "aaa_apis_idx_apis_id_linop_db_[a-f0-9]+" ON "archive"\."aaa_apis"/);
   });
 
   it("keeps a reusable MySQL table definition instead of rebuilding generic columns", () => {
@@ -210,7 +210,7 @@ describe("query result transfer", () => {
     for (const type of ["mysql", "goldendb"] as const) {
       const result = rewriteCreateTableName(ddl, "`copy`", type, undefined, "apis")!;
       expect(result).toContain("KEY `idx` (`parent`)");
-      expect(result).toMatch(/CONSTRAINT `copy_apis_fk_dbx_[a-f0-9]+` FOREIGN KEY/);
+      expect(result).toMatch(/CONSTRAINT `copy_apis_fk_linop_db_[a-f0-9]+` FOREIGN KEY/);
       expect(result).toContain("REFERENCES `copy` (`id`)");
     }
   });
@@ -227,8 +227,8 @@ describe("query result transfer", () => {
     expect(result).toContain("@level2name=N'apis'");
     const defaultSchema = rewriteCreateTableName(ddl, "[copy]", "sqlserver", "dbo", "apis")!;
     expect(defaultSchema).toContain("OBJECT_SCHEMA_NAME(OBJECT_ID(N''[copy]'', N''U''))");
-    expect(defaultSchema.match(/@level0name=@dbx_transfer_schema/g)).toHaveLength(2);
-    expect(defaultSchema.match(/EXEC\(N'DECLARE @dbx_transfer_schema/g)).toHaveLength(2);
+    expect(defaultSchema.match(/@level0name=@linop_db_transfer_schema/g)).toHaveLength(2);
+    expect(defaultSchema.match(/EXEC\(N'DECLARE @linop_db_transfer_schema/g)).toHaveLength(2);
   });
 
   it("rejects unsupported SQL Server metadata procedures and foreign target properties", () => {
@@ -254,7 +254,7 @@ describe("query result transfer", () => {
   it("keeps SQLite index namespaces on the index rather than the ON table", () => {
     const ddl = 'CREATE TABLE "apis" (id int); CREATE INDEX "idx" ON "apis" (id)';
     const result = rewriteCreateTableName(ddl, '"archive"."copy"', "sqlite", undefined, "apis")!;
-    expect(result).toMatch(/CREATE INDEX "archive"\."copy_idx_dbx_[a-f0-9]+" ON "copy" \(id\)/);
+    expect(result).toMatch(/CREATE INDEX "archive"\."copy_idx_linop_db_[a-f0-9]+" ON "copy" \(id\)/);
   });
 
   it("rejects foreign table statements, additional tables and unsupported scripts before replay", () => {
@@ -300,11 +300,11 @@ describe("query result transfer", () => {
   it("rewrites schema-qualified constraints emitted by H2 SCRIPT", () => {
     const ddl = 'CREATE MEMORY TABLE "PUBLIC"."APIS"("ID" INTEGER NOT NULL, "CODE" CHARACTER VARYING(30));\nALTER TABLE "PUBLIC"."APIS" ADD CONSTRAINT "PUBLIC"."CONSTRAINT_1" PRIMARY KEY("ID");\nALTER TABLE "PUBLIC"."APIS" ADD CONSTRAINT "PUBLIC"."UQ_CODE" UNIQUE("CODE");';
     const rewritten = rewriteCreateTableName(ddl, '"ARCHIVE"."COPY"', "h2")!;
-    expect(rewritten).toMatch(/ADD CONSTRAINT "ARCHIVE"\."COPY_CONSTRAINT_1_dbx_[a-f0-9]+" PRIMARY KEY/);
-    expect(rewritten).toMatch(/ADD CONSTRAINT "ARCHIVE"\."COPY_UQ_CODE_dbx_[a-f0-9]+" UNIQUE/);
+    expect(rewritten).toMatch(/ADD CONSTRAINT "ARCHIVE"\."COPY_CONSTRAINT_1_linop_db_[a-f0-9]+" PRIMARY KEY/);
+    expect(rewritten).toMatch(/ADD CONSTRAINT "ARCHIVE"\."COPY_UQ_CODE_linop_db_[a-f0-9]+" UNIQUE/);
     expect(rewritten).not.toContain('"PUBLIC"');
     const unqualified = rewriteCreateTableName(ddl, '"COPY"', "h2")!;
-    expect(unqualified).toMatch(/ADD CONSTRAINT "COPY_CONSTRAINT_1_dbx_[a-f0-9]+" PRIMARY KEY/);
+    expect(unqualified).toMatch(/ADD CONSTRAINT "COPY_CONSTRAINT_1_linop_db_[a-f0-9]+" PRIMARY KEY/);
   });
 
   it("rejects incomplete fallback results even without a row limit", () => {

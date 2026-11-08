@@ -7,11 +7,11 @@ import { dirname, resolve, join } from "node:path";
 import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 test("dev selects the bundled runtime and current Node without changing ordinary launcher behavior", () => {
-  const cwd = mkdtempSync(join(tmpdir(), "dbx-dev-launcher-"));
+  const cwd = mkdtempSync(join(tmpdir(), "linop-db-dev-launcher-"));
   try {
     writeFileSync(join(cwd, "dev"), "console.log(JSON.stringify({runtime:process.env.DBX_PLUGIN_DEV_RUNTIME,node:process.env.DBX_PLUGIN_NODE,args:process.argv.slice(2)}))");
     const invoke = (extra) =>
-      spawnSync(process.execPath, [join(root, "bin/dbx-plugin.js"), "dev", "--port", "5190"], {
+      spawnSync(process.execPath, [join(root, "bin/linop-db-plugin.js"), "dev", "--port", "5190"], {
         cwd,
         encoding: "utf8",
         env: { ...process.env, DBX_PLUGIN_CLI_BINARY: process.execPath, DBX_PLUGIN_NODE: "", DBX_PLUGIN_DEV_RUNTIME: "", ...extra },

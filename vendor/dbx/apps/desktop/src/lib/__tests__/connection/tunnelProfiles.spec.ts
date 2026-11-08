@@ -25,8 +25,8 @@ describe("tunnelProfileSummary", () => {
   });
 
   it("returns the url for http tunnel profiles", () => {
-    const http = { ...createTunnelProfile("http_tunnel"), url: "https://example.com/dbx_tunnel.php" } as TunnelProfile;
-    expect(tunnelProfileSummary(http)).toBe("https://example.com/dbx_tunnel.php");
+    const http = { ...createTunnelProfile("http_tunnel"), url: "https://example.com/linop_db_tunnel.php" } as TunnelProfile;
+    expect(tunnelProfileSummary(http)).toBe("https://example.com/linop_db_tunnel.php");
   });
 
   it("returns an empty string when the target is not configured yet", () => {

@@ -7,7 +7,7 @@ license = "Apache-2.0"
 [workspace]
 
 [dependencies]
-dbx-plugin-sdk = {{RUST_SDK_DEPENDENCY}}
+linop-db-plugin-sdk = {{RUST_SDK_DEPENDENCY}}
 serde_json = "1"
 
 # Keep plugin binaries close to the host app's size: default release settings

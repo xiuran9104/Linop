@@ -12,7 +12,7 @@
 - 在 `main` 方法中以 `new JsonRpcServer(new <Agent>()).run()` 启动。
 - 通过 stdin/stdout 与 DBX 通信，遵循 JSON-RPC 2.0 协议。
 - 除非模块明确设计为非 JDBC 协议，否则使用 JDBC 访问数据库。
-- 输出一个名为 `dbx-agent-<agent-name>.jar` 的 shadow JAR。
+- 输出一个名为 `linop-db-agent-<agent-name>.jar` 的 shadow JAR。
 
 即使每个数据库的 SQL 方言不同，Agent 的对外行为也应保持一致。
 
@@ -136,7 +136,7 @@ dependencies {
 }
 ```
 
-根 Gradle 约定会自动提供 `project(':common')`、`project(':test-support')`、JUnit、Java toolchain、Shadow 插件，以及已包含 Agent 模块的 `dbx-agent-<module>` 归档名。
+根 Gradle 约定会自动提供 `project(':common')`、`project(':test-support')`、JUnit、Java toolchain、Shadow 插件，以及已包含 Agent 模块的 `linop-db-agent-<module>` 归档名。
 
 无需 manifest 标志。
 
@@ -173,7 +173,7 @@ tasks.named('shadowJar') {
 - 将 `Main-Class` 设置为 Java Agent 类，通常是 `com.dbx.agent.exampledb.ExampledbAgent`。
 - 将该数据库加入 README 的支持列表。
 
-根 `build.gradle` 约定会根据模块名派生归档名，因此 `exampledb` 会自动构建出 `dbx-agent-exampledb.jar`，无需在每个模块单独配置归档名。
+根 `build.gradle` 约定会根据模块名派生归档名，因此 `exampledb` 会自动构建出 `linop-db-agent-exampledb.jar`，无需在每个模块单独配置归档名。
 
 `versions.json` 只能包含 `settings.gradle` 中登记的模块，不包括 `common`、`test-support` 等基础设施模块。
 

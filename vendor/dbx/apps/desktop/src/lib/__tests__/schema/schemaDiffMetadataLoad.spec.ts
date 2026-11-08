@@ -87,7 +87,7 @@ it("rejects a comparison detail when trigger metadata reports a known contradict
 });
 
 /**
- * Mirrors the backend metadata gate (`crates/dbx-core/src/connection/mod.rs`):
+ * Mirrors the backend metadata gate (`crates/linop-db-core/src/connection/mod.rs`):
  * at most `capacity` in-flight metadata requests per gate key, and any request
  * that cannot start is what `METADATA_POOL_ACQUIRE_TIMEOUT` (5s) reports as
  * `DBX metadata pool is busy; please retry`.

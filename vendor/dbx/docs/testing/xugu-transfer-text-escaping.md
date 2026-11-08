@@ -51,7 +51,7 @@ builder. The initial new test expectations were corrected to Xugu's existing
 production changes were made.
 
 The opt-in live test is
-[`live_xugu_text_transfer.rs`](../../crates/dbx-core/tests/live_xugu_text_transfer.rs).
+[`live_xugu_text_transfer.rs`](../../crates/linop-db-core/tests/live_xugu_text_transfer.rs).
 It requires explicit disposable connection JSON, schemas and an installed native
 Agent directory via `DBX_LIVE_XUGU_TEXT_*`. It creates random fixture tables and
 removes those tables after checks. It is ignored by normal CI and contains no

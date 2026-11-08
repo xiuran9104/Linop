@@ -68,7 +68,7 @@ describe("routine source Run replacement (issue #12855)", () => {
   const identity = (name: string) => captureSourceIdentity({ connectionId: "conn-1", database: "app", schema: "app", objectType: "PROCEDURE", name });
   const prepare = (sql: string, name = "refresh_cache", objectType: "PROCEDURE" | "FUNCTION" = "PROCEDURE") => prepareRoutineSourceRun({ identity: identity(name), connectionId: "conn-1", database: "app", databaseType: "mysql", schema: "app", objectType, name, sql });
   // The backend's replace sequence: validate under a temporary name, drop the old routine, then the CREATE itself.
-  const replaceSequence = (create: string) => ["DROP PROCEDURE IF EXISTS `app`.`dbx_routine_check_1`;", "CREATE PROCEDURE `dbx_routine_check_1`() BEGIN SELECT 1; END;", "DROP PROCEDURE IF EXISTS `app`.`dbx_routine_check_1`;", "DROP PROCEDURE IF EXISTS `app`.`refresh_cache`;", create];
+  const replaceSequence = (create: string) => ["DROP PROCEDURE IF EXISTS `app`.`linop_db_routine_check_1`;", "CREATE PROCEDURE `linop_db_routine_check_1`() BEGIN SELECT 1; END;", "DROP PROCEDURE IF EXISTS `app`.`linop_db_routine_check_1`;", "DROP PROCEDURE IF EXISTS `app`.`refresh_cache`;", create];
 
   it("only applies to MySQL-family procedures and functions", () => {
     for (const databaseType of ["mysql", "goldendb"] as const) {
@@ -93,7 +93,7 @@ describe("routine source Run replacement (issue #12855)", () => {
     expect(api.buildExecutableObjectSourceStatements).toHaveBeenCalledWith({ databaseType: "mysql", objectType: "PROCEDURE", schema: "app", name: "refresh_cache", source: create });
     const executed = vi.mocked(api.executeQuery).mock.calls.map((call) => call[2]);
     expect(executed).toEqual(replaceSequence("").slice(0, -1));
-    expect(api.executeQuery).toHaveBeenNthCalledWith(1, "conn-1", "app", "DROP PROCEDURE IF EXISTS `app`.`dbx_routine_check_1`;", "app");
+    expect(api.executeQuery).toHaveBeenNthCalledWith(1, "conn-1", "app", "DROP PROCEDURE IF EXISTS `app`.`linop_db_routine_check_1`;", "app");
     // The CREATE is left to the normal query pipeline.
     expect(executed.some((sql) => sql.includes("DEFINER"))).toBe(false);
   });
@@ -114,9 +114,9 @@ describe("routine source Run replacement (issue #12855)", () => {
   it("matches functions by their own kind and backquote-escaped names", async () => {
     const create = "CREATE FUNCTION `odd``name`(a INT) RETURNS int DETERMINISTIC RETURN a";
     vi.mocked(api.buildExecutableObjectSourceStatements).mockResolvedValue([
-      "DROP FUNCTION IF EXISTS `app`.`dbx_routine_check_2`;",
-      "CREATE FUNCTION `dbx_routine_check_2`(a INT) RETURNS int DETERMINISTIC RETURN a;",
-      "DROP FUNCTION IF EXISTS `app`.`dbx_routine_check_2`;",
+      "DROP FUNCTION IF EXISTS `app`.`linop_db_routine_check_2`;",
+      "CREATE FUNCTION `linop_db_routine_check_2`(a INT) RETURNS int DETERMINISTIC RETURN a;",
+      "DROP FUNCTION IF EXISTS `app`.`linop_db_routine_check_2`;",
       "DROP FUNCTION IF EXISTS `app`.`odd``name`;",
       `${create};`,
     ]);

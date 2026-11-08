@@ -5,9 +5,9 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::commands::connection::AppState;
-use dbx_core::connection::PoolKind;
-use dbx_core::mqtt::service;
-use dbx_core::mqtt::types::*;
+use linop_db_core::connection::PoolKind;
+use linop_db_core::mqtt::service;
+use linop_db_core::mqtt::types::*;
 
 const MQTT_LIVE_MESSAGE_LIMIT: usize = 200;
 const MQTT_VISIBLE_MESSAGE_LIMIT: usize = MQTT_LIVE_MESSAGE_LIMIT * 2;
@@ -55,7 +55,7 @@ fn mqtt_message_matches_filter(message: &MqttMessage, filter: Option<&str>) -> b
 async fn get_mqtt_client(
     state: &AppState,
     connection_id: &str,
-) -> Result<Arc<dbx_core::mqtt::client::MqttClient>, String> {
+) -> Result<Arc<linop_db_core::mqtt::client::MqttClient>, String> {
     let pool = state.pool_handle(connection_id).await.ok_or_else(|| format!("连接 {} 未建立", connection_id))?;
     match pool {
         PoolKind::Mqtt(client) => Ok(client),
@@ -66,7 +66,7 @@ async fn get_mqtt_client(
 async fn persist_mqtt_topics(
     state: &AppState,
     connection_id: &str,
-    client: &dbx_core::mqtt::client::MqttClient,
+    client: &linop_db_core::mqtt::client::MqttClient,
 ) -> Result<(), String> {
     let saved_topics = client.desired_topic_configs().await;
     if !state.configs.read().await.contains_key(connection_id) {
@@ -304,13 +304,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dbx_core::mqtt::client::MqttClient;
+    use linop_db_core::mqtt::client::MqttClient;
     use tokio::sync::oneshot;
 
     #[tokio::test]
     async fn clear_waits_for_poll_reconciliation_and_prevents_snapshot_writeback() {
         let directory = tempfile::tempdir().unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new(storage));
         let message = MqttMessage {
             topic: "devices/race".to_string(),

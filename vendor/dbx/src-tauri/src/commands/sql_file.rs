@@ -9,7 +9,7 @@ use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 
 use crate::commands::connection::{ensure_connection_writable, AppState};
-use dbx_core::sql_file_import::{
+use linop_db_core::sql_file_import::{
     execute_sql_file_paths, execute_sql_file_zip_package_paths, export_sql_file_failure_log as derive_failure_log_file,
     mysql_like_sql_file_bootstrap_analysis, prune_sql_file_failure_logs, read_sql_file_preview_with_encoding,
     sql_file_failure_log_text as derive_failure_log_text, sql_file_progress, start_sql_file_failure_log,
@@ -19,7 +19,7 @@ use dbx_core::sql_file_import::{
     SQL_FILE_FAILURE_LOG_DIR,
 };
 
-pub use dbx_core::sql::{SqlFileEncoding, SqlFilePreview, SqlFileRequest, SqlFileStatus};
+pub use linop_db_core::sql::{SqlFileEncoding, SqlFilePreview, SqlFileRequest, SqlFileStatus};
 
 static SQL_FILE_EXECUTIONS: OnceLock<RwLock<HashMap<String, CancellationToken>>> = OnceLock::new();
 
@@ -51,8 +51,8 @@ struct SqlFileSummary {
 pub async fn inspect_sql_file_tables(
     file_path: String,
     encoding: Option<SqlFileEncoding>,
-) -> Result<Vec<dbx_core::sql_file_import::SqlFileTable>, String> {
-    dbx_core::sql_file_import::inspect_sql_file_tables_with_encoding(
+) -> Result<Vec<linop_db_core::sql_file_import::SqlFileTable>, String> {
+    linop_db_core::sql_file_import::inspect_sql_file_tables_with_encoding(
         std::path::Path::new(&file_path),
         encoding.unwrap_or_default(),
     )
@@ -71,15 +71,15 @@ pub async fn preview_sql_file(file_path: String, encoding: Option<SqlFileEncodin
         sweep_stale_sql_zip_packages();
         let extraction_dir = std::env::temp_dir().join(format!(
             "{}{}",
-            dbx_core::sql_file_zip_package::SQL_FILE_ZIP_EXTRACTION_DIR_PREFIX_DESKTOP,
+            linop_db_core::sql_file_zip_package::SQL_FILE_ZIP_EXTRACTION_DIR_PREFIX_DESKTOP,
             uuid::Uuid::new_v4()
         ));
         let (package, extracted_paths) = tokio::task::spawn_blocking({
             let path = path.clone();
             let extraction_dir = extraction_dir.clone();
             move || {
-                let package = dbx_core::sql_file_zip_package::extract_sql_file_zip_package(&path, &extraction_dir)?;
-                let paths = dbx_core::sql_file_zip_package::extracted_sql_zip_paths(&extraction_dir, &package)
+                let package = linop_db_core::sql_file_zip_package::extract_sql_file_zip_package(&path, &extraction_dir)?;
+                let paths = linop_db_core::sql_file_zip_package::extracted_sql_zip_paths(&extraction_dir, &package)
                     .into_iter()
                     .map(|part| part.to_string_lossy().to_string())
                     .collect::<Vec<_>>();
@@ -140,19 +140,19 @@ fn execution_targets_zip_package(file_paths: &[String]) -> bool {
     file_paths.iter().any(|path| is_desktop_sql_zip_package_part(Path::new(path)))
 }
 
-/// A desktop ZIP-package part lives in a `dbx-sql-package-<uuid>` directory
+/// A desktop ZIP-package part lives in a `linop-db-sql-package-<uuid>` directory
 /// under the OS temp dir, exactly where `preview_sql_file` extracts uploads.
 /// Requiring both the prefix and the temp-dir parent confines matching to
 /// directories DBX created itself: desktop `file_paths` are arbitrary
 /// user-chosen paths, so a user directory named `package-1.0/` (or even
-/// `dbx-sql-package-...`) must never be mistaken for an extraction dir and
+/// `linop-db-sql-package-...`) must never be mistaken for an extraction dir and
 /// routed through the ZIP importer or its `remove_dir_all` cleanup.
 fn is_desktop_sql_zip_package_part(path: &Path) -> bool {
     path.parent().is_some_and(|parent| {
         parent.starts_with(std::env::temp_dir())
-            && dbx_core::sql_file_zip_package::is_extracted_sql_zip_package_path(
+            && linop_db_core::sql_file_zip_package::is_extracted_sql_zip_package_path(
                 path,
-                dbx_core::sql_file_zip_package::SQL_FILE_ZIP_EXTRACTION_DIR_PREFIX_DESKTOP,
+                linop_db_core::sql_file_zip_package::SQL_FILE_ZIP_EXTRACTION_DIR_PREFIX_DESKTOP,
             )
     })
 }
@@ -371,7 +371,7 @@ fn cleanup_sql_zip_package_paths(file_paths: &[String]) {
 }
 
 /// A preview that never reaches execution leaves its extraction directory behind, so each new
-/// preview also sweeps `dbx-sql-package-*` directories that have outlived a day.
+/// preview also sweeps `linop-db-sql-package-*` directories that have outlived a day.
 fn sweep_stale_sql_zip_packages() {
     const MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
     let Ok(entries) = std::fs::read_dir(std::env::temp_dir()) else {
@@ -379,7 +379,7 @@ fn sweep_stale_sql_zip_packages() {
     };
     for entry in entries.flatten() {
         if !entry.file_name().to_str().is_some_and(|name| {
-            name.starts_with(dbx_core::sql_file_zip_package::SQL_FILE_ZIP_EXTRACTION_DIR_PREFIX_DESKTOP)
+            name.starts_with(linop_db_core::sql_file_zip_package::SQL_FILE_ZIP_EXTRACTION_DIR_PREFIX_DESKTOP)
         }) {
             continue;
         }
@@ -566,10 +566,10 @@ mod execution_tests {
         // Extraction dirs live under the OS temp dir, so the fixtures must too.
         let temp = std::env::temp_dir();
         let zip_upload_part_paths = vec![
-            temp.join("dbx-sql-package-11111111-1111-1111-1111-111111111111/00001-dump.sql")
+            temp.join("linop-db-sql-package-11111111-1111-1111-1111-111111111111/00001-dump.sql")
                 .to_string_lossy()
                 .into_owned(),
-            temp.join("dbx-sql-package-11111111-1111-1111-1111-111111111111/00002-dump.sql")
+            temp.join("linop-db-sql-package-11111111-1111-1111-1111-111111111111/00002-dump.sql")
                 .to_string_lossy()
                 .into_owned(),
         ];
@@ -581,28 +581,28 @@ mod execution_tests {
         // `execute_sql_file` forwards `vec![request.file_path.clone()]` as the
         // sole `file_paths` entry, so a single extracted part must also match.
         let single_zip_part_as_sole_path =
-            vec![temp.join("dbx-sql-package-33333333/00001-dump.sql").to_string_lossy().into_owned()];
+            vec![temp.join("linop-db-sql-package-33333333/00001-dump.sql").to_string_lossy().into_owned()];
         assert!(execution_targets_zip_package(&single_zip_part_as_sole_path));
     }
 
     #[test]
     fn zip_package_routing_ignores_user_directories_sharing_an_extraction_prefix() {
         // Scoping regression for PR #10632 review: desktop `file_paths` are
-        // arbitrary user-chosen paths, so only `dbx-sql-package-*` directories
+        // arbitrary user-chosen paths, so only `linop-db-sql-package-*` directories
         // under the OS temp dir count as extraction dirs.
         let temp = std::env::temp_dir();
         let web_style_user_dir = vec![temp.join("package-1.0/00001-dump.sql").to_string_lossy().into_owned()];
         assert!(!execution_targets_zip_package(&web_style_user_dir));
 
         let desktop_named_dir_outside_temp =
-            vec!["/definitely/not/the/temp/dbx-sql-package-44444444/00001-dump.sql".to_string()];
+            vec!["/definitely/not/the/temp/linop-db-sql-package-44444444/00001-dump.sql".to_string()];
         assert!(!execution_targets_zip_package(&desktop_named_dir_outside_temp));
     }
 
     #[test]
     fn zip_package_cleanup_never_removes_user_directories_sharing_a_prefix() {
         let temp = std::env::temp_dir();
-        let extraction = temp.join(format!("dbx-sql-package-{}", uuid::Uuid::new_v4()));
+        let extraction = temp.join(format!("linop-db-sql-package-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&extraction).unwrap();
         std::fs::write(extraction.join("00001-dump.sql"), "SELECT 1;\n").unwrap();
         let user_dir = temp.join(format!("package-{}", uuid::Uuid::new_v4()));
@@ -624,8 +624,8 @@ mod execution_tests {
         success: usize,
         failures: usize,
         affected: u64,
-    ) -> dbx_core::sql::SqlFileProgress {
-        dbx_core::sql::SqlFileProgress {
+    ) -> linop_db_core::sql::SqlFileProgress {
+        linop_db_core::sql::SqlFileProgress {
             execution_id: "exec-1".to_string(),
             status,
             statement_index: 0,

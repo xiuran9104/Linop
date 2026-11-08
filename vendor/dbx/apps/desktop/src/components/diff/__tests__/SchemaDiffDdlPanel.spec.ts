@@ -143,7 +143,7 @@ describe("SchemaDiffDdlPanel", () => {
     expect(host.textContent).toContain('CREATE TABLE "other_schema"."users"');
 
     // The toggle is per dialog and never persisted
-    expect(localStorage.getItem("dbx-schema-diff-ignore-schema-name")).toBeNull();
+    expect(localStorage.getItem("linop-db-schema-diff-ignore-schema-name")).toBeNull();
   });
 
   it("strips schema names when the switch is toggled on without persisting it", async () => {
@@ -180,7 +180,7 @@ describe("SchemaDiffDdlPanel", () => {
     expect(host.textContent).not.toContain('CREATE TABLE "other_schema"."users"');
 
     // Toggling is not persisted across dialogs
-    expect(localStorage.getItem("dbx-schema-diff-ignore-schema-name")).toBeNull();
+    expect(localStorage.getItem("linop-db-schema-diff-ignore-schema-name")).toBeNull();
   });
 
   it("uses the selected database as schema for MySQL views without an explicit schema", async () => {

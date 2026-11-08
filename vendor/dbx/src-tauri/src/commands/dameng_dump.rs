@@ -3,7 +3,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::connection::AppState;
 
-pub use dbx_core::dameng_dump::{resolve_damp_tool_path, DamengDumpKindArg, DamengDumpProgress, DamengDumpTaskRequest};
+pub use linop_db_core::dameng_dump::{resolve_damp_tool_path, DamengDumpKindArg, DamengDumpProgress, DamengDumpTaskRequest};
 
 fn emit_progress(app: &AppHandle, progress: DamengDumpProgress) {
     let _ = app.emit("dameng-dump-progress", progress);
@@ -20,17 +20,17 @@ pub async fn start_dameng_dump(
 ) -> Result<(), String> {
     let state = state.inner().clone();
     let task_id = request.task_id.clone();
-    dbx_core::export_runtime::spawn_export_task(async move {
-        let _ = dbx_core::dameng_dump::run_dameng_dump_task(&state, &request, |progress| emit_progress(&app, progress))
+    linop_db_core::export_runtime::spawn_export_task(async move {
+        let _ = linop_db_core::dameng_dump::run_dameng_dump_task(&state, &request, |progress| emit_progress(&app, progress))
             .await;
-        dbx_core::dameng_dump::finish_dameng_dump_task(&task_id).await;
+        linop_db_core::dameng_dump::finish_dameng_dump_task(&task_id).await;
     });
     Ok(())
 }
 
 #[tauri::command]
 pub async fn cancel_dameng_dump(task_id: String) -> Result<(), String> {
-    dbx_core::database_export::set_export_cancelled(&task_id).await;
+    linop_db_core::database_export::set_export_cancelled(&task_id).await;
     Ok(())
 }
 

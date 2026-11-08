@@ -46,12 +46,12 @@ on:
         required: false
         type: string
       plugin-cli-version:
-        description: Published @dbx-app/plugin-cli version used to package the plugin
+        description: Published @linop-db-app/plugin-cli version used to package the plugin
         default: "0.1.10"
         required: false
         type: string
       install-plugin-cli:
-        description: Install the dbx-plugin CLI before packaging
+        description: Install the linop-db-plugin CLI before packaging
         default: true
         required: false
         type: boolean
@@ -141,30 +141,30 @@ jobs:
         with:
           repository: t8y2/dbx
           ref: ${{ inputs.sdk-ref }}
-          path: .dbx-plugin-sdk
+          path: .linop-db-plugin-sdk
 
       - name: Install precompiled DBX plugin CLI
         if: inputs.install-plugin-cli && !inputs.install-plugin-cli-from-source
         shell: bash
-        run: npm install --global "@dbx-app/plugin-cli@${{ inputs.plugin-cli-version }}"
+        run: npm install --global "@linop-db-app/plugin-cli@${{ inputs.plugin-cli-version }}"
 
       - name: Install DBX plugin CLI from source
         if: inputs.install-plugin-cli && inputs.install-plugin-cli-from-source
         shell: bash
-        run: cargo install --locked --path .dbx-plugin-sdk/plugins/sdk/cli
+        run: cargo install --locked --path .linop-db-plugin-sdk/plugins/sdk/cli
 
       - name: Build unsigned plugin candidate
         shell: bash
         working-directory: ${{ inputs.working-directory }}
         env:
           DBX_PLUGIN_TARGET: ${{ matrix.target }}
-          DBX_PLUGIN_SDK_ROOT: ${{ inputs.install-plugin-cli-from-source && format('{0}/.dbx-plugin-sdk', github.workspace) || '' }}
+          DBX_PLUGIN_SDK_ROOT: ${{ inputs.install-plugin-cli-from-source && format('{0}/.linop-db-plugin-sdk', github.workspace) || '' }}
         run: ${{ inputs.package-command }}
 
       - name: Upload target artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: dbx-plugin-${{ matrix.target }}
+          name: linop-db-plugin-${{ matrix.target }}
           if-no-files-found: error
           retention-days: 1
           path: |
@@ -181,7 +181,7 @@ jobs:
       - name: Download target artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: dbx-plugin-*
+          pattern: linop-db-plugin-*
           path: release-assets
           merge-multiple: true
 

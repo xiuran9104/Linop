@@ -72,9 +72,9 @@ test("web text export triggers download and returns true", async () => {
     return el;
   });
 
-  const saved = await saveDiagramTextExport("dbx-diagram.svg", "<svg/>", "svg");
+  const saved = await saveDiagramTextExport("linop-db-diagram.svg", "<svg/>", "svg");
   assert.equal(saved, true);
-  assert.deepEqual(clicks, ["dbx-diagram.svg"]);
+  assert.deepEqual(clicks, ["linop-db-diagram.svg"]);
   createObjectURL.mockRestore();
   revokeObjectURL.mockRestore();
 });

@@ -9,7 +9,7 @@ root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 case "$scenario" in
   zookeeper)
     cd "$root/agents/drivers/zookeeper"
-    name="dbx-zookeeper-${version//./-}"
+    name="linop-db-zookeeper-${version//./-}"
     docker rm -fv "$name" >/dev/null 2>&1 || true
     docker run -d --name "$name" -p 2181:2181 "zookeeper:$version"
     cleanup() {
@@ -37,12 +37,12 @@ case "$scenario" in
     ;;
   zookeeper-sasl)
     cd "$root/agents/drivers/zookeeper"
-    name="dbx-zookeeper-sasl-3-7-0"
+    name="linop-db-zookeeper-sasl-3-7-0"
     jaas_file=$(mktemp)
     cat > "$jaas_file" <<'EOF'
     Server {
       org.apache.zookeeper.server.auth.DigestLoginModule required
-      user_dbx="dbx-secret";
+      user_dbx="linop-db-secret";
     };
 EOF
     chmod 0644 "$jaas_file"
@@ -71,7 +71,7 @@ EOF
     DBX_ZOOKEEPER_TEST_CONNECT_STRING=127.0.0.1:2181 \
       DBX_ZOOKEEPER_TEST_AUTH_SCHEME=sasl_digest \
       DBX_ZOOKEEPER_TEST_USERNAME=dbx \
-      DBX_ZOOKEEPER_TEST_PASSWORD=dbx-secret \
+      DBX_ZOOKEEPER_TEST_PASSWORD=linop-db-secret \
       go test -run '^TestZooKeeperIntegration$' -count=1 ./...
     ;;
   rocketmq)
@@ -80,7 +80,7 @@ EOF
     ;;
   tdengine)
     cd "$root/agents"
-    name="dbx-tdengine-${version//./-}"
+    name="linop-db-tdengine-${version//./-}"
     docker rm -fv "$name" >/dev/null 2>&1 || true
     docker run -d --name "$name" \
       --memory 4g \
@@ -114,7 +114,7 @@ EOF
     ;;
   cassandra)
     cd "$root/agents/drivers/cassandra-go"
-    name="dbx-cassandra-${version//./-}"
+    name="linop-db-cassandra-${version//./-}"
     docker rm -fv "$name" >/dev/null 2>&1 || true
     docker run -d --name "$name" \
       -e CASSANDRA_CLUSTER_NAME="DBX Cassandra CI $version" \
@@ -148,8 +148,8 @@ EOF
     ;;
   rabbitmq)
     cd "$root/agents/drivers/rabbitmq"
-    name="dbx-rabbitmq-${version//./-}"
-    cookie="dbx-ci-${GITHUB_RUN_ID:-local}-${version//./-}"
+    name="linop-db-rabbitmq-${version//./-}"
+    cookie="linop-db-ci-${GITHUB_RUN_ID:-local}-${version//./-}"
     # RabbitMQ is disposable in CI. Keep its data on a fresh tmpfs
     # owned by the image's rabbitmq user so .erlang.cookie is readable.
     docker rm -fv "$name" >/dev/null 2>&1 || true
@@ -157,7 +157,7 @@ EOF
       --user 999:999 \
       --tmpfs /var/lib/rabbitmq:rw,exec,uid=999,gid=999,mode=700 \
       -e RABBITMQ_DEFAULT_USER=dbx \
-      -e RABBITMQ_DEFAULT_PASS=dbx-password \
+      -e RABBITMQ_DEFAULT_PASS=linop-db-password \
       -e RABBITMQ_ERLANG_COOKIE="$cookie" \
       -p 5672:5672 -p 15672:15672 \
       "rabbitmq:${version}-management"
@@ -168,7 +168,7 @@ EOF
     ready=false
     for _ in $(seq 1 60); do
       if docker exec "$name" rabbitmq-diagnostics -q check_running >/dev/null 2>&1 \
-        && curl --fail --silent --noproxy '*' --user dbx:dbx-password \
+        && curl --fail --silent --noproxy '*' --user dbx:linop-db-password \
           http://127.0.0.1:15672/api/overview >/dev/null; then
         ready=true
         break
@@ -182,7 +182,7 @@ EOF
     fi
     RABBITMQ_INTEGRATION=1 \
       RABBITMQ_USERNAME=dbx \
-      RABBITMQ_PASSWORD=dbx-password \
+      RABBITMQ_PASSWORD=linop-db-password \
       go test -run '^TestRabbitMQIntegration$' -count=1 ./...
     ;;
   *)

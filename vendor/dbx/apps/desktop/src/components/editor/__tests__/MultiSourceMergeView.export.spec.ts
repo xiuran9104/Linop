@@ -105,7 +105,7 @@ describe("merged view export", () => {
     await vi.waitFor(() => expect(mocks.exportQueryResultsXlsx).toHaveBeenCalledTimes(1));
 
     const [outputPath, sheets, ...rest] = mocks.exportQueryResultsXlsx.mock.calls[0] as [string, Sheet[], boolean];
-    expect(outputPath).toMatch(/^dbx-merged-result_all_\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.xlsx$/);
+    expect(outputPath).toMatch(/^linop-db-merged-result_all_\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}\.xlsx$/);
     expect(rest).toEqual([true]);
 
     const [dataSheet, sqlSheet] = sheets;

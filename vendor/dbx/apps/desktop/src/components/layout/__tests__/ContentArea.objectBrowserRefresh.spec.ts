@@ -97,7 +97,7 @@ async function mountObjectBrowserTab() {
 }
 
 function dispatchRefresh(detail: { connectionId?: string; database?: string; schema?: string; catalog?: string }) {
-  window.dispatchEvent(new CustomEvent("dbx-refresh-object-browser", { detail }));
+  window.dispatchEvent(new CustomEvent("linop-db-refresh-object-browser", { detail }));
 }
 
 describe("ContentArea object browser refresh notifications", () => {

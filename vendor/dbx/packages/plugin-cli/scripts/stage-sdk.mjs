@@ -15,12 +15,12 @@ const packageManifest = JSON.parse(readFileSync(join(packageRoot, "package.json"
 const cliManifest = readFileSync(join(repositoryRoot, "plugins/sdk/cli/Cargo.toml"), "utf8");
 const cliVersion = cliManifest.match(/^version\s*=\s*"([^"]+)"/m)?.[1];
 if (cliVersion !== packageManifest.version) {
-  throw new Error(`@dbx-app/plugin-cli version ${packageManifest.version} does not match dbx-plugin-cli ${cliVersion ?? "unknown"}.`);
+  throw new Error(`@linop-db-app/plugin-cli version ${packageManifest.version} does not match linop-db-plugin-cli ${cliVersion ?? "unknown"}.`);
 }
 
 const sources = [
-  ["plugins/sdk/rust/dbx-plugin-sdk", "plugins/sdk/rust/dbx-plugin-sdk"],
-  ["plugins/sdk/go/dbx-plugin-sdk", "plugins/sdk/go/dbx-plugin-sdk"],
+  ["plugins/sdk/rust/linop-db-plugin-sdk", "plugins/sdk/rust/linop-db-plugin-sdk"],
+  ["plugins/sdk/go/linop-db-plugin-sdk", "plugins/sdk/go/linop-db-plugin-sdk"],
 ];
 const excludedNames = new Set([".DS_Store", ".gitignore", "Cargo.lock", "target"]);
 
@@ -41,4 +41,4 @@ for (const [sourceRelative, destinationRelative] of sources) {
   });
 }
 
-writeFileSync(join(destinationRoot, "README.md"), "# Bundled DBX Plugin SDK\n\nThis directory is bundled for `dbx-plugin package` and is managed by `@dbx-app/plugin-cli`.\n");
+writeFileSync(join(destinationRoot, "README.md"), "# Bundled DBX Plugin SDK\n\nThis directory is bundled for `linop-db-plugin package` and is managed by `@linop-db-app/plugin-cli`.\n");

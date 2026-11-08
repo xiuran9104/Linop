@@ -169,7 +169,7 @@ test("refresh cleanup does not disconnect a connection still used by another pag
 });
 async function fixture(t, frontend = false, overrides = {}) {
   const { pluginManifest = manifest, uiHtml = "<html><head></head><body>Test</body></html>", ...hostOverrides } = overrides;
-  const root = await mkdtemp(join(tmpdir(), "dbx-mock-test-"));
+  const root = await mkdtemp(join(tmpdir(), "linop-db-mock-test-"));
   await mkdir(join(root, "ui"));
   await writeFile(join(root, "ui/index.html"), uiHtml);
   const actual = frontend ? { ...pluginManifest, entrypoints: { ui: pluginManifest.entrypoints.ui }, contributions: pluginManifest.contributions.filter((c) => c.type === "workbench") } : pluginManifest;
@@ -452,7 +452,7 @@ test("development host opens a self-contained UI larger than 8 MiB (#11286)", as
 });
 
 test("asset reader accepts 32 MiB and rejects larger files and directories", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "dbx-asset-size-"));
+  const root = await mkdtemp(join(tmpdir(), "linop-db-asset-size-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const bytes = Buffer.alloc(32 * 1024 * 1024, 0x61);
   await writeFile(join(root, "at-limit.bin"), bytes);
@@ -520,7 +520,7 @@ test("icon reads reject unsafe paths, missing files, non-images, symlink escapes
     contributions: paths.map((icon, index) => ({ type: "workbench", id: `example.icon-${index}`, label: "Icon", icon })),
   };
   const { root, request, host } = await fixture(t, true, { pluginManifest });
-  const outside = await mkdtemp(join(tmpdir(), "dbx-icon-outside-"));
+  const outside = await mkdtemp(join(tmpdir(), "linop-db-icon-outside-"));
   t.after(() => rm(outside, { recursive: true, force: true }));
   await mkdir(join(root, "assets"));
   await writeFile(join(outside, "private.svg"), "private-icon-content");

@@ -83,7 +83,7 @@ function mountPostgresEndpoint(side: "source" | "target") {
 }
 
 function selectOptions() {
-  return [...document.querySelectorAll<HTMLButtonElement>(".dbx-searchable-select-list button")];
+  return [...document.querySelectorAll<HTMLButtonElement>(".linop-db-searchable-select-list button")];
 }
 
 async function flushAsyncSetup() {
@@ -127,12 +127,12 @@ it("offers Oracle schemas as schema-diff database choices", async () => {
   app.mount(container);
   await flushAsyncSetup();
 
-  const sourceDatabase = document.querySelector<HTMLButtonElement>("button.dbx-searchable-select-trigger");
+  const sourceDatabase = document.querySelector<HTMLButtonElement>("button.linop-db-searchable-select-trigger");
   expect(sourceDatabase?.disabled).toBe(false);
   sourceDatabase?.click();
   await flushAsyncSetup();
 
-  const options = [...document.querySelectorAll<HTMLButtonElement>(".dbx-searchable-select-list button")].map((button) => button.textContent?.trim());
+  const options = [...document.querySelectorAll<HTMLButtonElement>(".linop-db-searchable-select-list button")].map((button) => button.textContent?.trim());
   expect(options).toEqual(expect.arrayContaining(["APP", "REPORTING"]));
   expect(mocks.listDatabases).not.toHaveBeenCalled();
   expect(mocks.listSchemas).toHaveBeenCalledWith("oracle-11g", "XE", true);
@@ -149,7 +149,7 @@ it.each(["source", "target"] as const)("keeps pending %s database choices when t
   const { endpoints, container } = mountPostgresEndpoint(side);
   await flushAsyncSetup();
 
-  const triggers = [...container.querySelectorAll<HTMLButtonElement>("button.dbx-searchable-select-trigger")];
+  const triggers = [...container.querySelectorAll<HTMLButtonElement>("button.linop-db-searchable-select-trigger")];
   const database = triggers.find((button) => button.textContent?.trim() === "app")!;
   const schema = triggers.find((button) => button.textContent?.trim() === "public")!;
   expect(database.disabled).toBe(true);
@@ -189,7 +189,7 @@ it.each(["source", "target"] as const)("rejects stale %s database choices after 
 
   resolveOldDatabases([{ name: "obsolete" }]);
   await flushAsyncSetup();
-  const database = [...container.querySelectorAll<HTMLButtonElement>("button.dbx-searchable-select-trigger")].find((button) => button.textContent?.trim() === "app")!;
+  const database = [...container.querySelectorAll<HTMLButtonElement>("button.linop-db-searchable-select-trigger")].find((button) => button.textContent?.trim() === "app")!;
   expect(database.disabled).toBe(false);
   database.click();
   await flushAsyncSetup();

@@ -10,11 +10,11 @@ Base: `0297c5ecf9d727b18e918175d1bcc2f8aa08f08f` (upstream main).
 
 | Check | Result |
 | --- | --- |
-| `cargo test -p dbx-driver-mysql --locked` | 299 passed, 4 pre-existing live-environment tests ignored; doctests passed (0 cases) |
+| `cargo test -p linop-db-driver-mysql --locked` | 299 passed, 4 pre-existing live-environment tests ignored; doctests passed (0 cases) |
 | `pnpm test --maxWorkers=4` | 1,963 files, 26,313 tests passed |
 | `NODE_OPTIONS=--max-old-space-size=8192 pnpm typecheck` | Passed |
-| `cargo clippy -p dbx-driver-mysql --all-targets --no-deps --locked -- -D warnings` | Passed |
-| `rustfmt --edition 2021 --check crates/dbx-driver-mysql/src/mysql.rs` | Passed |
+| `cargo clippy -p linop-db-driver-mysql --all-targets --no-deps --locked -- -D warnings` | Passed |
+| `rustfmt --edition 2021 --check crates/linop-db-driver-mysql/src/mysql.rs` | Passed |
 | `pnpm exec oxfmt --check` on changed TypeScript files | Passed |
 | `pnpm exec oxlint --vue-plugin` on changed connection hint/test files | Passed |
 | `git diff --check` | Passed |
@@ -51,7 +51,7 @@ Base: `0297c5ecf9d727b18e918175d1bcc2f8aa08f08f` (upstream main).
 - Default-heap type checking exhausted the Node heap. The complete check passed
   with the explicit 8 GB heap limit above.
 - Dependency-inclusive Clippy with Rust 1.95 stopped on three unchanged
-  `dbx-sql-core` warnings: `nonminimal_bool` in
+  `linop-db-sql-core` warnings: `nonminimal_bool` in
   `object_source_sql/oracle_routines/analysis.rs:442` and `collapsible_match` in
   `sql_analysis.rs:1486` and `sql_analysis.rs:1517`. The strict MySQL-only check
   passed. These unrelated files were not modified.

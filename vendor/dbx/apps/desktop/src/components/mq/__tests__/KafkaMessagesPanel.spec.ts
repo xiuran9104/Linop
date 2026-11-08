@@ -118,7 +118,7 @@ describe("KafkaMessagesPanel", () => {
     loadButton.click();
     await flushUi();
 
-    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__dbx_kafka_viewer__", 20, { startPosition: "latest" });
+    expect(backend.mqPeekMessages).toHaveBeenCalledWith("mq-1", expect.objectContaining({ topic: "events" }), "__linop_db_kafka_viewer__", 20, { startPosition: "latest" });
   });
 
   it("keeps message browsing available when partition stats fail", async () => {

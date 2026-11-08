@@ -86,16 +86,16 @@ describe("WebDAV last upload timestamp storage", () => {
     const config = { endpoint: "https://dav.example.com" };
     expect(readWebDavLastUploadAt(config)).toBeNull();
 
-    values.set("dbx-webdav-last-upload-at", "0");
+    values.set("linop-db-webdav-last-upload-at", "0");
     expect(readWebDavLastUploadAt(config)).toBeNull();
 
-    values.set("dbx-webdav-last-upload-at", "-123");
+    values.set("linop-db-webdav-last-upload-at", "-123");
     expect(readWebDavLastUploadAt(config)).toBeNull();
 
-    values.set("dbx-webdav-last-upload-at", "not-a-number");
+    values.set("linop-db-webdav-last-upload-at", "not-a-number");
     expect(readWebDavLastUploadAt(config)).toBeNull();
 
-    values.set("dbx-webdav-last-upload-at", JSON.stringify({ other: "invalid" }));
+    values.set("linop-db-webdav-last-upload-at", JSON.stringify({ other: "invalid" }));
     expect(readWebDavLastUploadAt(config)).toBeNull();
   });
 

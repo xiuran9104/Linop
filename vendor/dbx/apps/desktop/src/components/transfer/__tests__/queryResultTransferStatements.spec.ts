@@ -18,7 +18,7 @@ describe("query result transfer statements", () => {
   it("restores SQL Server session state and rethrows percent-containing error text safely", () => {
     const sql = withSqlServerIdentityInsert("[t]", ["INSERT INTO [t] ([id]) VALUES (1)"]);
     expect(sql.match(/SET IDENTITY_INSERT \[t\] OFF/g)).toHaveLength(2);
-    expect(sql).toContain("RAISERROR(N'%s', 16, 1, @dbx_transfer_error)");
+    expect(sql).toContain("RAISERROR(N'%s', 16, 1, @linop_db_transfer_error)");
     expect(sql.indexOf("ERROR_MESSAGE()")).toBeLessThan(sql.lastIndexOf("SET IDENTITY_INSERT [t] OFF"));
     // executeInTransaction sends this array element as one SQL Server batch;
     // it must keep ON, inserts and both OFF paths within that same session.
@@ -29,18 +29,18 @@ describe("query result transfer statements", () => {
     const sql = postgresTransferSequenceSyncSql('"public"."copy"', "id");
     expect(sql).toContain("SELECT increment_by FROM ");
     expect(sql).toContain("SELECT seqincrement FROM pg_catalog.pg_sequence");
-    expect(sql).toContain("CASE WHEN dbx_increment > 0 THEN 'MAX' ELSE 'MIN' END");
-    expect(sql).toContain("dbx_next := dbx_last + CASE WHEN dbx_called THEN dbx_increment ELSE 0 END");
-    expect(sql).toContain("FLOOR((dbx_edge - dbx_next) / dbx_increment) * dbx_increment");
+    expect(sql).toContain("CASE WHEN linop_db_increment > 0 THEN 'MAX' ELSE 'MIN' END");
+    expect(sql).toContain("linop_db_next := linop_db_last + CASE WHEN linop_db_called THEN linop_db_increment ELSE 0 END");
+    expect(sql).toContain("FLOOR((linop_db_edge - linop_db_next) / linop_db_increment) * linop_db_increment");
     expect(sql.indexOf("' INCREMENT BY '")).toBeLessThan(sql.indexOf("SELECT last_value"));
     expect(sql).not.toContain("setval(");
-    expect(sql).toContain("END;\n$dbx_transfer$");
+    expect(sql).toContain("END;\n$linop_db_transfer$");
     expect(splitSqlStatementRanges(sql, "postgres")).toHaveLength(1);
   });
 
   it("quotes PostgreSQL names and chooses a delimiter that cannot occur in user input", () => {
-    const sql = postgresTransferSequenceSyncSql('"s"."copy$dbx_transfer$"', "id'\"\\");
-    expect(sql).toMatch(/^DO \$dbx_transfer_\$/);
+    const sql = postgresTransferSequenceSyncSql('"s"."copy$linop_db_transfer$"', "id'\"\\");
+    expect(sql).toMatch(/^DO \$linop_db_transfer_\$/);
     expect(sql).toContain("pg_get_serial_sequence");
     expect(splitSqlStatementRanges(sql, "postgres")).toHaveLength(1);
   });

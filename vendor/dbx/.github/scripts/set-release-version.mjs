@@ -14,7 +14,7 @@ if (!match) {
 
 const version = `${match[1]}${match[2] || ""}`;
 const jsonFiles = ["package.json", "src-tauri/tauri.conf.json"];
-const cargoFiles = ["src-tauri/Cargo.toml", "crates/dbx-web/Cargo.toml"];
+const cargoFiles = ["src-tauri/Cargo.toml", "crates/linop-db-web/Cargo.toml"];
 
 for (const relativePath of jsonFiles) {
   const path = resolve(root, relativePath);
@@ -36,7 +36,7 @@ const lockPath = resolve(root, "Cargo.lock");
 // Windows runners check Cargo.lock out with CRLF line endings.
 const lockSource = readFileSync(lockPath, "utf8");
 let lockUpdated = lockSource;
-for (const packageName of ["dbx", "dbx-web"]) {
+for (const packageName of ["dbx", "linop-db-web"]) {
   const pattern = new RegExp(`(\\[\\[package\\]\\]\\r?\\nname = "${packageName}"\\r?\\nversion = ")[^\\r\\n"]+(")`);
   if (!pattern.test(lockUpdated)) throw new Error(`${packageName} package version was not found in Cargo.lock.`);
   lockUpdated = lockUpdated.replace(pattern, `$1${version}$2`);

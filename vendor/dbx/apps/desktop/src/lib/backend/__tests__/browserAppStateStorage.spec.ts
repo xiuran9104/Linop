@@ -63,7 +63,7 @@ describe("saveBrowserAppState", () => {
 
     await expect(saveBrowserAppState("transfer_task_library", { version: 1 })).resolves.toBeUndefined();
 
-    expect(globalThis.localStorage.setItem).toHaveBeenCalledWith("dbx-app-state:transfer_task_library", JSON.stringify({ version: 1 }));
+    expect(globalThis.localStorage.setItem).toHaveBeenCalledWith("linop-db-app-state:transfer_task_library", JSON.stringify({ version: 1 }));
   });
 
   it("normalizes reactive proxies so IndexedDB structured clone cannot reject the put", async () => {
@@ -94,7 +94,7 @@ describe("saveBrowserAppState", () => {
     expect("untouched" in storedTabs[0]).toBe(false);
     // A successful IndexedDB write clears any stale fallback copy instead of
     // leaving an older localStorage value that a future load could resurrect.
-    expect(globalThis.localStorage.removeItem).toHaveBeenCalledWith("dbx-app-state:open_tabs");
+    expect(globalThis.localStorage.removeItem).toHaveBeenCalledWith("linop-db-app-state:open_tabs");
     expect(globalThis.localStorage.setItem).not.toHaveBeenCalled();
   });
 

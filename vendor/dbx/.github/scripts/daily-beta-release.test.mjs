@@ -9,7 +9,7 @@ const workflow = readFileSync(new URL("../workflows/daily-beta-release.yml", imp
 const script = workflow.match(/        run: \|\n((?:          [^\n]*\n|\n)*)/)[1].replace(/^ {10}/gm, "");
 
 function runDaily(options = {}) {
-  const root = mkdtempSync(join(tmpdir(), "dbx-daily-beta-test-"));
+  const root = mkdtempSync(join(tmpdir(), "linop-db-daily-beta-test-"));
   const statePath = join(root, "state.json");
   const gh = join(root, "gh");
   writeFileSync(statePath, JSON.stringify({ calls: [] }));

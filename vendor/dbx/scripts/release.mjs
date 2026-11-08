@@ -34,16 +34,16 @@ const PACKAGE_RELEASE_PATHS = [
   "packages/mcp-linux-x64-gnu/",
   "packages/mcp-win32-arm64/",
   "packages/mcp-win32-x64/",
-  "crates/dbx-mcp/",
-  "crates/dbx-cli/",
-  // dbx-core (and the crates it forwards) is statically linked into both
+  "crates/linop-db-mcp/",
+  "crates/linop-db-cli/",
+  // linop-db-core (and the crates it forwards) is statically linked into both
   // binaries, so its changes ship in the next npm release too.
-  "crates/dbx-core/",
-  "crates/dbx-drivers/",
-  "crates/dbx-sql/",
-  "crates/dbx-types/",
+  "crates/linop-db-core/",
+  "crates/linop-db-drivers/",
+  "crates/linop-db-sql/",
+  "crates/linop-db-types/",
   "skills/dbx/",
-  "crates/dbx-driver-mongodb/src/mongo_shell.rs",
+  "crates/linop-db-driver-mongodb/src/mongo_shell.rs",
   "Cargo.toml",
   "Cargo.lock",
   ".github/workflows/mcp-release.yml",
@@ -428,7 +428,7 @@ function getLatestAgentTag() {
   const tag = getLatestSemverTag(AGENT_TAG_PREFIX);
   if (tag) return { tag: tag.tag, source: "current repo" };
 
-  const legacyRepo = "../dbx-agents";
+  const legacyRepo = "../linop-db-agents";
   const legacyRepoCheck = spawnSync("git", ["-C", legacyRepo, "rev-parse", "--is-inside-work-tree"], {
     cwd: process.cwd(),
     encoding: "utf8",

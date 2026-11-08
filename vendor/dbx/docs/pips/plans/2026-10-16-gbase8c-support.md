@@ -60,10 +60,10 @@ GBase 8c 的内核是 openGauss（PostgreSQL 9.2 世代），因此**原生 Rust
 
 | 模式 | `datcompatibility` | 裸标识符 | 双引号 `"na me"` | 反引号 `` `na me` `` |
 |---|---|---|---|---|
-| dbx_a | A（Oracle） | 可用 | **可用** | `ERROR: syntax error at or near "`"` |
-| dbx_b | B（MySQL） | 可用 | **可用** | `ERROR: syntax error at or near "`"` |
-| dbx_c | C（Teradata） | 可用 | **可用** | `ERROR: syntax error at or near "`"` |
-| dbx_pg | PG | 可用 | **可用** | `ERROR: syntax error at or near "`"` |
+| linop_db_a | A（Oracle） | 可用 | **可用** | `ERROR: syntax error at or near "`"` |
+| linop_db_b | B（MySQL） | 可用 | **可用** | `ERROR: syntax error at or near "`"` |
+| linop_db_c | C（Teradata） | 可用 | **可用** | `ERROR: syntax error at or near "`"` |
+| linop_db_pg | PG | 可用 | **可用** | `ERROR: syntax error at or near "`"` |
 
 也就是说 **GBase 8c 在任何兼容模式下都不接受反引号**，B 模式也照样是双引号——`gaussdbIdentifierQuote` 里 `M|B|MYSQL → 反引号` 那条映射是华为 GaussDB 的行为，不是 GBase 8c 的行为。若照原方案接线，B 模式会开始输出反引号，**把本来能用的查询改成语法错误**。
 
@@ -71,7 +71,7 @@ GBase 8c 的内核是 openGauss（PostgreSQL 9.2 世代），因此**原生 Rust
 
 `SELECT datcompatibility FROM pg_catalog.pg_database WHERE datname = current_database()` 在该实例上确实可用（返回 `PG`/`A`/`B`/`C`），只是**本类型不需要它**。
 
-顺带实测：`SET search_path TO "dbx_smoke"` 在四种模式下均无报错，故 profile 的 `schemaSwitchPrefix` 取 `SET search_path TO` 正确。
+顺带实测：`SET search_path TO "linop_db_smoke"` 在四种模式下均无报错，故 profile 的 `schemaSwitchPrefix` 取 `SET search_path TO` 正确。
 
 ## 驱动架构与文件清单
 
@@ -91,32 +91,32 @@ GBase 8c 的内核是 openGauss（PostgreSQL 9.2 世代），因此**原生 Rust
 | `apps/desktop/src/lib/database/databaseNamespaceCreation.ts` | 修改 | `Record<DatabaseType, …>` 矩阵加 `gbase8c`（deferred：建库要显式 `DBCOMPATIBILITY`） |
 | `apps/desktop/src/lib/database/databasePropertyEditing.ts` | 修改 | 同一张 `Record<DatabaseType, …>` 矩阵加 `gbase8c`（deferred） |
 | `docs/data/databaseSupport.ts` | 修改 | 加一行 `gbase8c` |
-| `crates/dbx-types/src/models/connection.rs` | 修改 | `default_database` → `Some("postgres")`；脱敏 URL 与带凭据 URL 各加一支 `gbase8c://` |
-| `crates/dbx-sql-dialect/src/sql_dialect/ddl_profile.rs` | 修改 | `profile_for` 的 PG 家族臂加 `Gbase8c`（**编译必需**） |
-| `crates/dbx-sql-dialect/src/sql_dialect/capabilities.rs` | 修改 | `is_schema_aware` 加 `Gbase8c`（`schemaAware` 在 Rust 侧**唯一**载体：capabilities/traits 不进 `DatabaseManifestEntry`） |
-| `crates/dbx-sql-core/src/sql.rs` | 修改 | `is_postgres_string_lexer_database` 加 `Gbase8c`（字面量词法 `E'…'`/嵌套注释） |
-| `crates/dbx-sql-core/src/query_execution_sql.rs`、`sql_risk.rs` | 修改 | PG 家族写检测加 `Gbase8c`（缺了会让 `SELECT … INTO newtable` 漏检成只读） |
-| `crates/dbx-sql-data/src/data_grid_sql.rs` | 修改 | 三处：字面量反斜杠保留、`col::text` 过滤转换、无主键行谓词 |
-| `crates/dbx-sql-data/src/database_structure_search_sql.rs` | 修改 | 结构搜索的 PG 家族臂加 `Gbase8c`（缺了功能静默不可用） |
-| `crates/dbx-sql-schema/src/schema_diff.rs` | 修改 | `is_postgres_family_ddl` 加 `Gbase8c`（`compareModes` 含 schema） |
-| `crates/dbx-sql-schema/src/db_admin_sql.rs` | 修改 | `supports_vacuum_table`（`pgVacuum` 的唯一载体）、`supports_truncate_table_cascade` |
-| `crates/dbx-core/src/connection/mod.rs` | 修改 | `agent_connection_pool_database_type!` 宏加 `Gbase8c`（**编译必需**：`:2780` 的 `match` 无通配） |
-| `crates/dbx-core/src/safety/production_safety.rs` | 修改 | `schema_first_qualifier_type`（两段名归属判定）+ SQL 扫描器的 `postgres_family` |
-| `crates/dbx-core/src/data/script_generator.rs` | 修改 | 幂等 `CREATE TABLE` 重写的 PG 臂 |
-| `crates/dbx-core/tests/database_capabilities.rs` | 修改 | `agent_key` / `is_agent_type` / 产品能力断言 |
+| `crates/linop-db-types/src/models/connection.rs` | 修改 | `default_database` → `Some("postgres")`；脱敏 URL 与带凭据 URL 各加一支 `gbase8c://` |
+| `crates/linop-db-sql-dialect/src/sql_dialect/ddl_profile.rs` | 修改 | `profile_for` 的 PG 家族臂加 `Gbase8c`（**编译必需**） |
+| `crates/linop-db-sql-dialect/src/sql_dialect/capabilities.rs` | 修改 | `is_schema_aware` 加 `Gbase8c`（`schemaAware` 在 Rust 侧**唯一**载体：capabilities/traits 不进 `DatabaseManifestEntry`） |
+| `crates/linop-db-sql-core/src/sql.rs` | 修改 | `is_postgres_string_lexer_database` 加 `Gbase8c`（字面量词法 `E'…'`/嵌套注释） |
+| `crates/linop-db-sql-core/src/query_execution_sql.rs`、`sql_risk.rs` | 修改 | PG 家族写检测加 `Gbase8c`（缺了会让 `SELECT … INTO newtable` 漏检成只读） |
+| `crates/linop-db-sql-data/src/data_grid_sql.rs` | 修改 | 三处：字面量反斜杠保留、`col::text` 过滤转换、无主键行谓词 |
+| `crates/linop-db-sql-data/src/database_structure_search_sql.rs` | 修改 | 结构搜索的 PG 家族臂加 `Gbase8c`（缺了功能静默不可用） |
+| `crates/linop-db-sql-schema/src/schema_diff.rs` | 修改 | `is_postgres_family_ddl` 加 `Gbase8c`（`compareModes` 含 schema） |
+| `crates/linop-db-sql-schema/src/db_admin_sql.rs` | 修改 | `supports_vacuum_table`（`pgVacuum` 的唯一载体）、`supports_truncate_table_cascade` |
+| `crates/linop-db-core/src/connection/mod.rs` | 修改 | `agent_connection_pool_database_type!` 宏加 `Gbase8c`（**编译必需**：`:2780` 的 `match` 无通配） |
+| `crates/linop-db-core/src/safety/production_safety.rs` | 修改 | `schema_first_qualifier_type`（两段名归属判定）+ SQL 扫描器的 `postgres_family` |
+| `crates/linop-db-core/src/data/script_generator.rs` | 修改 | 幂等 `CREATE TABLE` 重写的 PG 臂 |
+| `crates/linop-db-core/tests/database_capabilities.rs` | 修改 | `agent_key` / `is_agent_type` / 产品能力断言 |
 
 ### 刻意不做的改动
 
 | 位置 | 为什么不改 |
 |---|---|
 | `agents/common/**` | 原计划要把 `gbase8c` 加进 `isPostgresCompatibleJdbc`，被实测推翻（见决策 5）；本功能零共享 Java 代码改动 |
-| `crates/dbx-driver-agent/src/agent_connection.rs` | `agent_connect_params_with_role` 的三段 postgres-like 分支都**不能**加 `Gbase8c`：只加 `:106/:122` 会在 `:555-561` 的 scheme `match` 撞 `unreachable!()`；两处都加则 Rust 会自己拼 URL，与「Java profile 自己拼 `jdbc:gbase8c://`」冲突。兜底臂 `:141-143` 返回空 `connection_string`，正是 Java `JdbcAgentProfile.buildUrl` 期望的输入 |
+| `crates/linop-db-driver-agent/src/agent_connection.rs` | `agent_connect_params_with_role` 的三段 postgres-like 分支都**不能**加 `Gbase8c`：只加 `:106/:122` 会在 `:555-561` 的 scheme `match` 撞 `unreachable!()`；两处都加则 Rust 会自己拼 URL，与「Java profile 自己拼 `jdbc:gbase8c://`」冲突。兜底臂 `:141-143` 返回空 `connection_string`，正是 Java `JdbcAgentProfile.buildUrl` 期望的输入 |
 | `src-tauri/src/commands/connection.rs` | agent 家族路由由 manifest 驱动（`database_capabilities::is_agent_type` ← `database_manifest::is_agent_runtime`），`Gbase8c` 自动命中 `:1845`/`:2313` 的守卫臂 |
-| `crates/dbx-core/src/schema/providers/native.rs` | 该 provider 无任何调用点（`providers/mod.rs` 只有一行 `pub(super) mod native;`，`crates/dbx-core/src` 内 grep `native::` 零命中），且 agent 类型不会进去 |
-| `crates/dbx-core/src/connection/mod.rs:1066 needs_legacy_postgres_like_database_probe` | 它给「旧记录/被清空的 database」在 `postgres` 不存在时回退 `template1`。实测实例的 `postgres` 存在，`default_database()` 现在也给 `postgres`，没有 legacy 记录需要兜底；纳入会引入每次空库连接的探测成本 |
-| `crates/dbx-core/src/schema/mod.rs:7765 is_agent_postgres_metadata_fallback_config` | 是否让 agent 元数据缺失时回退原生 tokio-postgres 池需要针对本类型实测（注释明确 UXDB 被排除，并非「PG 家族一律纳入」） |
-| `crates/dbx-core/src/schema/mod.rs:9942 is_agent_pg_sequence_config` | 序列走 agent 的 `relkind='S'` 查询还是原路径，同样需要实测 |
-| `crates/dbx-core/src/schema/mod.rs:11083 supports_custom_type_details` | 刻意收窄的「已验证五族」名单，测试 `:3513-3532` 反而断言 Highgo/Uxdb 为假 |
+| `crates/linop-db-core/src/schema/providers/native.rs` | 该 provider 无任何调用点（`providers/mod.rs` 只有一行 `pub(super) mod native;`，`crates/linop-db-core/src` 内 grep `native::` 零命中），且 agent 类型不会进去 |
+| `crates/linop-db-core/src/connection/mod.rs:1066 needs_legacy_postgres_like_database_probe` | 它给「旧记录/被清空的 database」在 `postgres` 不存在时回退 `template1`。实测实例的 `postgres` 存在，`default_database()` 现在也给 `postgres`，没有 legacy 记录需要兜底；纳入会引入每次空库连接的探测成本 |
+| `crates/linop-db-core/src/schema/mod.rs:7765 is_agent_postgres_metadata_fallback_config` | 是否让 agent 元数据缺失时回退原生 tokio-postgres 池需要针对本类型实测（注释明确 UXDB 被排除，并非「PG 家族一律纳入」） |
+| `crates/linop-db-core/src/schema/mod.rs:9942 is_agent_pg_sequence_config` | 序列走 agent 的 `relkind='S'` 查询还是原路径，同样需要实测 |
+| `crates/linop-db-core/src/schema/mod.rs:11083 supports_custom_type_details` | 刻意收窄的「已验证五族」名单，测试 `:3513-3532` 反而断言 Highgo/Uxdb 为假 |
 | `agents/metadata-constraint-coverage.tsv` | 该表只要求覆写了 `listTables`/`listObjects` 的驱动登记；本 agent 不覆写，靠收窄 `tableTypes` 白名单解决 |
 | `deploy/database/gbase8c/**` | Q9 决策：不做菜谱 |
 
@@ -215,14 +215,14 @@ pg_catalog, pkg_service, securityadmin, snapshot, sqladvisor, sysadmin
 | 位置 | 改动 |
 |---|---|
 | ~~`agents/common/src/main/java/com/dbx/agent/AbstractJdbcAgent.java:534-554`~~ | **不改**：实测推翻（见决策 5）。`isPostgresCompatibleJdbc` 的唯一消费点是 `:448` 的 `resolveIdentifierQuote`，默认回落给出的双引号在四种模式下都正确 |
-| `crates/dbx-types/build.rs` | 无需改（读目录自动生成 `DatabaseType::Gbase8c`） |
-| `crates/dbx-core/src/connection/mod.rs:2780+` | 无需改（agent 路线不发原生 pool） |
+| `crates/linop-db-types/build.rs` | 无需改（读目录自动生成 `DatabaseType::Gbase8c`） |
+| `crates/linop-db-core/src/connection/mod.rs:2780+` | 无需改（agent 路线不发原生 pool） |
 | `src-tauri/src/commands/connection.rs:1432` | 无需改（同上） |
-| `crates/dbx-core/src/schema/providers/native.rs` | 无需改（同上） |
+| `crates/linop-db-core/src/schema/providers/native.rs` | 无需改（同上） |
 | `apps/desktop/src/components/connection/ConnectionDialog.vue:3778-3780` | `supportsNativeAgentJdbcDriverConfigType` 加 `gbase8c`，否则用户在表单里看不到 `jdbc_driver_paths` |
 | `apps/desktop/src/components/connection/ConnectionDialog.vue:3795-3799` | `nativeAgentJdbcDriverHint` 加 `gbase8c` 分支 |
 | ~~`apps/desktop/src/lib/database/gbase8cDriverOptions.ts`~~ | **不建**：`AbstractJdbcAgent.loadDriver`（`:127-144`）在 `jdbc_driver_class` 为空时回落到 profile 的 `driverClass()`，所以只给 `jdbc_driver_paths` 即可；唯一先例 `bigquery`（同为 `Agent-External-Driver`）也没有 `*DriverOptions.ts` |
-| `crates/dbx-core/assets/database-drivers.manifest.json`（生成物） | 由 `pnpm generate:connection-types` 重生成 |
+| `crates/linop-db-core/assets/database-drivers.manifest.json`（生成物） | 由 `pnpm generate:connection-types` 重生成 |
 
 ## 非目标
 
@@ -256,9 +256,9 @@ pg_catalog, pkg_service, securityadmin, snapshot, sqladvisor, sysadmin
 | `JDBC getDatabaseProductName/Version` | `GBase8c` / `9.2.4` |
 | `show server_version_num` | `90204` |
 | `datcompatibility` | `postgres = PG`、`template0 = A`、`template1 = A` |
-| 四模式建库 | `CREATE DATABASE dbx_a/dbx_b/dbx_c/dbx_pg DBCOMPATIBILITY 'A'/'B'/'C'/'PG'` 全部成功，同实例共存 |
-| `dolphin%` schema（B 模式重写目标） | `dbx_b` 中计数为 0 |
-| `current_schema()` | 用户 `dbx` 在 `postgres` 里是 `dbx`，在 `dbx_pg`/`dbx_a`/`dbx_b`/`dbx_c` 里是 `public`；同名用户 schema 只在 `postgres` 存在 |
+| 四模式建库 | `CREATE DATABASE linop_db_a/linop_db_b/linop_db_c/linop_db_pg DBCOMPATIBILITY 'A'/'B'/'C'/'PG'` 全部成功，同实例共存 |
+| `dolphin%` schema（B 模式重写目标） | `linop_db_b` 中计数为 0 |
+| `current_schema()` | 用户 `dbx` 在 `postgres` 里是 `dbx`，在 `linop_db_pg`/`linop_db_a`/`linop_db_b`/`linop_db_c` 里是 `public`；同名用户 schema 只在 `postgres` 存在 |
 
 ### A.3 目录面
 
@@ -285,7 +285,7 @@ pg_catalog, pkg_service, securityadmin, snapshot, sqladvisor, sysadmin
 | `getTables(types={TABLE,VIEW})` | 精确 2 行 |
 | `getTables(types={TABLE,VIEW,SYSTEM TABLE,SYSTEM VIEW})` 跨全 schema | **531 行，其中 331 行是 SYSTEM**（`pg_catalog.gs_*`、`information_schema.sql_*`） |
 | `getSchemas()` | 19 个，含 `dbe_*`/`cstore`/`db4ai`/`blockchain`/`securityadmin`/`sysadmin`/`snapshot`/`sqladvisor`/`pkg_service`/`auditadmin`/`audituser`/`coverage`；不含 `dbx` |
-| `getTables` 行的 catalog | `TABLE_CAT=null`、`TABLE_SCHEM=dbx_smoke` |
+| `getTables` 行的 catalog | `TABLE_CAT=null`、`TABLE_SCHEM=linop_db_smoke` |
 | `getProcedures` / `getFunctions` | 函数出现在 `getProcedures`（`PROCEDURE_TYPE=2`），`getFunctions` 返回 0 行 |
 | `getImportedKeys` | 可用：`fk=child_pid_fkey pid -> t1.id updateRule=3 deleteRule=3` |
 | 表注释 | 经 `getTables` 的 `REMARKS` 返回（实测 `remarks=smoke table`） |
@@ -337,7 +337,7 @@ pg_catalog, pkg_service, securityadmin, snapshot, sqladvisor, sysadmin
 
 ### `schemaSearch` 的证据
 
-结构搜索的 SQL 由 Rust 侧的 `postgres_family_structure_search_sql`（`crates/dbx-sql-data/src/database_structure_search_sql.rs:179-222`）生成，Java 测试拿不到它，因此把生成的字符串按 `schema=None` / `schema='public'`、`term='probe'`、`limit=200` 复刻后用容器内 `gsql` 对同一实例执行，两种过滤都返回同样的两行：
+结构搜索的 SQL 由 Rust 侧的 `postgres_family_structure_search_sql`（`crates/linop-db-sql-data/src/database_structure_search_sql.rs:179-222`）生成，Java 测试拿不到它，因此把生成的字符串按 `schema=None` / `schema='public'`、`term='probe'`、`limit=200` 复刻后用容器内 `gsql` 对同一实例执行，两种过滤都返回同样的两行：
 
 | object_schema | object_name | column_name | column_comment | table_comment |
 |---|---|---|---|---|
@@ -354,7 +354,7 @@ Agent 用 `jdbc:gbase8c://{host}:{port}/{database}` 拼 URL。库名留空时 UR
 
 | URL | 结果 |
 |---|---|
-| `jdbc:gbase8c://127.0.0.1:15432/dbx_pg` | 连上，`current_database=dbx_pg`、`current_schema=public` |
+| `jdbc:gbase8c://127.0.0.1:15432/linop_db_pg` | 连上，`current_database=linop_db_pg`、`current_schema=public` |
 | `jdbc:gbase8c://127.0.0.1:15432/` | `FATAL: database "dbx" does not exist`（驱动拿用户名当库名） |
 | `jdbc:gbase8c://127.0.0.1:15432` | `No suitable driver found`（URL 必须在 host/port 后带 `/`） |
 
@@ -364,7 +364,7 @@ Agent 用 `jdbc:gbase8c://{host}:{port}/{database}` 拼 URL。库名留空时 UR
 
 `agents/drivers/gbase8c/build.gradle` 用 `fileTree(dir: 'libs', include: ['*.jar'])` 收集依赖，而 `agents/.gitignore:1` 的 `**/libs/*.jar` 只允许厂商 jar 存在于本地。于是：
 
-- **本地**：`libs/gbase8c-jdbc-3.0.0B02.jar` 在 → Gradle 打出的 `dbx-agent-gbase8c.jar` **内含** `com/gbase8c/Driver.class`（本次实测该包 1699797 B，内部确认有 `com/gbase8c/**`），驱动管理装的就是它，所以本机连接不再需要填 jar；跑 `Gbase8cAgentLiveTest` 也依赖这个 jar 在 `libs/` 里。
+- **本地**：`libs/gbase8c-jdbc-3.0.0B02.jar` 在 → Gradle 打出的 `linop-db-agent-gbase8c.jar` **内含** `com/gbase8c/Driver.class`（本次实测该包 1699797 B，内部确认有 `com/gbase8c/**`），驱动管理装的就是它，所以本机连接不再需要填 jar；跑 `Gbase8cAgentLiveTest` 也依赖这个 jar 在 `libs/` 里。
 - **发布**：CI 从干净检出构建，`libs/` 为空 → 包内没有厂商驱动，`Agent-External-Driver: true` 对应的 `external_driver_required: true` 才是真的，用户必须自备 jar。
 
 这个差异本身是设计允许的（同一份源码在两种环境下各取所需），但**在带着 `libs/` 的机器上跑 `release:agents`，会打出一个内含厂商 jar 却声明「需要外部驱动」的包**，等于在没有再分发许可的情况下分发了该 jar。`agents/scripts/validate_agents.py` 目前没有这条检查（全仓唯一相关断言是 `agents/drivers/transwarp/src/test/java/com/dbx/agent/transwarp/TranswarpAgentTest.java:179` 的 `assertFalse(...)`，方向正好相反）。建议在发布流程里补一条「声明外部驱动的模块，其 shadow jar 不得包含该驱动类」的校验；本 spec 不含这项改动。
@@ -375,7 +375,7 @@ Agent 用 `jdbc:gbase8c://{host}:{port}/{database}` 拼 URL。库名留空时 UR
 
 1. 取包：`https://www.gbase.cn/download/gbase-8c?category=INSTALL_PACKAGE`（需登录）→ `GBase8cV6_S1.0.0B20_centos7.8_x86_64.tar.gz`（306043750 B，sha256 `7C69D7446D0E8EB9B60F188F1532C2DB826865447BCE4C1650CF5537DF2CAFCB`）
 2. 解包：内含 `…_CentOS_x86_64.tar.bz2`（server 树，1559 项）、`…_om.tar.gz`（OM 工具）、`upgrade_sql.tar.gz`
-3. 基座：`docker run -d --name dbx-gbase8c-test -p 15432:5432 centos:7.9.2009 sleep infinity`
+3. 基座：`docker run -d --name linop-db-gbase8c-test -p 15432:5432 centos:7.9.2009 sleep infinity`
 4. 依赖：把 `CentOS-*.repo` 移走，写 vault 源（`http://vault.centos.org/7.9.2009/os/x86_64/` + `/updates/x86_64/`，`gpgcheck=0`），装 `libaio-0.3.109-13.el7`
 5. 安装：建非 root 用户 `gbase`，server 树放 `/opt/gbase`，`sh simpleInstall/install.sh -w '<强密码>'`（stdin 喂 `no` 跳过 demo 库；注意答 `no` 时脚本退出码为 1 但安装成功）
 6. 远端接入：`postgresql.conf` 改 `listen_addresses = '*'`、`password_encryption_type = 1`（或 2），`pg_hba.conf` 追加 `host all all 0.0.0.0/0 sha256`，`gs_ctl stop/start -Z single_node`

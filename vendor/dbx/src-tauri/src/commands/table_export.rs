@@ -3,7 +3,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::connection::AppState;
 
-pub use dbx_core::table_export::{ExportStatus, TableExportProgress, TableExportRequest};
+pub use linop_db_core::table_export::{ExportStatus, TableExportProgress, TableExportRequest};
 
 fn emit_progress(app: &AppHandle, progress: TableExportProgress) {
     let _ = app.emit("table-export-progress", progress);
@@ -46,7 +46,7 @@ async fn finalize_export(
     let remove_result = remove_incomplete_export(file_path, result.is_err(), was_cancelled).await;
     close_result?;
     remove_result?;
-    dbx_core::database_export::clear_export_cancelled(export_id).await;
+    linop_db_core::database_export::clear_export_cancelled(export_id).await;
     if let Err(error) = result {
         emit(TableExportProgress {
             export_id: export_id.to_string(),
@@ -68,16 +68,16 @@ pub async fn start_table_export(
     state: State<'_, Arc<AppState>>,
     request: TableExportRequest,
 ) -> Result<(), String> {
-    dbx_core::query::mysql_data_charset_policy::check_export(&state, &request.connection_id, &request.format).await?;
+    linop_db_core::query::mysql_data_charset_policy::check_export(&state, &request.connection_id, &request.format).await?;
     let state = state.inner().clone();
     let export_id = request.export_id.clone();
     let file_path = request.file_path.clone();
 
     // Exports interleave async fetches with synchronous row formatting and
     // buffered disk writes; run them off the async workers (see spawn_export_task).
-    dbx_core::export_runtime::spawn_export_task(async move {
+    linop_db_core::export_runtime::spawn_export_task(async move {
         let terminal = Mutex::new(None);
-        let completion = dbx_core::table_export::export_table_data_core_with_completion(&state, &request, |progress| {
+        let completion = linop_db_core::table_export::export_table_data_core_with_completion(&state, &request, |progress| {
             route_core_progress(progress, &terminal, |progress| emit_progress(&app, progress));
         })
         .await;
@@ -108,7 +108,7 @@ pub async fn start_table_export(
 
 #[tauri::command]
 pub async fn cancel_table_export(export_id: String) -> Result<(), String> {
-    dbx_core::database_export::set_export_cancelled(&export_id).await;
+    linop_db_core::database_export::set_export_cancelled(&export_id).await;
     Ok(())
 }
 
@@ -199,7 +199,7 @@ mod tests {
     }
 
     async fn create_export_file(name: &str) -> std::path::PathBuf {
-        let path = std::env::temp_dir().join(format!("dbx-table-export-{name}-{}", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-table-export-{name}-{}", uuid::Uuid::new_v4()));
         tokio::fs::write(&path, b"partial export").await.unwrap();
         path
     }
@@ -249,7 +249,7 @@ mod tests {
         assert!(!emitted.get());
         assert!(!path.exists());
 
-        let directory = std::env::temp_dir().join(format!("dbx-delete-failure-{}", uuid::Uuid::new_v4()));
+        let directory = std::env::temp_dir().join(format!("linop-db-delete-failure-{}", uuid::Uuid::new_v4()));
         tokio::fs::create_dir(&directory).await.unwrap();
         let result = finalize_export(
             "queued-export",

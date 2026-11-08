@@ -79,7 +79,7 @@ describe("connectionAttemptTimeout", () => {
           {
             type: "http_tunnel",
             id: "http",
-            url: "https://dbx.example.com/dbx_tunnel.php",
+            url: "https://dbx.example.com/linop_db_tunnel.php",
             connect_timeout_secs: 25,
           },
         ],
@@ -180,7 +180,7 @@ describe("connectionAttemptTimeout", () => {
             type: "http_tunnel",
             id: "http",
             enabled: false,
-            url: "https://dbx.example.com/dbx_tunnel.php",
+            url: "https://dbx.example.com/linop_db_tunnel.php",
             connect_timeout_secs: 60,
           },
         ],

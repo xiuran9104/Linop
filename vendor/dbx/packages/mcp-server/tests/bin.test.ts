@@ -7,8 +7,8 @@ import { fileURLToPath } from "node:url";
 import { test } from "vitest";
 
 const packageDir = fileURLToPath(new URL("..", import.meta.url));
-const mcpBin = fileURLToPath(new URL("../bin/dbx-mcp-server.js", import.meta.url));
-const rustBinary = join(process.env.CARGO_TARGET_DIR || resolve(packageDir, "../..", "target"), "debug", process.platform === "win32" ? "dbx-mcp.exe" : "dbx-mcp");
+const mcpBin = fileURLToPath(new URL("../bin/linop-db-mcp-server.js", import.meta.url));
+const rustBinary = join(process.env.CARGO_TARGET_DIR || resolve(packageDir, "../..", "target"), "debug", process.platform === "win32" ? "linop-db-mcp.exe" : "linop-db-mcp");
 
 type InitializeResponse = {
   id: number;
@@ -49,7 +49,7 @@ test("answers server discovery and still serves the legacy initialize flow throu
       env: {
         ...process.env,
         DBX_MCP_BINARY: rustBinary,
-        DBX_DATA_DIR: bin.dir,
+        LINOP_DB_DATA_DIR: bin.dir,
       },
     });
 
@@ -82,7 +82,7 @@ test("answers server discovery and still serves the legacy initialize flow throu
         params: {
           _meta: {
             "io.modelcontextprotocol/protocolVersion": "2026-07-28",
-            "io.modelcontextprotocol/clientInfo": { name: "dbx-test", version: "0.0.0" },
+            "io.modelcontextprotocol/clientInfo": { name: "linop-db-test", version: "0.0.0" },
             "io.modelcontextprotocol/clientCapabilities": {},
           },
         },
@@ -108,7 +108,7 @@ test("answers server discovery and still serves the legacy initialize flow throu
         params: {
           protocolVersion: "2024-11-05",
           capabilities: {},
-          clientInfo: { name: "dbx-test", version: "0.0.0" },
+          clientInfo: { name: "linop-db-test", version: "0.0.0" },
         },
       }),
     );
@@ -124,8 +124,8 @@ test("answers server discovery and still serves the legacy initialize flow throu
 });
 
 async function symlinkedMcpServer() {
-  const dir = await mkdtemp(join(tmpdir(), "dbx-mcp-bin-"));
-  const path = join(dir, "dbx-mcp-server");
+  const dir = await mkdtemp(join(tmpdir(), "linop-db-mcp-bin-"));
+  const path = join(dir, "linop-db-mcp-server");
   await symlink(mcpBin, path);
   return { dir, path };
 }

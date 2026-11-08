@@ -130,7 +130,7 @@ cp agents/drivers/<db_type>/build/libs/*-all.jar ~/.dbx/agents/drivers/<db_type>
 
 重启 DBX 或断开重连数据库，使新 agent 进程加载替换后的 JAR。
 
-`cassandra`、`hive`、`iotdb`、`oracle`、`kingbase`、`tdengine`、`xugu`、`rabbitmq`、`rocketmq` 和 `zookeeper` 等原生 agent 使用可执行文件而非 `agent.jar`。TDengine 从 `drivers/tdengine/Cargo.toml` 构建 `target/release/dbx-tdengine-driver`。
+`cassandra`、`hive`、`iotdb`、`oracle`、`kingbase`、`tdengine`、`xugu`、`rabbitmq`、`rocketmq` 和 `zookeeper` 等原生 agent 使用可执行文件而非 `agent.jar`。TDengine 从 `drivers/tdengine/Cargo.toml` 构建 `target/release/linop-db-tdengine-driver`。
 
 ## 版本管理
 
@@ -151,7 +151,7 @@ Agent 模块的版本记录在 [`versions.json`](versions.json) 中，遵循以�
 DBX 主进程 (Rust/Tauri)
     │ stdin/stdout (JSON-RPC 2.0)
     ▼
-agent / java -jar dbx-agent-{type}.jar
+agent / java -jar linop-db-agent-{type}.jar
     │
     ▼
 原生驱动 / JDBC → 数据库

@@ -2,8 +2,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    if dbx_lib::run_backup_worker_if_requested() {
+    if linop_db_lib::run_backup_worker_if_requested() {
         return;
     }
-    dbx_lib::run();
+    linop_db_lib::run();
 }

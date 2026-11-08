@@ -505,7 +505,7 @@ fn error_response(id: Value, method: &str, session_id: Option<String>, error: an
                     "unknown"
                 },
                 agent_session_id: session_id,
-                exception_class: Some("dbx_tdengine_driver::Error".into()),
+                exception_class: Some("linop_db_tdengine_driver::Error".into()),
             }),
         }),
     }

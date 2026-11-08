@@ -205,7 +205,7 @@ describe("useDataGridExtractor includeDatabaseName payload", () => {
 
   it("uses display/edit/native value semantics while preserving internal pasteback rows", async () => {
     const internalNull = "__bson_null__";
-    const internalPrefix = "__dbx_internal__:real-string";
+    const internalPrefix = "__linop_db_internal__:real-string";
     const values = [internalNull, "NULL", internalPrefix, "0x00"];
     const options = { ...DEFAULT_DATA_GRID_EXTRACTOR_OPTIONS, valueFormat: "display" as const };
     const copyText = vi.fn(async () => true);

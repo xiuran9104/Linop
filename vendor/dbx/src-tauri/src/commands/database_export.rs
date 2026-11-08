@@ -3,7 +3,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::connection::AppState;
 
-pub use dbx_core::database_export::{DatabaseBackupSnapshot, DatabaseExportRequest, ExportProgress, ExportStatus};
+pub use linop_db_core::database_export::{DatabaseBackupSnapshot, DatabaseExportRequest, ExportProgress, ExportStatus};
 
 fn emit_progress(app: &AppHandle, progress: ExportProgress) {
     let _ = app.emit("database-export-progress", progress);
@@ -29,7 +29,7 @@ async fn finalize_export(
     emit: impl FnOnce(ExportProgress),
 ) -> Result<(), String> {
     close_session.await?;
-    dbx_core::database_export::clear_export_cancelled(export_id).await;
+    linop_db_core::database_export::clear_export_cancelled(export_id).await;
     if let Err(error) = result {
         emit(ExportProgress {
             export_id: export_id.to_string(),
@@ -57,7 +57,7 @@ pub async fn begin_database_backup_snapshot(
     database: String,
     export_id: Option<String>,
 ) -> Result<DatabaseBackupSnapshot, String> {
-    dbx_core::database_export::begin_database_backup_snapshot_core_for_export(
+    linop_db_core::database_export::begin_database_backup_snapshot_core_for_export(
         &state,
         &connection_id,
         &database,
@@ -72,10 +72,10 @@ pub async fn export_database_sql(
     state: State<'_, Arc<AppState>>,
     request: DatabaseExportRequest,
 ) -> Result<(), String> {
-    dbx_core::query::mysql_data_charset_policy::reject_operation(
+    linop_db_core::query::mysql_data_charset_policy::reject_operation(
         &state,
         &request.connection_id,
-        dbx_core::query::mysql_data_charset_policy::EXPORT_UNSUPPORTED,
+        linop_db_core::query::mysql_data_charset_policy::EXPORT_UNSUPPORTED,
     )
     .await?;
     let state = state.inner().clone();
@@ -83,14 +83,14 @@ pub async fn export_database_sql(
 
     // Exports interleave async fetches with synchronous row formatting and
     // buffered disk writes; run them off the async workers (see spawn_export_task).
-    dbx_core::export_runtime::spawn_export_task(async move {
+    linop_db_core::export_runtime::spawn_export_task(async move {
         let terminal = Mutex::new(None);
-        let result = dbx_core::database_export::export_database_sql_core(&state, &request, |progress| {
+        let result = linop_db_core::database_export::export_database_sql_core(&state, &request, |progress| {
             route_core_progress(progress, &terminal, |progress| emit_progress(&app, progress));
         })
         .await;
 
-        let client_session_id = dbx_core::database_export::database_export_client_session_id(&export_id);
+        let client_session_id = linop_db_core::database_export::database_export_client_session_id(&export_id);
         let terminal = terminal.into_inner().unwrap_or_else(|poisoned| poisoned.into_inner());
         let completion = finalize_export(
             &export_id,
@@ -125,13 +125,13 @@ pub async fn export_database_sql(
 
 #[tauri::command]
 pub async fn cancel_database_export(export_id: String) -> Result<(), String> {
-    dbx_core::database_export::set_export_cancelled(&export_id).await;
+    linop_db_core::database_export::set_export_cancelled(&export_id).await;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn clear_database_export_cancellation(export_id: String) -> Result<(), String> {
-    dbx_core::database_export::clear_export_cancelled(&export_id).await;
+    linop_db_core::database_export::clear_export_cancelled(&export_id).await;
     Ok(())
 }
 
@@ -142,7 +142,7 @@ pub async fn database_export_destination_needs_confirmation(
     state: State<'_, Arc<AppState>>,
     directory: String,
 ) -> Result<bool, String> {
-    dbx_core::database_export::export_destination_identity_needs_confirmation(&state, std::path::Path::new(&directory))
+    linop_db_core::database_export::export_destination_identity_needs_confirmation(&state, std::path::Path::new(&directory))
         .await
 }
 
@@ -156,7 +156,7 @@ pub async fn record_database_export_destination(
     state: State<'_, Arc<AppState>>,
     directory: String,
 ) -> Result<(), String> {
-    dbx_core::database_export::record_export_destination_identity(&state, std::path::Path::new(&directory)).await
+    linop_db_core::database_export::record_export_destination_identity(&state, std::path::Path::new(&directory)).await
 }
 
 #[cfg(test)]

@@ -61,7 +61,7 @@ export function useCloseActionPrompt(options: { requestClose: (action: AppCloseA
   function setupCloseActionPromptListener() {
     if (!isTauriRuntime()) return;
     void import("@tauri-apps/api/event").then(({ listen }) => {
-      listen<AppCloseRequestTarget>("dbx-app-close-requested", (event: AppCloseRequestPayload) => {
+      listen<AppCloseRequestTarget>("linop-db-app-close-requested", (event: AppCloseRequestPayload) => {
         handleCloseRequest(event.payload === "quit" ? "quit" : "settings");
       }).then((unlisten) => {
         unlistenHandles.push(unlisten);

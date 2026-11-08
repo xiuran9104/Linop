@@ -1,9 +1,9 @@
 # Plugin development runtime
 
-Generic browser development host for `dbx-plugin dev`. It loads declared workbenches and runs optional Rust/Go sidecars without starting the DBX desktop application.
+Generic browser development host for `linop-db-plugin dev`. It loads declared workbenches and runs optional Rust/Go sidecars without starting the DBX desktop application.
 
 ```bash
-dbx-plugin dev --path /path/to/plugin --port 5190
+linop-db-plugin dev --path /path/to/plugin --port 5190
 ```
 
 Requires Node.js 22+. Pure frontend projects do not need Rust or Go. Native projects need their own compiler and dependencies. The npm CLI bundles this runtime and a prebuilt UI; consumers do not install Vite, Vue, or build the development shell.
@@ -22,9 +22,9 @@ The Rust CLI locates `dist/runtime.mjs` relative to its source checkout. For a s
 
 ## Project configuration
 
-The CLI reads `manifest.json` and `dbx-plugin.toml`. Existing `[backend]` metadata selects Rust or Go and the executable name. Rust uses a cached debug target directory; Go uses a cached output directory. Explicit Git/path Rust SDK dependencies are not replaced by a crates.io patch.
+The CLI reads `manifest.json` and `linop-db-plugin.toml`. Existing `[backend]` metadata selects Rust or Go and the executable name. Rust uses a cached debug target directory; Go uses a cached output directory. Explicit Git/path Rust SDK dependencies are not replaced by a crates.io patch.
 
-Optional UI commands in `dbx-plugin.toml`:
+Optional UI commands in `linop-db-plugin.toml`:
 
 ```toml
 [dev]
@@ -36,7 +36,7 @@ Commands are executable/argument arrays, run in the plugin directory without a s
 
 When `ui_watch` is configured, its stdout must emit a standalone `DBX_UI_BUILD_SUCCESS` line after each successful, fully written build. Only this signal triggers automatic UI reload; partial output and failed builds do not. Add the signal to your build tool's successful completion hook (not an unconditional exit hook). Without `ui_watch`, static UI files retain debounced output watching. This protocol is independent of the frontend framework.
 
-`--path` defaults to the current directory. `--port` defaults to 5190 and falls back to an available port if occupied; `0` explicitly requests an available port. `--data-dir` defaults to `<project>/.dbx-dev/`. Packaging rejects `.dbx-dev` inputs, including nested directories. Custom data directories must stay outside package include paths and the UI resource root, and be excluded from source control.
+`--path` defaults to the current directory. `--port` defaults to 5190 and falls back to an available port if occupied; `0` explicitly requests an available port. `--data-dir` defaults to `<project>/.linop-db-dev/`. Packaging rejects `.linop-db-dev` inputs, including nested directories. Custom data directories must stay outside package include paths and the UI resource root, and be excluded from source control.
 
 ## Workbenches and connections
 
@@ -77,15 +77,15 @@ UI rebuilds are applied by explicit reload to preserve drafts. Backend rebuilds 
 
 ## Data and isolation
 
-**自动重载** is off by default and applies to all browsers connected to this server. Enabling it confirms possible draft loss. Stable UI output changes reload all open plugin frames; compiled UIs still require `[dev].ui_watch`. Backend `.rs`/`.go` files and Cargo/Go module files within the configured backend directory trigger a debounced, serialized rebuild/restart. Generated `target`, `.dbx-dev`, `vendor` and `node_modules` directories are ignored. Saved connections persist, but reconnect after a backend restart. Build failure leaves the backend stopped; writes are never replayed. Turning the option off cancels pending work, not a build already started. Restarting the dev server resets the option to off. This is reload/restart, not state-preserving HMR.
+**自动重载** is off by default and applies to all browsers connected to this server. Enabling it confirms possible draft loss. Stable UI output changes reload all open plugin frames; compiled UIs still require `[dev].ui_watch`. Backend `.rs`/`.go` files and Cargo/Go module files within the configured backend directory trigger a debounced, serialized rebuild/restart. Generated `target`, `.linop-db-dev`, `vendor` and `node_modules` directories are ignored. Saved connections persist, but reconnect after a backend restart. Build failure leaves the backend stopped; writes are never replayed. Turning the option off cancels pending work, not a build already started. Restarting the dev server resets the option to off. This is reload/restart, not state-preserving HMR.
 
 The language button to the left of **调试** switches both the development shell and plugin locale between `zh-CN` and `en`. Shell controls, dialogs, diagnostic labels and manifest-localized contributions update together. Saved connection names and RPC data are not translated. With an active page, it confirms possible draft loss, then reloads that page automatically; cancellation leaves the language unchanged. Other open frames receive the standard `env` message. New pages use the selected locale. Plugin content must provide its own translations.
 
-The **调试** button to the right of **重载页面** opens a bottom panel with the latest 500 entries, level filtering, local view clearing and automatic scrolling. Entries also print to the terminal with a `[dbx-dev]` prefix. Logs include the listening port, project/UI/backend paths, HTTP routes/statuses, RPC IDs/methods/durations, expandable JSON parameters/results, structured error data, events and session rejection reasons. Password/token/credential fields and manifest-declared secret fields are redacted recursively; binary/base64 content is omitted and large/deep values are truncated. Ordinary business values remain visible: use development data only. Raw backend error messages are excluded. History is memory-only and resets on restart.
+The **调试** button to the right of **重载页面** opens a bottom panel with the latest 500 entries, level filtering, local view clearing and automatic scrolling. Entries also print to the terminal with a `[linop-db-dev]` prefix. Logs include the listening port, project/UI/backend paths, HTTP routes/statuses, RPC IDs/methods/durations, expandable JSON parameters/results, structured error data, events and session rejection reasons. Password/token/credential fields and manifest-declared secret fields are redacted recursively; binary/base64 content is omitted and large/deep values are truncated. Ordinary business values remain visible: use development data only. Raw backend error messages are excluded. History is memory-only and resets on restart.
 
 The server listens only on `127.0.0.1`. Host, Origin, browser session, CSRF, resource traversal and symlink boundaries are checked. Frame source and generation are checked before routing messages, so responses from an old document cannot resolve new requests.
 
-Development configurations, including credentials, are stored as plaintext in `.dbx-dev/connections.json`. Directory/file permissions are 0700/0600 where supported. Credentials are excluded from list summaries and iframe context; diagnostics redact recognized sensitive fields as described above. Explicit editing returns form values to the local development shell. Sidecar stderr is consumed without forwarding it to logs because arbitrary plugins may log credentials.
+Development configurations, including credentials, are stored as plaintext in `.linop-db-dev/connections.json`. Directory/file permissions are 0700/0600 where supported. Credentials are excluded from list summaries and iframe context; diagnostics redact recognized sensitive fields as described above. Explicit editing returns form values to the local development shell. Sidecar stderr is consumed without forwarding it to logs because arbitrary plugins may log credentials.
 
 This is not an OS sandbox: sidecars run with the current user's privileges. It does not read the DBX profile or emulate Keychain, signing, installation, production lifecycle guarantees or desktop tab restoration. Validate those in the real host.
 

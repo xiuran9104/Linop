@@ -36,10 +36,10 @@ export function buildNebulaGraphPropertyUpdate(entity: GraphNode | GraphEdge, pr
   const previous = quoteValue(property.type, oldValue);
   if ("labels" in entity) {
     if (!property.owner || !entity.labels.includes(property.owner)) throw new Error("Missing NebulaGraph Tag identity");
-    return `UPDATE VERTEX ON ${quoteIdentifier(property.owner)} ${quoteVid(entity.vid)} SET ${name} = ${next} WHEN ${name} == ${previous} YIELD ${name} AS dbx_value`;
+    return `UPDATE VERTEX ON ${quoteIdentifier(property.owner)} ${quoteVid(entity.vid)} SET ${name} = ${next} WHEN ${name} == ${previous} YIELD ${name} AS linop_db_value`;
   }
   if (property.owner || !entity.rank || !/^-?\d+$/u.test(entity.rank)) throw new Error("Invalid NebulaGraph Edge identity");
-  return `UPDATE EDGE ON ${quoteIdentifier(entity.type)} ${quoteVid(entity.sourceVid)} -> ${quoteVid(entity.targetVid)}@${entity.rank} SET ${name} = ${next} WHEN ${name} == ${previous} YIELD ${name} AS dbx_value`;
+  return `UPDATE EDGE ON ${quoteIdentifier(entity.type)} ${quoteVid(entity.sourceVid)} -> ${quoteVid(entity.targetVid)}@${entity.rank} SET ${name} = ${next} WHEN ${name} == ${previous} YIELD ${name} AS linop_db_value`;
 }
 
 export function buildNebulaGraphExpand(node: GraphNode): string {

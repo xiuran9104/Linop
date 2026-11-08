@@ -75,9 +75,9 @@ async function main() {
   for (const file of expectedFiles) expectedHashes.set(file, await sha256(join(payloadDir, file)));
 
   for (const platform of PLATFORMS) {
-    const zip = join(releaseDir, `dbx-agents-offline-${platform}.zip`);
+    const zip = join(releaseDir, `linop-db-agents-offline-${platform}.zip`);
     if (!existsSync(zip)) fail(`Offline ZIP not found: ${zip}`);
-    const extractionRoot = mkdtempSync(join(tmpdir(), `dbx-offline-verify-${platform}-`));
+    const extractionRoot = mkdtempSync(join(tmpdir(), `linop-db-offline-verify-${platform}-`));
     try {
       const result = spawnSync("unzip", ["-q", zip, "-d", extractionRoot], { encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
       if (result.error) fail(`Failed to unpack ${zip}: ${result.error.message}`);
@@ -91,7 +91,7 @@ async function main() {
     } finally {
       rmSync(extractionRoot, { recursive: true, force: true });
     }
-    console.log(`Verified complete jdbc/ payload in dbx-agents-offline-${platform}.zip`);
+    console.log(`Verified complete jdbc/ payload in linop-db-agents-offline-${platform}.zip`);
   }
 }
 

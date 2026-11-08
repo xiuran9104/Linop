@@ -211,7 +211,7 @@ describe("buildConnectionUrlCopy standard URL", () => {
   });
 
   it("falls back to db 0 for non-numeric Redis database values instead of percent-encoding them", () => {
-    // Mirrors dbx-core redis_database_index(): "0 --tls --insecure" fails to
+    // Mirrors linop-db-core redis_database_index(): "0 --tls --insecure" fails to
     // parse as an index and the backend silently uses 0.
     const redis = config({ db_type: "redis", host: "cache.example.com", port: 6379, username: "coupon", password: "", database: "0 --tls --insecure", url_params: "insecure=true", ssl: true });
     expect(buildConnectionUrlCopy(redis, "url")).toBe("rediss://coupon@cache.example.com:6379/0?insecure=true");

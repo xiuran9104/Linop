@@ -13,7 +13,7 @@ Run from the repository root:
 ./deploy/fnos/build.sh
 ```
 
-The script reads the version from `crates/dbx-web/Cargo.toml`, downloads and
+The script reads the version from `crates/linop-db-web/Cargo.toml`, downloads and
 verifies the official `fnpack` binary when one is not already available, and
 writes these artifacts to `dist/fnos/`:
 
@@ -39,7 +39,7 @@ and verifies that the package version matches the image tag by default.
 - Container port: `4224`
 - Persistent application data: `${TRIM_PKGVAR}` -> `/app/data`
 - Persistent backups: `${TRIM_PKGVAR}/backups` -> `/app/backups`
-- Container name: `dbx-fnos`
+- Container name: `linop-db-fnos`
 - Desktop entry: opens DBX in a browser tab
 
 DBX password protection remains enabled. Users set the initial password from

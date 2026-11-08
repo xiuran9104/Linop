@@ -65,8 +65,8 @@ function pageId(value = "legacy") {
 function localDocumentAssetPath(url, entry) {
   if (typeof url !== "string" || /^(?:data|blob|https?):/i.test(url) || url.startsWith("//") || url.startsWith("#")) return undefined;
   try {
-    const parsed = new URL(url, `http://dbx-plugin.local/${entry}`);
-    if (parsed.origin !== "http://dbx-plugin.local") return undefined;
+    const parsed = new URL(url, `http://linop-db-plugin.local/${entry}`);
+    if (parsed.origin !== "http://linop-db-plugin.local") return undefined;
     const path = decodeURIComponent(parsed.pathname).replace(/^\/+/, "");
     return path || undefined;
   } catch {
@@ -596,7 +596,7 @@ export async function createMockHost(options) {
           chunks.push(chunk);
         }
         const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-        const page = pageId(request.headers["x-dbx-page"]);
+        const page = pageId(request.headers["x-linop-db-page"]);
         return respond(response, 200, { value: await api({ ...session, page }, path, body) });
       }
       if (path === "/" && request.method === "GET") {
@@ -633,7 +633,7 @@ export async function createMockHost(options) {
   }
   origin = `http://127.0.0.1:${server.address().port}`;
   // Cookies are scoped by host, not port; concurrent development hosts need distinct names.
-  cookieName = `dbx_dev_session_${server.address().port}`;
+  cookieName = `linop_db_dev_session_${server.address().port}`;
   diagnostics.context = { port: server.address().port };
   diagnostics.record("info", "server", "调试服务已启动", { port: server.address().port, project, uiRoot, backend: options.backend });
   const watchStop = new AbortController();
@@ -642,7 +642,7 @@ export async function createMockHost(options) {
       try {
         for await (const event of watch(options.backendWatch, { signal: watchStop.signal, recursive: true })) {
           const path = String(event.filename || "").replaceAll("\\", "/");
-          if (path.split("/").some((p) => ["target", ".git", ".dbx-dev", "node_modules", "vendor"].includes(p))) continue;
+          if (path.split("/").some((p) => ["target", ".git", ".linop-db-dev", "node_modules", "vendor"].includes(p))) continue;
           if (/\.(rs|go)$|(^|\/)(Cargo\.toml|Cargo\.lock|build\.rs|go\.mod|go\.sum)$/.test(path)) backendReload.changed();
         }
       } catch (error) {

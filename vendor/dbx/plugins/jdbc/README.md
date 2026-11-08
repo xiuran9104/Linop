@@ -6,7 +6,7 @@ This is an optional sidecar plugin for DBX. It is not bundled with the main DBX 
 
 ```sh
 ./gradlew shadowJar
-cp build/libs/dbx-jdbc-plugin-all.jar lib/dbx-jdbc-plugin.jar
+cp build/libs/linop-db-jdbc-plugin-all.jar lib/linop-db-jdbc-plugin.jar
 ```
 
 ## Package for release
@@ -16,7 +16,7 @@ cp build/libs/dbx-jdbc-plugin-all.jar lib/dbx-jdbc-plugin.jar
 ```
 
 The package version follows the JDBC plugin version in `build.gradle` and `manifest.json`.
-The package script writes both `dbx-jdbc-plugin-<version>.zip` and `dbx-jdbc-plugin-latest.zip`.
+The package script writes both `linop-db-jdbc-plugin-<version>.zip` and `linop-db-jdbc-plugin-latest.zip`.
 
 ## Install for local DBX
 
@@ -30,8 +30,8 @@ The folder must contain:
 
 ```text
 manifest.json
-bin/dbx-jdbc-plugin
-lib/dbx-jdbc-plugin.jar
+bin/linop-db-jdbc-plugin
+lib/linop-db-jdbc-plugin.jar
 ```
 
 DBX does not bundle Java or JDBC drivers. Install Java locally and add database-specific driver JAR paths in the DBX JDBC connection form.

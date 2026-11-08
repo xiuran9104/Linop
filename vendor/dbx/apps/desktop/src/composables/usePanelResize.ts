@@ -56,15 +56,15 @@ function availableHistoryPanelMaxWidth(handle: HTMLElement | null) {
 }
 
 export function usePanelResize() {
-  const sidebarWidth = ref(restoredPanelWidth("dbx-sidebar-width", 260));
-  const aiPanelWidth = ref(restoredPanelWidth("dbx-ai-panel-width", 360));
+  const sidebarWidth = ref(restoredPanelWidth("linop-db-sidebar-width", 260));
+  const aiPanelWidth = ref(restoredPanelWidth("linop-db-ai-panel-width", 360));
   // History opens at a comfortable content-area width; users can still resize
   // it or switch to the explicit full-width mode from its toolbar.
   const historyWidth = ref(restoredHistoryPanelWidth());
-  const sqlLibraryWidth = ref(restoredPanelWidth("dbx-sql-library-width", 288));
-  const sqlFilePanelWidth = ref(restoredPanelWidth("dbx-sql-file-panel-width", 288));
-  const tabBarWidth = ref(restoredPanelWidth("dbx-tab-bar-width", 240));
-  const tabBarCollapsed = ref(safeLocalStorageGet("dbx-tab-bar-collapsed") === "true");
+  const sqlLibraryWidth = ref(restoredPanelWidth("linop-db-sql-library-width", 288));
+  const sqlFilePanelWidth = ref(restoredPanelWidth("linop-db-sql-file-panel-width", 288));
+  const tabBarWidth = ref(restoredPanelWidth("linop-db-tab-bar-width", 240));
+  const tabBarCollapsed = ref(safeLocalStorageGet("linop-db-tab-bar-collapsed") === "true");
 
   function startPanelResize(widthRef: Ref<number>, storageKey: string, direction: "left" | "right", maxWidth: PanelMaxWidth = DEFAULT_PANEL_MAX_WIDTH) {
     return (e: PointerEvent) => {
@@ -126,7 +126,7 @@ export function usePanelResize() {
         widthRef.value = currentWidth;
         // History deliberately starts at 60% on every application launch;
         // resizing remains available for the current session only.
-        if (storageKey !== "dbx-history-width") safeLocalStorageSet(storageKey, String(widthRef.value));
+        if (storageKey !== "linop-db-history-width") safeLocalStorageSet(storageKey, String(widthRef.value));
       };
 
       document.addEventListener("pointermove", onPointerMove);
@@ -136,17 +136,17 @@ export function usePanelResize() {
     };
   }
 
-  const startSidebarResize = startPanelResize(sidebarWidth, "dbx-sidebar-width", "right");
-  const startAiPanelResize = startPanelResize(aiPanelWidth, "dbx-ai-panel-width", "left", availableAiPanelMaxWidth);
-  const startHistoryResize = startPanelResize(historyWidth, "dbx-history-width", "left", availableHistoryPanelMaxWidth);
-  const startSqlLibraryResize = startPanelResize(sqlLibraryWidth, "dbx-sql-library-width", "left");
-  const startSqlFilePanelResize = startPanelResize(sqlFilePanelWidth, "dbx-sql-file-panel-width", "left");
-  const startLeftTabBarResize = startPanelResize(tabBarWidth, "dbx-tab-bar-width", "right");
-  const startRightTabBarResize = startPanelResize(tabBarWidth, "dbx-tab-bar-width", "left");
+  const startSidebarResize = startPanelResize(sidebarWidth, "linop-db-sidebar-width", "right");
+  const startAiPanelResize = startPanelResize(aiPanelWidth, "linop-db-ai-panel-width", "left", availableAiPanelMaxWidth);
+  const startHistoryResize = startPanelResize(historyWidth, "linop-db-history-width", "left", availableHistoryPanelMaxWidth);
+  const startSqlLibraryResize = startPanelResize(sqlLibraryWidth, "linop-db-sql-library-width", "left");
+  const startSqlFilePanelResize = startPanelResize(sqlFilePanelWidth, "linop-db-sql-file-panel-width", "left");
+  const startLeftTabBarResize = startPanelResize(tabBarWidth, "linop-db-tab-bar-width", "right");
+  const startRightTabBarResize = startPanelResize(tabBarWidth, "linop-db-tab-bar-width", "left");
 
   function setTabBarCollapsed(collapsed: boolean) {
     tabBarCollapsed.value = collapsed;
-    safeLocalStorageSet("dbx-tab-bar-collapsed", String(collapsed));
+    safeLocalStorageSet("linop-db-tab-bar-collapsed", String(collapsed));
   }
 
   return {

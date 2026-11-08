@@ -1,6 +1,6 @@
 import type { TreeNode } from "@/types/database";
 
-const SQLSERVER_LINKED_SCHEMA_PREFIX = "__dbx_sqlserver_linked__:";
+const SQLSERVER_LINKED_SCHEMA_PREFIX = "__linop_db_sqlserver_linked__:";
 
 export interface SqlServerLinkedSchemaRef {
   server: string;

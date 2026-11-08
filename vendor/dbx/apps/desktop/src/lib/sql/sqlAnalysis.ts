@@ -1051,7 +1051,7 @@ export function allPrimaryKeysPresent(primaryKeys: string[], resultColumns: stri
   return primaryKeys.every((pk) => colSet.has(pk));
 }
 
-const SYNTHETIC_RESULT_ROW_NUMBER_LABELS = new Set(["__dbx_row_num", "dbx_rn"]);
+const SYNTHETIC_RESULT_ROW_NUMBER_LABELS = new Set(["__linop_db_row_num", "linop_db_rn"]);
 
 function isOracleFamilyDatabase(databaseType?: DatabaseType | string): boolean {
   return !!databaseType && ORACLE_FOLDED_IDENTIFIER_TYPES.has(databaseType);

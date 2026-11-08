@@ -3171,478 +3171,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
-name = "dbx-ai-provider"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "bytes",
- "dbx-platform",
- "futures",
- "httpdate",
- "log",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "dbx-core"
-version = "0.1.0"
-dependencies = [
- "aes 0.8.4",
- "aes-gcm 0.10.3",
- "arc-swap",
- "argon2 0.5.3",
- "async-trait",
- "base64 0.22.1",
- "bytes",
- "calamine",
- "cbc 0.1.2",
- "chrono",
- "chrono-tz",
- "crc",
- "csv",
- "dbx-ai-provider",
- "dbx-drivers",
- "dbx-formats",
- "dbx-platform",
- "dbx-plugin-runtime",
- "dbx-sql",
- "dbx-types",
- "deadpool-postgres",
- "encoding_rs",
- "flate2",
- "font-kit",
- "fs2",
- "futures",
- "jsonwebtoken",
- "log",
- "minijinja",
- "mongodb",
- "mysql_async",
- "nix 0.31.3",
- "notify 7.0.0",
- "percent-encoding",
- "portpicker",
- "prometheus-parse",
- "quick-xml 0.37.5",
- "rayon",
- "redis",
- "regex",
- "reqwest",
- "rumqttc",
- "rusqlite",
- "rustls 0.23.46",
- "rustls-pemfile 2.2.0",
- "serde",
- "serde_json",
- "serde_yaml_ng",
- "sha1 0.10.7",
- "sha2 0.10.9",
- "sqlparser",
- "ssfmt",
- "sysinfo 0.32.1",
- "tar",
- "tempfile",
- "tokio",
- "tokio-postgres",
- "tokio-util",
- "uuid",
- "webpki-roots 0.26.11",
- "windows-sys 0.61.2",
- "zip 4.6.1",
-]
-
-[[package]]
-name = "dbx-driver-agent"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "crc",
- "dbx-platform",
- "dbx-sql-core",
- "dbx-types",
- "flate2",
- "futures",
- "log",
- "percent-encoding",
- "reqwest",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sysinfo 0.32.1",
- "tar",
- "tempfile",
- "tokio",
- "tokio-util",
- "uuid",
- "zip 4.6.1",
- "zstd",
-]
-
-[[package]]
-name = "dbx-driver-elasticsearch"
-version = "0.1.0"
-dependencies = [
- "dbx-driver-support",
- "dbx-types",
- "percent-encoding",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "dbx-driver-mongodb"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "chrono",
- "dbx-driver-support",
- "dbx-types",
- "futures",
- "json5 0.4.1",
- "log",
- "mongodb",
- "percent-encoding",
- "reqwest",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tokio",
- "uuid",
-]
-
-[[package]]
-name = "dbx-driver-mysql"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dbx-driver-support",
- "dbx-sql-core",
- "dbx-sql-dialect",
- "dbx-types",
- "encoding_rs",
- "futures",
- "log",
- "mysql_async",
- "percent-encoding",
- "rust_decimal",
- "serde_json",
- "sqlparser",
- "tokio",
- "tokio-util",
-]
-
-[[package]]
-name = "dbx-driver-postgres"
-version = "0.1.0"
-dependencies = [
- "bytes",
- "chrono",
- "dbx-driver-support",
- "dbx-sql-core",
- "dbx-types",
- "deadpool-postgres",
- "encoding_rs",
- "futures",
- "log",
- "openssl",
- "percent-encoding",
- "postgres-openssl",
- "rustls 0.23.46",
- "rustls-pemfile 2.2.0",
- "serde_json",
- "sqlparser",
- "tokio",
- "tokio-postgres",
- "tokio-postgres-rustls",
- "tokio-util",
- "uuid",
- "webpki-roots 0.26.11",
-]
-
-[[package]]
-name = "dbx-driver-redis"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "dbx-driver-support",
- "dbx-types",
- "redis",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "dbx-driver-sqlserver"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dbx-driver-support",
- "dbx-sql-core",
- "dbx-sql-data",
- "dbx-types",
- "futures",
- "log",
- "serde",
- "serde_json",
- "sqlparser",
- "tiberius",
- "tokio",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "dbx-driver-support"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "bytes",
- "dbx-platform",
- "dbx-types",
- "glob",
- "log",
- "portpicker",
- "reqwest",
- "russh",
- "serde",
- "serde_json",
- "sqlparser",
- "tokio",
- "tokio-util",
- "uuid",
-]
-
-[[package]]
-name = "dbx-drivers"
-version = "0.1.0"
-dependencies = [
- "aws-sdk-dynamodb",
- "base64 0.22.1",
- "bytes",
- "chrono",
- "crc",
- "csv",
- "dbx-driver-agent",
- "dbx-driver-elasticsearch",
- "dbx-driver-mongodb",
- "dbx-driver-mysql",
- "dbx-driver-postgres",
- "dbx-driver-redis",
- "dbx-driver-sqlserver",
- "dbx-driver-support",
- "dbx-platform",
- "dbx-sql-core",
- "dbx-sql-data",
- "dbx-sql-dialect",
- "dbx-sqlite-worker",
- "dbx-types",
- "deadpool-postgres",
- "flate2",
- "futures",
- "json5 0.4.1",
- "log",
- "mysql_async",
- "openssl",
- "pageant 0.2.1",
- "percent-encoding",
- "portpicker",
- "postgres-openssl",
- "regex",
- "reqwest",
- "rusqlite",
- "russh",
- "rust_decimal",
- "rustls 0.23.46",
- "rustls-pemfile 2.2.0",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "sqlparser",
- "tar",
- "tempfile",
- "tiberius",
- "tokio",
- "tokio-postgres",
- "tokio-postgres-rustls",
- "tokio-util",
- "tracing",
- "tracing-subscriber",
- "uuid",
- "webpki-roots 0.26.11",
- "windows-sys 0.61.2",
- "zip 4.6.1",
- "zstd",
-]
-
-[[package]]
-name = "dbx-formats"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "serde",
- "serde_json",
- "zip 4.6.1",
-]
-
-[[package]]
-name = "dbx-platform"
-version = "0.1.0"
-dependencies = [
- "futures",
- "httpdate",
- "nix 0.31.3",
- "reqwest",
- "semver",
- "serde",
- "tokio",
- "uuid",
- "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "dbx-plugin-runtime"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "bytes",
- "chrono",
- "dbx-platform",
- "dbx-types",
- "ed25519-dalek 2.2.0",
- "fs2",
- "futures",
- "log",
- "reqwest",
- "semver",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "tokio",
- "uuid",
- "zip 4.6.1",
-]
-
-[[package]]
-name = "dbx-sql"
-version = "0.1.0"
-dependencies = [
- "dbx-sql-core",
- "dbx-sql-data",
- "dbx-sql-dialect",
- "dbx-sql-schema",
- "dbx-types",
-]
-
-[[package]]
-name = "dbx-sql-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dbx-types",
- "encoding_rs",
- "log",
- "regex",
- "serde",
- "serde_json",
- "sqlparser",
- "unicode-ident",
- "winnow 1.0.5",
-]
-
-[[package]]
-name = "dbx-sql-data"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dbx-sql-core",
- "dbx-sql-dialect",
- "dbx-types",
- "serde",
- "serde_json",
- "sqlparser",
- "unicode-width",
-]
-
-[[package]]
-name = "dbx-sql-dialect"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dbx-types",
- "log",
- "notify 7.0.0",
- "percent-encoding",
- "serde",
- "serde_yaml",
- "tokio",
-]
-
-[[package]]
-name = "dbx-sql-schema"
-version = "0.1.0"
-dependencies = [
- "dbx-sql-core",
- "dbx-sql-dialect",
- "dbx-types",
- "log",
- "rayon",
- "regex",
- "serde",
- "serde_json",
- "serde_yaml",
- "sqlparser",
-]
-
-[[package]]
-name = "dbx-sqlite-worker"
-version = "0.1.1"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "dbx-types"
-version = "0.1.0"
-dependencies = [
- "percent-encoding",
- "serde",
- "serde_json",
- "serde_yaml_ng",
- "uuid",
-]
-
-[[package]]
-name = "dbx_view"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "dbx-core",
- "domain_api",
- "gpui-component",
- "gpui-fast",
- "linop-core",
- "linop-dbx",
- "one-core",
- "one-ui",
- "rust-i18n",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "deadpool"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7894,10 +7422,10 @@ name = "linop"
 version = "0.23.0-beta.4"
 dependencies = [
  "anyhow",
- "dbx_view",
  "domain_api",
  "gpui-fast",
  "linop_app",
+ "linop_db_view",
  "shell_domain",
  "winresource",
 ]
@@ -7913,12 +7441,466 @@ dependencies = [
 ]
 
 [[package]]
+name = "linop-db-ai-provider"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "futures",
+ "httpdate",
+ "linop-db-platform",
+ "log",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "linop-db-core"
+version = "0.1.0"
+dependencies = [
+ "aes 0.8.4",
+ "aes-gcm 0.10.3",
+ "arc-swap",
+ "argon2 0.5.3",
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "calamine",
+ "cbc 0.1.2",
+ "chrono",
+ "chrono-tz",
+ "crc",
+ "csv",
+ "deadpool-postgres",
+ "encoding_rs",
+ "flate2",
+ "font-kit",
+ "fs2",
+ "futures",
+ "jsonwebtoken",
+ "linop-db-ai-provider",
+ "linop-db-drivers",
+ "linop-db-formats",
+ "linop-db-platform",
+ "linop-db-plugin-runtime",
+ "linop-db-sql",
+ "linop-db-types",
+ "log",
+ "minijinja",
+ "mongodb",
+ "mysql_async",
+ "nix 0.31.3",
+ "notify 7.0.0",
+ "percent-encoding",
+ "portpicker",
+ "prometheus-parse",
+ "quick-xml 0.37.5",
+ "rayon",
+ "redis",
+ "regex",
+ "reqwest",
+ "rumqttc",
+ "rusqlite",
+ "rustls 0.23.46",
+ "rustls-pemfile 2.2.0",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "sha1 0.10.7",
+ "sha2 0.10.9",
+ "sqlparser",
+ "ssfmt",
+ "sysinfo 0.32.1",
+ "tar",
+ "tempfile",
+ "tokio",
+ "tokio-postgres",
+ "tokio-util",
+ "uuid",
+ "webpki-roots 0.26.11",
+ "windows-sys 0.61.2",
+ "zip 4.6.1",
+]
+
+[[package]]
+name = "linop-db-driver-agent"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "crc",
+ "flate2",
+ "futures",
+ "linop-db-platform",
+ "linop-db-sql-core",
+ "linop-db-types",
+ "log",
+ "percent-encoding",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sysinfo 0.32.1",
+ "tar",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "uuid",
+ "zip 4.6.1",
+ "zstd",
+]
+
+[[package]]
+name = "linop-db-driver-elasticsearch"
+version = "0.1.0"
+dependencies = [
+ "linop-db-driver-support",
+ "linop-db-types",
+ "percent-encoding",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "linop-db-driver-mongodb"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "futures",
+ "json5 0.4.1",
+ "linop-db-driver-support",
+ "linop-db-types",
+ "log",
+ "mongodb",
+ "percent-encoding",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
+name = "linop-db-driver-mysql"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "encoding_rs",
+ "futures",
+ "linop-db-driver-support",
+ "linop-db-sql-core",
+ "linop-db-sql-dialect",
+ "linop-db-types",
+ "log",
+ "mysql_async",
+ "percent-encoding",
+ "rust_decimal",
+ "serde_json",
+ "sqlparser",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
+name = "linop-db-driver-postgres"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "chrono",
+ "deadpool-postgres",
+ "encoding_rs",
+ "futures",
+ "linop-db-driver-support",
+ "linop-db-sql-core",
+ "linop-db-types",
+ "log",
+ "openssl",
+ "percent-encoding",
+ "postgres-openssl",
+ "rustls 0.23.46",
+ "rustls-pemfile 2.2.0",
+ "serde_json",
+ "sqlparser",
+ "tokio",
+ "tokio-postgres",
+ "tokio-postgres-rustls",
+ "tokio-util",
+ "uuid",
+ "webpki-roots 0.26.11",
+]
+
+[[package]]
+name = "linop-db-driver-redis"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "linop-db-driver-support",
+ "linop-db-types",
+ "redis",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "linop-db-driver-sqlserver"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "futures",
+ "linop-db-driver-support",
+ "linop-db-sql-core",
+ "linop-db-sql-data",
+ "linop-db-types",
+ "log",
+ "serde",
+ "serde_json",
+ "sqlparser",
+ "tiberius",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "linop-db-driver-support"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "glob",
+ "linop-db-platform",
+ "linop-db-types",
+ "log",
+ "portpicker",
+ "reqwest",
+ "russh",
+ "serde",
+ "serde_json",
+ "sqlparser",
+ "tokio",
+ "tokio-util",
+ "uuid",
+]
+
+[[package]]
+name = "linop-db-drivers"
+version = "0.1.0"
+dependencies = [
+ "aws-sdk-dynamodb",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "crc",
+ "csv",
+ "deadpool-postgres",
+ "flate2",
+ "futures",
+ "json5 0.4.1",
+ "linop-db-driver-agent",
+ "linop-db-driver-elasticsearch",
+ "linop-db-driver-mongodb",
+ "linop-db-driver-mysql",
+ "linop-db-driver-postgres",
+ "linop-db-driver-redis",
+ "linop-db-driver-sqlserver",
+ "linop-db-driver-support",
+ "linop-db-platform",
+ "linop-db-sql-core",
+ "linop-db-sql-data",
+ "linop-db-sql-dialect",
+ "linop-db-sqlite-worker",
+ "linop-db-types",
+ "log",
+ "mysql_async",
+ "openssl",
+ "pageant 0.2.1",
+ "percent-encoding",
+ "portpicker",
+ "postgres-openssl",
+ "regex",
+ "reqwest",
+ "rusqlite",
+ "russh",
+ "rust_decimal",
+ "rustls 0.23.46",
+ "rustls-pemfile 2.2.0",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlparser",
+ "tar",
+ "tempfile",
+ "tiberius",
+ "tokio",
+ "tokio-postgres",
+ "tokio-postgres-rustls",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+ "webpki-roots 0.26.11",
+ "windows-sys 0.61.2",
+ "zip 4.6.1",
+ "zstd",
+]
+
+[[package]]
+name = "linop-db-formats"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "zip 4.6.1",
+]
+
+[[package]]
+name = "linop-db-platform"
+version = "0.1.0"
+dependencies = [
+ "futures",
+ "httpdate",
+ "nix 0.31.3",
+ "reqwest",
+ "semver",
+ "serde",
+ "tokio",
+ "uuid",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "linop-db-plugin-runtime"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "ed25519-dalek 2.2.0",
+ "fs2",
+ "futures",
+ "linop-db-platform",
+ "linop-db-types",
+ "log",
+ "reqwest",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "uuid",
+ "zip 4.6.1",
+]
+
+[[package]]
+name = "linop-db-sql"
+version = "0.1.0"
+dependencies = [
+ "linop-db-sql-core",
+ "linop-db-sql-data",
+ "linop-db-sql-dialect",
+ "linop-db-sql-schema",
+ "linop-db-types",
+]
+
+[[package]]
+name = "linop-db-sql-core"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "encoding_rs",
+ "linop-db-types",
+ "log",
+ "regex",
+ "serde",
+ "serde_json",
+ "sqlparser",
+ "unicode-ident",
+ "winnow 1.0.5",
+]
+
+[[package]]
+name = "linop-db-sql-data"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "linop-db-sql-core",
+ "linop-db-sql-dialect",
+ "linop-db-types",
+ "serde",
+ "serde_json",
+ "sqlparser",
+ "unicode-width",
+]
+
+[[package]]
+name = "linop-db-sql-dialect"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "linop-db-types",
+ "log",
+ "notify 7.0.0",
+ "percent-encoding",
+ "serde",
+ "serde_yaml",
+ "tokio",
+]
+
+[[package]]
+name = "linop-db-sql-schema"
+version = "0.1.0"
+dependencies = [
+ "linop-db-sql-core",
+ "linop-db-sql-dialect",
+ "linop-db-types",
+ "log",
+ "rayon",
+ "regex",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sqlparser",
+]
+
+[[package]]
+name = "linop-db-sqlite-worker"
+version = "0.1.1"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "linop-db-types"
+version = "0.1.0"
+dependencies = [
+ "percent-encoding",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "uuid",
+]
+
+[[package]]
 name = "linop-dbx"
 version = "0.1.0"
 dependencies = [
- "dbx-core",
- "dbx-types",
  "linop-core",
+ "linop-db-core",
+ "linop-db-types",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
@@ -7950,7 +7932,6 @@ dependencies = [
  "chrono",
  "connection-form",
  "connection-import-protocol",
- "dbx_view",
  "dirs 6.0.0",
  "domain_api",
  "dotenvy",
@@ -7968,6 +7949,7 @@ dependencies = [
  "gpui-pre-reqwest-client",
  "image",
  "json_view",
+ "linop_db_view",
  "linop_runtime",
  "mcp_approval",
  "mcp_host",
@@ -8008,6 +7990,24 @@ dependencies = [
  "x11rb",
  "zed-font-kit 0.14.1-zed (git+https://github.com/zed-industries/font-kit?rev=110523127440aefb11ce0cf280ae7c5071337ec5)",
  "zeroize",
+]
+
+[[package]]
+name = "linop_db_view"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "domain_api",
+ "gpui-component",
+ "gpui-fast",
+ "linop-core",
+ "linop-db-core",
+ "linop-dbx",
+ "one-core",
+ "one-ui",
+ "rust-i18n",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

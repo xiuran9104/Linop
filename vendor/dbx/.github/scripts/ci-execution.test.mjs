@@ -29,7 +29,7 @@ const environmentKeys = [
 ];
 
 function withToolStubs(run, extraEnv = {}) {
-  const directory = mkdtempSync(path.join(tmpdir(), "dbx-ci-execution-"));
+  const directory = mkdtempSync(path.join(tmpdir(), "linop-db-ci-execution-"));
   const binaries = path.join(directory, "bin");
   mkdirSync(binaries);
   const log = path.join(directory, "commands.jsonl");
@@ -82,7 +82,7 @@ for (const agent of goAgents) {
           builds.map((entry) => `${entry.env.GOOS}/${entry.env.GOARCH}`),
           ["darwin/arm64", "darwin/amd64", "linux/arm64", "linux/amd64", "windows/arm64", "windows/amd64"],
         );
-      else assert.ok(builds[0].args.includes(`/tmp/dbx-agent-${agent.binary}-linux-x64`));
+      else assert.ok(builds[0].args.includes(`/tmp/linop-db-agent-${agent.binary}-linux-x64`));
       if (agent.driver === "xugu") assert.ok(invocations.every((entry) => entry.env.GONOSUMDB === "gitee.com/XuguDB/go-xugu-driver"));
     }));
 }

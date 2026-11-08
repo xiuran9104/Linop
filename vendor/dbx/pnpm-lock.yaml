@@ -58,7 +58,7 @@ importers:
       '@codemirror/view':
         specifier: 6.43.0
         version: 6.43.0
-      '@dbx-app/mongo-shell':
+      '@linop-db-app/mongo-shell':
         specifier: workspace:^
         version: link:packages/mongo-shell
       '@internationalized/date':
@@ -302,22 +302,22 @@ importers:
 
   packages/cli:
     optionalDependencies:
-      '@dbx-app/cli-darwin-arm64':
+      '@linop-db-app/cli-darwin-arm64':
         specifier: 0.4.141
         version: link:../cli-darwin-arm64
-      '@dbx-app/cli-darwin-x64':
+      '@linop-db-app/cli-darwin-x64':
         specifier: 0.4.141
         version: link:../cli-darwin-x64
-      '@dbx-app/cli-linux-arm64-gnu':
+      '@linop-db-app/cli-linux-arm64-gnu':
         specifier: 0.4.141
         version: link:../cli-linux-arm64-gnu
-      '@dbx-app/cli-linux-x64-gnu':
+      '@linop-db-app/cli-linux-x64-gnu':
         specifier: 0.4.141
         version: link:../cli-linux-x64-gnu
-      '@dbx-app/cli-win32-arm64':
+      '@linop-db-app/cli-win32-arm64':
         specifier: 0.4.141
         version: link:../cli-win32-arm64
-      '@dbx-app/cli-win32-x64':
+      '@linop-db-app/cli-win32-x64':
         specifier: 0.4.141
         version: link:../cli-win32-x64
 
@@ -350,22 +350,22 @@ importers:
         specifier: ^4.1.8
         version: 4.1.12(@types/node@22.20.5)(@vitest/coverage-v8@4.1.12)(happy-dom@20.10.6)(vite@8.3.5(@types/node@22.20.5)(esbuild@0.28.2)(jiti@2.7.0)(stylus@0.57.0)(tsx@4.23.15)(yaml@2.9.1))
     optionalDependencies:
-      '@dbx-app/mcp-darwin-arm64':
+      '@linop-db-app/mcp-darwin-arm64':
         specifier: 0.4.141
         version: link:../mcp-darwin-arm64
-      '@dbx-app/mcp-darwin-x64':
+      '@linop-db-app/mcp-darwin-x64':
         specifier: 0.4.141
         version: link:../mcp-darwin-x64
-      '@dbx-app/mcp-linux-arm64-gnu':
+      '@linop-db-app/mcp-linux-arm64-gnu':
         specifier: 0.4.141
         version: link:../mcp-linux-arm64-gnu
-      '@dbx-app/mcp-linux-x64-gnu':
+      '@linop-db-app/mcp-linux-x64-gnu':
         specifier: 0.4.141
         version: link:../mcp-linux-x64-gnu
-      '@dbx-app/mcp-win32-arm64':
+      '@linop-db-app/mcp-win32-arm64':
         specifier: 0.4.141
         version: link:../mcp-win32-arm64
-      '@dbx-app/mcp-win32-x64':
+      '@linop-db-app/mcp-win32-x64':
         specifier: 0.4.141
         version: link:../mcp-win32-x64
 
@@ -381,22 +381,22 @@ importers:
 
   packages/plugin-cli:
     optionalDependencies:
-      '@dbx-app/plugin-cli-darwin-arm64':
+      '@linop-db-app/plugin-cli-darwin-arm64':
         specifier: 0.1.10
         version: 0.1.10
-      '@dbx-app/plugin-cli-darwin-x64':
+      '@linop-db-app/plugin-cli-darwin-x64':
         specifier: 0.1.10
         version: 0.1.10
-      '@dbx-app/plugin-cli-linux-arm64-gnu':
+      '@linop-db-app/plugin-cli-linux-arm64-gnu':
         specifier: 0.1.10
         version: 0.1.10
-      '@dbx-app/plugin-cli-linux-x64-gnu':
+      '@linop-db-app/plugin-cli-linux-x64-gnu':
         specifier: 0.1.10
         version: 0.1.10
-      '@dbx-app/plugin-cli-win32-arm64':
+      '@linop-db-app/plugin-cli-win32-arm64':
         specifier: 0.1.10
         version: 0.1.10
-      '@dbx-app/plugin-cli-win32-x64':
+      '@linop-db-app/plugin-cli-win32-x64':
         specifier: 0.1.10
         version: 0.1.10
 
@@ -538,115 +538,115 @@ packages:
   '@codemirror/view@6.43.0':
     resolution: {integrity: sha512-V7ZCLQO3Jus9hzh2jVCCPW3mO4IBMr43O37PqSUYautJSnnJF41YlgLw21x0fLJTYvJ+Vkm6Gp+qKGH9pltgXA==}
 
-  '@dbx-app/cli-darwin-arm64@0.4.133':
+  '@linop-db-app/cli-darwin-arm64@0.4.133':
     resolution: {integrity: sha512-q+AxAOKAEoYTmCLBZUVlnC9JUGe8D0qqtoESxgfgX1AUh+VmMUcyHt4ORWZF+EP2VEUGKQFUWCIrvRRSjBJ+DA==}
     cpu: [arm64]
     os: [darwin]
     hasBin: true
 
-  '@dbx-app/cli-darwin-x64@0.4.133':
+  '@linop-db-app/cli-darwin-x64@0.4.133':
     resolution: {integrity: sha512-xshyujt6Mj+hoeGq3b1E5hdbUHzCVnVi/TtyoI+09OtE8hH200rYL1JK6aPrcGe1cGb9K1iZMw07EbVKw0tqsQ==}
     cpu: [x64]
     os: [darwin]
     hasBin: true
 
-  '@dbx-app/cli-linux-arm64-gnu@0.4.133':
+  '@linop-db-app/cli-linux-arm64-gnu@0.4.133':
     resolution: {integrity: sha512-rl8IhFLOHPGk9xjSgaNUAOC798ywQf5paRQPwYY2ibUWkxgGqstDgaI4ibgVFb25uIjfh1OvX81PeekYgUMkUg==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
     hasBin: true
 
-  '@dbx-app/cli-linux-x64-gnu@0.4.133':
+  '@linop-db-app/cli-linux-x64-gnu@0.4.133':
     resolution: {integrity: sha512-SDZ0DgO66yRMK72OA1BwAKxWskdndopLcrLOBozEnLWxDa2/INN7GqWqtxeqEFM77h/YaAfSWiFIhsjk67xr8g==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
     hasBin: true
 
-  '@dbx-app/cli-win32-arm64@0.4.133':
+  '@linop-db-app/cli-win32-arm64@0.4.133':
     resolution: {integrity: sha512-EzGqRpE+A87c55op614HuaqduhFdenUUUP9vvLqAYvqcN1K9X8xPSCIC9jI1+hw/Iyxtzh8N8hCgBklcGdQZ6A==}
     cpu: [arm64]
     os: [win32]
     hasBin: true
 
-  '@dbx-app/cli-win32-x64@0.4.133':
+  '@linop-db-app/cli-win32-x64@0.4.133':
     resolution: {integrity: sha512-vPgPxWNkY+DFi5UuNNA/D16OeRTQ4RtEvPCXMKiqFP8epcIGoyhxBl1bmlDhejrdFzSkKAFk9eky13J7UcVn2g==}
     cpu: [x64]
     os: [win32]
     hasBin: true
 
-  '@dbx-app/mcp-darwin-arm64@0.4.133':
+  '@linop-db-app/mcp-darwin-arm64@0.4.133':
     resolution: {integrity: sha512-2MkbOtDuOCBfwd/R1rR9rvG9tI509bVgCcFuYSZWwgi1mYCwbadH13AVJgLdVr5uSN03EMSzHroGQ26D8N15vw==}
     cpu: [arm64]
     os: [darwin]
     hasBin: true
 
-  '@dbx-app/mcp-darwin-x64@0.4.133':
+  '@linop-db-app/mcp-darwin-x64@0.4.133':
     resolution: {integrity: sha512-6GyAEKBaaA3+FDb1sqylngo3PJzyxkhZHqe9YKd6CwqXR1392XxvbrvSUD4Dutdc/7B6q0zl/kq1vSnoKNcZ/g==}
     cpu: [x64]
     os: [darwin]
     hasBin: true
 
-  '@dbx-app/mcp-linux-arm64-gnu@0.4.133':
+  '@linop-db-app/mcp-linux-arm64-gnu@0.4.133':
     resolution: {integrity: sha512-7vmK02X9Z4bZveVIgyb/huXit88iJCKdr9s8XiMORK2usehSIfAIE+dx5lwYPNgg9ZEjSmxOSuIJke5sBk/lQg==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
     hasBin: true
 
-  '@dbx-app/mcp-linux-x64-gnu@0.4.133':
+  '@linop-db-app/mcp-linux-x64-gnu@0.4.133':
     resolution: {integrity: sha512-p0qqlA3ICahTs4O0kBUwxtemLtjVcxEFlkHZGXAe5g9GrOU9+alblVr843+XGVGAP9WlzGWasGAKI73Qr//l1Q==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
     hasBin: true
 
-  '@dbx-app/mcp-win32-arm64@0.4.133':
+  '@linop-db-app/mcp-win32-arm64@0.4.133':
     resolution: {integrity: sha512-8YmOucFpIdZupV+bWXpFxFncMscUZxkgRXX3KEKQzGgH/ErVYs79+YRIlmwdvyDEbjtTn6pQwB7udYsor+cWYA==}
     cpu: [arm64]
     os: [win32]
     hasBin: true
 
-  '@dbx-app/mcp-win32-x64@0.4.133':
+  '@linop-db-app/mcp-win32-x64@0.4.133':
     resolution: {integrity: sha512-ZOr2SvlGxH9bpbMgt7lL9XfVqrCCXwU2pNMme+38lKYMpJtFNS483j5cT8iqMZMe0/P87CQTtIHInA7N5NDMgQ==}
     cpu: [x64]
     os: [win32]
     hasBin: true
 
-  '@dbx-app/plugin-cli-darwin-arm64@0.1.10':
+  '@linop-db-app/plugin-cli-darwin-arm64@0.1.10':
     resolution: {integrity: sha512-LMZG70qgN7izqKSzXMtWqJ345JlSLxjiNrKcYExQR8EB6K9FGWkE0+5Ub9qnrNszftTziLI4X9eyycpwpRITkQ==}
     cpu: [arm64]
     os: [darwin]
     hasBin: true
 
-  '@dbx-app/plugin-cli-darwin-x64@0.1.10':
+  '@linop-db-app/plugin-cli-darwin-x64@0.1.10':
     resolution: {integrity: sha512-PD4G0F7Y/Hbp92P4+847CF+pkcCN4lTs7xo4wgFeF8/BqUoR6hFhbeVWefCerI8F7rsaTcIFgPIfua76mKER5g==}
     cpu: [x64]
     os: [darwin]
     hasBin: true
 
-  '@dbx-app/plugin-cli-linux-arm64-gnu@0.1.10':
+  '@linop-db-app/plugin-cli-linux-arm64-gnu@0.1.10':
     resolution: {integrity: sha512-qD5uCjMBw5/VHuiLsKeq3zMSJDhrNQgCWsWeMXa/xF9IgRI2IsD9pXkOW2nIP/ExM0R09J2j1PF9TwrmVR1T/A==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
     hasBin: true
 
-  '@dbx-app/plugin-cli-linux-x64-gnu@0.1.10':
+  '@linop-db-app/plugin-cli-linux-x64-gnu@0.1.10':
     resolution: {integrity: sha512-pnBkz50sbfdey/rUqcxqq8p07hXRmobN1nzJWj0hmsmGQ82FcohE8v2uFgKdrjNXyL43D3IMX7CXOJmjvMiHJg==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
     hasBin: true
 
-  '@dbx-app/plugin-cli-win32-arm64@0.1.10':
+  '@linop-db-app/plugin-cli-win32-arm64@0.1.10':
     resolution: {integrity: sha512-NchmmwP8PalZ0iys7ezkSf+Flpfq02tTCkjp4l7LGkD7KaiOax0F/SiZBjxn/9QHQ2bNBi1BMlzdA9K+HAK4cw==}
     cpu: [arm64]
     os: [win32]
     hasBin: true
 
-  '@dbx-app/plugin-cli-win32-x64@0.1.10':
+  '@linop-db-app/plugin-cli-win32-x64@0.1.10':
     resolution: {integrity: sha512-oTYcpVdfh6EAUdUa6n7ns4YM+LPQNJAumE/UuTbDyo3aHjNhrnzaZujENy8wU+A7notCbIlAu26cKzADJDS38g==}
     cpu: [x64]
     os: [win32]
@@ -4213,58 +4213,58 @@ snapshots:
       style-mod: 4.1.4
       w3c-keyname: 2.2.8
 
-  '@dbx-app/cli-darwin-arm64@0.4.133':
+  '@linop-db-app/cli-darwin-arm64@0.4.133':
     optional: true
 
-  '@dbx-app/cli-darwin-x64@0.4.133':
+  '@linop-db-app/cli-darwin-x64@0.4.133':
     optional: true
 
-  '@dbx-app/cli-linux-arm64-gnu@0.4.133':
+  '@linop-db-app/cli-linux-arm64-gnu@0.4.133':
     optional: true
 
-  '@dbx-app/cli-linux-x64-gnu@0.4.133':
+  '@linop-db-app/cli-linux-x64-gnu@0.4.133':
     optional: true
 
-  '@dbx-app/cli-win32-arm64@0.4.133':
+  '@linop-db-app/cli-win32-arm64@0.4.133':
     optional: true
 
-  '@dbx-app/cli-win32-x64@0.4.133':
+  '@linop-db-app/cli-win32-x64@0.4.133':
     optional: true
 
-  '@dbx-app/mcp-darwin-arm64@0.4.133':
+  '@linop-db-app/mcp-darwin-arm64@0.4.133':
     optional: true
 
-  '@dbx-app/mcp-darwin-x64@0.4.133':
+  '@linop-db-app/mcp-darwin-x64@0.4.133':
     optional: true
 
-  '@dbx-app/mcp-linux-arm64-gnu@0.4.133':
+  '@linop-db-app/mcp-linux-arm64-gnu@0.4.133':
     optional: true
 
-  '@dbx-app/mcp-linux-x64-gnu@0.4.133':
+  '@linop-db-app/mcp-linux-x64-gnu@0.4.133':
     optional: true
 
-  '@dbx-app/mcp-win32-arm64@0.4.133':
+  '@linop-db-app/mcp-win32-arm64@0.4.133':
     optional: true
 
-  '@dbx-app/mcp-win32-x64@0.4.133':
+  '@linop-db-app/mcp-win32-x64@0.4.133':
     optional: true
 
-  '@dbx-app/plugin-cli-darwin-arm64@0.1.10':
+  '@linop-db-app/plugin-cli-darwin-arm64@0.1.10':
     optional: true
 
-  '@dbx-app/plugin-cli-darwin-x64@0.1.10':
+  '@linop-db-app/plugin-cli-darwin-x64@0.1.10':
     optional: true
 
-  '@dbx-app/plugin-cli-linux-arm64-gnu@0.1.10':
+  '@linop-db-app/plugin-cli-linux-arm64-gnu@0.1.10':
     optional: true
 
-  '@dbx-app/plugin-cli-linux-x64-gnu@0.1.10':
+  '@linop-db-app/plugin-cli-linux-x64-gnu@0.1.10':
     optional: true
 
-  '@dbx-app/plugin-cli-win32-arm64@0.1.10':
+  '@linop-db-app/plugin-cli-win32-arm64@0.1.10':
     optional: true
 
-  '@dbx-app/plugin-cli-win32-x64@0.1.10':
+  '@linop-db-app/plugin-cli-win32-x64@0.1.10':
     optional: true
 
   '@dotenvx/dotenvx@2.38.2':

@@ -1864,7 +1864,7 @@ describe("settingsStore persisted settings initialization", () => {
 
   it.each(["persisted", "legacy"])("preserves a %s global opt-out through unrelated saves until connection migration", async (source) => {
     const old = { sidebarShowUserAdmin: false, theme: "xcode-dark" };
-    const data = new Map(source === "legacy" ? [["dbx-editor-settings", JSON.stringify(old)]] : []);
+    const data = new Map(source === "legacy" ? [["linop-db-editor-settings", JSON.stringify(old)]] : []);
     vi.stubGlobal("localStorage", {
       getItem: (key: string) => data.get(key) ?? null,
       setItem: (key: string, value: string) => data.set(key, value),
@@ -1882,7 +1882,7 @@ describe("settingsStore persisted settings initialization", () => {
       store.updateEditorSettings({ fontSize: 16 });
       await store.persistEditorSettings();
       expect(saveEditorSettings).toHaveBeenLastCalledWith(expect.objectContaining({ sidebarShowUserAdmin: false, fontSize: 16 }));
-      if (source === "legacy") expect(data.has("dbx-editor-settings")).toBe(false);
+      if (source === "legacy") expect(data.has("linop-db-editor-settings")).toBe(false);
     } finally {
       vi.unstubAllGlobals();
     }

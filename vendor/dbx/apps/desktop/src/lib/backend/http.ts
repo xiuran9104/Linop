@@ -410,7 +410,7 @@ import { uuid } from "@/lib/common/utils";
 // Helpers
 // ---------------------------------------------------------------------------
 
-const DESKTOP_SETTINGS_STORAGE_KEY = "dbx-desktop-settings";
+const DESKTOP_SETTINGS_STORAGE_KEY = "linop-db-desktop-settings";
 const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   show_tray_icon: true,
   linux_floating_frame_enabled: true,
@@ -464,8 +464,8 @@ async function postQueryWithDiagnostics<T>(url: string, body: unknown, traceId?:
       responseHeadersMs: Math.round(headersAt - startedAt),
       responseBodyMs: Math.round(bodyAt - headersAt),
       totalMs: Math.round(bodyAt - startedAt),
-      backendCoreMs: response.headers.get("x-dbx-core-ms"),
-      backendSerializeMs: response.headers.get("x-dbx-serialize-ms"),
+      backendCoreMs: response.headers.get("x-linop-db-core-ms"),
+      backendSerializeMs: response.headers.get("x-linop-db-serialize-ms"),
     });
     throw await backendResponseError(
       new Response(responseText, {
@@ -485,8 +485,8 @@ async function postQueryWithDiagnostics<T>(url: string, body: unknown, traceId?:
     responseBodyMs: Math.round(bodyAt - headersAt),
     jsonParseMs: Math.round(parsedAt - bodyAt),
     totalMs: Math.round(parsedAt - startedAt),
-    backendCoreMs: response.headers.get("x-dbx-core-ms"),
-    backendSerializeMs: response.headers.get("x-dbx-serialize-ms"),
+    backendCoreMs: response.headers.get("x-linop-db-core-ms"),
+    backendSerializeMs: response.headers.get("x-linop-db-serialize-ms"),
   });
   return result;
 }
@@ -3373,7 +3373,7 @@ export interface GlobalSearchSettings {
 
 export async function loadGlobalSearchSettings(): Promise<GlobalSearchSettings | null> {
   try {
-    const raw = globalThis.localStorage?.getItem("dbx-global-search-settings-disk");
+    const raw = globalThis.localStorage?.getItem("linop-db-global-search-settings-disk");
     return raw ? (JSON.parse(raw) as GlobalSearchSettings) : null;
   } catch {
     return null;
@@ -3381,7 +3381,7 @@ export async function loadGlobalSearchSettings(): Promise<GlobalSearchSettings |
 }
 
 export async function saveGlobalSearchSettings(settings: GlobalSearchSettings): Promise<void> {
-  globalThis.localStorage?.setItem("dbx-global-search-settings-disk", JSON.stringify(settings));
+  globalThis.localStorage?.setItem("linop-db-global-search-settings-disk", JSON.stringify(settings));
 }
 
 // ---------------------------------------------------------------------------
@@ -5924,9 +5924,9 @@ export async function checkMcpServerStatus(): Promise<import("@/lib/backend/taur
     native_bin_path: null,
     script_path: null,
     data_dir: null,
-    install_command: "npm install -g @dbx-app/mcp-server@latest",
-    update_command: "npm install -g @dbx-app/mcp-server@latest",
-    uninstall_command: "npm uninstall -g @dbx-app/mcp-server",
+    install_command: "npm install -g @linop-db-app/mcp-server@latest",
+    update_command: "npm install -g @linop-db-app/mcp-server@latest",
+    uninstall_command: "npm uninstall -g @linop-db-app/mcp-server",
     error: "MCP Server status is only available in the desktop app.",
   };
 }

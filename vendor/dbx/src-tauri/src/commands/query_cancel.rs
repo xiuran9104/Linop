@@ -1,2 +1,2 @@
 #[allow(unused_imports)]
-pub use dbx_core::query_cancel::*;
+pub use linop_db_core::query_cancel::*;

@@ -20,7 +20,7 @@ pub struct DownloadedUpdate {
     pub release_notes: String,
     pub downloaded_at: u64,
     #[serde(default)]
-    pub channel: dbx_core::update::UpdateChannel,
+    pub channel: linop_db_core::update::UpdateChannel,
     #[serde(default)]
     pub release_tag: Option<String>,
     // Caches written before channel metadata existed were stable updates. Keep
@@ -208,7 +208,7 @@ mod tests {
             "downloaded_at":1
         }"#;
         let info: DownloadedUpdate = serde_json::from_str(legacy).unwrap();
-        assert_eq!(info.channel, dbx_core::update::UpdateChannel::Stable);
+        assert_eq!(info.channel, linop_db_core::update::UpdateChannel::Stable);
         assert!(info.is_promoted);
         assert!(info.release_tag.is_none());
     }
@@ -267,7 +267,7 @@ mod tests {
                 release_url: String::new(),
                 release_notes: String::new(),
                 downloaded_at: 1,
-                channel: dbx_core::update::UpdateChannel::Stable,
+                channel: linop_db_core::update::UpdateChannel::Stable,
                 release_tag: None,
                 is_promoted: true,
             },
@@ -299,7 +299,7 @@ mod tests {
                 release_url: String::new(),
                 release_notes: String::new(),
                 downloaded_at: 1,
-                channel: dbx_core::update::UpdateChannel::Stable,
+                channel: linop_db_core::update::UpdateChannel::Stable,
                 release_tag: None,
                 is_promoted: true,
             },

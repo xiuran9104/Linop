@@ -54,7 +54,7 @@ describe("QueryEditor context menu lifecycle", () => {
     const open = async (id: string) => {
       container.querySelector(`#${id}`)?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
       await nextTick();
-      return document.querySelector<HTMLButtonElement>("[data-dbx-context-menu] button");
+      return document.querySelector<HTMLButtonElement>("[data-linop-db-context-menu] button");
     };
 
     expect(await open("table-a")).toMatchObject({ disabled: false, textContent: "Inspect table_a" });

@@ -62,9 +62,9 @@ describe("pluginUiHtmlCache", () => {
   });
 
   it.each([
-    { protocol: "tauri:", prefix: "dbx-plugin://localhost/sample/" },
-    { protocol: "http:", prefix: "http://dbx-plugin.localhost/sample/" },
-    { protocol: "https:", prefix: "https://dbx-plugin.localhost/sample/" },
+    { protocol: "tauri:", prefix: "linop-db-plugin://localhost/sample/" },
+    { protocol: "http:", prefix: "http://linop-db-plugin.localhost/sample/" },
+    { protocol: "https:", prefix: "https://linop-db-plugin.localhost/sample/" },
   ])("preserves packaged module URL identity and nested import bases for $protocol", async ({ protocol, prefix }) => {
     mocks.isTauriRuntime.mockReturnValue(true);
     vi.stubEnv("PROD", true);

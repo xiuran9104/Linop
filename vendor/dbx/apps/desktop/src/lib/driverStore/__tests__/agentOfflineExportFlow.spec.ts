@@ -22,14 +22,14 @@ describe("runAgentOfflineExportFlow", () => {
     await expect(
       runAgentOfflineExportFlow({
         driverKeys,
-        chooseDestination: vi.fn().mockResolvedValue("/tmp/dbx-agents.zip"),
+        chooseDestination: vi.fn().mockResolvedValue("/tmp/linop-db-agents.zip"),
         exportPackage,
       }),
     ).resolves.toEqual({
-      destination: "/tmp/dbx-agents.zip",
+      destination: "/tmp/linop-db-agents.zip",
       result: { driverCount: 2 },
     });
-    expect(exportPackage).toHaveBeenCalledWith("/tmp/dbx-agents.zip", ["duckdb", "redis"], true);
+    expect(exportPackage).toHaveBeenCalledWith("/tmp/linop-db-agents.zip", ["duckdb", "redis"], true);
     expect(exportPackage.mock.calls[0]?.[1]).toEqual(["duckdb", "redis"]);
 
     // The JRE can be skipped for a smaller package (#13175).
@@ -37,10 +37,10 @@ describe("runAgentOfflineExportFlow", () => {
     await runAgentOfflineExportFlow({
       driverKeys,
       includeJres: false,
-      chooseDestination: vi.fn().mockResolvedValue("/tmp/dbx-agents.zip"),
+      chooseDestination: vi.fn().mockResolvedValue("/tmp/linop-db-agents.zip"),
       exportPackage,
     });
-    expect(exportPackage).toHaveBeenLastCalledWith("/tmp/dbx-agents.zip", ["duckdb", "redis", "kafka"], false);
+    expect(exportPackage).toHaveBeenLastCalledWith("/tmp/linop-db-agents.zip", ["duckdb", "redis", "kafka"], false);
   });
 
   it("does not open the save dialog for an empty selection", async () => {
@@ -54,7 +54,7 @@ describe("runAgentOfflineExportFlow", () => {
 
   it.each([
     ["destination selection", vi.fn().mockRejectedValue(new Error("save failed"))],
-    ["package creation", vi.fn().mockResolvedValue("/tmp/dbx-agents.zip")],
+    ["package creation", vi.fn().mockResolvedValue("/tmp/linop-db-agents.zip")],
   ])("propagates %s failures to the caller", async (stage, chooseDestination) => {
     const exportPackage = stage === "package creation" ? vi.fn().mockRejectedValue(new Error("export failed")) : vi.fn();
 
@@ -72,7 +72,7 @@ describe("runAgentOfflineExportAction", () => {
   function createOptions(overrides: Partial<Parameters<typeof runAgentOfflineExportAction<{ driverCount: number }>>[0]> = {}) {
     return {
       driverKeys: ["duckdb"],
-      chooseDestination: vi.fn().mockResolvedValue("/tmp/dbx-agents.zip"),
+      chooseDestination: vi.fn().mockResolvedValue("/tmp/linop-db-agents.zip"),
       exportPackage: vi.fn().mockResolvedValue({ driverCount: 1 }),
       setBusy: vi.fn(),
       onSuccess: vi.fn(),
@@ -87,7 +87,7 @@ describe("runAgentOfflineExportAction", () => {
       setBusy: vi.fn((busy: boolean) => events.push(`busy:${busy}`)),
       chooseDestination: vi.fn(async () => {
         events.push("choose");
-        return "/tmp/dbx-agents.zip";
+        return "/tmp/linop-db-agents.zip";
       }),
       exportPackage: vi.fn(async () => {
         events.push("export");

@@ -5,7 +5,7 @@
  * 变量行上的「加到监视」按钮（原样使用 DBMS_DEBUG 报出的名字）与手输。两处都要能容忍
  * 大小写与限定名的差异：
  *   - DBMS_DEBUG 的 `*name*type*value*` 文本按它自己的大小写回报（Oracle 通常是大写）；
- *   - OceanBase 的 JSON 摊平后是 `a.b.c` 这样的点号路径（见 dbx-core 的
+ *   - OceanBase 的 JSON 摊平后是 `a.b.c` 这样的点号路径（见 linop-db-core 的
  *     `collect_json_variables`），而用户往往只写最后一段。
  * 因此匹配规则是：**先整名（忽略大小写）**，再**退到最后一段**；两者都找不到就是不在
  * 当前作用域（`findWatchVariable` 返回 null），由界面显示明确的占位文案，而不是猜一个值。

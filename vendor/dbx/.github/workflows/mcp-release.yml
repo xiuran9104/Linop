@@ -99,7 +99,7 @@ jobs:
           const mcpPackagePath = "packages/mcp-server/package.json";
           const mcpPackage = readJson(mcpPackagePath);
           for (const dependency of Object.keys(mcpPackage.optionalDependencies ?? {})) {
-            if (dependency.startsWith("@dbx-app/mcp-")) {
+            if (dependency.startsWith("@linop-db-app/mcp-")) {
               mcpPackage.optionalDependencies[dependency] = version;
             }
           }
@@ -108,7 +108,7 @@ jobs:
           const cliPackagePath = "packages/cli/package.json";
           const cliPackage = readJson(cliPackagePath);
           for (const dependency of Object.keys(cliPackage.optionalDependencies ?? {})) {
-            if (dependency.startsWith("@dbx-app/cli-")) {
+            if (dependency.startsWith("@linop-db-app/cli-")) {
               cliPackage.optionalDependencies[dependency] = version;
             }
           }
@@ -125,10 +125,10 @@ jobs:
             lockfile = lockfile.replace(dependencyPattern, `$1${version}$2link:../${packageDirectory}`);
           };
           for (const dependency of Object.keys(mcpPackage.optionalDependencies ?? {})) {
-            updateLockDependency(dependency, dependency.replace("@dbx-app/", ""));
+            updateLockDependency(dependency, dependency.replace("@linop-db-app/", ""));
           }
           for (const dependency of Object.keys(cliPackage.optionalDependencies ?? {})) {
-            updateLockDependency(dependency, dependency.replace("@dbx-app/", ""));
+            updateLockDependency(dependency, dependency.replace("@linop-db-app/", ""));
           }
           fs.writeFileSync(lockPath, lockfile);
 
@@ -136,17 +136,17 @@ jobs:
           const server = readJson(serverPath);
           server.version = version;
           for (const packageInfo of server.packages ?? []) {
-            if (packageInfo.registryType === "npm" && packageInfo.identifier === "@dbx-app/mcp-server") {
+            if (packageInfo.registryType === "npm" && packageInfo.identifier === "@linop-db-app/mcp-server") {
               packageInfo.version = version;
             }
           }
           writeJson(serverPath, server);
 
-          const cargoPath = "crates/dbx-mcp/Cargo.toml";
+          const cargoPath = "crates/linop-db-mcp/Cargo.toml";
           const cargo = fs.readFileSync(cargoPath, "utf8").replace(/^version = "[^"]+"/m, `version = "${version}"`);
           fs.writeFileSync(cargoPath, cargo);
 
-          const cliCargoPath = "crates/dbx-cli/Cargo.toml";
+          const cliCargoPath = "crates/linop-db-cli/Cargo.toml";
           const cliCargo = fs.readFileSync(cliCargoPath, "utf8").replace(/^version = "[^"]+"/m, `version = "${version}"`);
           fs.writeFileSync(cliCargoPath, cliCargo);
 
@@ -155,7 +155,7 @@ jobs:
           NODE
 
       - name: Update Rust lockfile
-        run: cargo check -p dbx-mcp -p dbx-cli --no-default-features
+        run: cargo check -p linop-db-mcp -p linop-db-cli --no-default-features
 
       - name: Install nextest
         uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
@@ -176,8 +176,8 @@ jobs:
           git diff --binary -- \
             Cargo.lock \
             pnpm-lock.yaml \
-            crates/dbx-mcp/Cargo.toml \
-            crates/dbx-cli/Cargo.toml \
+            crates/linop-db-mcp/Cargo.toml \
+            crates/linop-db-cli/Cargo.toml \
             packages/cli/package.json \
             packages/cli-*/package.json \
             packages/mcp-server/package.json \
@@ -289,32 +289,32 @@ jobs:
           - runner: macos-15
             target: aarch64-apple-darwin
             package-dir: cli-darwin-arm64
-            package-name: "@dbx-app/cli-darwin-arm64"
+            package-name: "@linop-db-app/cli-darwin-arm64"
             binary: dbx
           - runner: macos-15-intel
             target: x86_64-apple-darwin
             package-dir: cli-darwin-x64
-            package-name: "@dbx-app/cli-darwin-x64"
+            package-name: "@linop-db-app/cli-darwin-x64"
             binary: dbx
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             package-dir: cli-linux-arm64-gnu
-            package-name: "@dbx-app/cli-linux-arm64-gnu"
+            package-name: "@linop-db-app/cli-linux-arm64-gnu"
             binary: dbx
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             package-dir: cli-linux-x64-gnu
-            package-name: "@dbx-app/cli-linux-x64-gnu"
+            package-name: "@linop-db-app/cli-linux-x64-gnu"
             binary: dbx
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc
             package-dir: cli-win32-arm64
-            package-name: "@dbx-app/cli-win32-arm64"
+            package-name: "@linop-db-app/cli-win32-arm64"
             binary: dbx.exe
           - runner: windows-2025
             target: x86_64-pc-windows-msvc
             package-dir: cli-win32-x64
-            package-name: "@dbx-app/cli-win32-x64"
+            package-name: "@linop-db-app/cli-win32-x64"
             binary: dbx.exe
 
     steps:
@@ -371,7 +371,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: dbx-cli-${{ matrix.target }}
+          shared-key: linop-db-cli-${{ matrix.target }}
           cache-targets: false
           cache-on-failure: true
 
@@ -422,11 +422,11 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Linux" ]]; then
-            cargo zigbuild --release -p dbx-cli --no-default-features --features dbx-mcp/os-keyring --target "${{ matrix.target }}.2.31"
+            cargo zigbuild --release -p linop-db-cli --no-default-features --features linop-db-mcp/os-keyring --target "${{ matrix.target }}.2.31"
           else
             # Same keychain rationale as the MCP native legs; the feature is
-            # forwarded through the dbx-mcp dependency.
-            cargo build --release -p dbx-cli --no-default-features --features dbx-mcp/os-keyring --target "${{ matrix.target }}"
+            # forwarded through the linop-db-mcp dependency.
+            cargo build --release -p linop-db-cli --no-default-features --features linop-db-mcp/os-keyring --target "${{ matrix.target }}"
           fi
 
       - name: Stage platform package
@@ -469,7 +469,7 @@ jobs:
           fi
 
   publish-cli:
-    name: Publish @dbx-app/cli
+    name: Publish @linop-db-app/cli
     runs-on: ubuntu-latest
     needs: [prepare, publish-cli-platforms]
 
@@ -509,19 +509,19 @@ jobs:
             return 1
           }
           for package in \
-            @dbx-app/cli-darwin-arm64 \
-            @dbx-app/cli-darwin-x64 \
-            @dbx-app/cli-linux-arm64-gnu \
-            @dbx-app/cli-linux-x64-gnu \
-            @dbx-app/cli-win32-arm64 \
-            @dbx-app/cli-win32-x64; do
+            @linop-db-app/cli-darwin-arm64 \
+            @linop-db-app/cli-darwin-x64 \
+            @linop-db-app/cli-linux-arm64-gnu \
+            @linop-db-app/cli-linux-x64-gnu \
+            @linop-db-app/cli-win32-arm64 \
+            @linop-db-app/cli-win32-x64; do
             wait_for_package "${package}" || {
-              echo "${package}@${VERSION} is not available on npm; refusing to publish @dbx-app/cli."
+              echo "${package}@${VERSION} is not available on npm; refusing to publish @linop-db-app/cli."
               exit 1
             }
           done
-          if npm view "@dbx-app/cli@${VERSION}" version >/dev/null 2>&1; then
-            echo "@dbx-app/cli@${VERSION} already exists on npm; skipping."
+          if npm view "@linop-db-app/cli@${VERSION}" version >/dev/null 2>&1; then
+            echo "@linop-db-app/cli@${VERSION} already exists on npm; skipping."
             exit 0
           fi
           pnpm publish "./packages/cli" --access public --provenance --no-git-checks
@@ -541,33 +541,33 @@ jobs:
           - runner: macos-15
             target: aarch64-apple-darwin
             package-dir: mcp-darwin-arm64
-            package-name: "@dbx-app/mcp-darwin-arm64"
-            binary: dbx-mcp
+            package-name: "@linop-db-app/mcp-darwin-arm64"
+            binary: linop-db-mcp
           - runner: macos-15-intel
             target: x86_64-apple-darwin
             package-dir: mcp-darwin-x64
-            package-name: "@dbx-app/mcp-darwin-x64"
-            binary: dbx-mcp
+            package-name: "@linop-db-app/mcp-darwin-x64"
+            binary: linop-db-mcp
           - runner: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             package-dir: mcp-linux-arm64-gnu
-            package-name: "@dbx-app/mcp-linux-arm64-gnu"
-            binary: dbx-mcp
+            package-name: "@linop-db-app/mcp-linux-arm64-gnu"
+            binary: linop-db-mcp
           - runner: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             package-dir: mcp-linux-x64-gnu
-            package-name: "@dbx-app/mcp-linux-x64-gnu"
-            binary: dbx-mcp
+            package-name: "@linop-db-app/mcp-linux-x64-gnu"
+            binary: linop-db-mcp
           - runner: windows-11-arm
             target: aarch64-pc-windows-msvc
             package-dir: mcp-win32-arm64
-            package-name: "@dbx-app/mcp-win32-arm64"
-            binary: dbx-mcp.exe
+            package-name: "@linop-db-app/mcp-win32-arm64"
+            binary: linop-db-mcp.exe
           - runner: windows-2025
             target: x86_64-pc-windows-msvc
             package-dir: mcp-win32-x64
-            package-name: "@dbx-app/mcp-win32-x64"
-            binary: dbx-mcp.exe
+            package-name: "@linop-db-app/mcp-win32-x64"
+            binary: linop-db-mcp.exe
 
     steps:
       - uses: actions/checkout@v7
@@ -623,7 +623,7 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: dbx-mcp-${{ matrix.target }}
+          shared-key: linop-db-mcp-${{ matrix.target }}
           cache-targets: false
           cache-on-failure: true
 
@@ -676,12 +676,12 @@ jobs:
           if [[ "${{ runner.os }}" == "Linux" ]]; then
             # Pure-Rust (zbus) Secret Service backend: no C libdbus, so the
             # zigbuild legs can read desktop-provisioned keys too.
-            cargo zigbuild --release -p dbx-mcp --features os-keyring --target "${{ matrix.target }}.2.31"
+            cargo zigbuild --release -p linop-db-mcp --features os-keyring --target "${{ matrix.target }}.2.31"
           else
             # Native macOS/Windows builds read the OS keychain key that DBX
             # Desktop provisions during the data security upgrade, so the MCP
             # works against desktop-migrated profiles without env overrides.
-            cargo build --release -p dbx-mcp --features os-keyring --target "${{ matrix.target }}"
+            cargo build --release -p linop-db-mcp --features os-keyring --target "${{ matrix.target }}"
           fi
 
       - uses: actions/setup-node@v7
@@ -774,7 +774,7 @@ jobs:
         run: ${SCCACHE_PATH} --show-stats
 
   publish-mcp-server:
-    name: Publish @dbx-app/mcp-server
+    name: Publish @linop-db-app/mcp-server
     runs-on: ubuntu-latest
     needs: [prepare, publish-mcp-platforms]
     steps:
@@ -814,19 +814,19 @@ jobs:
           }
 
           for package in \
-            @dbx-app/mcp-darwin-arm64 \
-            @dbx-app/mcp-darwin-x64 \
-            @dbx-app/mcp-linux-arm64-gnu \
-            @dbx-app/mcp-linux-x64-gnu \
-            @dbx-app/mcp-win32-arm64 \
-            @dbx-app/mcp-win32-x64; do
+            @linop-db-app/mcp-darwin-arm64 \
+            @linop-db-app/mcp-darwin-x64 \
+            @linop-db-app/mcp-linux-arm64-gnu \
+            @linop-db-app/mcp-linux-x64-gnu \
+            @linop-db-app/mcp-win32-arm64 \
+            @linop-db-app/mcp-win32-x64; do
             wait_for_package "${package}" || {
-              echo "${package}@${VERSION} is not available on npm; refusing to publish @dbx-app/mcp-server."
+              echo "${package}@${VERSION} is not available on npm; refusing to publish @linop-db-app/mcp-server."
               exit 1
             }
           done
-          if npm view "@dbx-app/mcp-server@${VERSION}" version >/dev/null 2>&1; then
-            echo "@dbx-app/mcp-server@${VERSION} already exists on npm; skipping."
+          if npm view "@linop-db-app/mcp-server@${VERSION}" version >/dev/null 2>&1; then
+            echo "@linop-db-app/mcp-server@${VERSION} already exists on npm; skipping."
             exit 0
           fi
           pnpm publish "./packages/mcp-server" --access public --provenance --no-git-checks
@@ -862,17 +862,17 @@ jobs:
             tarball="${work_dir}/$(jq -r '.[0].filename' "${work_dir}/pack.json")"
             tar -xzf "${tarball}" -C "${work_dir}"
             mkdir -p "${work_dir}/archive"
-            cp "${work_dir}/package/bin/dbx-mcp" "${work_dir}/archive/dbx-mcp"
-            chmod +x "${work_dir}/archive/dbx-mcp"
-            if [[ "$package_name" == @dbx-app/mcp-darwin-* ]]; then
-              node .github/scripts/sign-mcp-macos.mjs verify "${work_dir}/archive/dbx-mcp"
+            cp "${work_dir}/package/bin/linop-db-mcp" "${work_dir}/archive/linop-db-mcp"
+            chmod +x "${work_dir}/archive/linop-db-mcp"
+            if [[ "$package_name" == @linop-db-app/mcp-darwin-* ]]; then
+              node .github/scripts/sign-mcp-macos.mjs verify "${work_dir}/archive/linop-db-mcp"
             fi
-            tar -C "${work_dir}/archive" -czf "release-assets/${asset_name}.tar.gz" dbx-mcp
+            tar -C "${work_dir}/archive" -czf "release-assets/${asset_name}.tar.gz" linop-db-mcp
             mkdir "${work_dir}/unpacked"
             tar -xzf "release-assets/${asset_name}.tar.gz" -C "${work_dir}/unpacked"
-            cmp "${work_dir}/package/bin/dbx-mcp" "${work_dir}/unpacked/dbx-mcp"
-            if [[ "$package_name" == @dbx-app/mcp-darwin-* ]]; then
-              node .github/scripts/sign-mcp-macos.mjs verify "${work_dir}/unpacked/dbx-mcp"
+            cmp "${work_dir}/package/bin/linop-db-mcp" "${work_dir}/unpacked/linop-db-mcp"
+            if [[ "$package_name" == @linop-db-app/mcp-darwin-* ]]; then
+              node .github/scripts/sign-mcp-macos.mjs verify "${work_dir}/unpacked/linop-db-mcp"
             fi
             rm -rf "$work_dir"
           }
@@ -884,15 +884,15 @@ jobs:
             npm pack "${package_name}@${VERSION}" --pack-destination "${work_dir}" --json > "${work_dir}/pack.json"
             tarball="${work_dir}/$(jq -r '.[0].filename' "${work_dir}/pack.json")"
             tar -xzf "${tarball}" -C "${work_dir}"
-            zip -j "release-assets/${asset_name}.zip" "${work_dir}/package/bin/dbx-mcp.exe"
+            zip -j "release-assets/${asset_name}.zip" "${work_dir}/package/bin/linop-db-mcp.exe"
           }
 
-          pack_unix "@dbx-app/mcp-darwin-arm64" "dbx-mcp-darwin-arm64"
-          pack_unix "@dbx-app/mcp-darwin-x64" "dbx-mcp-darwin-x64"
-          pack_unix "@dbx-app/mcp-linux-arm64-gnu" "dbx-mcp-linux-arm64-gnu"
-          pack_unix "@dbx-app/mcp-linux-x64-gnu" "dbx-mcp-linux-x64-gnu"
-          pack_windows "@dbx-app/mcp-win32-arm64" "dbx-mcp-win32-arm64"
-          pack_windows "@dbx-app/mcp-win32-x64" "dbx-mcp-win32-x64"
+          pack_unix "@linop-db-app/mcp-darwin-arm64" "linop-db-mcp-darwin-arm64"
+          pack_unix "@linop-db-app/mcp-darwin-x64" "linop-db-mcp-darwin-x64"
+          pack_unix "@linop-db-app/mcp-linux-arm64-gnu" "linop-db-mcp-linux-arm64-gnu"
+          pack_unix "@linop-db-app/mcp-linux-x64-gnu" "linop-db-mcp-linux-x64-gnu"
+          pack_windows "@linop-db-app/mcp-win32-arm64" "linop-db-mcp-win32-arm64"
+          pack_windows "@linop-db-app/mcp-win32-x64" "linop-db-mcp-win32-x64"
 
           (
             cd release-assets
@@ -917,12 +917,12 @@ jobs:
           Recommended npm installation:
 
           \`\`\`bash
-          npm install -g @dbx-app/mcp-server@${VERSION}
+          npm install -g @linop-db-app/mcp-server@${VERSION}
           \`\`\`
 
-          Native archives run without Node.js. Download the archive matching your operating system and CPU, verify it with \`SHA256SUMS\`, extract \`dbx-mcp\` (or \`dbx-mcp.exe\`), and configure your MCP client to run it directly.
+          Native archives run without Node.js. Download the archive matching your operating system and CPU, verify it with \`SHA256SUMS\`, extract \`linop-db-mcp\` (or \`linop-db-mcp.exe\`), and configure your MCP client to run it directly.
 
-          The CLI archives use the \`dbx-cli-*\` prefix. Verify them with \`CLI-SHA256SUMS\`, extract \`dbx\` (or \`dbx.exe\`), and run it directly without Node.js.
+          The CLI archives use the \`linop-db-cli-*\` prefix. Verify them with \`CLI-SHA256SUMS\`, extract \`dbx\` (or \`dbx.exe\`), and run it directly without Node.js.
 
           This package release is separate from the DBX desktop application release and is intentionally not marked as the repository's latest release.
           EOF
@@ -984,12 +984,12 @@ jobs:
             zip -j "release-assets/${asset_name}.zip" "${work_dir}/package/bin/dbx.exe"
           }
 
-          pack_unix "@dbx-app/cli-darwin-arm64" "dbx-cli-darwin-arm64"
-          pack_unix "@dbx-app/cli-darwin-x64" "dbx-cli-darwin-x64"
-          pack_unix "@dbx-app/cli-linux-arm64-gnu" "dbx-cli-linux-arm64-gnu"
-          pack_unix "@dbx-app/cli-linux-x64-gnu" "dbx-cli-linux-x64-gnu"
-          pack_windows "@dbx-app/cli-win32-arm64" "dbx-cli-win32-arm64"
-          pack_windows "@dbx-app/cli-win32-x64" "dbx-cli-win32-x64"
+          pack_unix "@linop-db-app/cli-darwin-arm64" "linop-db-cli-darwin-arm64"
+          pack_unix "@linop-db-app/cli-darwin-x64" "linop-db-cli-darwin-x64"
+          pack_unix "@linop-db-app/cli-linux-arm64-gnu" "linop-db-cli-linux-arm64-gnu"
+          pack_unix "@linop-db-app/cli-linux-x64-gnu" "linop-db-cli-linux-x64-gnu"
+          pack_windows "@linop-db-app/cli-win32-arm64" "linop-db-cli-win32-arm64"
+          pack_windows "@linop-db-app/cli-win32-x64" "linop-db-cli-win32-x64"
 
           (
             cd release-assets
@@ -1034,10 +1034,10 @@ jobs:
           mkdir -p release-assets
           ASSETS=(
             "CLI-SHA256SUMS"
-            "dbx-cli-darwin-arm64.tar.gz"
-            "dbx-cli-darwin-x64.tar.gz"
-            "dbx-cli-linux-arm64-gnu.tar.gz"
-            "dbx-cli-linux-x64-gnu.tar.gz"
+            "linop-db-cli-darwin-arm64.tar.gz"
+            "linop-db-cli-darwin-x64.tar.gz"
+            "linop-db-cli-linux-arm64-gnu.tar.gz"
+            "linop-db-cli-linux-x64-gnu.tar.gz"
           )
           for ASSET in "${ASSETS[@]}"; do
             gh release download "${TAG}" \
@@ -1056,10 +1056,10 @@ jobs:
             awk -v f="$1" '$2 == f {print $1}' release-assets/CLI-SHA256SUMS
           }
 
-          SHA_DARWIN_ARM64="$(hash_for dbx-cli-darwin-arm64.tar.gz)"
-          SHA_DARWIN_X64="$(hash_for dbx-cli-darwin-x64.tar.gz)"
-          SHA_LINUX_ARM64="$(hash_for dbx-cli-linux-arm64-gnu.tar.gz)"
-          SHA_LINUX_X64="$(hash_for dbx-cli-linux-x64-gnu.tar.gz)"
+          SHA_DARWIN_ARM64="$(hash_for linop-db-cli-darwin-arm64.tar.gz)"
+          SHA_DARWIN_X64="$(hash_for linop-db-cli-darwin-x64.tar.gz)"
+          SHA_LINUX_ARM64="$(hash_for linop-db-cli-linux-arm64-gnu.tar.gz)"
+          SHA_LINUX_X64="$(hash_for linop-db-cli-linux-x64-gnu.tar.gz)"
 
           for HASH_NAME in SHA_DARWIN_ARM64 SHA_DARWIN_X64 SHA_LINUX_ARM64 SHA_LINUX_X64; do
             if [ -z "${!HASH_NAME}" ]; then
@@ -1094,7 +1094,7 @@ jobs:
           # Homebrew --min-release-age cooldown: the platform binary is an npm
           # optionalDependency, so during the cooldown npm silently skips it
           # and brew ships a non-working CLI (t8y2/homebrew-tap#2).
-          cat > Formula/dbx-cli.rb <<'RUBY_EOF'
+          cat > Formula/linop-db-cli.rb <<'RUBY_EOF'
           class DbxCli < Formula
             desc "Command-line interface for DBX database connections, schema, and safe queries"
             homepage "https://github.com/t8y2/dbx"
@@ -1103,19 +1103,19 @@ jobs:
 
             on_macos do
               if Hardware::CPU.intel?
-                url "https://github.com/t8y2/dbx/releases/download/packages-v#{version}/dbx-cli-darwin-x64.tar.gz"
+                url "https://github.com/t8y2/dbx/releases/download/packages-v#{version}/linop-db-cli-darwin-x64.tar.gz"
                 sha256 "__SHA_DARWIN_X64__"
               else
-                url "https://github.com/t8y2/dbx/releases/download/packages-v#{version}/dbx-cli-darwin-arm64.tar.gz"
+                url "https://github.com/t8y2/dbx/releases/download/packages-v#{version}/linop-db-cli-darwin-arm64.tar.gz"
                 sha256 "__SHA_DARWIN_ARM64__"
               end
             end
             on_linux do
               if Hardware::CPU.intel?
-                url "https://github.com/t8y2/dbx/releases/download/packages-v#{version}/dbx-cli-linux-x64-gnu.tar.gz"
+                url "https://github.com/t8y2/dbx/releases/download/packages-v#{version}/linop-db-cli-linux-x64-gnu.tar.gz"
                 sha256 "__SHA_LINUX_X64__"
               else
-                url "https://github.com/t8y2/dbx/releases/download/packages-v#{version}/dbx-cli-linux-arm64-gnu.tar.gz"
+                url "https://github.com/t8y2/dbx/releases/download/packages-v#{version}/linop-db-cli-linux-arm64-gnu.tar.gz"
                 sha256 "__SHA_LINUX_ARM64__"
               end
             end
@@ -1130,23 +1130,23 @@ jobs:
           end
           RUBY_EOF
 
-          sed -i "s/__CLI_VERSION__/${CLI_VERSION}/g" Formula/dbx-cli.rb
-          sed -i "s/__SHA_DARWIN_ARM64__/${SHA_DARWIN_ARM64}/g" Formula/dbx-cli.rb
-          sed -i "s/__SHA_DARWIN_X64__/${SHA_DARWIN_X64}/g" Formula/dbx-cli.rb
-          sed -i "s/__SHA_LINUX_ARM64__/${SHA_LINUX_ARM64}/g" Formula/dbx-cli.rb
-          sed -i "s/__SHA_LINUX_X64__/${SHA_LINUX_X64}/g" Formula/dbx-cli.rb
+          sed -i "s/__CLI_VERSION__/${CLI_VERSION}/g" Formula/linop-db-cli.rb
+          sed -i "s/__SHA_DARWIN_ARM64__/${SHA_DARWIN_ARM64}/g" Formula/linop-db-cli.rb
+          sed -i "s/__SHA_DARWIN_X64__/${SHA_DARWIN_X64}/g" Formula/linop-db-cli.rb
+          sed -i "s/__SHA_LINUX_ARM64__/${SHA_LINUX_ARM64}/g" Formula/linop-db-cli.rb
+          sed -i "s/__SHA_LINUX_X64__/${SHA_LINUX_X64}/g" Formula/linop-db-cli.rb
 
           node "$GITHUB_WORKSPACE/.github/scripts/render-mcp-formula.mjs" \
-            "${CLI_VERSION}" "$GITHUB_WORKSPACE/release-assets/SHA256SUMS" Formula/dbx-mcp.rb
+            "${CLI_VERSION}" "$GITHUB_WORKSPACE/release-assets/SHA256SUMS" Formula/linop-db-mcp.rb
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add Formula/dbx-cli.rb Formula/dbx-mcp.rb
+          git add Formula/linop-db-cli.rb Formula/linop-db-mcp.rb
 
           if git diff --cached --quiet; then
             echo "CLI Homebrew formula is already up to date."
           else
-            git commit -m "dbx-cli and dbx-mcp ${CLI_VERSION}"
+            git commit -m "linop-db-cli and linop-db-mcp ${CLI_VERSION}"
             git push
             echo "::notice::CLI Homebrew formula updated to ${CLI_VERSION}"
           fi

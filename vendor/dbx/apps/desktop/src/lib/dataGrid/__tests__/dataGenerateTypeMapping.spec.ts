@@ -171,7 +171,7 @@ describe("the full generate pipeline emits writable bit literals (#13014)", () =
         generatorParams: defaultGeneratorParams(columnName, { dataType }, generatorKey),
       };
     });
-    return { tableName: "dbx_bit_gen", schema: "public", database: "postgres", rowCount: 3, columns };
+    return { tableName: "linop_db_bit_gen", schema: "public", database: "postgres", rowCount: 3, columns };
   }
 
   it("keeps the generator selection for each bit width", () => {
@@ -181,7 +181,7 @@ describe("the full generate pipeline emits writable bit literals (#13014)", () =
   it("writes B'...' literals with the declared width for PostgreSQL", () => {
     const { sql } = generateTableData(bitTableConfig(), "postgres");
     expect(sql).toContain("INSERT INTO");
-    expect(sql).toContain("dbx_bit_gen");
+    expect(sql).toContain("linop_db_bit_gen");
     const rows = sql.slice(sql.indexOf("VALUES")).match(/B'[01]+'/g) ?? [];
     expect(rows.length).toBeGreaterThanOrEqual(6);
     for (const literal of rows) expect(literal).toMatch(/^B'[01]+'$/);

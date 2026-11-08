@@ -2,8 +2,8 @@ import { safeLocalStorageGet, safeLocalStorageKeys, safeLocalStorageRemove, safe
 import type { ColumnWidthDensity } from "@/stores/settingsStore";
 
 export const DATA_GRID_COLUMN_WIDTH_STATE_LIMIT = 128;
-const STORAGE_PREFIX = "dbx-data-grid-column-widths:";
-const STORAGE_INDEX_KEY = "dbx-data-grid-column-widths-index";
+const STORAGE_PREFIX = "linop-db-data-grid-column-widths:";
+const STORAGE_INDEX_KEY = "linop-db-data-grid-column-widths-index";
 
 interface DataGridColumnWidthState {
   structureSignature: string;

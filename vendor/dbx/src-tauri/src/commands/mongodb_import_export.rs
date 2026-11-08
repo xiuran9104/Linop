@@ -6,7 +6,7 @@ use tokio::sync::RwLock;
 
 use crate::commands::connection::{ensure_connection_writable, AppState};
 
-pub use dbx_core::mongodb_import_export::{
+pub use linop_db_core::mongodb_import_export::{
     MongoExportProgress, MongoExportRequest, MongoImportPreview, MongoImportPreviewRequest, MongoImportProgress,
     MongoImportRequest, MongoImportSummary,
 };
@@ -35,7 +35,7 @@ async fn clear_cancelled(import_id: &str) {
 
 #[tauri::command]
 pub async fn preview_mongodb_import_file(request: MongoImportPreviewRequest) -> Result<MongoImportPreview, String> {
-    dbx_core::mongodb_import_export::preview_mongodb_import_file_core(request).await
+    linop_db_core::mongodb_import_export::preview_mongodb_import_file_core(request).await
 }
 
 #[tauri::command]
@@ -46,7 +46,7 @@ pub async fn import_mongodb_file(
 ) -> Result<MongoImportSummary, String> {
     clear_cancelled(&request.import_id).await;
     ensure_connection_writable(&state, &request.connection_id, "Import").await?;
-    let result = dbx_core::mongodb_import_export::import_mongodb_file_core(
+    let result = linop_db_core::mongodb_import_export::import_mongodb_file_core(
         &state,
         &request,
         |import_id| {
@@ -75,24 +75,24 @@ pub async fn export_mongodb_query(
     report_outcome: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     if report_outcome == Some(true) {
-        let outcome = dbx_core::mongodb_import_export::export_mongodb_query_reported(
+        let outcome = linop_db_core::mongodb_import_export::export_mongodb_query_reported(
             &state,
             &request,
             |export_id| {
                 let export_id = export_id.to_string();
-                Box::pin(async move { dbx_core::transfer::is_cancelled(&export_id).await })
+                Box::pin(async move { linop_db_core::transfer::is_cancelled(&export_id).await })
             },
             |progress| emit_export_progress(&app, progress),
         )
         .await;
         return serde_json::to_value(outcome).map_err(|error| error.to_string());
     }
-    dbx_core::mongodb_import_export::export_mongodb_query_core(
+    linop_db_core::mongodb_import_export::export_mongodb_query_core(
         &state,
         &request,
         |export_id| {
             let export_id = export_id.to_string();
-            Box::pin(async move { dbx_core::transfer::is_cancelled(&export_id).await })
+            Box::pin(async move { linop_db_core::transfer::is_cancelled(&export_id).await })
         },
         |progress| emit_export_progress(&app, progress),
     )
@@ -102,6 +102,6 @@ pub async fn export_mongodb_query(
 
 #[tauri::command]
 pub async fn cancel_mongodb_export(export_id: String) -> Result<bool, String> {
-    dbx_core::transfer::set_cancelled(&export_id).await;
+    linop_db_core::transfer::set_cancelled(&export_id).await;
     Ok(true)
 }

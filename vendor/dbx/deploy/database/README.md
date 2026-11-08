@@ -11,7 +11,7 @@ make db-verify DB=postgresql@17.4
 make db-down DB=postgresql@17.4
 ```
 
-Each product has a dedicated `101xx`-`115xx` default host-port range, so checked-in recipes can run together without using common service ports or colliding across versions. The default password is `123456`, and the default database is `dbx`; Redis uses DB 0 and the `dbx:` key prefix. Container names follow `dbx-<product>-<version>`. `DB_PORT` and `DB_PASSWORD` override the primary host port and password; service-specific variables override auxiliary ports. Ports bind to `127.0.0.1` by default. To allow remote access explicitly, set `DB_BIND_ADDRESS=0.0.0.0`, choose a strong `DB_PASSWORD`, and protect the host with firewall rules. `make db-reset` deletes the named volume and therefore requires `CONFIRM=1`:
+Each product has a dedicated `101xx`-`115xx` default host-port range, so checked-in recipes can run together without using common service ports or colliding across versions. The default password is `123456`, and the default database is `dbx`; Redis uses DB 0 and the `dbx:` key prefix. Container names follow `linop-db-<product>-<version>`. `DB_PORT` and `DB_PASSWORD` override the primary host port and password; service-specific variables override auxiliary ports. Ports bind to `127.0.0.1` by default. To allow remote access explicitly, set `DB_BIND_ADDRESS=0.0.0.0`, choose a strong `DB_PASSWORD`, and protect the host with firewall rules. `make db-reset` deletes the named volume and therefore requires `CONFIRM=1`:
 
 ```bash
 make db-reset DB=redis@7.4 CONFIRM=1

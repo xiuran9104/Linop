@@ -79,7 +79,7 @@ effective_write_allowed =
 - 旧连接 ID、名称和数据库 scope 都是硬上限；请求参数不能覆盖数据库 scope。
 - 按 ID 或名称访问范围外连接返回 `CONNECTION_OUT_OF_SCOPE`。
 - Rust MCP 在每个工具请求中重新读取策略；Desktop bridge 和 Web 最终执行边界会再次读取最新策略。
-- SQL、MongoDB、Redis、`dbx_execute_and_show`、连接新增和删除均使用中央只读与高风险操作策略。
+- SQL、MongoDB、Redis、`linop_db_execute_and_show`、连接新增和删除均使用中央只读与高风险操作策略。
 - 删除连接前重新解析目标，不能按隐藏 ID 或名称删除 allowlist 外连接。
 - Web MCP 的 SQL、MongoDB、Redis 和连接保存请求携带 `X-DBX-MCP-Request: 1`，普通 Web UI 请求不携带，因此不受 MCP 全局只读影响。
 - Web MCP 连接新增、删除使用专用的单连接 `/api/connection/mcp/add` 与 `/api/connection/mcp/remove` 路由；服务端在同一 SQLite 事务中复核最新策略并只修改目标行，避免完整列表快照覆盖 Web UI 的并发连接修改。
@@ -102,7 +102,7 @@ effective_write_allowed =
 - 权限选择器下方展示读取、范围可控的数据变更、全量/清空、结构与高风险管理、连接管理五类能力对照，并明确所有模式仍受连接 allowlist、连接只读、生产库保护和数据库账号权限约束。
 - 连接多选已升级为 DBX 权威 allowlist，并提供“所有连接”和“不允许任何连接”。
 - 策略保存期间禁用控件；保存失败回滚并提示；加载失败时禁用策略控件，避免显示可写假象。
-- 旧 `dbx-mcp-config-readonly=true` 只在后端策略尚未初始化时迁移为全局只读，保存成功后清理旧键。
+- 旧 `linop-db-mcp-config-readonly=true` 只在后端策略尚未初始化时迁移为全局只读，保存成功后清理旧键。
 - 旧客户端 scope localStorage 不迁移为全局 allowlist，避免把单客户端偏好意外升级为全局限制。
 - 生成配置只包含启动 MCP Server 并连接当前 DBX 实例所需的运行参数；Web 模式包含 `DBX_WEB_URL` 和 `DBX_WEB_PASSWORD` 占位值，但不再生成读写、高风险操作或连接 scope 环境变量。
 - 旧 scope 环境变量仍由新版 Server 兼容读取，但 DBX 不再展示、生成或推荐；升级后可从客户端配置中删除。
@@ -115,7 +115,7 @@ effective_write_allowed =
 
 ### 原生 MCP 发布链
 
-- `@dbx-app/mcp-server` 是轻量 Node 启动器，运行时选择对应平台的 Rust `dbx-mcp` 二进制。
+- `@linop-db-app/mcp-server` 是轻量 Node 启动器，运行时选择对应平台的 Rust `linop-db-mcp` 二进制。
 - `mcp-release.yml` 为 macOS、Linux 和 Windows 构建并发布平台包，再发布 MCP Server 启动器和原生 GitHub Release 归档。
 - 旧 `packages/node-core` 和 TypeScript MCP 运行时已删除，不再参与构建、测试或发布。
 - 本轮只修复发布配置和迁移冲突，没有实际向 npm 发布。
@@ -123,19 +123,19 @@ effective_write_allowed =
 ## 自动化验证结果
 
 ```text
-cargo test -p dbx-core mongo_shell --lib
+cargo test -p linop-db-core mongo_shell --lib
   PASS
 
-cargo test -p dbx-mcp --no-default-features --lib --test protocol
+cargo test -p linop-db-mcp --no-default-features --lib --test protocol
   PASS
 
-cargo test -p dbx-web mcp_
+cargo test -p linop-db-web mcp_
   PASS
 
-pnpm --filter @dbx-app/mcp-server test
+pnpm --filter @linop-db-app/mcp-server test
   PASS
 
-cargo check -p dbx-core -p dbx-web -p dbx-mcp
+cargo check -p linop-db-core -p linop-db-web -p linop-db-mcp
   PASS
 
 cargo fmt --all -- --check
@@ -145,7 +145,7 @@ git diff --check
   PASS
 ```
 
-Rust MCP 回归测试覆盖中央 allowlist、只读模式、旧 scope 交集、数据库 scope 硬约束、稳定策略错误码和 MongoDB 跨库生产目标。MCP npm 启动器测试使用隔离的临时 `DBX_DATA_DIR` 启动真实 Rust 二进制，不读取或修改用户的 DBX 数据库。
+Rust MCP 回归测试覆盖中央 allowlist、只读模式、旧 scope 交集、数据库 scope 硬约束、稳定策略错误码和 MongoDB 跨库生产目标。MCP npm 启动器测试使用隔离的临时 `LINOP_DB_DATA_DIR` 启动真实 Rust 二进制，不读取或修改用户的 DBX 数据库。
 
 ## 发布前人工验证
 
@@ -165,7 +165,7 @@ Rust MCP 回归测试覆盖中央 allowlist、只读模式、旧 scope 交集、
 - MCP SQL 权限是应用层静态语句形状保护；此限制同样适用于只读模式，无法识别 `SELECT app_mutate_users()` 等用户自定义函数或 volatile 函数的所有副作用。
 - 数据读写不能阻止 Agent 先读取并枚举主键、再通过多次带条件语句逐条修改或删除全部数据。
 - 数据库账号最小权限仍是最终硬边界；MCP 策略不能替代数据库自身的授权、审计和凭据隔离。
-- `dbx_execute_and_show` 仅支持 SQL 连接；MongoDB 和 Redis 必须使用各自的执行工具。
+- `linop_db_execute_and_show` 仅支持 SQL 连接；MongoDB 和 Redis 必须使用各自的执行工具。
 - 旧 MCP Server 不会读取中央策略，必须同时升级 DBX 应用与 MCP Server；当前生成配置不再为旧 Server 输出权限兼容环境变量。
 - MCP 策略不是数据库凭据吊销，不能阻止持有凭据的进程绕过 DBX 直接连接数据库。
 - Web 的 MCP 来源 header 用于区分 DBX Web UI 与 MCP 执行路径；真正的外部访问控制仍由现有 Web 认证负责。

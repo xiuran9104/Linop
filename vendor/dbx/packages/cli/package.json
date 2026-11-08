@@ -1,5 +1,5 @@
 {
-  "name": "@dbx-app/cli",
+  "name": "@linop-db-app/cli",
   "version": "0.4.141",
   "description": "Command line interface for DBX database connections, schema, and safe queries",
   "keywords": [
@@ -28,18 +28,18 @@
   ],
   "type": "module",
   "scripts": {
-    "start": "cargo run -p dbx-cli --no-default-features --",
-    "test": "cargo nextest run -p dbx-cli --no-default-features --no-fail-fast",
-    "build": "cargo build -p dbx-cli --release --no-default-features",
+    "start": "cargo run -p linop-db-cli --no-default-features --",
+    "test": "cargo nextest run -p linop-db-cli --no-default-features --no-fail-fast",
+    "build": "cargo build -p linop-db-cli --release --no-default-features",
     "prepublishOnly": "node --check bin/dbx.js"
   },
   "optionalDependencies": {
-    "@dbx-app/cli-darwin-arm64": "0.4.141",
-    "@dbx-app/cli-darwin-x64": "0.4.141",
-    "@dbx-app/cli-linux-arm64-gnu": "0.4.141",
-    "@dbx-app/cli-linux-x64-gnu": "0.4.141",
-    "@dbx-app/cli-win32-arm64": "0.4.141",
-    "@dbx-app/cli-win32-x64": "0.4.141"
+    "@linop-db-app/cli-darwin-arm64": "0.4.141",
+    "@linop-db-app/cli-darwin-x64": "0.4.141",
+    "@linop-db-app/cli-linux-arm64-gnu": "0.4.141",
+    "@linop-db-app/cli-linux-x64-gnu": "0.4.141",
+    "@linop-db-app/cli-win32-arm64": "0.4.141",
+    "@linop-db-app/cli-win32-x64": "0.4.141"
   },
   "engines": {
     "node": ">=18.18.0"

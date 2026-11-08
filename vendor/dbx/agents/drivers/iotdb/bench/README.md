@@ -6,7 +6,7 @@ IoTDB `2.0.8` JDBC and Go clients against the same Tree-model server and
 fixture, measuring cold process plus connection startup and warm query latency
 while fully decoding every returned cell.
 
-The default fixture contains 10,000 rows in `root.dbx_bench.d1`. Workloads are:
+The default fixture contains 10,000 rows in `root.linop_db_bench.d1`. Workloads are:
 
 - `SHOW DATABASES`
 - one timestamp point query
@@ -18,7 +18,7 @@ The default fixture contains 10,000 rows in `root.dbx_bench.d1`. Workloads are:
 For example, run the matching standalone Docker image:
 
 ```bash
-docker run --rm --name dbx-iotdb-bench -p 6667:6667 apache/iotdb:2.0.8-standalone
+docker run --rm --name linop-db-iotdb-bench -p 6667:6667 apache/iotdb:2.0.8-standalone
 ```
 
 Wait until port `6667` is ready before starting the benchmark.
@@ -29,7 +29,7 @@ From the repository root:
 
 ```bash
 python3 agents/drivers/iotdb/bench/run.py \
-  > /tmp/dbx-iotdb-driver-benchmark.json
+  > /tmp/linop-db-iotdb-driver-benchmark.json
 ```
 
 The runner builds both candidates from this benchmark directory, recreates the

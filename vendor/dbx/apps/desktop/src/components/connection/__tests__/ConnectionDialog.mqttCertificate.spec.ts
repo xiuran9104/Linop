@@ -194,7 +194,7 @@ describe("ConnectionDialog MQTT certificate credentials", () => {
       external_config: {
         host: "broker.example.com",
         port: 8883,
-        clientId: "dbx-test",
+        clientId: "linop-db-test",
         tls: true,
         auth: { kind: "password", username: "device", password: "secret" },
       },
@@ -242,7 +242,7 @@ describe("ConnectionDialog MQTT certificate credentials", () => {
       password: "",
       host: "broker.example.com",
       port: 8883,
-      external_config: { host: "broker.example.com", port: 8883, clientId: "dbx-test", tls: true, auth: { kind: "certificate", username: "device", password: "secret", clientCertPath: "/client.crt", clientKeyPath: "/client.key" } },
+      external_config: { host: "broker.example.com", port: 8883, clientId: "linop-db-test", tls: true, auth: { kind: "certificate", username: "device", password: "secret", clientCertPath: "/client.crt", clientKeyPath: "/client.key" } },
     } as ConnectionConfig);
     expect(document.querySelector<HTMLInputElement>(`input[placeholder="${i18n.global.t("connection.mqttUsernamePlaceholder")}"]`)?.value).toBe("device");
     expect(document.querySelector<HTMLInputElement>('input[type="password"]')?.value).toBe("secret");

@@ -617,7 +617,7 @@ export interface QueryPaginationExecutionPlanOptions {
   pagination: QueryPagination;
   useAgentCursor: boolean;
   firstPageUsesActualSql?: boolean;
-  /** Optimizer hint injected into the generated count (dbx_count) and page (dbx_page) SQL.
+  /** Optimizer hint injected into the generated count (linop_db_count) and page (linop_db_page) SQL.
    *  Example: GaussDB parallel execution hint: + set(query_dop 8). */
   executionHint?: string;
 }
@@ -702,7 +702,7 @@ export interface AiMessage {
   toolCalls?: AiToolCallRef[];
 }
 
-/** Mirrors `ToolCallRef` in `crates/dbx-ai-provider/src/ai.rs`. `providerPayload`
+/** Mirrors `ToolCallRef` in `crates/linop-db-ai-provider/src/ai.rs`. `providerPayload`
  *  is provider-private replay data (Gemini thought signatures) that only a real
  *  provider round can produce; a panel-built call leaves it unset. */
 export interface AiToolCallRef {
@@ -1562,7 +1562,7 @@ export interface AiChatMessage {
   mentions?: unknown[];
   reasoning?: string;
   kind?: "contextSummary" | "writeSqlConfirmation" | "productionWriteBlocked" | "outputTruncated";
-  /** Set on the assistant message whose generation failed; persisted (mirrors dbx-core `AiChatMessage.failed`). */
+  /** Set on the assistant message whose generation failed; persisted (mirrors linop-db-core `AiChatMessage.failed`). */
   failed?: boolean;
   /** Target frozen when this assistant turn started, retained for confirmation. */
   sourceBinding?: import("@/lib/ai/aiConversationBinding").AiConversationBinding;
@@ -3365,8 +3365,8 @@ export async function readPluginUiAsset(pluginId: string, path: string): Promise
 }
 
 export async function subscribePluginEvents(onEvent: (event: PluginEvent) => void, onBinary?: (event: PluginBinaryEvent) => void): Promise<UnlistenFn> {
-  const unlistenEvent = await listen<PluginEvent>("dbx-plugin-event", (event) => onEvent(event.payload));
-  const unlistenBinary = await listen<PluginBinaryEvent>("dbx-plugin-binary", (event) => onBinary?.(event.payload));
+  const unlistenEvent = await listen<PluginEvent>("linop-db-plugin-event", (event) => onEvent(event.payload));
+  const unlistenBinary = await listen<PluginBinaryEvent>("linop-db-plugin-binary", (event) => onBinary?.(event.payload));
   return () => {
     unlistenEvent();
     unlistenBinary();
@@ -3380,7 +3380,7 @@ export async function subscribePluginEvents(onEvent: (event: PluginEvent) => voi
  * shape, so the store can stay transport-agnostic.
  */
 export async function subscribeConnectionLiveness(onEvent: (event: ConnectionLivenessMessage) => void): Promise<UnlistenFn> {
-  return listen<ConnectionLivenessMessage>("dbx-connection-liveness", (event) => onEvent(event.payload));
+  return listen<ConnectionLivenessMessage>("linop-db-connection-liveness", (event) => onEvent(event.payload));
 }
 
 /**

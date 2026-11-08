@@ -1,4 +1,4 @@
-# dbx-plugin-sdk
+# linop-db-plugin-sdk
 
 Rust SDK for DBX sidecar protocol v1.
 
@@ -14,7 +14,7 @@ It provides:
 ## Minimal sidecar
 
 ```rust
-use dbx_plugin_sdk::{
+use linop_db_plugin_sdk::{
     PluginEmitter, PluginError, PluginHandler, PluginMetadata, PluginServer,
     RequestContext,
 };
@@ -57,7 +57,7 @@ The metadata ID and version must exactly match `manifest.json`; DBX rejects a mi
 Use framed transport for PTY, SFTP, file transfer, or other binary streams:
 
 ```rust
-use dbx_plugin_sdk::{PluginServer, PluginTransport};
+use linop_db_plugin_sdk::{PluginServer, PluginTransport};
 
 PluginServer::new(metadata, handler)
     .transport(PluginTransport::Framed)

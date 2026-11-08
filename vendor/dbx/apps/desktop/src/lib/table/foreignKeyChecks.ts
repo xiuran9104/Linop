@@ -16,8 +16,8 @@ export type ForeignKeyChecksMode = "default" | "enable" | "disable";
 
 export const FOREIGN_KEY_CHECKS_MODES: readonly ForeignKeyChecksMode[] = ["default", "enable", "disable"];
 
-const SAVE_STATEMENT = "SET @dbx_saved_foreign_key_checks = @@SESSION.FOREIGN_KEY_CHECKS";
-const RESTORE_STATEMENT = "SET FOREIGN_KEY_CHECKS = @dbx_saved_foreign_key_checks";
+const SAVE_STATEMENT = "SET @linop_db_saved_foreign_key_checks = @@SESSION.FOREIGN_KEY_CHECKS";
+const RESTORE_STATEMENT = "SET FOREIGN_KEY_CHECKS = @linop_db_saved_foreign_key_checks";
 
 /** Only MySQL honours the session variable (same scope as Schema Diff's "ignore foreign key checks"). */
 export function supportsForeignKeyChecksOption(databaseType: DatabaseType | string | undefined): boolean {

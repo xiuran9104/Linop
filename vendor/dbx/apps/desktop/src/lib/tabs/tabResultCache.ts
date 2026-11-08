@@ -4,7 +4,7 @@ import { toRaw } from "vue";
 import { isTauriRuntime } from "@/lib/backend/tauriRuntime";
 import { apiUrl } from "@/lib/common/webPath";
 
-const DB_NAME = "dbx-tab-runtime-cache";
+const DB_NAME = "linop-db-tab-runtime-cache";
 const DB_VERSION = 2;
 const RESULT_STORE = "resultSnapshots";
 const RESULT_METADATA_STORE = "resultSnapshotMetadata";

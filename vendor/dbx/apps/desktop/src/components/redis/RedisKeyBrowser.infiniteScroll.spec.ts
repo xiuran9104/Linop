@@ -474,7 +474,7 @@ describe("RedisKeyBrowser infinite scroll auto-continue (issue #6022)", () => {
       }
       expect(host.querySelector(`[data-redis-leaf='${btoa("new")}']`)).not.toBeNull();
       expect(host.textContent).not.toContain("old");
-      window.dispatchEvent(new CustomEvent("dbx-redis-db-flushed", { detail: { connectionId: "connection", db: 1 } }));
+      window.dispatchEvent(new CustomEvent("linop-db-redis-db-flushed", { detail: { connectionId: "connection", db: 1 } }));
       await settleThoroughly();
       expect(host.querySelector(`[data-redis-leaf='${btoa("new")}']`)).toBeNull();
     } finally {
@@ -1015,7 +1015,7 @@ describe("RedisKeyBrowser continuation ownership (issue #7779)", () => {
 
 // `iterations` (aka `max_iterations`) is the 6th positional arg the frontend
 // sends to `redisScanKeysBatch` — the same unit the backend spends as real
-// Redis SCAN calls (see `crates/dbx-driver-redis/src/lib.rs`).
+// Redis SCAN calls (see `crates/linop-db-driver-redis/src/lib.rs`).
 function totalIterationsRequested(): number {
   return mocks.redisScanKeysBatch.mock.calls.reduce((sum: number, call: unknown[]) => sum + (call[5] as number), 0);
 }

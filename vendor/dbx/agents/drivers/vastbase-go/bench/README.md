@@ -12,10 +12,10 @@ connection/authentication, steady-state latency, throughput, RSS, and artifact s
 ## Build candidates
 
 ```bash
-mkdir -p /tmp/dbx-vastbase-bench
+mkdir -p /tmp/linop-db-vastbase-bench
 
-go build -o /tmp/dbx-vastbase-bench/vastbase-go ./drivers/vastbase-go
-go build -o /tmp/dbx-vastbase-bench/agent-compare ./drivers/vastbase-go/bench
+go build -o /tmp/linop-db-vastbase-bench/vastbase-go ./drivers/vastbase-go
+go build -o /tmp/linop-db-vastbase-bench/agent-compare ./drivers/vastbase-go/bench
 ```
 
 Run these commands from `agents/`. Supply the archived JDBC `2.11v` and `2.15v`
@@ -29,7 +29,7 @@ Agent JSON-RPC path. It pins one physical connection per worker and runs the sam
 1,000-row decode query used by `decode_rows`.
 
 ```bash
-go build -o /tmp/dbx-vastbase-bench/vastbase-direct ./drivers/vastbase-go/bench/direct
+go build -o /tmp/linop-db-vastbase-bench/vastbase-direct ./drivers/vastbase-go/bench/direct
 
 DBX_TEST_PASSWORD='secret' \
 VASTBASE_HOST=127.0.0.1 \
@@ -39,7 +39,7 @@ VASTBASE_USERNAME=vastbase \
 BENCH_MODE=collect \
 BENCH_CONCURRENCY=32 \
 BENCH_SECONDS=4 \
-/tmp/dbx-vastbase-bench/vastbase-direct
+/tmp/linop-db-vastbase-bench/vastbase-direct
 ```
 
 Set `BENCH_MODE=marshal` to include `encoding/json` serialization of the collected
@@ -51,26 +51,26 @@ replacement for the JDBC-vs-Go Agent benchmark.
 Startup does not require a database server:
 
 ```bash
-JDBC_211_AGENT_JAR=/tmp/dbx-vastbase-bench/vastbase-jdbc-2.11v.jar \
-JDBC_215_AGENT_JAR=/tmp/dbx-vastbase-bench/vastbase-jdbc-2.15v.jar \
-GO_AGENT=/tmp/dbx-vastbase-bench/vastbase-go \
+JDBC_211_AGENT_JAR=/tmp/linop-db-vastbase-bench/vastbase-jdbc-2.11v.jar \
+JDBC_215_AGENT_JAR=/tmp/linop-db-vastbase-bench/vastbase-jdbc-2.15v.jar \
+GO_AGENT=/tmp/linop-db-vastbase-bench/vastbase-go \
 BENCH_PHASES=startup \
-/tmp/dbx-vastbase-bench/agent-compare > /tmp/dbx-vastbase-bench/startup.ndjson
+/tmp/linop-db-vastbase-bench/agent-compare > /tmp/linop-db-vastbase-bench/startup.ndjson
 ```
 
 ## Live G100/V100 benchmark
 
 ```bash
-JDBC_211_AGENT_JAR=/tmp/dbx-vastbase-bench/vastbase-jdbc-2.11v.jar \
-JDBC_215_AGENT_JAR=/tmp/dbx-vastbase-bench/vastbase-jdbc-2.15v.jar \
-GO_AGENT=/tmp/dbx-vastbase-bench/vastbase-go \
+JDBC_211_AGENT_JAR=/tmp/linop-db-vastbase-bench/vastbase-jdbc-2.11v.jar \
+JDBC_215_AGENT_JAR=/tmp/linop-db-vastbase-bench/vastbase-jdbc-2.15v.jar \
+GO_AGENT=/tmp/linop-db-vastbase-bench/vastbase-go \
 VASTBASE_HOST=127.0.0.1 \
 VASTBASE_PORT=5432 \
 VASTBASE_DATABASE=postgres \
 VASTBASE_USERNAME=vastbase \
 VASTBASE_PASSWORD='secret' \
 VASTBASE_SERVER='G100-V3.0.9-test' \
-/tmp/dbx-vastbase-bench/agent-compare > /tmp/dbx-vastbase-bench/live.ndjson
+/tmp/linop-db-vastbase-bench/agent-compare > /tmp/linop-db-vastbase-bench/live.ndjson
 ```
 
 Defaults:

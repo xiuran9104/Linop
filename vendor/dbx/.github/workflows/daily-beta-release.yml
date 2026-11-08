@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       base_version:
-        description: "Stable SemVer base to build (defaults to dbx-web Cargo.toml)"
+        description: "Stable SemVer base to build (defaults to linop-db-web Cargo.toml)"
         required: false
         type: string
       force:
@@ -47,7 +47,7 @@ jobs:
 
           base_version="$REQUESTED_BASE_VERSION"
           if [[ -z "$base_version" ]]; then
-            base_version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "dbx-web") | .version')"
+            base_version="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "linop-db-web") | .version')"
             # A promoted beta becomes the stable release, so the next beta must
             # build the following patch. Source versions ahead of that (a
             # minor or major bump) still win.

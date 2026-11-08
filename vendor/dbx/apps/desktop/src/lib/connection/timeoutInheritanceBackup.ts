@@ -1,6 +1,6 @@
 import { normalizeConnectTimeoutSecs, normalizeQueryTimeoutSecs } from "@/lib/connection/timeoutLimits";
 
-export const TIMEOUT_INHERITANCE_BACKUP_STORAGE_KEY = "dbx-timeout-inheritance-backup-v1";
+export const TIMEOUT_INHERITANCE_BACKUP_STORAGE_KEY = "linop-db-timeout-inheritance-backup-v1";
 
 export interface TimeoutInheritanceBackup {
   version: 1;

@@ -49,7 +49,7 @@
     <img src="https://img.shields.io/badge/JDBC-4B5563?logoColor=white" />
     <img src="https://img.shields.io/badge/and%20more...-555555?logoColor=white" />
     <a href="https://1panel.cn/" target="_blank" rel="noopener noreferrer"><img src="https://img.shields.io/badge/1Panel-Partner-005EEB?logo=1panel&amp;logoColor=white" alt="1Panel Partner" /></a>
-    <a href="https://cnb.cool/dbxio.com/dbx"><img src="https://img.shields.io/badge/CNB-dbx-F76945?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAppJREFUOE9tk01rE1EUhs+5H5lJ0iQT3FRX2Yi4avoLkv4CWxBcNt11oZiuFKGmXQhFN6kuRESSgitXKf6A5g+I6cqFLiKCiptOkraZ5H4cuZOkH9oLw+UO8z7nvGfei3DFohoEQLAKCGWyGJCSbQZsD3ei7r+f45WATV6xmjdISyAlYLaDliveux+ti5ozwLAaFPhIlk6G6f18sxuO7l9bBiWbVoncDGCMWMl++PI/gJ7IohkmD0zkBxT5oRn5LTpN7ULqBByEtFywWvRyHz8Fx3dvN0UwuMPyR0uJFycddH7tKPHZRn7BjnwwkQcUud0HO/K7oOENcTYPRCEAFERmsCpyfZDZfpdnBosOUKGx13BC60QTIdjpmSzrEWDR+UagjsgMciLXAwfhc4MNpKfQtOPE6mVh0gEOaeTXtWXXEdADpJAR/GaZ/rrM9Us82wORPd5zHbRp7JVcyxR5PRP5LTPy6uo0HXIlG9awMgLuEUABkBYI7VLyxs+yyPW3+Nyg4zqoG+UV7TDRlMBbWA/D43u3qlbLGmgRWM2BjFxjQjWQGQBuu4bYYvrm14JMnQSXcjBcny9A5DXIiDJp9/8FWCXAAOaFUEfILTgIcttOvf+2NJnLdI0fBFUyskZKBGTEJEAmBuzr9LCSUDwGQAwwgMzu+m9/VWOAeZSsk+YP48C4li/sRok1nlBd5PogBjgxNw70PfHyqBADyEVXicasZXCVpxYiLfO+HxVZDHCVYwvu2ebPT7fOLNAm65AWLnEAzvsEcOi9/lPU1aACXDfOLdhD9kxNszGdweQGYstqXgItJwDFNxKvwrp57G8h0zVwldHuA0IFt8El83yIs2FSDcpgxDJpUUTwK7gTduN3AK5iG7ehc/E2/gUPD3q3eY4awwAAAABJRU5ErkJggg==" alt="CNB" /></a>
+    <a href="https://cnb.cool/dbxio.com/dbx"><img src="https://img.shields.io/badge/CNB-linop-db-F76945?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAAXNSR0IArs4c6QAAAppJREFUOE9tk01rE1EUhs+5H5lJ0iQT3FRX2Yi4avoLkv4CWxBcNt11oZiuFKGmXQhFN6kuRESSgitXKf6A5g+I6cqFLiKCiptOkraZ5H4cuZOkH9oLw+UO8z7nvGfei3DFohoEQLAKCGWyGJCSbQZsD3ei7r+f45WATV6xmjdISyAlYLaDliveux+ti5ozwLAaFPhIlk6G6f18sxuO7l9bBiWbVoncDGCMWMl++PI/gJ7IohkmD0zkBxT5oRn5LTpN7ULqBByEtFywWvRyHz8Fx3dvN0UwuMPyR0uJFycddH7tKPHZRn7BjnwwkQcUud0HO/K7oOENcTYPRCEAFERmsCpyfZDZfpdnBosOUKGx13BC60QTIdjpmSzrEWDR+UagjsgMciLXAwfhc4MNpKfQtOPE6mVh0gEOaeTXtWXXEdADpJAR/GaZ/rrM9Us82wORPd5zHbRp7JVcyxR5PRP5LTPy6uo0HXIlG9awMgLuEUABkBYI7VLyxs+yyPW3+Nyg4zqoG+UV7TDRlMBbWA/D43u3qlbLGmgRWM2BjFxjQjWQGQBuu4bYYvrm14JMnQSXcjBcny9A5DXIiDJp9/8FWCXAAOaFUEfILTgIcttOvf+2NJnLdI0fBFUyskZKBGTEJEAmBuzr9LCSUDwGQAwwgMzu+m9/VWOAeZSsk+YP48C4li/sRok1nlBd5PogBjgxNw70PfHyqBADyEVXicasZXCVpxYiLfO+HxVZDHCVYwvu2ebPT7fOLNAm65AWLnEAzvsEcOi9/lPU1aACXDfOLdhD9kxNszGdweQGYstqXgItJwDFNxKvwrp57G8h0zVwldHuA0IFt8El83yIs2FSDcpgxDJpUUTwK7gTduN3AK5iG7ehc/E2/gUPD3q3eY4awwAAAABJRU5ErkJggg==" alt="CNB" /></a>
     <a href="https://mcptoplist.com/server/io.github.t8y2%2Fdbx"><img src="https://mcptoplist.com/badge/io.github.t8y2%2Fdbx.svg" alt="MCP Toplist" /></a>
   </p>
 	  <p>
@@ -320,7 +320,7 @@ CodeMirror 6 语法高亮、元数据感知自动补全、`Cmd+Enter` 执行、�
 
 - **为扩展而生** — 新的连接类型与工具以插件形式接入：S3 浏览、Kubernetes、LDAP 等，内置商店一键安装
 - **签名与沙箱** — 插件包安装前签名校验，插件 UI 运行在沙箱中并拥有独立 sidecar 进程
-- **开发你的插件** — Go / TypeScript SDK，`npx @dbx-app/plugin-cli` 一行起步，通过 [`t8y2/dbx-store`](https://github.com/t8y2/dbx-store) 发布到商店
+- **开发你的插件** — Go / TypeScript SDK，`npx @linop-db-app/plugin-cli` 一行起步，通过 [`t8y2/linop-db-store`](https://github.com/t8y2/linop-db-store) 发布到商店
 
 ### 安全与连接
 
@@ -335,7 +335,7 @@ SSH 隧道（密钥和密码认证）· 数据库和 AI 代理设置 · 断线�
 DBX 提供 [MCP Server](packages/mcp-server/)，让 AI 编程助手直接使用 DBX 中已配置的数据库连接查询数据。
 
 ```bash
-npx @dbx-app/mcp-server
+npx @linop-db-app/mcp-server
 ```
 
 在 `.mcp.json` 中添加：
@@ -343,7 +343,7 @@ npx @dbx-app/mcp-server
 ```json
 {
   "mcpServers": {
-    "dbx": { "command": "npx", "args": ["-y", "@dbx-app/mcp-server"] }
+    "dbx": { "command": "npx", "args": ["-y", "@linop-db-app/mcp-server"] }
   }
 }
 ```
@@ -352,7 +352,7 @@ npx @dbx-app/mcp-server
 
 为兼容升级，旧配置中的 `DBX_MCP_ALLOW_WRITES=0`（或 `false`）仅在中央 MCP 策略首次保存前继续作为只读限制；它不能开启写入，也不能覆盖已经保存的中央策略。
 
-Windows 便携版需要在 MCP 配置中设置 `DBX_DATA_DIR`，指向 `DBX.exe` 同级的 `data` 目录（即包含 `dbx.db` 的文件夹）。
+Windows 便携版需要在 MCP 配置中设置 `LINOP_DB_DATA_DIR`，指向 `DBX.exe` 同级的 `data` 目录（即包含 `dbx.db` 的文件夹）。
 
 如果连接的是 DBX Web 或 Docker 部署，请让 MCP Server 指向 Web 后端 API。如果 Web 登录页需要密码，`DBX_WEB_PASSWORD` 填写同一个 Web 登录密码：
 
@@ -361,7 +361,7 @@ Windows 便携版需要在 MCP 配置中设置 `DBX_DATA_DIR`，指向 `DBX.exe`
   "mcpServers": {
     "dbx": {
       "command": "npx",
-      "args": ["-y", "@dbx-app/mcp-server"],
+      "args": ["-y", "@linop-db-app/mcp-server"],
       "env": {
         "DBX_WEB_URL": "http://localhost:4224",
         "DBX_WEB_PASSWORD": "你的 Web 登录密码"
@@ -376,9 +376,9 @@ Windows 便携版需要在 MCP 配置中设置 `DBX_DATA_DIR`，指向 `DBX.exe`
 DBX 也提供独立 CLI 包，适合终端、脚本和 Codex 工作流：
 
 ```bash
-npm install -g @dbx-app/cli
+npm install -g @linop-db-app/cli
 # 或通过 Homebrew
-brew tap t8y2/tap && brew install dbx-cli
+brew tap t8y2/tap && brew install linop-db-cli
 dbx agent setup
 dbx connections list --json
 dbx query local "select 1" --json
@@ -439,11 +439,11 @@ DBX 提供 Web 版本，可通过 Docker 部署。示例使用 `latest` 标签�
 ```bash
 # 默认将密钥保存在持久化的 /app/data 数据卷中。
 docker run -d --pull=always --name dbx -p 4224:4224 \
-  -v dbx-data:/app/data \
+  -v linop-db-data:/app/data \
   t8y2/dbx:latest
 ```
 
-这里使用跨平台的 `dbx-data` 命名卷。中国大陆用户可选用 CNB 镜像
+这里使用跨平台的 `linop-db-data` 命名卷。中国大陆用户可选用 CNB 镜像
 `docker.cnb.cool/dbxio.com/dbx:latest`，以获得更快的拉取速度。
 
 使用 Docker Compose 时，`deploy/docker-compose.yml` 保留为源码构建配置。
@@ -463,19 +463,19 @@ services:
     ports:
       - "4224:4224"
     volumes:
-      - dbx-data:/app/data
+      - linop-db-data:/app/data
     restart: unless-stopped
 
 volumes:
-  dbx-data:
+  linop-db-data:
 
 ```
 
-连接、插件、AI 和 Tunnel 凭据写入 `dbx.db` 前会加密。桌面端使用本机凭据存储（macOS Keychain、Windows Credential Manager 或 Linux Secret Service）。Web/Docker 与直接运行 `dbx-web` 默认使用同一套数据目录托管密钥：`${DBX_DATA_DIR}/.dbx/secret.key`。只有在开始迁移或第一次写入敏感字段时才创建密钥；普通 Docker 部署只需持久化 `/app/data`，并且必须将 `.dbx/secret.key` 与 `dbx.db` 一起备份。该密钥不能防护整个数据卷被复制或泄露。
+连接、插件、AI 和 Tunnel 凭据写入 `dbx.db` 前会加密。桌面端使用本机凭据存储（macOS Keychain、Windows Credential Manager 或 Linux Secret Service）。Web/Docker 与直接运行 `linop-db-web` 默认使用同一套数据目录托管密钥：`${LINOP_DB_DATA_DIR}/.dbx/secret.key`。只有在开始迁移或第一次写入敏感字段时才创建密钥；普通 Docker 部署只需持久化 `/app/data`，并且必须将 `.dbx/secret.key` 与 `dbx.db` 一起备份。该密钥不能防护整个数据卷被复制或泄露。
 
 Windows 便携版例外：为保证 U 盘可跨电脑使用，本地存储密钥保存在便携数据目录的 `data/.dbx/secret.key`，必须与整个 `data` 目录一起移动和备份。已经由旧版使用 Windows Credential Manager 加密过的便携数据，需要先在原电脑启动一次新版；DBX 会验证旧密钥并将其复制到 U 盘。若原电脑或原密钥已经丢失，现有密文无法自动恢复，只能找回原密钥或恢复迁移前备份。密钥与数据库同行意味着复制或丢失整个 U 盘的人也能解密其中凭据，请妥善保护 U 盘。
 
-生产环境可以使用 Docker/Kubernetes Secret 覆盖托管策略：设置 `DBX_SECRET_KEY_FILE`，或由密钥管理系统提供 `DBX_SECRET_KEY`。显式密钥优先，已有密文使用期间不能轮换。密钥不可用时，业务 API 保持阻塞，浏览器显示数据安全升级页面。直接运行二进制时设置 `DBX_DATA_DIR=/var/lib/dbx`，即可使用 `/var/lib/dbx/.dbx/secret.key`。
+生产环境可以使用 Docker/Kubernetes Secret 覆盖托管策略：设置 `DBX_SECRET_KEY_FILE`，或由密钥管理系统提供 `DBX_SECRET_KEY`。显式密钥优先，已有密文使用期间不能轮换。密钥不可用时，业务 API 保持阻塞，浏览器显示数据安全升级页面。直接运行二进制时设置 `LINOP_DB_DATA_DIR=/var/lib/dbx`，即可使用 `/var/lib/dbx/.dbx/secret.key`。
 
 升级包含历史明文凭据的版本时，桌面端和 Web 会在进入主界面前显示 **数据安全升级向导**。点击 **开始迁移** 后，软件会创建权限受限的备份，迁移旧数据库和 JSON 凭据，并验证密文可读取。失败时保留原始数据和备份，根据向导提示修复后点击 **重试**。成功页面会显示备份路径。确认连接可用后，可点击 **删除迁移备份**，二次确认后删除迁移备份目录和本次迁移生成的旧 JSON `.bak` 文件；其他备份不会删除。没有历史数据的新用户检查后直接进入主界面。
 

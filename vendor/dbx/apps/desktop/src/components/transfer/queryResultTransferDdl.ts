@@ -189,7 +189,7 @@ function copiedObjectName(target: string, original: string, databaseType: Databa
   const input = `${target}_${original}`;
   let hash = 2166136261;
   for (const char of input) hash = Math.imul(hash ^ char.codePointAt(0)!, 16777619);
-  const suffix = `_dbx_${(hash >>> 0).toString(16).padStart(8, "0")}`;
+  const suffix = `_linop_db_${(hash >>> 0).toString(16).padStart(8, "0")}`;
   const limit = ["oracle", "oceanbase-oracle"].includes(databaseType) ? 30 : databaseType === "sqlserver" ? 128 : isMysqlDdl(databaseType) ? 64 : 63;
   let prefix = "";
   for (const char of input) {
@@ -348,11 +348,11 @@ export function rewriteCreateTableName(ddl: string, qualifiedTable: string, data
         // dynamic batch keeps the local variable with EXEC in one statement.
         const edits = [
           { tokens: tableParameter.tokens, value: stringLiteral(targetName) },
-          { tokens: schemaParameter.tokens, value: "@dbx_transfer_schema" },
+          { tokens: schemaParameter.tokens, value: "@linop_db_transfer_schema" },
         ].sort((left, right) => right.tokens[0]!.span.start - left.tokens[0]!.span.start);
         let propertySql = range.sql;
         for (const edit of edits) propertySql = propertySql.slice(0, edit.tokens[0]!.span.start) + edit.value + propertySql.slice(edit.tokens[edit.tokens.length - 1]!.span.end);
-        const dynamicSql = `DECLARE @dbx_transfer_schema sysname = OBJECT_SCHEMA_NAME(OBJECT_ID(${stringLiteral(qualifiedTable)}, N'U'));\n${propertySql}`;
+        const dynamicSql = `DECLARE @linop_db_transfer_schema sysname = OBJECT_SCHEMA_NAME(OBJECT_ID(${stringLiteral(qualifiedTable)}, N'U'));\n${propertySql}`;
         replacements.push({ start: range.from, end: range.from + range.sql.length, value: `EXEC(${stringLiteral(dynamicSql)})` });
       }
     } else return undefined;

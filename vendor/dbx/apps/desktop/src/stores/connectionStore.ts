@@ -232,9 +232,9 @@ import { connectionHasConfiguredSidebarVisibleFilter, nacosVisibleNamespaceSumma
 import { connectionCanConfigureSidebarVisibleDatabases } from "@/lib/sidebar/sidebarVisibleFilterMenu";
 import { isTdengineStableTableType } from "@/lib/table/tableEditing";
 
-const PINNED_TREE_NODES_STORAGE_KEY = "dbx-pinned-tree-nodes";
-const ACTIVE_CONNECTION_STORAGE_KEY = "dbx-active-connection";
-const SIDEBAR_TABLE_NAME_FILTERS_STORAGE_KEY = "dbx-sidebar-table-name-filters";
+const PINNED_TREE_NODES_STORAGE_KEY = "linop-db-pinned-tree-nodes";
+const ACTIVE_CONNECTION_STORAGE_KEY = "linop-db-active-connection";
+const SIDEBAR_TABLE_NAME_FILTERS_STORAGE_KEY = "linop-db-sidebar-table-name-filters";
 const CONNECTION_HEALTH_CHECK_TTL_MS = 2000;
 const CONNECTION_HEALTH_CHECK_TIMEOUT_MS = 5000;
 /** How long a successful driver/pool warm-up is trusted before the next tab
@@ -551,7 +551,7 @@ export const useConnectionStore = defineStore("connection", () => {
    *   EXPLAIN、打开表数据或查询页签、「重新连接」按钮——一律照常连接，并顺手清掉标记。
    * - 系统侧断开不写标记（插件页签关闭释放连接、改密码后的重连退役、删除连接），它们
    *   不该让后续的用户动作变哑。
-   * - 仅内存：页面刷新或重启后自然清空，恢复流程（dbx-plugin-ssh#144 的页签自愈）照旧生效。
+   * - 仅内存：页面刷新或重启后自然清空，恢复流程（linop-db-plugin-ssh#144 的页签自愈）照旧生效。
    */
   const userClosedConnectionIds = ref<Set<string>>(new Set());
   const etcdAccessCapabilities = ref<Record<string, EtcdAccessCapabilities>>({});
@@ -1304,7 +1304,7 @@ export const useConnectionStore = defineStore("connection", () => {
   /**
    * One-time connections are never persisted, so the backend's "not in the saved
    * list, so reclaim it" branch in `sync_connection_configs` never fires for them
-   * (see dbx-core `should_retain_runtime_config`) and `disconnect_db` is the only
+   * (see linop-db-core `should_retain_runtime_config`) and `disconnect_db` is the only
    * reclaim point. Removing one must disconnect it explicitly, or its runtime
    * config, pool, and tunnel live until the process exits.
    *
@@ -6027,7 +6027,7 @@ export const useConnectionStore = defineStore("connection", () => {
     // every realistic reload path still re-pushes. The restore path overrides
     // the skip: the SPA's boot restore can mark a connection healthy without
     // ever delivering credentials to the sidecar, so trusting the TTL there
-    // strands the plugin with an empty registry (dbx-plugin-ssh#144).
+    // strands the plugin with an empty registry (linop-db-plugin-ssh#144).
     if (!options.ignoreRecentHealthCheck && hasRecentConnectionHealthCheck(connectionId)) return false;
     if (!(await canReconnectPluginConnectionWithoutPrompt(config))) return false;
     await ensureConnected(connectionId, { activate: false, forceReconnect: true, allowPasswordPrompt: false });
@@ -11329,7 +11329,7 @@ export const useConnectionStore = defineStore("connection", () => {
       const { writeTextFile } = await import("@tauri-apps/plugin-fs");
       const path = await save({
         filters: [{ name: "JSON", extensions: ["json"] }],
-        defaultPath: "dbx-connections.json",
+        defaultPath: "linop-db-connections.json",
       });
       if (!path) return "cancelled" as const;
       await writeTextFile(path, content);
@@ -11338,7 +11338,7 @@ export const useConnectionStore = defineStore("connection", () => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "dbx-connections.json";
+      a.download = "linop-db-connections.json";
       a.click();
       URL.revokeObjectURL(url);
     }

@@ -11,7 +11,7 @@ const result = await build({
   ...config,
   configFile: false,
   logLevel: "error",
-  plugins: config.plugins.filter((plugin) => plugin?.name !== "dbx-connection-types"),
+  plugins: config.plugins.filter((plugin) => plugin?.name !== "linop-db-connection-types"),
   build: { ...config.build, write: false, emptyOutDir: false, reportCompressedSize: false },
 });
 const chunks = (Array.isArray(result) ? result : [result]).flatMap((bundle) => bundle.output).filter((output) => output.type === "chunk");

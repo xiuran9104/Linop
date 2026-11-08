@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 const indexSource = readFileSync(resolve(process.cwd(), "apps/desktop/index.html"), "utf8");
 
 function installStartupInputGuard() {
-  const script = indexSource.match(/<script data-dbx-startup-input-guard>([\s\S]*?)<\/script>/)?.[1];
+  const script = indexSource.match(/<script data-linop-db-startup-input-guard>([\s\S]*?)<\/script>/)?.[1];
   if (!script) throw new Error("Startup input guard script not found");
   new Function(script)();
 }

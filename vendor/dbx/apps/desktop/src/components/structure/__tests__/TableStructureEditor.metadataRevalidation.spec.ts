@@ -744,7 +744,7 @@ describe("TableStructureEditor column index actions", () => {
   }
 
   function menuButton(label: string): HTMLButtonElement {
-    const button = [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].find((item) => item.textContent?.trim() === label);
+    const button = [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].find((item) => item.textContent?.trim() === label);
     if (!button) throw new Error(`Missing menu item ${label}`);
     return button;
   }

@@ -7,12 +7,12 @@ import { fileURLToPath } from "node:url";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dist = process.env.DBX_PLUGIN_OUTPUT_DIR ? path.resolve(process.env.DBX_PLUGIN_OUTPUT_DIR) : path.join(root, "dist");
-const buildRoot = await mkdtemp(path.join(os.tmpdir(), "dbx-hello-package-"));
+const buildRoot = await mkdtemp(path.join(os.tmpdir(), "linop-db-hello-package-"));
 const stage = path.join(buildRoot, "stage");
 const detectedTarget = platformTarget();
 const target = process.env.DBX_PLUGIN_TARGET || detectedTarget;
 if (target !== detectedTarget) throw new Error(`DBX_PLUGIN_TARGET ${target} does not match native build host ${detectedTarget}`);
-const executableName = process.platform === "win32" ? "dbx-example-hello.exe" : "dbx-example-hello";
+const executableName = process.platform === "win32" ? "linop-db-example-hello.exe" : "linop-db-example-hello";
 const backendTarget = path.join(buildRoot, "backend-target");
 const packagerTarget = path.join(buildRoot, "packager-target");
 const output = path.join(dist, `dbx.example.hello-1.0.0-${target}.dbxp`);

@@ -13,7 +13,7 @@ async function main() {
   const tenant = process.env.OB_TENANT;
   assert.ok(password && host && tenant, "Set OB_HOST, OB_TENANT and OB_PASSWORD for a disposable Oracle tenant");
   const java = process.env.JAVA_HOME ? join(process.env.JAVA_HOME, "bin", process.platform === "win32" ? "java.exe" : "java") : "java";
-  const jar = "agents/drivers/oceanbase-oracle/build/libs/dbx-agent-oceanbase-oracle.jar";
+  const jar = "agents/drivers/oceanbase-oracle/build/libs/linop-db-agent-oceanbase-oracle.jar";
   const output = process.env.OB_TEST_OUTPUT ?? join("agents/drivers/oceanbase-oracle/build", "partition-ddl-evidence");
   mkdirSync(output, { recursive: true });
   const child = spawn(java, ["-jar", jar], { stdio: ["pipe", "pipe", "pipe"] });

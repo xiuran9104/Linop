@@ -9,7 +9,7 @@ function lastBeaconBody(): Record<string, unknown> {
 }
 
 function storedInstallationId(): string {
-  return localStorage.getItem("dbx-installation-id") ?? "";
+  return localStorage.getItem("linop-db-installation-id") ?? "";
 }
 
 describe("beaconPluginInstall", () => {
@@ -48,7 +48,7 @@ describe("beaconPluginInstall", () => {
   });
 
   it("regenerates a malformed stored installation id instead of sending it", () => {
-    backing.set("dbx-installation-id", "not-a-uuid");
+    backing.set("linop-db-installation-id", "not-a-uuid");
     beaconPluginInstall("io.dbx.ssh", "1.2.3");
     const clientId = String(lastBeaconBody().clientId);
     expect(clientId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);

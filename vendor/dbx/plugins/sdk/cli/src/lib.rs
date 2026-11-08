@@ -272,7 +272,7 @@ const SHARED_TEMPLATES: &[TemplateFile] = &[
 ];
 
 const FRONTEND_TEMPLATES: &[TemplateFile] = &[
-    TemplateFile { path: "dbx-plugin.toml", content: include_str!("../templates/frontend/dbx-plugin.toml") },
+    TemplateFile { path: "linop-db-plugin.toml", content: include_str!("../templates/frontend/linop-db-plugin.toml") },
     TemplateFile { path: "manifest.json", content: include_str!("../templates/frontend/manifest.json") },
     TemplateFile { path: "README.md", content: include_str!("../templates/frontend/README.md") },
     TemplateFile { path: "ui/index.html", content: include_str!("../templates/frontend/ui/index.html") },
@@ -283,7 +283,7 @@ const FRONTEND_TEMPLATES: &[TemplateFile] = &[
 ];
 
 const SVELTE_TEMPLATES: &[TemplateFile] = &[
-    TemplateFile { path: "dbx-plugin.toml", content: include_str!("../templates/svelte/dbx-plugin.toml") },
+    TemplateFile { path: "linop-db-plugin.toml", content: include_str!("../templates/svelte/linop-db-plugin.toml") },
     TemplateFile { path: "manifest.json", content: include_str!("../templates/svelte/manifest.json") },
     TemplateFile { path: "README.md", content: include_str!("../templates/svelte/README.md") },
     TemplateFile { path: "package.json", content: include_str!("../templates/svelte/package.json") },
@@ -299,7 +299,7 @@ const SVELTE_TEMPLATES: &[TemplateFile] = &[
 ];
 
 const NATIVE_TEMPLATES: &[TemplateFile] = &[
-    TemplateFile { path: "dbx-plugin.toml", content: include_str!("../templates/common/dbx-plugin.toml") },
+    TemplateFile { path: "linop-db-plugin.toml", content: include_str!("../templates/common/linop-db-plugin.toml") },
     TemplateFile { path: "manifest.json", content: include_str!("../templates/common/manifest.json") },
     TemplateFile { path: "README.md", content: include_str!("../templates/common/README.md") },
     TemplateFile { path: "ui/index.html", content: include_str!("../templates/common/ui/index.html") },
@@ -330,7 +330,7 @@ where
         Some("dev") => dev::run(arguments.collect()),
         Some("keygen") => run_keygen(arguments.collect()),
         Some("--version" | "-V" | "version") => {
-            println!("{} {}", styled_stdout("dbx-plugin", ANSI_ACCENT), styled_stdout(CLI_VERSION, ANSI_MUTED));
+            println!("{} {}", styled_stdout("linop-db-plugin", ANSI_ACCENT), styled_stdout(CLI_VERSION, ANSI_MUTED));
             Ok(())
         }
         Some("--help" | "-h" | "help") | None => {
@@ -407,7 +407,7 @@ fn run_package(arguments: Vec<String>) -> Result<(), String> {
             "--artifact-url" => artifact_url = Some(value_after(&arguments, &mut index)?.to_string()),
             "--key-id" => {
                 return Err(
-                    "--key-id is no longer supported by dbx-plugin package; build an unsigned candidate, then let the repository operator sign it after review"
+                    "--key-id is no longer supported by linop-db-plugin package; build an unsigned candidate, then let the repository operator sign it after review"
                         .to_string(),
                 );
             }
@@ -430,7 +430,7 @@ fn run_package(arguments: Vec<String>) -> Result<(), String> {
 
 fn run_keygen(arguments: Vec<String>) -> Result<(), String> {
     let mut key_id = None;
-    let mut output = PathBuf::from(".dbx-repository-signing-key.env");
+    let mut output = PathBuf::from(".linop-db-repository-signing-key.env");
     let mut force = false;
     let mut index = 0;
     while index < arguments.len() {
@@ -460,7 +460,7 @@ fn run_keygen(arguments: Vec<String>) -> Result<(), String> {
             interactive,
             "Signing key ID",
             "example.release".to_string(),
-            dbx_plugin_packager::validate_key_id,
+            linop_db_plugin_packager::validate_key_id,
             &mut reader,
             &mut writer,
         )?,
@@ -469,7 +469,7 @@ fn run_keygen(arguments: Vec<String>) -> Result<(), String> {
             true,
             "Signing key ID",
             "example.release".to_string(),
-            dbx_plugin_packager::validate_key_id,
+            linop_db_plugin_packager::validate_key_id,
             &mut reader,
             &mut writer,
         )?,
@@ -493,12 +493,12 @@ pub fn generate_signing_key_file(
     key_id: &str,
     output: &Path,
     force: bool,
-) -> Result<dbx_plugin_packager::SigningKeyMaterial, String> {
-    dbx_plugin_packager::validate_key_id(key_id)?;
+) -> Result<linop_db_plugin_packager::SigningKeyMaterial, String> {
+    linop_db_plugin_packager::validate_key_id(key_id)?;
     if let Some(parent) = output.parent().filter(|parent| !parent.as_os_str().is_empty()) {
         fs::create_dir_all(parent).map_err(|error| format!("Failed to create {}: {error}", parent.display()))?;
     }
-    let material = dbx_plugin_packager::generate_signing_key()?;
+    let material = linop_db_plugin_packager::generate_signing_key()?;
     let mut options = OpenOptions::new();
     options.write(true);
     if force {
@@ -651,7 +651,7 @@ fn prompt_project_directory<R: BufRead, W: Write>(
     writer: &mut W,
 ) -> Result<PathBuf, String> {
     loop {
-        let value = prompt_line("Project directory", "my-dbx-plugin", reader, writer)?;
+        let value = prompt_line("Project directory", "my-linop-db-plugin", reader, writer)?;
         let directory = PathBuf::from(value);
         match validate_project_directory(&directory, force) {
             Ok(()) => return Ok(directory),
@@ -797,7 +797,7 @@ fn prompt_confirmation<R: BufRead, W: Write>(reader: &mut R, writer: &mut W) -> 
 pub fn create_project(options: &CreateOptions) -> Result<(), String> {
     validate_create_options(options)?;
     let slug = project_slug(&options.directory)?;
-    let binary_name = format!("dbx-plugin-{slug}");
+    let binary_name = format!("linop-db-plugin-{slug}");
     let method_prefix = slug.replace('_', "-");
     let sdk_root = options.sdk_root.as_ref().map(|path| canonical_directory(path)).transpose()?;
     let (rust_dependency, go_replace) = match options.template {
@@ -858,7 +858,7 @@ pub fn create_project(options: &CreateOptions) -> Result<(), String> {
     println!(
         "{} {}",
         styled_stdout("Next:", ANSI_PROMPT),
-        styled_stdout(format!("cd {} && dbx-plugin package .", options.directory.display()), ANSI_MUTED)
+        styled_stdout(format!("cd {} && linop-db-plugin package .", options.directory.display()), ANSI_MUTED)
     );
     Ok(())
 }
@@ -866,12 +866,12 @@ pub fn create_project(options: &CreateOptions) -> Result<(), String> {
 pub fn package_project(options: &PackageOptions) -> Result<(PathBuf, PathBuf), String> {
     let project = canonical_directory(&options.project)?;
     let config: ProjectConfig = toml::from_str(
-        &fs::read_to_string(project.join("dbx-plugin.toml"))
-            .map_err(|error| format!("Failed to read dbx-plugin.toml: {error}"))?,
+        &fs::read_to_string(project.join("linop-db-plugin.toml"))
+            .map_err(|error| format!("Failed to read linop-db-plugin.toml: {error}"))?,
     )
-    .map_err(|error| format!("Invalid dbx-plugin.toml: {error}"))?;
+    .map_err(|error| format!("Invalid linop-db-plugin.toml: {error}"))?;
     if config.schema_version != 1 {
-        return Err(format!("Unsupported dbx-plugin.toml schema version {}", config.schema_version));
+        return Err(format!("Unsupported linop-db-plugin.toml schema version {}", config.schema_version));
     }
     let language = config.backend.as_ref().map(|backend| BackendLanguage::parse(&backend.language)).transpose()?;
     if let Some(backend) = &config.backend {
@@ -880,8 +880,8 @@ pub fn package_project(options: &PackageOptions) -> Result<(PathBuf, PathBuf), S
     }
     for include in &config.package.include {
         validate_relative_path(include, "package include")?;
-        if include.components().any(|part| part.as_os_str() == ".dbx-dev") {
-            return Err("Package input cannot contain .dbx-dev development data".to_owned());
+        if include.components().any(|part| part.as_os_str() == ".linop-db-dev") {
+            return Err("Package input cannot contain .linop-db-dev development data".to_owned());
         }
     }
     let manifest_path = project.join("manifest.json");
@@ -893,7 +893,7 @@ pub fn package_project(options: &PackageOptions) -> Result<(PathBuf, PathBuf), S
         .map_err(|error| format!("Invalid manifest.json identity: {error}"))?;
     if manifest.manifest_version != 1 {
         return Err(format!(
-            "Unsupported manifest.json version {}; dbx-plugin packages require version 1",
+            "Unsupported manifest.json version {}; linop-db-plugin packages require version 1",
             manifest.manifest_version
         ));
     }
@@ -903,7 +903,7 @@ pub fn package_project(options: &PackageOptions) -> Result<(PathBuf, PathBuf), S
     validate_display_text(&manifest.publisher, "manifest publisher")?;
     validate_display_text(&manifest.engines.host_api, "manifest engines.host_api")?;
     if manifest.entrypoints.backend.is_some() != config.backend.is_some() {
-        return Err("dbx-plugin.toml and manifest.json must either both declare a backend or both omit it".to_string());
+        return Err("linop-db-plugin.toml and manifest.json must either both declare a backend or both omit it".to_string());
     }
 
     let detected_target = config.backend.as_ref().map(|_| current_target()).transpose()?;
@@ -966,7 +966,7 @@ pub fn package_project(options: &PackageOptions) -> Result<(PathBuf, PathBuf), S
         artifact_url,
     ];
     println!("{} {}", styled_stdout("Packaging:", ANSI_PROMPT), package_path.display());
-    dbx_plugin_packager::run_cli_silent(packager_arguments)?;
+    linop_db_plugin_packager::run_cli_silent(packager_arguments)?;
     println!("{} Built {}", styled_stdout("Success:", ANSI_SUCCESS), package_path.display());
     println!("{} {}", styled_stdout("Metadata:", ANSI_PROMPT), metadata_path.display());
     println!(
@@ -1112,12 +1112,12 @@ fn build_rust_backend(
         command.arg("--locked");
     }
     if let Some(sdk_root) = sdk_root_from_environment()? {
-        let sdk = sdk_root.join("plugins/sdk/rust/dbx-plugin-sdk");
+        let sdk = sdk_root.join("plugins/sdk/rust/linop-db-plugin-sdk");
         if !sdk.join("Cargo.toml").is_file() {
             return Err(format!("Rust plugin SDK was not found at {}", sdk.display()));
         }
         command.arg("--config").arg(format!(
-            "patch.crates-io.dbx-plugin-sdk.path={}",
+            "patch.crates-io.linop-db-plugin-sdk.path={}",
             serde_json::to_string(&sdk.to_string_lossy()).map_err(|error| error.to_string())?
         ));
     }
@@ -1177,7 +1177,7 @@ fn build_go_backend(
     let mut command = Command::new("go");
     command.current_dir(&backend_directory).arg("build").arg("-trimpath");
     if let Some(sdk_root) = sdk_root_from_environment()? {
-        let sdk = sdk_root.join("plugins/sdk/go/dbx-plugin-sdk");
+        let sdk = sdk_root.join("plugins/sdk/go/linop-db-plugin-sdk");
         if !sdk.join("go.mod").is_file() {
             return Err(format!("Go plugin SDK was not found at {}", sdk.display()));
         }
@@ -1196,7 +1196,7 @@ fn build_go_backend(
             .arg("-modfile")
             .arg(&mod_file)
             .arg(format!(
-                "-replace=github.com/t8y2/dbx/plugins/sdk/go/dbx-plugin-sdk={}",
+                "-replace=github.com/t8y2/dbx/plugins/sdk/go/linop-db-plugin-sdk={}",
                 go_work_path(&sdk)
             ));
         run_command(&mut replace, "Go module setup")?;
@@ -1221,8 +1221,8 @@ fn run_command(command: &mut Command, label: &str) -> Result<(), String> {
 }
 
 fn copy_path(source: &Path, destination: &Path) -> Result<(), String> {
-    if source.file_name().is_some_and(|name| name == ".dbx-dev") {
-        return Err("Package input cannot contain .dbx-dev development data".to_owned());
+    if source.file_name().is_some_and(|name| name == ".linop-db-dev") {
+        return Err("Package input cannot contain .linop-db-dev development data".to_owned());
     }
     let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
     if metadata.file_type().is_symlink() {
@@ -1274,9 +1274,9 @@ fn template_values(
         (
             "PACKAGE_COMMAND",
             if options.template == ProjectTemplate::Svelte {
-                "npm ci && npm run build && dbx-plugin package ."
+                "npm ci && npm run build && linop-db-plugin package ."
             } else {
-                "dbx-plugin package ."
+                "linop-db-plugin package ."
             }
             .to_string(),
         ),
@@ -1313,7 +1313,7 @@ fn unresolved_template_marker(rendered: &str) -> Option<String> {
 fn rust_sdk_dependency(sdk_root: Option<&Path>) -> Result<String, String> {
     match sdk_root {
         Some(root) => {
-            let path = root.join("plugins/sdk/rust/dbx-plugin-sdk");
+            let path = root.join("plugins/sdk/rust/linop-db-plugin-sdk");
             if !path.join("Cargo.toml").is_file() {
                 return Err(format!("Rust plugin SDK was not found at {}", path.display()));
             }
@@ -1326,11 +1326,11 @@ fn rust_sdk_dependency(sdk_root: Option<&Path>) -> Result<String, String> {
 fn go_sdk_replace(sdk_root: Option<&Path>) -> Result<String, String> {
     match sdk_root {
         Some(root) => {
-            let path = root.join("plugins/sdk/go/dbx-plugin-sdk");
+            let path = root.join("plugins/sdk/go/linop-db-plugin-sdk");
             if !path.join("go.mod").is_file() {
                 return Err(format!("Go plugin SDK was not found at {}", path.display()));
             }
-            Ok(format!("replace github.com/t8y2/dbx/plugins/sdk/go/dbx-plugin-sdk => {}", path.display()))
+            Ok(format!("replace github.com/t8y2/dbx/plugins/sdk/go/linop-db-plugin-sdk => {}", path.display()))
         }
         None => Ok(String::new()),
     }
@@ -1527,11 +1527,11 @@ fn escape_toml_path(path: &Path) -> String {
 fn print_usage() {
     println!(
         "{} {}",
-        styled_stdout("dbx-plugin", ANSI_ACCENT),
+        styled_stdout("linop-db-plugin", ANSI_ACCENT),
         styled_stdout("Create, sign, and package DBX plugins", ANSI_MUTED)
     );
     println!("\n{}", styled_stdout("Usage:", ANSI_PROMPT));
-    println!("  dbx-plugin <command> [options]");
+    println!("  linop-db-plugin <command> [options]");
     println!("\n{}", styled_stdout("Commands:", ANSI_PROMPT));
     println!(
         "  {}     Create a frontend-only, Svelte, Rust, or Go plugin project",
@@ -1545,11 +1545,11 @@ fn print_usage() {
     println!("  {}     Generate an Ed25519 repository signing key", styled_stdout("keygen", ANSI_SUCCESS));
     println!("  {}    Print the CLI version", styled_stdout("version", ANSI_SUCCESS));
     println!("\n{}", styled_stdout("Examples:", ANSI_PROMPT));
-    println!("  dbx-plugin create");
-    println!("  dbx-plugin create my-plugin --template frontend --yes");
-    println!("  dbx-plugin keygen example.release");
-    println!("  dbx-plugin package .");
-    println!("\nRun dbx-plugin <command> --help for command options.");
+    println!("  linop-db-plugin create");
+    println!("  linop-db-plugin create my-plugin --template frontend --yes");
+    println!("  linop-db-plugin keygen example.release");
+    println!("  linop-db-plugin package .");
+    println!("\nRun linop-db-plugin <command> --help for command options.");
 }
 
 fn print_create_help() {
@@ -1601,26 +1601,26 @@ fn print_keygen_help() {
     );
     println!("\n{}", styled_stdout("Options:", ANSI_PROMPT));
     println!("      --key-id ID       Public repository key identifier");
-    println!("  -o, --output FILE     Secret output file (default: .dbx-repository-signing-key.env)");
+    println!("  -o, --output FILE     Secret output file (default: .linop-db-repository-signing-key.env)");
     println!("      --force           Replace an existing output file");
     println!("  -h, --help            Print this help");
     println!("\nNever commit the generated private environment file.");
 }
 
 fn usage() -> String {
-    format!("{}\n{}\n{}\nRun 'dbx-plugin --help' for details.", create_usage(), package_usage(), keygen_usage())
+    format!("{}\n{}\n{}\nRun 'linop-db-plugin --help' for details.", create_usage(), package_usage(), keygen_usage())
 }
 
 fn create_usage() -> String {
-    "dbx-plugin create [directory] [--template frontend|rust|go] [options]".to_string()
+    "linop-db-plugin create [directory] [--template frontend|rust|go] [options]".to_string()
 }
 
 fn package_usage() -> String {
-    "dbx-plugin package [project] [--target TARGET] [--output-dir DIR] [--artifact-url URL]".to_string()
+    "linop-db-plugin package [project] [--target TARGET] [--output-dir DIR] [--artifact-url URL]".to_string()
 }
 
 fn keygen_usage() -> String {
-    "dbx-plugin keygen [KEY_ID] [--output FILE] [--force]".to_string()
+    "linop-db-plugin keygen [KEY_ID] [--output FILE] [--force]".to_string()
 }
 
 #[cfg(test)]
@@ -1640,11 +1640,11 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let triple_directory = root.path().join("x86_64-unknown-linux-musl").join("release");
         std::fs::create_dir_all(&triple_directory).unwrap();
-        let binary = triple_directory.join(executable_name("dbx-market-watch"));
+        let binary = triple_directory.join(executable_name("linop-db-market-watch"));
         std::fs::write(&binary, b"binary").unwrap();
 
         let found =
-            rust_backend_binary_path(root.path(), "dbx-market-watch", Some("x86_64-unknown-linux-musl")).unwrap();
+            rust_backend_binary_path(root.path(), "linop-db-market-watch", Some("x86_64-unknown-linux-musl")).unwrap();
         assert_eq!(found, binary);
     }
 
@@ -1653,17 +1653,17 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let release_directory = root.path().join("release");
         std::fs::create_dir_all(&release_directory).unwrap();
-        let binary = release_directory.join(executable_name("dbx-demo"));
+        let binary = release_directory.join(executable_name("linop-db-demo"));
         std::fs::write(&binary, b"binary").unwrap();
 
-        assert_eq!(rust_backend_binary_path(root.path(), "dbx-demo", Some("aarch64-apple-darwin")).unwrap(), binary);
-        assert_eq!(rust_backend_binary_path(root.path(), "dbx-demo", None).unwrap(), binary);
+        assert_eq!(rust_backend_binary_path(root.path(), "linop-db-demo", Some("aarch64-apple-darwin")).unwrap(), binary);
+        assert_eq!(rust_backend_binary_path(root.path(), "linop-db-demo", None).unwrap(), binary);
     }
 
     #[test]
     fn rust_backend_binary_path_reports_every_searched_location() {
         let root = tempfile::tempdir().unwrap();
-        let error = rust_backend_binary_path(root.path(), "dbx-demo", Some("x86_64-unknown-linux-musl")).unwrap_err();
+        let error = rust_backend_binary_path(root.path(), "linop-db-demo", Some("x86_64-unknown-linux-musl")).unwrap_err();
         assert!(error.contains("x86_64-unknown-linux-musl"), "{error}");
         assert!(error.contains("release"), "{error}");
     }
@@ -1672,11 +1672,11 @@ mod tests {
     fn rejects_development_data_in_package_inputs() {
         let root = tempfile::tempdir().unwrap();
         let input = root.path().join("ui");
-        std::fs::create_dir_all(input.join(".dbx-dev")).unwrap();
-        std::fs::write(input.join(".dbx-dev/connections.json"), "private").unwrap();
+        std::fs::create_dir_all(input.join(".linop-db-dev")).unwrap();
+        std::fs::write(input.join(".linop-db-dev/connections.json"), "private").unwrap();
         let output = root.path().join("stage");
-        assert!(super::copy_path(&input, &output).unwrap_err().contains(".dbx-dev"));
-        assert!(!output.join(".dbx-dev/connections.json").exists());
+        assert!(super::copy_path(&input, &output).unwrap_err().contains(".linop-db-dev"));
+        assert!(!output.join(".linop-db-dev/connections.json").exists());
     }
 
     #[test]
@@ -1774,7 +1774,7 @@ mod tests {
         let backend_manifest = serde_json::json!({
             "entrypoints": {
                 "backend": {
-                    "protocol": "dbx-jsonrpc",
+                    "protocol": "linop-db-jsonrpc",
                     "executable": "bin/plugin"
                 }
             }
@@ -1843,7 +1843,7 @@ mod tests {
         })
         .unwrap();
         std::fs::write(
-            mismatch.join("dbx-plugin.toml"),
+            mismatch.join("linop-db-plugin.toml"),
             "schema_version = 1\n\n[backend]\nlanguage = \"rust\"\ndirectory = \"backend\"\nbinary = \"mismatch\"\n\n[package]\ninclude = [\"assets\", \"ui\"]\n",
         )
         .unwrap();
@@ -1912,16 +1912,16 @@ mod tests {
             assert!(readme.contains("autoUpdate: true"));
             assert!(readme.contains("submission Issue is not required"));
             assert!(readme.contains("https://dbxio.com/en/docs/plugin-development"));
-            assert!(readme.contains("t8y2/dbx-store:main"));
+            assert!(readme.contains("t8y2/linop-db-store:main"));
             assert!(readme.contains("Do not submit ordinary plugin source to `t8y2/dbx`"));
             assert!(std::fs::read_to_string(directory.join(".gitignore"))
                 .unwrap()
-                .contains(".dbx-repository-signing-key.env"));
+                .contains(".linop-db-repository-signing-key.env"));
             let manifest: serde_json::Value =
                 serde_json::from_slice(&std::fs::read(directory.join("manifest.json")).unwrap()).unwrap();
             assert_eq!(manifest["version"], "1.2.3");
             let config: toml::Value =
-                toml::from_str(&std::fs::read_to_string(directory.join("dbx-plugin.toml")).unwrap()).unwrap();
+                toml::from_str(&std::fs::read_to_string(directory.join("linop-db-plugin.toml")).unwrap()).unwrap();
             let workflow = std::fs::read_to_string(directory.join(".github/workflows/plugin-release.yml")).unwrap();
             assert!(!workflow.contains("signing-key-id"));
             assert!(!workflow.contains("DBX_PLUGIN_SIGNING_KEY"));
@@ -1942,7 +1942,7 @@ mod tests {
                     assert!(workflow.contains("\"target\":\"universal\""));
                 }
                 ProjectTemplate::Svelte => {
-                    assert!(workflow.contains("package-command: npm ci && npm run build && dbx-plugin package ."));
+                    assert!(workflow.contains("package-command: npm ci && npm run build && linop-db-plugin package ."));
                     assert!(manifest["entrypoints"].get("backend").is_none());
                     assert!(config.get("backend").is_none());
                     assert!(directory.join("src/App.svelte").is_file());
@@ -2028,7 +2028,7 @@ mod tests {
 
     #[test]
     fn formats_common_plugin_acronyms_and_validates_semver() {
-        assert_eq!(title_from_slug("dbx-ssh-sftp-workbench"), "DBX SSH SFTP Workbench");
+        assert_eq!(title_from_slug("linop-db-ssh-sftp-workbench"), "DBX SSH SFTP Workbench");
         validate_semver("1.2.3-beta.1+darwin.arm64").unwrap();
         assert!(validate_semver("1.2.3-").is_err());
         assert!(validate_semver("01.2.3").is_err());

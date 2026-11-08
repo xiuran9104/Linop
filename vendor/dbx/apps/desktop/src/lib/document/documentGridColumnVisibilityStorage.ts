@@ -1,7 +1,7 @@
 import { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet } from "@/lib/backend/safeStorage";
 import { loadDataGridColumnLayout, saveDataGridColumnLayout } from "@/lib/dataGrid/dataGridColumnLayoutStorage";
 
-const STORAGE_PREFIX = "dbx-document-grid-column-visibility:v1:";
+const STORAGE_PREFIX = "linop-db-document-grid-column-visibility:v1:";
 
 export interface DocumentGridColumnVisibilityScope {
   databaseType?: string;

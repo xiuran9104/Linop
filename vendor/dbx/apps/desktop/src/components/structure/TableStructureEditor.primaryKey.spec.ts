@@ -1091,7 +1091,7 @@ describe("TableStructureEditor vertical scrolling", () => {
     targetRow?.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, button: 2, clientX: 20, clientY: 20 }));
     await nextTick();
 
-    const contextMenu = document.body.querySelector<HTMLElement>("[data-dbx-context-menu]");
+    const contextMenu = document.body.querySelector<HTMLElement>("[data-linop-db-context-menu]");
     if (!contextMenu) throw new Error("Missing shared column context menu");
     buttonWithText(contextMenu, "structureEditor.copyColumn").click();
     await vi.waitFor(() => expect(root.querySelector('[data-column-row-index="101"][data-new-column-row="true"]')).not.toBeNull());

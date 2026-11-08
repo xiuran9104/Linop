@@ -112,7 +112,7 @@ function panel(side: "source" | "target"): HTMLDivElement {
 }
 
 function namespaceTriggers(side: "source" | "target") {
-  return [...panel(side).querySelectorAll<HTMLButtonElement>("button.dbx-searchable-select-trigger")];
+  return [...panel(side).querySelectorAll<HTMLButtonElement>("button.linop-db-searchable-select-trigger")];
 }
 
 function swapButton() {
@@ -120,7 +120,7 @@ function swapButton() {
 }
 
 async function chooseConnection(side: "source" | "target", id: string) {
-  panel(side).querySelector<HTMLButtonElement>("button.dbx-diff-connection-trigger")!.click();
+  panel(side).querySelector<HTMLButtonElement>("button.linop-db-diff-connection-trigger")!.click();
   await flushAsyncSetup();
   document.querySelector<HTMLButtonElement>(`[data-picker-connection="${id}"]`)!.click();
   await flushAsyncSetup();
@@ -129,7 +129,7 @@ async function chooseConnection(side: "source" | "target", id: string) {
 async function chooseOption(trigger: HTMLButtonElement, value: string) {
   trigger.click();
   await flushAsyncSetup();
-  [...document.querySelectorAll<HTMLButtonElement>(".dbx-searchable-select-list button")].find((button) => button.textContent?.trim() === value)!.click();
+  [...document.querySelectorAll<HTMLButtonElement>(".linop-db-searchable-select-list button")].find((button) => button.textContent?.trim() === value)!.click();
   await flushAsyncSetup();
 }
 
@@ -164,7 +164,7 @@ it.each(["source", "target"].flatMap((side) => stages.map((stage) => [side as "s
   await beginMetadataLoad(side, stage);
   expect(swapButton().disabled).toBe(true);
   swapButton().click();
-  expect(panel(side).querySelector<HTMLButtonElement>("button.dbx-diff-connection-trigger")!.title).toBe(stage === "databases" ? "PostgreSQL 3" : side === "source" ? "PostgreSQL 1" : "PostgreSQL 2");
+  expect(panel(side).querySelector<HTMLButtonElement>("button.linop-db-diff-connection-trigger")!.title).toBe(stage === "databases" ? "PostgreSQL 3" : side === "source" ? "PostgreSQL 1" : "PostgreSQL 2");
 
   pending.resolve();
   await flushAsyncSetup();
@@ -208,8 +208,8 @@ it("preserves loaded databases, schemas and table selections after swap", async 
   expect(swapButton().disabled).toBe(false);
   swapButton().click();
   await flushAsyncSetup();
-  expect(panel("source").querySelector<HTMLButtonElement>("button.dbx-diff-connection-trigger")!.title).toBe("PostgreSQL 2");
-  expect(panel("target").querySelector<HTMLButtonElement>("button.dbx-diff-connection-trigger")!.title).toBe("PostgreSQL 1");
+  expect(panel("source").querySelector<HTMLButtonElement>("button.linop-db-diff-connection-trigger")!.title).toBe("PostgreSQL 2");
+  expect(panel("target").querySelector<HTMLButtonElement>("button.linop-db-diff-connection-trigger")!.title).toBe("PostgreSQL 1");
   expect(namespaceTriggers("source").map((button) => button.title)).toEqual(["reporting", "analytics"]);
   expect(namespaceTriggers("target").map((button) => button.title)).toEqual(["app", "public", "orders"]);
   expect(panel("source").querySelector('[data-table-name="invoices"] svg')?.classList.contains("text-primary")).toBe(true);

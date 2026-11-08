@@ -69,7 +69,7 @@ vi.mock("@/composables/useDataGridColumnResize", async (importOriginal) => {
 import DataGrid from "../DataGrid.vue";
 import { useSettingsStore } from "@/stores/settingsStore";
 
-const CONDITION_HISTORY_STORAGE_KEY = "dbx-data-grid-condition-history";
+const CONDITION_HISTORY_STORAGE_KEY = "linop-db-data-grid-condition-history";
 const ORDER_BY_SCOPE = { connectionId: "conn-1", database: "db1", schema: undefined, tableName: "items" };
 
 const mountedApps: Array<{ app: App; host: HTMLElement }> = [];

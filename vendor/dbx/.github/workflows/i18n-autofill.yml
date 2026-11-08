@@ -74,7 +74,7 @@ jobs:
             exit 0
           fi
 
-          git config user.name "dbx-i18n-bot"
+          git config user.name "linop-db-i18n-bot"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add apps/desktop/src/i18n/locales
           git commit -m "chore(i18n): autofill new translations"

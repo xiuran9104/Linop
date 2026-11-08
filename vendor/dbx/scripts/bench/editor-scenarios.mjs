@@ -34,7 +34,7 @@ const server = await createServer({
 });
 await server.listen();
 
-const userDataDir = mkdtempSync(path.join(os.tmpdir(), "dbx-bench-chrome-"));
+const userDataDir = mkdtempSync(path.join(os.tmpdir(), "linop-db-bench-chrome-"));
 const chrome = spawn(chromePath, ["--headless=new", "--remote-debugging-port=9333", `--user-data-dir=${userDataDir}`, "--no-first-run", "--disable-gpu-vsync", "--window-size=1400,900", "about:blank"], { stdio: "ignore" });
 
 async function cleanup() {

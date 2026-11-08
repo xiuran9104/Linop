@@ -9,33 +9,33 @@ export function rustCommand(action, group, mode) {
   }
   const capabilityFeatures = ["duckdb-sidecar", "dynamodb", "mq-admin", "sqlite-sqlcipher", "sqlserver-native-attention"];
   if (mode === "full") capabilityFeatures.push("system-fonts");
-  const appFeatures = ["dbx", "dbx-core", "dbx-web"].flatMap((name) => capabilityFeatures.map((feature) => `${name}/${feature}`));
+  const appFeatures = ["dbx", "linop-db-core", "linop-db-web"].flatMap((name) => capabilityFeatures.map((feature) => `${name}/${feature}`));
   const foundationFeatures = [
-    "dbx-types/mq-admin",
-    "dbx-types/openapi",
-    "dbx-sql/duckdb-sidecar",
-    "dbx-sql/openapi",
-    "dbx-sql-data/openapi",
-    "dbx-sql-schema/duckdb-sidecar",
-    "dbx-platform/downloads",
-    "dbx-platform/host-prompts",
-    "dbx-platform/test-support",
-    "dbx-plugin-runtime/default",
-    "dbx-plugin-runtime/test-support",
+    "linop-db-types/mq-admin",
+    "linop-db-types/openapi",
+    "linop-db-sql/duckdb-sidecar",
+    "linop-db-sql/openapi",
+    "linop-db-sql-data/openapi",
+    "linop-db-sql-schema/duckdb-sidecar",
+    "linop-db-platform/downloads",
+    "linop-db-platform/host-prompts",
+    "linop-db-platform/test-support",
+    "linop-db-plugin-runtime/default",
+    "linop-db-plugin-runtime/test-support",
   ];
   const features =
     group === "foundation"
       ? foundationFeatures
       : group === "drivers"
         ? [
-            ...["duckdb-sidecar", "dynamodb", "mq-admin", "sqlite-bundled", "sqlite-sqlcipher", "sqlserver-native-attention", "test-support"].map((feature) => `dbx-drivers/${feature}`),
-            "dbx-driver-agent/test-support",
-            "dbx-driver-mysql/test-support",
-            "dbx-driver-redis/test-support",
-            "dbx-driver-support/test-support",
-            "dbx-sqlite-worker/runtime",
-            "dbx-types/openapi",
-            "dbx-sql-data/openapi",
+            ...["duckdb-sidecar", "dynamodb", "mq-admin", "sqlite-bundled", "sqlite-sqlcipher", "sqlserver-native-attention", "test-support"].map((feature) => `linop-db-drivers/${feature}`),
+            "linop-db-driver-agent/test-support",
+            "linop-db-driver-mysql/test-support",
+            "linop-db-driver-redis/test-support",
+            "linop-db-driver-support/test-support",
+            "linop-db-sqlite-worker/runtime",
+            "linop-db-types/openapi",
+            "linop-db-sql-data/openapi",
           ]
         : appFeatures;
   const packages = group === "workspace" ? ["--workspace"] : rustGroups[group].flatMap((name) => ["--package", name]);

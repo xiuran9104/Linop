@@ -105,13 +105,13 @@ describe("structure-only SQL preview", () => {
       structure: structurePreview("CREATE TABLE users (id integer);"),
       rebuild: {
         sql: "COMBINED PLAN",
-        tables: [{ sourceTable: "users", targetTable: "users", backupTable: "users__dbx_bak_1" }],
-        backupSql: "ALTER TABLE users RENAME TO users__dbx_bak_1;",
-        cleanupSql: "DROP TABLE users__dbx_bak_1;",
+        tables: [{ sourceTable: "users", targetTable: "users", backupTable: "users__linop_db_bak_1" }],
+        backupSql: "ALTER TABLE users RENAME TO users__linop_db_bak_1;",
+        cleanupSql: "DROP TABLE users__linop_db_bak_1;",
       },
     });
 
-    expect(composed.split("\n\n")).toEqual(["ALTER TABLE users RENAME TO users__dbx_bak_1;", "CREATE TABLE users (id integer);", "DROP TABLE users__dbx_bak_1;"]);
+    expect(composed.split("\n\n")).toEqual(["ALTER TABLE users RENAME TO users__linop_db_bak_1;", "CREATE TABLE users (id integer);", "DROP TABLE users__linop_db_bak_1;"]);
     expect(composed).not.toContain("COMBINED PLAN");
   });
 
@@ -121,7 +121,7 @@ describe("structure-only SQL preview", () => {
       targetOwner: "",
       rebuild: {
         sql: "COMBINED PLAN",
-        tables: [{ sourceTable: "users", targetTable: "users", backupTable: "users__dbx_bak_1" }],
+        tables: [{ sourceTable: "users", targetTable: "users", backupTable: "users__linop_db_bak_1" }],
       },
     });
 

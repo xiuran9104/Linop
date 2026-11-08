@@ -26,7 +26,7 @@ function runRelease(args, env = {}) {
 }
 
 function createMockGh() {
-  const directory = mkdtempSync(join(tmpdir(), "dbx-release-test-"));
+  const directory = mkdtempSync(join(tmpdir(), "linop-db-release-test-"));
   const ghPath = join(directory, "gh");
   writeFileSync(
     ghPath,
@@ -224,7 +224,7 @@ test("launcher packages bypass filtered publishing for provenance", () => {
 
   assert.match(workflow, /pnpm publish "\.\/packages\/cli" --access public --provenance --no-git-checks/);
   assert.match(workflow, /pnpm publish "\.\/packages\/mcp-server" --access public --provenance --no-git-checks/);
-  assert.doesNotMatch(workflow, /pnpm --filter "@dbx-app\/(?:cli|mcp-server)" publish/);
+  assert.doesNotMatch(workflow, /pnpm --filter "@linop-db-app\/(?:cli|mcp-server)" publish/);
 });
 
 test("Tauri VSign script resolves from the src-tauri working directory", () => {
@@ -266,7 +266,7 @@ test("Linux releases pin the Wayland-capable AppImage bundler before upload", ()
   assert.notEqual(prepareStep, -1);
   assert.ok(prepareStep < buildStep);
   assert.ok(buildStep < verifyStep);
-  assert.match(workflow, /XDG_CACHE_HOME: \$\{\{ runner\.temp \}\}\/dbx-tauri-cache/);
+  assert.match(workflow, /XDG_CACHE_HOME: \$\{\{ runner\.temp \}\}\/linop-db-tauri-cache/);
   assert.match(workflow, /LINUXDEPLOY_EXCLUDED_LIBRARIES: "libwayland-\*\.so\*;libxkbcommon\.so\*;libxcb-randr\.so\*;libxcb-render\.so\*;libxcb-shm\.so\*;libXau\.so\*;libXdmcp\.so\*"/);
   assert.match(setup, /tauri_fix_commit=8e7028331ad37ac2db74d4ec20e66be5cacf2c40/);
   assert.match(setup, /linuxdeploy_revision=07333c6/);
@@ -280,7 +280,7 @@ test("Linux releases pin the Wayland-capable AppImage bundler before upload", ()
 });
 
 test("AppImage GTK wrapper removes bundled display-stack libraries", () => {
-  const directory = mkdtempSync(join(tmpdir(), "dbx-appimage-wrapper-test-"));
+  const directory = mkdtempSync(join(tmpdir(), "linop-db-appimage-wrapper-test-"));
   const wrapper = join(directory, "linuxdeploy-plugin-gtk.sh");
   const upstream = join(directory, "linuxdeploy-plugin-gtk-upstream.sh");
   const appDir = join(directory, "DBX.AppDir");
@@ -313,17 +313,17 @@ test("desktop-only Cargo.lock version refresh does not count as a Node package c
 [[package]]
 name = "dbx"
 version = "0.5.95"
-dependencies = ["dbx-core"]
+dependencies = ["linop-db-core"]
 
 [[package]]
-name = "dbx-web"
+name = "linop-db-web"
 version = "0.5.95"
-dependencies = ["dbx-core"]
+dependencies = ["linop-db-core"]
 
 [[package]]
-name = "dbx-mcp"
+name = "linop-db-mcp"
 version = "0.4.73"
-dependencies = ["dbx-core"]
+dependencies = ["linop-db-core"]
 `;
   const after = before.replaceAll('version = "0.5.95"', 'version = "0.5.96"');
 
@@ -335,9 +335,9 @@ test("Cargo.lock dependency changes still count as a Node package change", () =>
 [[package]]
 name = "dbx"
 version = "0.5.95"
-dependencies = ["dbx-core"]
+dependencies = ["linop-db-core"]
 `;
-  const after = before.replace('dependencies = ["dbx-core"]', 'dependencies = ["dbx-core", "dbx-mcp"]');
+  const after = before.replace('dependencies = ["linop-db-core"]', 'dependencies = ["linop-db-core", "linop-db-mcp"]');
 
   assert.equal(isDesktopVersionOnlyCargoLockChange(before, after), false);
 });

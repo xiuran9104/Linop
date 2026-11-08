@@ -1,8 +1,8 @@
 import { computed, ref, type Ref } from "vue";
 import { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet } from "@/lib/backend/safeStorage";
 
-export const NACOS_CONFIG_LIST_COLUMN_WIDTHS_STORAGE_KEY = "dbx-nacos-config-list-column-widths";
-export const NACOS_CONFIG_LIST_HIDDEN_COLUMNS_STORAGE_KEY = "dbx-nacos-config-list-hidden-columns";
+export const NACOS_CONFIG_LIST_COLUMN_WIDTHS_STORAGE_KEY = "linop-db-nacos-config-list-column-widths";
+export const NACOS_CONFIG_LIST_HIDDEN_COLUMNS_STORAGE_KEY = "linop-db-nacos-config-list-hidden-columns";
 export const DEFAULT_NACOS_CONFIG_LIST_COLUMN_WIDTHS = [280, 180, 180, 96] as const;
 export const NACOS_CONFIG_LIST_HORIZONTAL_PADDING = 24;
 const MIN_NACOS_CONFIG_LIST_COLUMN_WIDTHS = [140, 96, 96, 72] as const;

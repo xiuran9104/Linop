@@ -10,8 +10,8 @@ use super::{
     update_cache::{self, CacheRecord},
     update_portable,
 };
-pub use dbx_core::update::UpdateChannel;
-pub use dbx_core::update::UpdateInfo;
+pub use linop_db_core::update::UpdateChannel;
+pub use linop_db_core::update::UpdateInfo;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
@@ -35,14 +35,14 @@ const MAX_PORTABLE_ARCHIVE_BYTES: usize = 512 * 1024 * 1024;
 const MAX_PORTABLE_SIGNATURE_BYTES: usize = 64 * 1024;
 const IS_WINDOWS_7_TARGET: bool = cfg!(target_vendor = "win7");
 
-fn dbx_updater_builder(app: &AppHandle) -> UpdaterBuilder {
+fn linop_db_updater_builder(app: &AppHandle) -> UpdaterBuilder {
     let cleanup_app = app.clone();
     app.updater_builder().on_before_exit(move || crate::cleanup_before_updater_forced_exit(&cleanup_app))
 }
 
 fn with_update_channel(builder: UpdaterBuilder, channel: UpdateChannel) -> UpdaterBuilder {
     builder.version_comparator(move |current, update| {
-        dbx_core::update::is_channel_update_available(channel, &update.version.to_string(), &current.to_string())
+        linop_db_core::update::is_channel_update_available(channel, &update.version.to_string(), &current.to_string())
     })
 }
 
@@ -415,15 +415,15 @@ fn release_tag_for_version(version: &Version, candidate: Option<String>) -> Resu
 #[tauri::command]
 pub async fn check_for_updates(
     locale: Option<String>,
-    source: Option<dbx_core::DownloadSource>,
+    source: Option<linop_db_core::DownloadSource>,
     channel: Option<UpdateChannel>,
 ) -> Result<UpdateInfo, String> {
     let locale = locale.unwrap_or_else(|| "zh-CN".to_string());
     let channel = channel.unwrap_or_default();
     let release =
-        dbx_core::update::fetch_latest_release_for_channel(&locale, source.unwrap_or_default(), channel).await?;
+        linop_db_core::update::fetch_latest_release_for_channel(&locale, source.unwrap_or_default(), channel).await?;
     let current_version = env!("CARGO_PKG_VERSION");
-    let mut info = dbx_core::update::build_update_info(release, current_version);
+    let mut info = linop_db_core::update::build_update_info(release, current_version);
     info.portable_mode = crate::data_dir::is_portable_mode();
     info.manual_update_only = requires_manual_update(IS_WINDOWS_7_TARGET);
     Ok(info)
@@ -434,29 +434,29 @@ fn requires_manual_update(is_windows_7_target: bool) -> bool {
 }
 
 #[tauri::command]
-pub async fn fetch_changelog(lang: Option<String>) -> Result<dbx_core::changelog::ChangelogData, String> {
+pub async fn fetch_changelog(lang: Option<String>) -> Result<linop_db_core::changelog::ChangelogData, String> {
     let lang = lang.unwrap_or_else(|| "en".to_string());
-    dbx_core::changelog::fetch_changelog(&lang).await
+    linop_db_core::changelog::fetch_changelog(&lang).await
 }
 
 #[tauri::command]
-pub async fn fetch_changelog_index(lang: Option<String>) -> Result<dbx_core::changelog::ChangelogIndex, String> {
+pub async fn fetch_changelog_index(lang: Option<String>) -> Result<linop_db_core::changelog::ChangelogIndex, String> {
     let lang = lang.unwrap_or_else(|| "en".to_string());
-    dbx_core::changelog::fetch_changelog_index(&lang).await
+    linop_db_core::changelog::fetch_changelog_index(&lang).await
 }
 
 #[tauri::command]
 pub async fn fetch_changelog_release(
     lang: Option<String>,
     tag: String,
-) -> Result<dbx_core::changelog::ChangelogRelease, String> {
+) -> Result<linop_db_core::changelog::ChangelogRelease, String> {
     let lang = lang.unwrap_or_else(|| "en".to_string());
-    dbx_core::changelog::fetch_changelog_release(&lang, &tag).await
+    linop_db_core::changelog::fetch_changelog_release(&lang, &tag).await
 }
 
 #[tauri::command]
 pub async fn get_system_proxy_url() -> Option<String> {
-    tauri::async_runtime::spawn_blocking(dbx_core::update::system_proxy_url).await.ok().flatten()
+    tauri::async_runtime::spawn_blocking(linop_db_core::update::system_proxy_url).await.ok().flatten()
 }
 
 #[tauri::command]
@@ -468,7 +468,7 @@ fn package_kind(app: &AppHandle) -> Result<String, String> {
     if crate::data_dir::is_portable_mode() {
         return Ok("portable".into());
     }
-    Ok(dbx_updater_builder(app).build().map_err(|e| e.to_string())?.package_kind().into())
+    Ok(linop_db_updater_builder(app).build().map_err(|e| e.to_string())?.package_kind().into())
 }
 
 fn validate_cache_target(record: &CacheRecord, portable_mode: bool, package_kind: &str) -> Result<(), String> {
@@ -502,7 +502,7 @@ fn restore_cached(app: &AppHandle) -> Result<Option<CachedUpdate>, String> {
             )?;
             ReadyUpdate::Portable { archive: bytes, version }
         } else {
-            let update = with_update_channel(dbx_updater_builder(app), record.info.channel)
+            let update = with_update_channel(linop_db_updater_builder(app), record.info.channel)
                 .build()
                 .map_err(|e| e.to_string())?
                 .restore_update(record.manifest.clone().ok_or("Missing cached release metadata")?)
@@ -667,11 +667,11 @@ async fn download_update_inner(
     for endpoint_url in endpoint_urls {
         endpoints.push(endpoint_url.parse().map_err(|e| format!("Invalid update endpoint: {e}"))?);
     }
-    let mut builder = with_update_channel(dbx_updater_builder(app), channel)
+    let mut builder = with_update_channel(linop_db_updater_builder(app), channel)
         .endpoints(endpoints)
         .map_err(|e| format!("Failed to configure updater endpoint: {e}"))?;
 
-    if let Some(proxy_url) = dbx_core::update::system_proxy_url() {
+    if let Some(proxy_url) = linop_db_core::update::system_proxy_url() {
         let proxy = proxy_url.parse().map_err(|e| format!("Invalid system proxy URL: {e}"))?;
         builder = builder.proxy(proxy);
     }
@@ -854,7 +854,7 @@ fn portable_update_http_client() -> Result<reqwest::Client, String> {
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(15 * 60));
-    if let Some(proxy_url) = dbx_core::update::system_proxy_url() {
+    if let Some(proxy_url) = linop_db_core::update::system_proxy_url() {
         let proxy = reqwest::Proxy::all(&proxy_url).map_err(|error| format!("Invalid system proxy URL: {error}"))?;
         builder = builder.proxy(proxy);
     }

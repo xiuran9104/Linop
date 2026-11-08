@@ -87,7 +87,7 @@ export function sortDataGridLocalFilterOptions(options: readonly DataGridLocalFi
 }
 
 export function dataGridLocalFilterKey(value: CellValue): string {
-  if (value === null) return "__dbx_null__";
+  if (value === null) return "__linop_db_null__";
   if (typeof value === "boolean") return `bool:${value}`;
   if (typeof value === "number") return `num:${value}`;
   return `str:${String(value)}`;

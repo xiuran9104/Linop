@@ -90,7 +90,7 @@ describe("sshLocalPortSupportedForConnection", () => {
 describe("withoutSshLocalPorts", () => {
   const ssh = (id: string, localPort?: number): TransportLayerConfig => ({ type: "ssh", id, host: `${id}.example.com`, port: 22, user: "root", ...(localPort === undefined ? {} : { local_port: localPort }) });
   const proxy: TransportLayerConfig = { type: "proxy", id: "proxy", proxy_type: "socks5", host: "proxy.example.com", port: 1080 };
-  const http: TransportLayerConfig = { type: "http_tunnel", id: "http", url: "https://tunnel.example.com", token: "", protocol: "dbx_tcp" };
+  const http: TransportLayerConfig = { type: "http_tunnel", id: "http", url: "https://tunnel.example.com", token: "", protocol: "linop_db_tcp" };
   const config = (layers?: TransportLayerConfig[]): ConnectionConfig => ({ id: "c", name: "C", db_type: "postgres", host: "db", port: 5432, username: "u", password: "p", transport_layers: layers });
 
   it("drops the fixed port from every ssh layer and leaves other layers untouched", () => {

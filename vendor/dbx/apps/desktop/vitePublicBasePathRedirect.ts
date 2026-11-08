@@ -27,7 +27,7 @@ export function publicBasePathRedirectMiddleware(publicBasePath: string): Connec
 
 export function publicBasePathRedirectPlugin(publicBasePath: string): Plugin {
   return {
-    name: "dbx-public-base-path-redirect",
+    name: "linop-db-public-base-path-redirect",
     configureServer(server) {
       server.middlewares.use(publicBasePathRedirectMiddleware(publicBasePath));
     },

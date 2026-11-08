@@ -93,7 +93,7 @@ describe("data grid large-value metadata", () => {
   });
 
   it("disables marker parsing when a real column uses the reserved preview prefix", () => {
-    const columns = [column("id", "bigint", true), column("__dbx_large_value_bytes_t_0", "text")];
+    const columns = [column("id", "bigint", true), column("__linop_db_large_value_bytes_t_0", "text")];
 
     expect(canUseTableDataLargeValuePreview("postgres", columns, ["id"])).toBe(false);
     expect(tableDataLargeValuePreviewOptions("postgres", columns, ["id"], 100)).toEqual({});

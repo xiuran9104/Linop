@@ -47,13 +47,13 @@ vi.mock("@/components/ui/dialog", async () => {
 });
 
 const navigationTools = [
-  ["sql.query", "dbx_execute_query", "database"],
-  ["redis", "dbx_execute_redis_command", "database"],
-  ["nacos.config", "dbx_nacos_get_config", "nacos"],
-  ["consul.kv", "dbx_consul_kv_get", "consul"],
-  ["mq", "dbx_peek_messages", "mq"],
-  ["salesforce", "dbx_salesforce_current_user", "salesforce"],
-  ["core.discovery", "dbx_list_connections", "dbx"],
+  ["sql.query", "linop_db_execute_query", "database"],
+  ["redis", "linop_db_execute_redis_command", "database"],
+  ["nacos.config", "linop_db_nacos_get_config", "nacos"],
+  ["consul.kv", "linop_db_consul_kv_get", "consul"],
+  ["mq", "linop_db_peek_messages", "mq"],
+  ["salesforce", "linop_db_salesforce_current_user", "salesforce"],
+  ["core.discovery", "linop_db_list_connections", "dbx"],
 ] as const;
 
 const catalog: McpToolCatalog = {
@@ -247,23 +247,23 @@ describe("settings search navigation", () => {
     expect(harness.mcpCapabilityBrowserRef.value).toBeFalsy();
     expect(harness.root.querySelector("[data-mcp-global-search]")).toBeNull();
 
-    await harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-dbx_nacos_get_config"));
+    await harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-linop_db_nacos_get_config"));
     await flush();
 
     const panel = harness.root.querySelector('[role="tabpanel"][data-state="active"]');
     expect(panel?.getAttribute("data-settings-search-id")).toBe("mcp-capabilities");
     expect(panel?.hasAttribute("hidden")).toBe(false);
-    expect(panel?.querySelector('[data-mcp-tool="dbx_nacos_get_config"] [data-mcp-tool-toggle]')?.getAttribute("aria-expanded")).toBe("true");
-    expect(panel?.querySelector('[data-mcp-tool="dbx_nacos_get_config"] [data-mcp-tool-detail]')?.textContent).toContain("Description for dbx_nacos_get_config");
+    expect(panel?.querySelector('[data-mcp-tool="linop_db_nacos_get_config"] [data-mcp-tool-toggle]')?.getAttribute("aria-expanded")).toBe("true");
+    expect(panel?.querySelector('[data-mcp-tool="linop_db_nacos_get_config"] [data-mcp-tool-detail]')?.textContent).toContain("Description for linop_db_nacos_get_config");
     expect(harness.mutatePolicy).not.toHaveBeenCalled();
     expect(harness.savePlugin).not.toHaveBeenCalled();
   });
 
-  it.each(["mcp-custom-tool-entries", "mcp-tool-dbx_consul_kv_get"])("uses the newest request %s while the real capability tab is mounting", async (latestId) => {
+  it.each(["mcp-custom-tool-entries", "mcp-tool-linop_db_consul_kv_get"])("uses the newest request %s while the real capability tab is mounting", async (latestId) => {
     vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
     const harness = navigationHarness("mcp");
     await flush();
-    const first = harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-dbx_nacos_get_config"));
+    const first = harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-linop_db_nacos_get_config"));
     await nextTick();
     expect(harness.mcpCapabilityBrowserRef.value).toBeFalsy();
     const second = harness.selectSettingsSearchResult(indexedMcpEntry(latestId));
@@ -273,9 +273,9 @@ describe("settings search navigation", () => {
       expect(harness.root.querySelector("[data-mcp-advanced] [data-mcp-plugin-tool-entries] input")).not.toBeNull();
       expect(harness.root.querySelector("[data-mcp-toolset-detail]")).toBeNull();
     } else {
-      expect(harness.root.querySelector('[data-mcp-tool="dbx_consul_kv_get"] [data-mcp-tool-toggle]')?.getAttribute("aria-expanded")).toBe("true");
+      expect(harness.root.querySelector('[data-mcp-tool="linop_db_consul_kv_get"] [data-mcp-tool-toggle]')?.getAttribute("aria-expanded")).toBe("true");
     }
-    expect(harness.root.querySelector('[data-mcp-tool="dbx_nacos_get_config"] [data-mcp-tool-detail]')).toBeNull();
+    expect(harness.root.querySelector('[data-mcp-tool="linop_db_nacos_get_config"] [data-mcp-tool-detail]')).toBeNull();
     expect(harness.mutatePolicy).not.toHaveBeenCalled();
     expect(harness.savePlugin).not.toHaveBeenCalled();
   });
@@ -284,7 +284,7 @@ describe("settings search navigation", () => {
     vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
     const harness = navigationHarness("mcp");
     await flush();
-    const selection = harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-dbx_consul_kv_get"));
+    const selection = harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-linop_db_consul_kv_get"));
     await nextTick();
     expect(harness.mcpCapabilityBrowserRef.value).toBeFalsy();
     if (leave === "management") harness.mcpManagementTab.value = "permissions";
@@ -308,9 +308,9 @@ describe("settings search navigation", () => {
     const harness = navigationHarness("mcp");
     harness.mcpToolCatalog.value = null;
     harness.mcpToolCatalogLoading.value = true;
-    await harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-dbx_nacos_get_config"));
+    await harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-linop_db_nacos_get_config"));
     await flush();
-    expect(harness.mcpCapabilityBrowserState.value.search).toBe("dbx_nacos_get_config");
+    expect(harness.mcpCapabilityBrowserState.value.search).toBe("linop_db_nacos_get_config");
     // No render between leaving and returning: the browser is still mounted.
     harness.mcpManagementTab.value = "permissions";
     harness.mcpManagementTab.value = "capabilities";
@@ -348,11 +348,11 @@ describe("settings search navigation", () => {
     const input = harness.root.querySelector<HTMLInputElement>("[data-mcp-advanced] [data-mcp-plugin-tool-entries] input");
     expect(input?.placeholder).toBe("settings.mcpToolCustomPlaceholder");
     expect(input?.disabled).toBe(false);
-    const result = indexedMcpEntry("mcp-tool-dbx_consul_kv_get");
+    const result = indexedMcpEntry("mcp-tool-linop_db_consul_kv_get");
     for (let attempt = 0; attempt < 2; attempt++) {
       await harness.selectSettingsSearchResult(result);
       await flush();
-      expect(harness.root.querySelector('[data-mcp-tool="dbx_consul_kv_get"] [data-mcp-tool-detail]')).not.toBeNull();
+      expect(harness.root.querySelector('[data-mcp-tool="linop_db_consul_kv_get"] [data-mcp-tool-detail]')).not.toBeNull();
       harness.root.querySelector<HTMLButtonElement>("[data-dialog-dismiss]")!.click();
       await flush();
       expect(harness.root.querySelector("[data-mcp-toolset-detail]")).toBeNull();
@@ -366,7 +366,7 @@ describe("settings search navigation", () => {
     const harness = navigationHarness();
     harness.mcpToolCatalog.value = null;
     harness.mcpToolCatalogLoading.value = true;
-    await harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-dbx_nacos_get_config"));
+    await harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-linop_db_nacos_get_config"));
     await flush();
     expect(harness.root.querySelector("[data-mcp-toolset-detail]")).toBeNull();
     harness.mcpToolCatalogLoading.value = false;
@@ -377,7 +377,7 @@ describe("settings search navigation", () => {
     harness.mcpToolCatalog.value = catalog;
     harness.mcpToolCatalogError.value = "";
     await flush();
-    expect(harness.root.querySelector('[data-mcp-tool="dbx_nacos_get_config"] [data-mcp-tool-detail]')).not.toBeNull();
+    expect(harness.root.querySelector('[data-mcp-tool="linop_db_nacos_get_config"] [data-mcp-tool-detail]')).not.toBeNull();
     expect(harness.mutatePolicy).not.toHaveBeenCalled();
   });
 
@@ -386,7 +386,7 @@ describe("settings search navigation", () => {
     const harness = navigationHarness();
     harness.mcpToolCatalog.value = null;
     harness.mcpToolCatalogLoading.value = true;
-    await harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-dbx_nacos_get_config"));
+    await harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-linop_db_nacos_get_config"));
     await flush();
     harness.root.querySelector<HTMLButtonElement>('[data-mcp-category="advanced"]')!.click();
     await flush();
@@ -401,9 +401,9 @@ describe("settings search navigation", () => {
     vi.spyOn(HTMLElement.prototype, "scrollIntoView").mockImplementation(() => {});
     const harness = navigationHarness();
     harness.mcpToolCatalog.value = { toolsets: [] };
-    await harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-dbx_nacos_get_config"));
+    await harness.selectSettingsSearchResult(indexedMcpEntry("mcp-tool-linop_db_nacos_get_config"));
     await flush();
-    expect(harness.root.querySelector<HTMLInputElement>("[data-mcp-global-search]")?.value).toBe("dbx_nacos_get_config");
+    expect(harness.root.querySelector<HTMLInputElement>("[data-mcp-global-search]")?.value).toBe("linop_db_nacos_get_config");
     expect(harness.root.textContent).toContain("settings.mcpCapabilitiesSearchEmpty");
     expect(harness.root.querySelector("[data-mcp-toolset-detail]")).toBeNull();
   });

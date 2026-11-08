@@ -220,7 +220,7 @@ export function isClickHouseExistingRowReadonlyColumn(databaseType: DatabaseType
 
 /**
  * Describe flags the Salesforce driver packs into `ColumnInfo.extra`
- * (see `parse_describe_columns` in crates/dbx-drivers/src/db/salesforce_driver.rs).
+ * (see `parse_describe_columns` in crates/linop-db-drivers/src/db/salesforce_driver.rs).
  * `relationshipName` / `referenceTo` also live there but are consumed by SOQL
  * completion instead (`soqlFieldFromColumnInfo`).
  */

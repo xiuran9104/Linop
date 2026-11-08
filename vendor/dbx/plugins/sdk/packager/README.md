@@ -1,4 +1,4 @@
-# dbx-plugin-packager
+# linop-db-plugin-packager
 
 Builds an unsigned `.dbxp` candidate from a staged plugin directory and signs an already-reviewed candidate as a separate repository operation.
 

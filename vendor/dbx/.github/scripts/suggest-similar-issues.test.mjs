@@ -244,7 +244,7 @@ test("ranks candidates, excludes the current issue and limits output", () => {
 test("formats a cautious localized comment with concise issue references", () => {
   const comment = formatComment(baseIssue, [{ candidate: { number: 82, title: "[Bug] [快捷键](https://example.com)", state: "closed" } }]);
 
-  assert.match(comment, /^<!-- dbx-similar-issues -->/u);
+  assert.match(comment, /^<!-- linop-db-similar-issues -->/u);
   assert.match(comment, /\n- #82\n/u);
   assert.match(comment, /尚未确认重复/u);
   assert.doesNotMatch(comment, /快捷键|已关闭|https:/u);

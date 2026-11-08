@@ -406,7 +406,7 @@ async function getGitHubInstallationToken(config: GitHubIssueConfig): Promise<{ 
   const headers = {
     Accept: "application/vnd.github+json",
     Authorization: `Bearer ${appJwt}`,
-    "User-Agent": "dbx-issue-form",
+    "User-Agent": "linop-db-issue-form",
     "X-GitHub-Api-Version": "2022-11-28",
   };
   const installation = await githubJson(`https://api.github.com/repos/${repository}/installation`, { headers });
@@ -436,7 +436,7 @@ export async function createPublicGitHubIssue(
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
-      "User-Agent": "dbx-issue-form",
+      "User-Agent": "linop-db-issue-form",
       "X-GitHub-Api-Version": "2022-11-28",
     },
     body: JSON.stringify(issue),

@@ -692,7 +692,7 @@ pub(crate) fn probe_environment(
     let browser_executable_folder = env_non_empty(BROWSER_EXE_FOLDER_ENV);
 
     let (tx, rx) = mpsc::channel::<ProbeOutcome>();
-    let spawned = std::thread::Builder::new().name("dbx-webview2-preflight".to_string()).spawn(move || {
+    let spawned = std::thread::Builder::new().name("linop-db-webview2-preflight".to_string()).spawn(move || {
         let outcome = probe_environment_on_sta_thread(
             additional_args.as_deref(),
             user_data_folder.as_deref(),

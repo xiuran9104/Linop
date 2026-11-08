@@ -19,7 +19,7 @@ import type { QueryEditorProps } from "../queryEditorTypes";
 
 type Options = Parameters<typeof useQueryEditorTableDrop>[0];
 const cleanups: Array<() => void> = [];
-const payload: QueryEditorTableReferencePayload = { kind: "dbx-table-reference", connectionId: "connection", database: "demo", tableName: "users", referenceType: "column", columnName: "id" };
+const payload: QueryEditorTableReferencePayload = { kind: "linop-db-table-reference", connectionId: "connection", database: "demo", tableName: "users", referenceType: "column", columnName: "id" };
 
 afterEach(() => {
   for (const cleanup of cleanups.splice(0).reverse()) cleanup();

@@ -1,4 +1,4 @@
-use dbx_core::text_export::{format_html, format_json, format_markdown, QueryResultTextExportData};
+use linop_db_core::text_export::{format_html, format_json, format_markdown, QueryResultTextExportData};
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -61,7 +61,7 @@ mod tests {
 
     #[test]
     fn writes_json_without_utf8_bom() {
-        let path = std::env::temp_dir().join(format!("dbx-json-export-{}.json", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("linop-db-json-export-{}.json", uuid::Uuid::new_v4()));
         write_query_result_json(QueryResultTextExportRequest {
             file_path: path.to_string_lossy().into_owned(),
             title: None,

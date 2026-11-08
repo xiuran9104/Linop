@@ -1,17 +1,17 @@
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use dbx_core::connection::AppState;
-// `apply_annotations` is NOT re-exported at `dbx_core::docs` — that module's
+use linop_db_core::connection::AppState;
+// `apply_annotations` is NOT re-exported at `linop_db_core::docs` — that module's
 // `pub use` list covers collector, color, dbml, keys, relations and snapshot,
 // but not annotations. It must come from the submodule path.
-use dbx_core::docs::annotations::{
+use linop_db_core::docs::annotations::{
     apply_annotations, load_annotations, resolve_notes_path, save_annotations, AnnotationFile,
 };
-use dbx_core::docs::{
+use linop_db_core::docs::{
     collect_snapshot, collect_snapshot_with_concurrency, to_standalone_html, CollectOptions, SchemaSnapshot,
 };
-use dbx_core::models::connection::ConnectionConfig;
+use linop_db_core::models::connection::ConnectionConfig;
 use serde::Serialize;
 use tauri::ipc::Channel;
 use tauri::State;
@@ -33,8 +33,8 @@ async fn connection_of(state: &Arc<AppState>, connection_id: &str) -> Result<Con
 ///
 /// `AppState.storage.data_dir()` is the directory DBX is actually using — it
 /// honours a custom data dir, which a fresh `app_data_dir()` lookup would not.
-/// (`dbx-mcp::paths::app_data_dir()` is NOT available here: src-tauri does not
-/// depend on dbx-mcp.)
+/// (`linop-db-mcp::paths::app_data_dir()` is NOT available here: src-tauri does not
+/// depend on linop-db-mcp.)
 async fn notes_path_of(state: &Arc<AppState>, connection_id: &str) -> Result<std::path::PathBuf, String> {
     let config = connection_of(state, connection_id).await?;
     Ok(resolve_notes_path(&config.id, config.docs_notes_path.as_deref(), state.storage.data_dir()))

@@ -15,9 +15,9 @@ backup continues in the same independent process after the window closes.
 
 | Platform | Automatic startup | Default lifetime |
 | --- | --- | --- |
-| Windows | Per-user Task Scheduler task `dbx-backup-<data-directory hash>` | While the user is signed in |
-| macOS | `~/Library/LaunchAgents/app.dbx.dbx-backup-<hash>.plist` | While the user is signed in |
-| Linux | `systemd --user` unit `dbx-backup-<hash>.service` | While the user manager is running |
+| Windows | Per-user Task Scheduler task `linop-db-backup-<data-directory hash>` | While the user is signed in |
+| macOS | `~/Library/LaunchAgents/app.dbx.linop-db-backup-<hash>.plist` | While the user is signed in |
+| Linux | `systemd --user` unit `linop-db-backup-<hash>.service` | While the user manager is running |
 
 No administrator service is installed automatically. A powered-off or sleeping
 computer cannot run backups. Login agents are not a promise of execution after
@@ -34,7 +34,7 @@ For a custom process supervisor (including non-systemd Linux), the installed
 desktop executable has a headless entrypoint:
 
 ```text
-dbx --backup-worker --data-dir /absolute/path/to/existing/dbx-data
+dbx --backup-worker --data-dir /absolute/path/to/existing/linop-db-data
 ```
 
 Windows PowerShell example:
@@ -52,11 +52,11 @@ share it between independent hosts as a high-availability scheduler.
 
 ## Web And Containers
 
-The `dbx-web` process executes schedules whether browsers are connected or not.
+The `linop-db-web` process executes schedules whether browsers are connected or not.
 In **Settings > Database Backup**, destinations are server paths, not paths on
 the browser's computer. `DBX_BACKUP_ROOT` restricts all destinations to a
 server-owned directory. Without this variable, standalone Web uses
-`DBX_DATA_DIR/backups`. The Docker image uses `/app/backups`.
+`LINOP_DB_DATA_DIR/backups`. The Docker image uses `/app/backups`.
 
 Persist both application data and backup output:
 
@@ -69,14 +69,14 @@ services:
     environment:
       DBX_BACKUP_ROOT: /app/backups
     volumes:
-      - dbx-data:/app/data
-      - dbx-backups:/app/backups
+      - linop-db-data:/app/data
+      - linop-db-backups:/app/backups
     restart: unless-stopped
     stop_grace_period: 90s
 
 volumes:
-  dbx-data:
-  dbx-backups:
+  linop-db-data:
+  linop-db-backups:
 ```
 
 Create any additional destination subdirectories inside the mounted root on the
@@ -119,7 +119,7 @@ persists the outcome before shutdown; allow the configured grace period.
 ## Verification
 
 ```text
-cargo test -p dbx-core --no-default-features --features sqlite-bundled --lib scheduled_backup
+cargo test -p linop-db-core --no-default-features --features sqlite-bundled --lib scheduled_backup
 pnpm exec vitest run apps/desktop/src/composables/__tests__/useScheduledDatabaseBackups.spec.ts apps/desktop/src/components/backup/__tests__/ScheduledDatabaseBackupSettings.spec.ts apps/desktop/src/lib/__tests__/backup/scheduledDatabaseBackup.spec.ts
 ```
 

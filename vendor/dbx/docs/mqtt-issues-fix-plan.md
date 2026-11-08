@@ -54,5 +54,5 @@
 ```text
 pnpm typecheck
 pnpm test
-cargo test -p dbx-core --features mq-admin mqtt
+cargo test -p linop-db-core --features mq-admin mqtt
 ```

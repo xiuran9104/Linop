@@ -23,10 +23,10 @@ DBX 桌面端的相关链路由三层组成：
 - Query state: `apps/desktop/src/stores/queryStore.ts`
 - Connection state: `apps/desktop/src/stores/connectionStore.ts`
 - Core owners:
-  - `crates/dbx-core/src/connection.rs`
-  - `crates/dbx-core/src/query.rs`
-  - `crates/dbx-core/src/db/postgres.rs`
-  - `crates/dbx-core/src/db/mysql.rs`
+  - `crates/linop-db-core/src/connection.rs`
+  - `crates/linop-db-core/src/query.rs`
+  - `crates/linop-db-core/src/db/postgres.rs`
+  - `crates/linop-db-core/src/db/mysql.rs`
   - `src-tauri/src/commands/query.rs`
   - `src-tauri/src/commands/connection.rs`
 
@@ -34,8 +34,8 @@ DBX 桌面端的相关链路由三层组成：
 
 本方案基于以下已核对的代码事实：
 
-- PostgreSQL/openGauss 走 `PoolKind::Postgres`：`crates/dbx-core/src/connection.rs`
-- MySQL 走 `PoolKind::Mysql`，且已有 `get_conn_with_health_check`：`crates/dbx-core/src/db/mysql.rs`
+- PostgreSQL/openGauss 走 `PoolKind::Postgres`：`crates/linop-db-core/src/connection.rs`
+- MySQL 走 `PoolKind::Mysql`，且已有 `get_conn_with_health_check`：`crates/linop-db-core/src/db/mysql.rs`
 - 前端查询前会执行 `ensureConnected`，查询 Promise 的前端超时只覆盖 `api.executeMulti`：`apps/desktop/src/stores/queryStore.ts`
 - `keepalive_interval_secs` 在前端规范化时默认为 `0`，应用层 keepalive 默认关闭：`apps/desktop/src/stores/connectionStore.ts`
 - `deadpool-postgres` 当前配置了 `RecyclingMethod::Verified` 和 `wait_timeout`，但没有显式配置 create/recycle timeout。
@@ -149,7 +149,7 @@ MySQL 已有 `get_conn_with_health_check`，会对取出的连接做 ping，并�
 
 新增一个后端执行预算模型，覆盖连接获取、健康检查、SQL 执行、取消和清理。
 
-建议在 `crates/dbx-core/src/query.rs` 或新模块中定义：
+建议在 `crates/linop-db-core/src/query.rs` 或新模块中定义：
 
 ```rust
 pub struct DbOperationBudget {
@@ -174,7 +174,7 @@ pub struct DbOperationBudget {
 
 ### P0-2：补齐 PostgreSQL deadpool timeout
 
-在 `crates/dbx-core/src/db/postgres.rs` 创建 pool 时，显式配置 deadpool 的 `wait/create/recycle` timeout。
+在 `crates/linop-db-core/src/db/postgres.rs` 创建 pool 时，显式配置 deadpool 的 `wait/create/recycle` timeout。
 
 当前风险代码形态：
 
@@ -215,10 +215,10 @@ let pool = Pool::builder(mgr)
 
 受影响文件：
 
-- `crates/dbx-core/src/db/postgres.rs`
-- `crates/dbx-core/src/db/mysql.rs`
-- `crates/dbx-core/src/query.rs`
-- `crates/dbx-core/src/connection.rs`
+- `crates/linop-db-core/src/db/postgres.rs`
+- `crates/linop-db-core/src/db/mysql.rs`
+- `crates/linop-db-core/src/query.rs`
+- `crates/linop-db-core/src/connection.rs`
 
 验收：
 
@@ -452,10 +452,10 @@ UI 增加连接级操作：
 
 建议新增或扩展：
 
-- `crates/dbx-core/src/query.rs`
+- `crates/linop-db-core/src/query.rs`
   - `pool_error_action` 对 checkout timeout、ping timeout、query timeout 的分类。
   - cancel token 在 checkout 前取消时应返回 canceled。
-- `crates/dbx-core/src/db/mysql.rs`
+- `crates/linop-db-core/src/db/mysql.rs`
   - `kill_query_with_opts` timeout 分支。
 - `apps/desktop/src/stores/queryStore.ts`
   - 前端 query timeout 后清理 `isExecuting`。

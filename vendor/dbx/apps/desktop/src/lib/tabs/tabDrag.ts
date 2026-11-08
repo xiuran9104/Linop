@@ -1,4 +1,4 @@
-export const TAB_DRAG_MIME = "application/x-dbx-tab";
+export const TAB_DRAG_MIME = "application/x-linop-db-tab";
 
 export interface TabDragPayload {
   mime: typeof TAB_DRAG_MIME;

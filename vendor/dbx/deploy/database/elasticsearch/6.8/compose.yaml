@@ -1,7 +1,7 @@
 services:
   database:
     image: docker.cnb.cool/znb/images/elasticsearch:6.8
-    container_name: dbx-elasticsearch-6.8
+    container_name: linop-db-elasticsearch-6.8
     restart: always
     ports:
       - "${DB_BIND_ADDRESS:-127.0.0.1}:${DB_PORT:-11500}:9200"

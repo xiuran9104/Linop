@@ -338,12 +338,12 @@ describe("TopicsPanel column resizing", () => {
       expect(row.style.gridTemplateColumns).toBe(header.style.gridTemplateColumns);
     }
     expect(backend.mqListTopicsPage).toHaveBeenCalledTimes(1);
-    expect(JSON.parse(localStorage.getItem("dbx-mq-topic-column-widths:rabbitmq")!)).toEqual({ messages: 150 });
+    expect(JSON.parse(localStorage.getItem("linop-db-mq-topic-column-widths:rabbitmq")!)).toEqual({ messages: 150 });
   });
 
   it("offers resize handles for Kafka and restores its saved name width", async () => {
     backend.mqListTopics.mockResolvedValue([{ name: "long-topic", shortName: "long-topic", persistent: true, partitioned: true }]);
-    localStorage.setItem("dbx-mq-topic-column-widths:kafka", '{"name":600}');
+    localStorage.setItem("linop-db-mq-topic-column-widths:kafka", '{"name":600}');
     const panel = await mountKafkaPanel();
     expect(panel.querySelectorAll("[data-column-resize-handle]")).toHaveLength(4);
     expect(panel.querySelector<HTMLElement>(".topics-table-header")!.style.gridTemplateColumns.startsWith("600px ")).toBe(true);

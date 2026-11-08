@@ -153,7 +153,7 @@ export const DEFAULT_SQL_FORMATTER_SETTINGS: SqlFormatterSettings = {
 // A new key is not done when it is added here: an older settings export
 // legitimately lacks it, so it must also be registered in
 // `SQL_FORMATTER_KEYS_ADDED_AFTER_TRANSFER_FORMAT`
-// (lib/settings/settingsTransfer.ts) or every pre-existing `dbx-settings-*.json`
+// (lib/settings/settingsTransfer.ts) or every pre-existing `linop-db-settings-*.json`
 // stops importing wholesale, and given a row in the `expectedControls` list of
 // lib/settings/__tests__/settingsSearch.spec.ts so its search entry stays pinned.
 const SQL_FORMATTER_OPTION_KEYS = new Set<keyof SqlFormatterOptionSettings>([

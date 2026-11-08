@@ -37,7 +37,7 @@ describe("data grid filter mode order", () => {
   });
 
   it("ignores malformed persisted data", () => {
-    storage.set("dbx-data-grid-filter-mode-order-v1", "not-json");
+    storage.set("linop-db-data-grid-filter-mode-order-v1", "not-json");
     expect(orderDataGridFilterModeOptions("mysql", options).map((item) => item.value)).toEqual(["equals", "like", "is-null"]);
   });
 });

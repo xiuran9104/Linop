@@ -17,7 +17,7 @@ docker run -d \
   --name dbx \
   -p 4224:4224 \
   -e DBX_PASSWORD='change-this-password' \
-  -v dbx-data:/app/data \
+  -v linop-db-data:/app/data \
   --restart unless-stopped \
   t8y2/dbx:latest
 ```
@@ -38,11 +38,11 @@ services:
     ports:
       - "4224:4224"
     volumes:
-      - dbx-data:/app/data
+      - linop-db-data:/app/data
     restart: unless-stopped
 
 volumes:
-  dbx-data:
+  linop-db-data:
 ```
 
 Start or update the service:
@@ -57,7 +57,7 @@ docker compose up -d --pull always
 | --- | --- | --- |
 | `DBX_PASSWORD` | Not set | Access password for the DBX Web login page. Set a strong value for server deployments. |
 | `DBX_DISABLE_PASSWORD` | `false` | Disables login protection when set to `true`. Do not use this on an untrusted network. |
-| `DBX_DATA_DIR` | `/app/data` | Directory containing the DBX database, plugins, drivers, and other persistent data. |
+| `LINOP_DB_DATA_DIR` | `/app/data` | Directory containing the DBX database, plugins, drivers, and other persistent data. |
 | `DBX_SECRET_KEY_FILE` | Not set | Optional external key file. Takes precedence over the managed data-directory key. |
 | `DBX_SECRET_KEY` | Not set | Optional key supplied by a secret manager. Used when no key file is configured. |
 | `DBX_PORT` | `4224` | HTTP port inside the container. |
@@ -76,15 +76,15 @@ services:
   dbx:
     image: t8y2/dbx:latest
     environment:
-      DBX_SECRET_KEY_FILE: /run/secrets/dbx_secret_key
+      DBX_SECRET_KEY_FILE: /run/secrets/linop_db_secret_key
     secrets:
-      - dbx_secret_key
+      - linop_db_secret_key
     volumes:
-      - dbx-data:/app/data
+      - linop-db-data:/app/data
 
 secrets:
-  dbx_secret_key:
-    file: ./dbx_secret_key
+  linop_db_secret_key:
+    file: ./linop_db_secret_key
 ```
 
 Create the external key once, keep it stable across upgrades, and never replace it while encrypted data exists.
@@ -105,7 +105,7 @@ The MCP endpoint is `http://localhost:4225/mcp` and requires `Authorization: Bea
 
 The token is a deployment credential: rotate it through your secret manager and restart the container. DBX Desktop offers a local **Rotate Token** action for its separately managed loopback HTTP MCP service.
 
-DuckDB is delivered as a standalone native driver instead of being embedded in `dbx-web`. Install the DuckDB driver from Driver Manager after the first launch. It is stored under `/app/data/agents` and remains available across container upgrades when `/app/data` is persisted.
+DuckDB is delivered as a standalone native driver instead of being embedded in `linop-db-web`. Install the DuckDB driver from Driver Manager after the first launch. It is stored under `/app/data/agents` and remains available across container upgrades when `/app/data` is persisted.
 
 ## Reverse Proxy
 

@@ -995,7 +995,7 @@ describe("queryStore multi-statement errors", () => {
         pageSql,
         pageLimit: 100,
         pageOffset: offset,
-        countSql: "SELECT COUNT(*) AS dbx_total_rows FROM Users;",
+        countSql: "SELECT COUNT(*) AS linop_db_total_rows FROM Users;",
         useAgentResultSession: false,
       };
     });
@@ -1020,7 +1020,7 @@ describe("queryStore multi-statement errors", () => {
     expect(firstPage).toMatchObject({ database: "BarDB", schema: undefined, resultPageLimit: 100, resultPageOffset: 0 });
     expect(firstPage.result).toMatchObject({ sourceStatement: "SELECT * FROM Users", sourceLabel: "BarDB.Users" });
     expect(firstPage.result?.rows).toHaveLength(100);
-    expect(firstPage.resultCountSql).toBe("USE FooDB;\nGO\nUSE [BarDB];\nGO\nSELECT COUNT(*) AS dbx_total_rows FROM Users;\nGO\n");
+    expect(firstPage.resultCountSql).toBe("USE FooDB;\nGO\nUSE [BarDB];\nGO\nSELECT COUNT(*) AS linop_db_total_rows FROM Users;\nGO\n");
     expect(mocks.closeClientConnectionSession).toHaveBeenCalledWith("sqlserver-1", "FooDB", tabId);
 
     await store.executeTabSql(tabId, firstPage.result!.sourceStatement!, {

@@ -185,10 +185,10 @@ describe("openTabsPersistence originalSql round-trip", () => {
   });
 
   it("preserves an external Doris catalog across tab restore", () => {
-    const [restored] = roundTrip([queryTab({ database: "dbx_catalog_completion", catalog: "dbx_mysql_catalog" })]);
+    const [restored] = roundTrip([queryTab({ database: "linop_db_catalog_completion", catalog: "linop_db_mysql_catalog" })]);
 
-    expect(restored.database).toBe("dbx_catalog_completion");
-    expect(restored.catalog).toBe("dbx_mysql_catalog");
+    expect(restored.database).toBe("linop_db_catalog_completion");
+    expect(restored.catalog).toBe("linop_db_mysql_catalog");
   });
 
   it("preserves external file versions and acknowledged state across tab restore", () => {
@@ -281,14 +281,14 @@ describe("openTabsPersistence originalSql round-trip", () => {
         id: "plugin-result-view",
         title: "Chart",
         connectionId: "plugin-connection",
-        database: "dbx_test",
+        database: "linop_db_test",
         mode: "plugin-workbench",
         pluginWorkbench: {
           pluginId: "dbx.example.graph",
           contributionId: "dbx.example.graph.chart",
           context: {
             connectionId: "plugin-connection",
-            database: "dbx_test",
+            database: "linop_db_test",
             sql: "SELECT 1",
             result: { columns: ["id"], rows: [[1]], truncated: false },
           },
@@ -301,7 +301,7 @@ describe("openTabsPersistence originalSql round-trip", () => {
     expect(restored.pluginWorkbench?.contributionId).toBe("dbx.example.graph.chart");
     expect(restored.pluginWorkbench?.context).toEqual({
       connectionId: "plugin-connection",
-      database: "dbx_test",
+      database: "linop_db_test",
       sql: "SELECT 1",
       result: { columns: ["id"], rows: [[1]], truncated: false },
     });

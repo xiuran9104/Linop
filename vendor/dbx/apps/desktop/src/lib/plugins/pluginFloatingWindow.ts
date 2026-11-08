@@ -46,7 +46,7 @@ const FLOATING_DRAG_TIMEOUT_MS = 30_000;
  */
 const FLOATING_DRAG_IDLE_MS = 1_500;
 const FLOATING_CREATE_TIMEOUT_MS = 10_000;
-const FLOATING_POSITION_STORAGE_PREFIX = "dbx-plugin-floating-window:";
+const FLOATING_POSITION_STORAGE_PREFIX = "linop-db-plugin-floating-window:";
 
 export interface FloatingRect {
   x: number;

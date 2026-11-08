@@ -57,7 +57,7 @@ describe("MQTT 消息发布输入框", () => {
     await nextTick();
 
     expect(textarea?.style.height).toBe("200px");
-    expect(localStorage.getItem("dbx-mqtt-payload-height")).toBe("200");
+    expect(localStorage.getItem("linop-db-mqtt-payload-height")).toBe("200");
   });
 
   it("支持键盘调节高度并记住设置", async () => {
@@ -74,14 +74,14 @@ describe("MQTT 消息发布输入框", () => {
 
     expect(textarea?.style.height).toBe("90px");
     expect(handle?.getAttribute("aria-valuenow")).toBe("90");
-    expect(localStorage.getItem("dbx-mqtt-payload-height")).toBe("90");
+    expect(localStorage.getItem("linop-db-mqtt-payload-height")).toBe("90");
 
     handle?.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "ArrowDown" }));
     await nextTick();
 
     expect(textarea?.style.height).toBe("80px");
     expect(handle?.getAttribute("aria-valuenow")).toBe("80");
-    expect(localStorage.getItem("dbx-mqtt-payload-height")).toBe("80");
+    expect(localStorage.getItem("linop-db-mqtt-payload-height")).toBe("80");
   });
 
   it("将键盘调节限制在分隔条声明的高度范围内", async () => {
@@ -96,13 +96,13 @@ describe("MQTT 消息发布输入框", () => {
 
     expect(textarea?.style.height).toBe(`${minHeight}px`);
     expect(handle?.getAttribute("aria-valuenow")).toBe(minHeight.toString());
-    expect(localStorage.getItem("dbx-mqtt-payload-height")).toBe(minHeight.toString());
+    expect(localStorage.getItem("linop-db-mqtt-payload-height")).toBe(minHeight.toString());
 
     for (let i = 0; i < 100; i++) handle?.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, key: "ArrowUp" }));
     await nextTick();
 
     expect(textarea?.style.height).toBe(`${maxHeight}px`);
     expect(handle?.getAttribute("aria-valuenow")).toBe(maxHeight.toString());
-    expect(localStorage.getItem("dbx-mqtt-payload-height")).toBe(maxHeight.toString());
+    expect(localStorage.getItem("linop-db-mqtt-payload-height")).toBe(maxHeight.toString());
   });
 });

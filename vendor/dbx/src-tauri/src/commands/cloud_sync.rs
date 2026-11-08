@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use dbx_core::cloud_sync::{
+use linop_db_core::cloud_sync::{
     apply_sync_snapshot_with_selection, build_sync_snapshot_with_selection, describe_local_sync_state,
     describe_sync_snapshot, finalize_snippet_migration, forget_snippet_passphrase, forget_snippet_token,
     forget_webdav_password, forget_webdav_sync_secrets_passphrase as core_forget_webdav_sync_secrets_passphrase,
@@ -14,12 +14,12 @@ use dbx_core::cloud_sync::{
     SnippetSyncSettings, SnippetSyncSummary, SnippetTokenStatus, SyncExportOptions, SyncSelection, SyncSnapshotCatalog,
     WebDavClient, WebDavConfig, WebDavPasswordStatus, WebDavSyncSecretsStatus, WebDavSyncSummary,
 };
-use dbx_core::storage::DesktopSettings;
-use dbx_core::storage::{MigrationPreflight, MigrationReport};
+use linop_db_core::storage::DesktopSettings;
+use linop_db_core::storage::{MigrationPreflight, MigrationReport};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use dbx_core::connection::AppState;
+use linop_db_core::connection::AppState;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -402,21 +402,21 @@ pub async fn snippet_sync_inspect(
 mod tests {
     use std::sync::Arc;
 
-    use dbx_core::cloud_sync::SnippetProvider;
+    use linop_db_core::cloud_sync::SnippetProvider;
     use tauri::Manager;
 
     use super::AppState;
 
     #[tokio::test]
     async fn snippet_settings_surfaces_pending_cleanup_after_restart() {
-        let dir = std::env::temp_dir().join(format!("dbx-tauri-snippet-cleanup-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-tauri-snippet-cleanup-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let db = dir.join("storage.db");
-        let storage = dbx_core::persistence::test_storage::open(&db).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&db).await.unwrap();
         storage.save_snippet_migration_state("github", "replacement-id", "legacy-id", "content-hash").await.unwrap();
         drop(storage);
 
-        let storage = dbx_core::persistence::test_storage::open(&db).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&db).await.unwrap();
         let app_state = Arc::new(AppState::new_with_plugin_dir(storage, dir.join("plugins")));
         let app = tauri::test::mock_app();
         app.manage(app_state);

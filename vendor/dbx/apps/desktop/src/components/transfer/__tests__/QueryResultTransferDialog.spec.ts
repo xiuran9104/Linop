@@ -911,7 +911,7 @@ describe("QueryResultTransferDialog execution boundaries", () => {
     expect(insert).toContain('("Id", "id", " name ") OVERRIDING SYSTEM VALUE');
     expect(insert).not.toContain("computed");
     expect(statements[statements.length - 1]).toContain("pg_get_serial_sequence");
-    expect(statements[statements.length - 1]).toMatch(/^DO \$dbx_transfer\$[\s\S]+END;\n\$dbx_transfer\$$/);
+    expect(statements[statements.length - 1]).toMatch(/^DO \$linop_db_transfer\$[\s\S]+END;\n\$linop_db_transfer\$$/);
     expect(api.executeMulti).not.toHaveBeenCalled();
   });
 

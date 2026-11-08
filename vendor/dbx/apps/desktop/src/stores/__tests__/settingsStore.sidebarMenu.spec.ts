@@ -29,7 +29,7 @@ describe("sidebar menu preference migration and persistence", () => {
 
   it.each([
     [STORAGE_KEY, JSON.stringify({ fontSize: 18 })],
-    ["dbx-query-editor-font-size", "18"],
+    ["linop-db-query-editor-font-size", "18"],
   ])("defaults legacy local preferences from %s to grouped menus", async (key, value) => {
     backend.loadEditorSettings.mockResolvedValue(null);
     localStorage.setItem(key, value);

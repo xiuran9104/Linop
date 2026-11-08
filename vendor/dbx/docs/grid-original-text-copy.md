@@ -8,7 +8,7 @@
 
 ## 真实页面验证（2026-10-09）
 
-环境为 macOS、Chromium、当前分支构建的 dbx-web 和 Vite 页面。使用独立 SQLite 文件，真实创建含 Tab、单双引号和 SQL 注释的视图，从 sqlite_master 读取定义并按行返回为 Text 单列。该结果覆盖反馈中的单列多行复制形态；没有在用户的 SQL Server 原库或打包的 Windows 客户端验证。
+环境为 macOS、Chromium、当前分支构建的 linop-db-web 和 Vite 页面。使用独立 SQLite 文件，真实创建含 Tab、单双引号和 SQL 注释的视图，从 sqlite_master 读取定义并按行返回为 Text 单列。该结果覆盖反馈中的单列多行复制形态；没有在用户的 SQL Server 原库或打包的 Windows 客户端验证。
 
 视图原文共 5 行、182 个字符、190 个 UTF-8 字节，含一个 Tab。
 
@@ -36,8 +36,8 @@
 
 ## 自动化检查
 
-- dbx-sql-data 全套 522 项通过，包含多行原文、嵌入 CRLF、空末行、Tab、引号、忽略表格引用/表头配置，以及多列拒绝。
+- linop-db-sql-data 全套 522 项通过，包含多行原文、嵌入 CRLF、空末行、Tab、引号、忽略表格引用/表头配置，以及多列拒绝。
 - grid_clipboard_guard 12 项通过，包含多行原文保持原样和 TSV/CSV 防护回归。
 - 前端相关 6 个测试文件共 346 项通过，覆盖真实菜单组件、复制/预览、网格回粘、默认格式规范化和 12 语言说明。
 - vue-tsc、相关 oxlint/oxfmt、cargo fmt --check、git diff --check 通过。
-- 实测后端构建：cargo build -p dbx-web --no-default-features --features dbx-core/sqlite-bundled。macOS 系统 SQLite 的无 bundled 构建缺少扩展加载符号，切换仓库已有 bundled 功能后构建成功，无产品代码调整。
+- 实测后端构建：cargo build -p linop-db-web --no-default-features --features linop-db-core/sqlite-bundled。macOS 系统 SQLite 的无 bundled 构建缺少扩展加载符号，切换仓库已有 bundled 功能后构建成功，无产品代码调整。

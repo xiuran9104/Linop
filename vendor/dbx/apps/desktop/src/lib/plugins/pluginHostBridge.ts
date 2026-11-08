@@ -13,8 +13,8 @@ import { PLUGIN_CONNECTIONS_CAPABILITY, PLUGIN_CONNECTIONS_READ_PERMISSION, type
 import { floatingWindowLabel } from "@/lib/app/windowContext";
 import { parseFloatingWindowRequest, type FloatingRect, type OpenFloatingWindowRequest, type OpenFloatingWindowResult } from "@/lib/plugins/pluginFloatingWindow";
 
-const PLUGIN_MESSAGE_SOURCE = "dbx-plugin";
-const HOST_MESSAGE_SOURCE = "dbx-host";
+const PLUGIN_MESSAGE_SOURCE = "linop-db-plugin";
+const HOST_MESSAGE_SOURCE = "linop-db-host";
 const BRIDGE_VERSION = 1;
 const MAX_BRIDGE_PAYLOAD_BYTES = 2 * 1024 * 1024;
 const MAX_BRIDGE_BINARY_BYTES = 8 * 1024 * 1024;
@@ -22,7 +22,7 @@ const MAX_CLIPBOARD_IMAGE_BASE64_BYTES = 24 * 1024 * 1024;
 // Distinct from the sidecar binary cap: saved files go straight from the
 // plugin iframe to disk and never traverse plugin frames.
 const MAX_BRIDGE_SAVE_BYTES = 512 * 1024 * 1024;
-// Mirrors MAX_PLUGIN_PLAN_NAME_CHARS in crates/dbx-core/src/query/plugin_plan.rs.
+// Mirrors MAX_PLUGIN_PLAN_NAME_CHARS in crates/linop-db-core/src/query/plugin_plan.rs.
 const MAX_PLUGIN_PLAN_IDENTIFIER_CHARS = 256;
 /**
  * In-flight `host.queryData` calls per bridge. Plugin queries share the
@@ -1152,7 +1152,7 @@ export class PluginHostBridge {
 /**
  * Parse `host.network:<origin>` permission entries into CSP connect-src
  * origins. Must stay aligned with `parse_host_network_permission` in
- * crates/dbx-plugin-runtime/src/plugins/manifest.rs.
+ * crates/linop-db-plugin-runtime/src/plugins/manifest.rs.
  */
 export function pluginNetworkOrigins(permissions: readonly string[] | undefined): string[] {
   const origins = new Set<string>();
@@ -1169,8 +1169,8 @@ export function pluginNetworkOrigins(permissions: readonly string[] | undefined)
 export interface PluginSandboxOptions {
   /**
    * Base URL for plugin UI resources resolved relative to the srcdoc document
-   * (for example, inlined CSS `url()` references) — `dbx-plugin://localhost/<id>/`
-   * on native custom schemes, `http(s)://dbx-plugin.localhost/<id>/` where
+   * (for example, inlined CSS `url()` references) — `linop-db-plugin://localhost/<id>/`
+   * on native custom schemes, `http(s)://linop-db-plugin.localhost/<id>/` where
    * WebView2 maps the scheme to an http subdomain. Injected as the document
    * `<base>` and allowed in resource CSP directives. External module imports
    * resolve from their own preserved URLs. Omit on hosts without the plugin
@@ -1210,14 +1210,14 @@ export function pluginSandboxDocument(html: string, permissions?: readonly strin
 /**
  * CSP source expression for the plugin asset base URL: the exact origin for
  * the http(s)-mapped form (WebView2), the whole scheme for the native custom
- * scheme form. Only dbx-plugin shapes contribute a source — anything else is
+ * scheme form. Only linop-db-plugin shapes contribute a source — anything else is
  * ignored (and suppresses the <base> too).
  */
 function pluginAssetCspSource(baseUrl: string | undefined): string {
   if (!baseUrl) return "";
-  const mapped = baseUrl.match(/^(https?:\/\/dbx-plugin\.localhost)(?:\/|$)/i);
+  const mapped = baseUrl.match(/^(https?:\/\/linop-db-plugin\.localhost)(?:\/|$)/i);
   if (mapped) return ` ${mapped[1].toLowerCase()}`;
-  return /^dbx-plugin:\/\//i.test(baseUrl) ? " dbx-plugin:" : "";
+  return /^linop-db-plugin:\/\//i.test(baseUrl) ? " linop-db-plugin:" : "";
 }
 
 function escapeHtmlAttribute(value: string): string {
@@ -1261,13 +1261,13 @@ body {
   color: var(--color-foreground, #18181b);
   background: var(--color-background, #ffffff);
 }
-.dbx-card {
+.linop-db-card {
   border: 1px solid var(--color-border, #e4e4e7);
   border-radius: var(--radius-lg, 10px);
   background: var(--color-card, #ffffff);
   padding: 14px 16px;
 }
-.dbx-section-title {
+.linop-db-section-title {
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -1275,7 +1275,7 @@ body {
   color: var(--color-muted-foreground, #71717a);
   margin: 0 0 10px;
 }
-.dbx-btn {
+.linop-db-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1289,14 +1289,14 @@ body {
   font-size: 13px;
   cursor: pointer;
 }
-.dbx-btn:hover { background: var(--color-muted, #f4f4f5); }
-.dbx-btn--primary { background: var(--color-primary, #2563eb); border-color: var(--color-primary, #2563eb); color: var(--color-primary-foreground, #ffffff); }
-.dbx-btn--primary:hover { background: var(--color-primary, #2563eb); opacity: 0.9; }
-.dbx-btn--danger { background: var(--color-destructive, #dc2626); border-color: var(--color-destructive, #dc2626); color: var(--color-destructive-foreground, #ffffff); }
-.dbx-btn--ghost { border-color: transparent; background: transparent; }
-.dbx-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-.dbx-label { display: inline-flex; font-size: 12px; font-weight: 500; color: var(--color-foreground, #18181b); }
-.dbx-input, .dbx-select, .dbx-textarea {
+.linop-db-btn:hover { background: var(--color-muted, #f4f4f5); }
+.linop-db-btn--primary { background: var(--color-primary, #2563eb); border-color: var(--color-primary, #2563eb); color: var(--color-primary-foreground, #ffffff); }
+.linop-db-btn--primary:hover { background: var(--color-primary, #2563eb); opacity: 0.9; }
+.linop-db-btn--danger { background: var(--color-destructive, #dc2626); border-color: var(--color-destructive, #dc2626); color: var(--color-destructive-foreground, #ffffff); }
+.linop-db-btn--ghost { border-color: transparent; background: transparent; }
+.linop-db-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.linop-db-label { display: inline-flex; font-size: 12px; font-weight: 500; color: var(--color-foreground, #18181b); }
+.linop-db-input, .linop-db-select, .linop-db-textarea {
   width: 100%;
   height: 30px;
   padding: 0 10px;
@@ -1307,16 +1307,16 @@ body {
   font-size: 13px;
   font-family: inherit;
 }
-.dbx-textarea { height: auto; min-height: 64px; padding: 6px 10px; resize: vertical; }
-.dbx-input:focus, .dbx-select:focus, .dbx-textarea:focus { outline: 2px solid var(--color-ring, #93c5fd); outline-offset: 1px; border-color: var(--color-ring, #93c5fd); }
-.dbx-hint { font-size: 12px; color: var(--color-muted-foreground, #71717a); }
-.dbx-row { display: grid; grid-template-columns: minmax(96px, auto) minmax(0, 1fr); gap: 8px 12px; align-items: center; margin-bottom: 10px; }
-.dbx-table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.dbx-table th { text-align: left; font-weight: 600; color: var(--color-muted-foreground, #71717a); border-bottom: 1px solid var(--color-border, #e4e4e7); padding: 6px 8px; }
-.dbx-table td { border-bottom: 1px solid var(--color-border, #e4e4e7); padding: 6px 8px; }
-.dbx-badge { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; background: var(--color-primary-alpha, rgba(37, 99, 235, 0.12)); color: var(--color-primary, #2563eb); font-size: 11px; font-weight: 500; }
-.dbx-link { color: var(--color-primary, #2563eb); text-decoration: none; cursor: pointer; }
-.dbx-link:hover { text-decoration: underline; }
+.linop-db-textarea { height: auto; min-height: 64px; padding: 6px 10px; resize: vertical; }
+.linop-db-input:focus, .linop-db-select:focus, .linop-db-textarea:focus { outline: 2px solid var(--color-ring, #93c5fd); outline-offset: 1px; border-color: var(--color-ring, #93c5fd); }
+.linop-db-hint { font-size: 12px; color: var(--color-muted-foreground, #71717a); }
+.linop-db-row { display: grid; grid-template-columns: minmax(96px, auto) minmax(0, 1fr); gap: 8px 12px; align-items: center; margin-bottom: 10px; }
+.linop-db-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.linop-db-table th { text-align: left; font-weight: 600; color: var(--color-muted-foreground, #71717a); border-bottom: 1px solid var(--color-border, #e4e4e7); padding: 6px 8px; }
+.linop-db-table td { border-bottom: 1px solid var(--color-border, #e4e4e7); padding: 6px 8px; }
+.linop-db-badge { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; background: var(--color-primary-alpha, rgba(37, 99, 235, 0.12)); color: var(--color-primary, #2563eb); font-size: 11px; font-weight: 500; }
+.linop-db-link { color: var(--color-primary, #2563eb); text-decoration: none; cursor: pointer; }
+.linop-db-link:hover { text-decoration: underline; }
 `.trim();
 }
 
@@ -1614,23 +1614,23 @@ export function pluginSdkSource(initialTheme?: PluginBridgeTheme): string {
         // Plugin listeners register on the document (onHostThemeChange);
         // bare dispatchEvent targets window, which document listeners never
         // receive — env theme pushes were silently lost.
-        document.dispatchEvent(new CustomEvent('dbx-plugin-init', { detail: message }));
+        document.dispatchEvent(new CustomEvent('linop-db-plugin-init', { detail: message }));
       } else if (message.type === 'context') {
         context = message.context;
         listeners.context.forEach((listener) => listener(context));
-        document.dispatchEvent(new CustomEvent('dbx-plugin-context', { detail: context }));
+        document.dispatchEvent(new CustomEvent('linop-db-plugin-context', { detail: context }));
       } else if (message.type === 'env') {
         if (typeof message.locale === 'string') locale = message.locale;
         if (message.theme) applyTheme(message.theme);
         listeners.event.forEach((listener) => listener(message));
-        document.dispatchEvent(new CustomEvent('dbx-plugin-env', { detail: message }));
+        document.dispatchEvent(new CustomEvent('linop-db-plugin-env', { detail: message }));
       } else if (message.type === 'event') {
         listeners.event.forEach((listener) => listener(message));
-        document.dispatchEvent(new CustomEvent('dbx-plugin-event', { detail: message }));
+        document.dispatchEvent(new CustomEvent('linop-db-plugin-event', { detail: message }));
       } else if (message.type === 'binary') {
         const payload = { channel: message.channel, data: message.data ? new Uint8Array(message.data) : new Uint8Array(0) };
         listeners.binary.forEach((listener) => listener(payload));
-        document.dispatchEvent(new CustomEvent('dbx-plugin-binary', { detail: payload }));
+        document.dispatchEvent(new CustomEvent('linop-db-plugin-binary', { detail: payload }));
       } else if (message.type === 'filedrop') {
         const files = Array.isArray(message.files) ? message.files : [];
         const position = (message.position && typeof message.position.x === 'number' && typeof message.position.y === 'number')
@@ -1644,14 +1644,14 @@ export function pluginSdkSource(initialTheme?: PluginBridgeTheme): string {
           position,
         };
         listeners.filedrop.forEach((listener) => listener(files, drop));
-        document.dispatchEvent(new CustomEvent('dbx-plugin-filedrop', { detail: { files, drop } }));
+        document.dispatchEvent(new CustomEvent('linop-db-plugin-filedrop', { detail: { files, drop } }));
       } else if (message.type === 'dragstate') {
         const active = message.active === true;
         const position = (message.position && typeof message.position.x === 'number' && typeof message.position.y === 'number')
           ? { x: message.position.x, y: message.position.y }
           : undefined;
         listeners.dragstate.forEach((listener) => listener(active, position));
-        document.dispatchEvent(new CustomEvent('dbx-plugin-dragstate', { detail: active }));
+        document.dispatchEvent(new CustomEvent('linop-db-plugin-dragstate', { detail: active }));
       } else if (message.type === 'workbench/close') {
         const notifyClose = (listener) => Promise.resolve().then(listener).catch(() => undefined);
         Promise.allSettled([...listeners.close].map(notifyClose)).finally(() => {

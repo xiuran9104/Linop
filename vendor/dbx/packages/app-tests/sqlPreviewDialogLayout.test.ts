@@ -62,7 +62,7 @@ describe.each(owners)("$name SQL preview layout", (owner) => {
 
   it("caps the preferred content height to the remaining grid track before and after execution", async () => {
     const { state, dialog } = await mountDialog();
-    expect(dialog.classList.contains("max-h-[calc(var(--dbx-viewport-height)-2rem)]")).toBe(true);
+    expect(dialog.classList.contains("max-h-[calc(var(--linop-db-viewport-height)-2rem)]")).toBe(true);
     expect(dialog.classList.contains("grid-rows-[auto_minmax(0,1fr)_auto]")).toBe(true);
     const sql = dialog.querySelector("pre")!;
     const middle = sql.parentElement!;

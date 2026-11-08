@@ -8,7 +8,7 @@ import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 
 const indexHtml = readFileSync(new URL("../../index.html", import.meta.url), "utf8");
-const openTag = indexHtml.indexOf("<script data-dbx-compat-probe>");
+const openTag = indexHtml.indexOf("<script data-linop-db-compat-probe>");
 const PROBE_SOURCE = indexHtml.slice(indexHtml.indexOf(">", openTag) + 1, indexHtml.indexOf("</script>", openTag));
 
 const SAFARI_15_2_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.2 Safari/605.1.15";
@@ -121,7 +121,7 @@ function runProbe(options: ProbeOptions) {
       removeEventListener: () => {},
     }),
     getComputedStyle: () => ({
-      getPropertyValue: (name: string) => (name === "--dbx-layer-probe" && options.capabilities.layer ? "1" : ""),
+      getPropertyValue: (name: string) => (name === "--linop-db-layer-probe" && options.capabilities.layer ? "1" : ""),
     }),
     addEventListener: () => {},
     dispatchEvent: () => {},
@@ -163,7 +163,7 @@ function runProbe(options: ProbeOptions) {
     URLSearchParams,
   });
 
-  vm.runInContext(PROBE_SOURCE, context, { filename: "index.html#dbx-compat-probe" });
+  vm.runInContext(PROBE_SOURCE, context, { filename: "index.html#linop-db-compat-probe" });
 
   const report = windowStub.__DBX_WEBVIEW_COMPAT__ as {
     tier: string;
@@ -171,14 +171,14 @@ function runProbe(options: ProbeOptions) {
     engine: string;
     bypassed: boolean;
   };
-  const notices = body.children.filter((child) => "data-dbx-compat-gate" in child.attributes || "data-dbx-compat-banner" in child.attributes);
+  const notices = body.children.filter((child) => "data-linop-db-compat-gate" in child.attributes || "data-linop-db-compat-banner" in child.attributes);
   return {
     tier: report.tier,
     missing: report.missing,
     engine: report.engine,
     bypassed: report.bypassed,
-    recorded: documentElement.attributes["data-dbx-compat"] ?? null,
-    notice: notices.length === 0 ? "none" : "data-dbx-compat-gate" in notices[0].attributes ? "gate" : "banner",
+    recorded: documentElement.attributes["data-linop-db-compat"] ?? null,
+    notice: notices.length === 0 ? "none" : "data-linop-db-compat-gate" in notices[0].attributes ? "gate" : "banner",
     noticeText: notices.length === 0 ? "" : textOf(notices[0]),
     session: session.values,
     local: local.values,
@@ -235,12 +235,12 @@ describe("engine compatibility notice rendering", () => {
     expect(runProbe({ capabilities: SAFARI_15_2, userAgent: SAFARI_15_2_UA, desktop: true }).notice).toBe("gate");
     expect(runProbe({ capabilities: SAFARI_15_2, userAgent: SAFARI_15_2_UA, desktop: true, session: {} }).notice).toBe("gate");
 
-    const bypassed = runProbe({ capabilities: SAFARI_15_2, userAgent: SAFARI_15_2_UA, desktop: true, session: { "dbx-compat-bypass": "1" } });
+    const bypassed = runProbe({ capabilities: SAFARI_15_2, userAgent: SAFARI_15_2_UA, desktop: true, session: { "linop-db-compat-bypass": "1" } });
     expect(bypassed.notice).toBe("none");
     expect(bypassed.tier).toBe("fatal");
     expect(bypassed.bypassed).toBe(true);
 
-    const dismissed = runProbe({ capabilities: SAFARI_16_2, userAgent: SAFARI_16_2_UA, local: { "dbx-compat-banner-dismissed": "1" } });
+    const dismissed = runProbe({ capabilities: SAFARI_16_2, userAgent: SAFARI_16_2_UA, local: { "linop-db-compat-banner-dismissed": "1" } });
     expect(dismissed.notice).toBe("none");
     expect(dismissed.tier).toBe("degraded");
   });
@@ -250,7 +250,7 @@ describe("engine compatibility notice rendering", () => {
       capabilities: SAFARI_15_2,
       userAgent: SAFARI_15_2_UA,
       desktop: true,
-      local: { "dbx-compat-banner-dismissed": "1" },
+      local: { "linop-db-compat-banner-dismissed": "1" },
     });
     expect(result.tier).toBe("fatal");
     expect(result.notice).toBe("gate");
@@ -264,7 +264,7 @@ describe("engine compatibility notice rendering", () => {
   });
 
   it("fails open when the probe itself throws", () => {
-    const result = runProbe({ capabilities: CHROME_120, userAgent: CHROME_UA, search: "?dbx-compat=reset" });
+    const result = runProbe({ capabilities: CHROME_120, userAgent: CHROME_UA, search: "?linop-db-compat=reset" });
     expect(result.tier).toBe("ok");
     expect(result.notice).toBe("none");
   });

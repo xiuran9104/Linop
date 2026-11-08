@@ -16,7 +16,7 @@ const pendingAfterResize = new Set<() => void>();
 
 function setPanelResizingResyncClass(resizing: boolean) {
   if (typeof document === "undefined") return;
-  document.body.classList.toggle("dbx-is-resizing", resizing);
+  document.body.classList.toggle("linop-db-is-resizing", resizing);
 }
 
 /** Marks a drag as in flight. Idempotent: safe to call on every move event. */

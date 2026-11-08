@@ -2,7 +2,7 @@ services:
   database:
     image: docker.cnb.cool/znb/images/redis:3.0.7-alpine
     platform: linux/amd64
-    container_name: dbx-redis-3.0.7
+    container_name: linop-db-redis-3.0.7
     restart: always
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${DB_PASSWORD:-123456}"]
     environment:

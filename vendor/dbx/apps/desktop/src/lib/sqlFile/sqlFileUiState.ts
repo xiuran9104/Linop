@@ -1,6 +1,6 @@
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStorage";
 
-export const SQL_FILE_FOLDERS_UI_STATE_STORAGE_KEY = "dbx-sql-file-folders-ui-state";
+export const SQL_FILE_FOLDERS_UI_STATE_STORAGE_KEY = "linop-db-sql-file-folders-ui-state";
 
 export interface SqlFileFolderUiState {
   collapsed?: boolean;

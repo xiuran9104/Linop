@@ -848,7 +848,7 @@ describe("selected transpose edit scope", () => {
     transposeCells(host)[1].dispatchEvent(new MouseEvent("contextmenu", { shiftKey: true, bubbles: true, cancelable: true, clientX: 12, clientY: 12 }));
     await settle();
     const menuButton = (label: string) => {
-      const button = [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].find((item) => item.textContent?.trim() === label);
+      const button = [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].find((item) => item.textContent?.trim() === label);
       if (!button) throw new Error(`Context menu item not found: ${label}`);
       return button;
     };
@@ -880,7 +880,7 @@ describe("selected transpose edit scope", () => {
     transposeCells(host)[1].dispatchEvent(new MouseEvent("contextmenu", { shiftKey: true, bubbles: true, cancelable: true, clientX: 12, clientY: 12 }));
     await settle();
     const menuButton = (label: string) => {
-      const button = [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].find((item) => item.textContent?.trim() === label);
+      const button = [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].find((item) => item.textContent?.trim() === label);
       if (!button) throw new Error(`Context menu item not found: ${label}`);
       return button;
     };

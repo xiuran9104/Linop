@@ -149,7 +149,7 @@ pub fn delete_ui_storage_entry(data_dir: &Path, key: &str) -> Result<(), String>
     Ok(())
 }
 
-fn data_dir(registry: &dbx_core::plugins::PluginRegistry, plugin_id: &str) -> Result<PathBuf, String> {
+fn data_dir(registry: &linop_db_core::plugins::PluginRegistry, plugin_id: &str) -> Result<PathBuf, String> {
     validate_plugin_id(plugin_id)?;
     Ok(registry.plugin_data_dir(plugin_id))
 }
@@ -212,7 +212,7 @@ mod tests {
     use serde_json::json;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("dbx-plugin-storage-{}-{name}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("linop-db-plugin-storage-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("create temp dir");
         dir
@@ -284,7 +284,7 @@ mod tests {
         }
         assert!(get_ui_storage_entry(&dir, "ok").is_ok());
 
-        let registry = dbx_core::plugins::PluginRegistry::new(PathBuf::from("/data/plugins"));
+        let registry = linop_db_core::plugins::PluginRegistry::new(PathBuf::from("/data/plugins"));
         for plugin_id in ["", "  ", "../escape", "io.dbx/other", ".hidden", "..", "a..b/../c", "UPPER.case", "sp ace"] {
             assert!(data_dir(&registry, plugin_id).is_err(), "plugin id {plugin_id:?} must be rejected");
         }

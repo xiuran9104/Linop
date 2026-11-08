@@ -1,5 +1,5 @@
 import type { ComposerTranslation } from "vue-i18n";
-import { normalizeJsonArgument } from "@dbx-app/mongo-shell";
+import { normalizeJsonArgument } from "@linop-db-app/mongo-shell";
 import { isCouchDbDatabaseType, isElasticsearchCompatibleDatabaseType, isMeilisearchDatabaseType, isSolrDatabaseType, type DatabaseType } from "@/types/database";
 import { quoteUnquotedObjectKeys } from "@/lib/mongo/mongoShellCommand";
 import { formatMongoShellLiteral, normalizeMongoDateInput } from "@/lib/mongo/mongoDocumentValues";

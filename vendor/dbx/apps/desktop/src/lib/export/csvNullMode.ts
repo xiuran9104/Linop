@@ -1,5 +1,5 @@
 /**
- * 导出 CSV 时 NULL 的写法。与 Rust `dbx_formats::csv_export` 保持一致：
+ * 导出 CSV 时 NULL 的写法。与 Rust `linop_db_formats::csv_export` 保持一致：
  * `marker` 把 NULL 写成 `\N`（MySQL `SELECT ... INTO OUTFILE`、ClickHouse
  * `format_csv_null_representation` 的既定写法），空字符串才写成空字段，两者在文件里可区分，
  * 导回 NOT NULL DEFAULT '' 的列时不会被还原成 NULL；`empty` 是旧行为：NULL 与空字符串都写成空字段。

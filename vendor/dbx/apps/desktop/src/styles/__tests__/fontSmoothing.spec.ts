@@ -20,8 +20,8 @@ describe("font smoothing setting (#13359)", () => {
 
   it("only applies smoothing under the opt-in class", () => {
     // The base body rule keeps the platform default; smoothing lives behind
-    // html.dbx-font-smoothing so the off state is byte-identical to pre-#13359.
-    expect(globalsCss).toContain("html.dbx-font-smoothing body");
+    // html.linop-db-font-smoothing so the off state is byte-identical to pre-#13359.
+    expect(globalsCss).toContain("html.linop-db-font-smoothing body");
     expect(globalsCss).toContain("-webkit-font-smoothing: antialiased");
     const bodyRule = globalsCss.match(/body \{[^}]*\}/)?.[0] ?? "";
     expect(bodyRule).not.toContain("font-smoothing");

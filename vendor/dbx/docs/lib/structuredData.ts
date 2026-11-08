@@ -38,7 +38,7 @@ export function buildSiteStructuredData() {
       url: SITE_URL,
       description: DEFAULT_DESCRIPTION,
       logo: `${SITE_URL}/logo.png`,
-      sameAs: ["https://github.com/t8y2/dbx", "https://www.npmjs.com/package/@dbx-app/mcp-server", "https://cnb.cool/dbxio.com/dbx", "https://atomgit.com/t8y2/dbx"],
+      sameAs: ["https://github.com/t8y2/dbx", "https://www.npmjs.com/package/@linop-db-app/mcp-server", "https://cnb.cool/dbxio.com/dbx", "https://atomgit.com/t8y2/dbx"],
     },
   ] as const;
 }
@@ -106,6 +106,6 @@ export function buildSoftwareApplicationStructuredData(lang: DocsLang, version: 
     },
     author: { "@id": `${SITE_URL}/#organization` },
     publisher: { "@id": `${SITE_URL}/#organization` },
-    sameAs: ["https://github.com/t8y2/dbx", "https://www.npmjs.com/package/@dbx-app/mcp-server"],
+    sameAs: ["https://github.com/t8y2/dbx", "https://www.npmjs.com/package/@linop-db-app/mcp-server"],
   } as const;
 }

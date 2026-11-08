@@ -30,7 +30,7 @@
 
 | # | 方式 | 模式 | 说明 |
 |---|------|------|------|
-| 1 | OAuth Authorization Code + PKCE | 桌面 | 主路径。复用 `crates/dbx-driver-mongodb/src/mongo_oidc.rs` 的模式：本地 `TcpListener` 监听回调 → 系统浏览器授权 → code 换 token。Connected App 需配置 `refresh_token` scope 以获取长期令牌 |
+| 1 | OAuth Authorization Code + PKCE | 桌面 | 主路径。复用 `crates/linop-db-driver-mongodb/src/mongo_oidc.rs` 的模式：本地 `TcpListener` 监听回调 → 系统浏览器授权 → code 换 token。Connected App 需配置 `refresh_token` scope 以获取长期令牌 |
 | 2 | OAuth Device Flow | 桌面 + **web** | `grant_type=urn:ietf:params:oauth:grant-type:device_code`。UI 显示 user code，用户在任意设备浏览器输入。**这是 web/Docker 模式下唯一的浏览器授权方式** |
 | 3 | 粘贴 Access Token + instance_url | 桌面 + web | 调试/CI/兜底。Session ID 可直接作 Bearer token。无 refresh 能力，过期后需重新粘贴 |
 | 4 | Username-Password OAuth | 桌面 + web | ⚠️ Salesforce 已弃用（新 Connected App 无法启用）。仅作为 BYO Connected App 的兼容项，UI 上明确标注 deprecated；密码需拼接 security token |
@@ -55,7 +55,7 @@
 ### 2.5 web 模式 OAuth 结论（已由代码调查确认）
 - mongo_oidc 的 localhost 回调在 web 模式**不可用**（监听在服务器、回调打到用户机器；浏览器 opener 是 Tauri-only API，web 端有硬 guard）。
 - 本期方案：**web 模式仅支持 Device Flow + token 粘贴**；桌面模式支持全部方式。
-- 远期可选：dbx-web 增加服务端回调路由（`/oauth/salesforce/callback`），需处理多用户会话与 redirect URI 注册，暂不做。
+- 远期可选：linop-db-web 增加服务端回调路由（`/oauth/salesforce/callback`），需处理多用户会话与 redirect URI 注册，暂不做。
 
 ---
 
@@ -87,13 +87,13 @@
 | 文件 | 动作 | 内容 |
 |------|------|------|
 | `plugins/connection-types/salesforce.yaml` | 新建 | 连接类型定义（见 §5） |
-| `crates/dbx-drivers/src/db/salesforce_driver.rs` | 新建 | HTTP client（reqwest）、OAuth 流程、SOQL 执行、describe 元数据、DML 命令解释 |
-| `crates/dbx-drivers/src/db/mod.rs` | 修改 | 注册模块 |
-| `crates/dbx-core/src/connection/mod.rs` | 修改 | `PoolKind::Salesforce(SfClient)` 变体 |
-| `crates/dbx-core/src/connection/driver_runtime.rs` | 修改 | 连接创建路由 |
-| `crates/dbx-core/src/query/mod.rs` | 修改 | 查询分发 match 臂（SOQL 执行 + DML 伪命令解释） |
-| `crates/dbx-core/src/schema/mod.rs` | 修改 | 元数据浏览分发（listTables → sObjects，listColumns → fields） |
-| `crates/dbx-drivers/src/salesforce_oauth.rs` | 新建 | PKCE / Device Flow / token 刷新（参考 mongo_oidc.rs 结构） |
+| `crates/linop-db-drivers/src/db/salesforce_driver.rs` | 新建 | HTTP client（reqwest）、OAuth 流程、SOQL 执行、describe 元数据、DML 命令解释 |
+| `crates/linop-db-drivers/src/db/mod.rs` | 修改 | 注册模块 |
+| `crates/linop-db-core/src/connection/mod.rs` | 修改 | `PoolKind::Salesforce(SfClient)` 变体 |
+| `crates/linop-db-core/src/connection/driver_runtime.rs` | 修改 | 连接创建路由 |
+| `crates/linop-db-core/src/query/mod.rs` | 修改 | 查询分发 match 臂（SOQL 执行 + DML 伪命令解释） |
+| `crates/linop-db-core/src/schema/mod.rs` | 修改 | 元数据浏览分发（listTables → sObjects，listColumns → fields） |
+| `crates/linop-db-drivers/src/salesforce_oauth.rs` | 新建 | PKCE / Device Flow / token 刷新（参考 mongo_oidc.rs 结构） |
 | `apps/desktop/public/icons/database/salesforce.svg` + `DatabaseIcon.vue` | 新建/修改 | 图标（注意 Salesforce 品牌使用规范） |
 | `apps/desktop/src/components/connection/ConnectionDialog.vue` | 修改 | 连接表单分支（认证方式选择、OAuth 按钮、token 状态） |
 | `apps/desktop/src/i18n/locales/*.ts` | 修改 | en / zh-CN / es 翻译 |
@@ -203,7 +203,7 @@ capabilities 覆盖（MVP）：
 - 方言三层，需各加一处：
   1. `codemirrorSqlDialect.ts`：新增 `SQLDialect.define()` 注册 SOQL（keywords：FROM/WHERE/ORDER BY/LIMIT/OFFSET/GROUP BY/TYPEOF/INCLUDES/EXCLUDES/FIELDS/NULLS FIRST…；无 JOIN、无 `;` 多语句）。
   2. `semantic/dialect.ts`：SOQL 适配器（语句分割、引号语义——SOQL 标识符不引用，字符串单引号）。
-  3. `plugins/dialects/soql.yaml`：Rust 侧类型目录（Id/Currency/Phone/Email/Picklist/DateTime…），供 dbx-sql 类型映射。
+  3. `plugins/dialects/soql.yaml`：Rust 侧类型目录（Id/Currency/Phone/Email/Picklist/DateTime…），供 linop-db-sql 类型映射。
 
 ### 9.2 SOQL 特有补全（新工作，按价值排序）
 1. **字段级上下文补全**：确定 FROM 对象后，SELECT/WHERE/ORDER BY/GROUP BY 位置补全字段；**关系逐级穿越**（`Account.` → Owner/Parent 关系字段 → `Account.Owner.` → User 字段）。需要在 completion source 里加「当前光标上下文扫描」（轻量 scanner：找最近 FROM 对象 + 点号前缀，不需完整 parser）。
@@ -221,35 +221,35 @@ capabilities 覆盖（MVP）：
 
 ### 10.1 已实现（M5）
 
-清单里的 `mcpMode: bridge` 是**声明性字段**：全仓无运行时消费者（`grep mcp_mode` 只命中 `crates/dbx-types/src/database_manifest.rs`），Salesforce 走 `runtimeMode: native` 进程内路径（`PoolKind::Salesforce`），因此 Local 与 Web 两种 MCP 后端都能直接用同一批工具，不需要 bridge 进程。
+清单里的 `mcpMode: bridge` 是**声明性字段**：全仓无运行时消费者（`grep mcp_mode` 只命中 `crates/linop-db-types/src/database_manifest.rs`），Salesforce 走 `runtimeMode: native` 进程内路径（`PoolKind::Salesforce`），因此 Local 与 Web 两种 MCP 后端都能直接用同一批工具，不需要 bridge 进程。
 
 只读面（默认暴露，无需额外授权）：
 
 | 工具 | Salesforce 行为 |
 |---|---|
-| `dbx_list_tables` | 列出 org 对象（describe global 缓存） |
-| `dbx_describe_table` | 列出对象字段 |
-| `dbx_execute_query` | 执行 SOQL；`dbx-sql` 的 Salesforce 分类器把 SOQL 判为 `Read` |
-| `dbx_list_databases` | 不返回数据库，而是说明「一个 org 就是一个作用域」并指向 `dbx_list_tables` + SOQL 示例 |
-| `dbx_execute_batch` | 拒绝（`DBX_BATCH_UNSUPPORTED`）：SOQL 只读，无多语句脚本可批 |
-| `dbx_open_session` | 拒绝（`SESSION_UNSUPPORTED`）：每次调用都是无状态 REST，无会话可固定、无事务 |
-| `dbx_salesforce_current_user` | 新增：连接用户 / 简档 / org 显示名 / 是否具备 “Modify All Data” |
+| `linop_db_list_tables` | 列出 org 对象（describe global 缓存） |
+| `linop_db_describe_table` | 列出对象字段 |
+| `linop_db_execute_query` | 执行 SOQL；`linop-db-sql` 的 Salesforce 分类器把 SOQL 判为 `Read` |
+| `linop_db_list_databases` | 不返回数据库，而是说明「一个 org 就是一个作用域」并指向 `linop_db_list_tables` + SOQL 示例 |
+| `linop_db_execute_batch` | 拒绝（`DBX_BATCH_UNSUPPORTED`）：SOQL 只读，无多语句脚本可批 |
+| `linop_db_open_session` | 拒绝（`SESSION_UNSUPPORTED`）：每次调用都是无状态 REST，无会话可固定、无事务 |
+| `linop_db_salesforce_current_user` | 新增：连接用户 / 简档 / org 显示名 / 是否具备 “Modify All Data” |
 
 写入面（**通道 B：两步确认**，新增三个工具中的后两个）：
 
-1. `dbx_salesforce_prepare_write { op, object, id?, fields? }` — 只构造并校验 `DBX SALESFORCE DML` 伪命令，**不发送任何请求**。返回人类可读摘要（操作 / 对象 / 记录 Id / 逐字段值 / 连接 / 身份）+ 一次性 `confirm_token`。
-2. `dbx_salesforce_apply_write { confirm_token }` — 只执行令牌对应的那一条语句；令牌单次有效、TTL 300 秒、与语句绑定，进程内最多 64 条待确认（超出淘汰最旧）。
+1. `linop_db_salesforce_prepare_write { op, object, id?, fields? }` — 只构造并校验 `DBX SALESFORCE DML` 伪命令，**不发送任何请求**。返回人类可读摘要（操作 / 对象 / 记录 Id / 逐字段值 / 连接 / 身份）+ 一次性 `confirm_token`。
+2. `linop_db_salesforce_apply_write { confirm_token }` — 只执行令牌对应的那一条语句；令牌单次有效、TTL 300 秒、与语句绑定，进程内最多 64 条待确认（超出淘汰最旧）。
 
 服务端强制点（agent 无法绕过）：
 
-- `dbx_execute_query` 对 Salesforce 连接显式拒绝写入伪命令（`SALESFORCE_DML_REQUIRES_CONFIRMATION`）。没有这一条，可写策略下的 agent 能直接把伪命令当「查询」发出去，同时绕过连接级开关和两步确认——而 Salesforce 无法回滚。
+- `linop_db_execute_query` 对 Salesforce 连接显式拒绝写入伪命令（`SALESFORCE_DML_REQUIRES_CONFIRMATION`）。没有这一条，可写策略下的 agent 能直接把伪命令当「查询」发出去，同时绕过连接级开关和两步确认——而 Salesforce 无法回滚。
 - 连接级开关 `allowSalesforceDml`（`McpConnectionRule`，`#[serde(default)]`，默认 `false`；老策略反序列化后自然为关）。未开启 → `SALESFORCE_DML_DISABLED`。
 - `read_only` 是硬上限：`connection_allows_salesforce_dml` 要求 `allow_salesforce_dml && !read_only`，`effective_mcp_policy_with_legacy_allow_writes(…, Some(false))` 会连同 `allow_dangerous_sql` 一起清掉该开关；前端 `normalizeMcpGlobalPolicy` 与 `onMcpConnectionExecutionModeChange` 同样在切到只读时撤销它。
 - prepare 与 apply **各自**跑一遍完整 `validate_sql_policy`（全局/连接/数据库只读、高风险分级、`targets_production_database`），所以两次调用之间撤销权限立即生效。
 - prepare 时以驱动的 `parse_salesforce_statement` 为权威校验，保证不会为 org 必然拒绝的语句发令牌；`upsert`/bulk/composite 一律 `SALESFORCE_DML_INVALID`（一次只碰一条记录）。
 - 身份查询是 best-effort：失败只在摘要里写「身份未知」，仍然完成 prepare，把是否 apply 的决定权留给人。
 
-风险分级（`crates/dbx-sql-core/src/query_execution_sql.rs`，fail-closed）：SOQL → `Read`；带 Id 的单记录 DML → `ScopedWrite`（映射 `SqlRisk::Write`，只需 safe_write）；无 Id / 无法判定 → `OpaqueWrite`（映射 `SqlRisk::Ddl`，需 allow_dangerous_sql）。
+风险分级（`crates/linop-db-sql-core/src/query_execution_sql.rs`，fail-closed）：SOQL → `Read`；带 Id 的单记录 DML → `ScopedWrite`（映射 `SqlRisk::Write`，只需 safe_write）；无 Id / 无法判定 → `OpaqueWrite`（映射 `SqlRisk::Ddl`，需 allow_dangerous_sql）。
 
 前端开关位置：**设置 → MCP → 连接范围**，仅对 `db_type === "salesforce"` 的连接行渲染（`McpResourceScopePicker.vue`），文案 `settings.mcpConnectionPolicyAllowSalesforceDml`；有效执行模式为只读时点击只提示不保存。工具白名单里三个新工具可独立勾选，因此可以只给 agent 读能力（`current_user` + SOQL）而不给写通道。
 
@@ -267,12 +267,12 @@ capabilities 覆盖（MVP）：
 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
-| ✅ **M0 骨架** | salesforce.yaml + sync 脚本 + PoolKind/分发接线 + 图标 + 表单（token 粘贴模式）| manifest 三测试通过（`cargo test -p dbx-core --test database_capabilities` + 两个 `driver-manifest.test.ts`），能用粘贴 token 连上 dev org |
+| ✅ **M0 骨架** | salesforce.yaml + sync 脚本 + PoolKind/分发接线 + 图标 + 表单（token 粘贴模式）| manifest 三测试通过（`cargo test -p linop-db-core --test database_capabilities` + 两个 `driver-manifest.test.ts`），能用粘贴 token 连上 dev org |
 | ✅ **M1 查询闭环** | execute_query（SOQL→QueryResult）+ 分页 + 错误映射 + listTables/listColumns（describe 缓存）+ userinfo/admin 探测 | 对象树可浏览，SOQL 查询出结果，配额友好 |
 | ✅ **M2 OAuth** | PKCE 浏览器流（桌面）+ Device Flow（web）+ token 持久化与刷新 | 桌面一键授权，重启不丢登录 |
 | ✅ **M3 编辑体验** | SOQL 方言高亮 + 补全（对象/字段/关系/picklist）+ 展开全部字段 | 补全基于 describe 缓存，无重复 API 消耗 |
 | ✅ **M4 DML** | 网格行级编辑（§8.2）+ tableDataEdit capability 打开 + 只读/警示联动 + 状态栏身份徽章 | 编辑-保存-逐行错误反馈闭环 |
-| ✅ **M5 MCP** | 只读工具 Salesforce 化（§10.1）+ `dbx_salesforce_current_user` + SOQL 风险分级 + 拒绝 batch/session + 两步确认 DML 通道（连接级开关默认关） | agent 可通过 MCP 查询 org；写入必须 prepare→人工确认→apply，且无法从 `dbx_execute_query` 绕过 |
+| ✅ **M5 MCP** | 只读工具 Salesforce 化（§10.1）+ `linop_db_salesforce_current_user` + SOQL 风险分级 + 拒绝 batch/session + 两步确认 DML 通道（连接级开关默认关） | agent 可通过 MCP 查询 org；写入必须 prepare→人工确认→apply，且无法从 `linop_db_execute_query` 绕过 |
 
 依赖关系：M1 是核心；M2/M3 可并行；M4 依赖 M1 的 describe 元数据；M5 依赖 M1。
 **最短可演示路径：M0+M1（token 粘贴 + 查询 + 浏览）。**
@@ -284,7 +284,7 @@ capabilities 覆盖（MVP）：
 - **手工/集成**：注册 Free Developer Edition org（developer.salesforce.com/signup）作为固定测试环境；seed 若干 Account/Contact/自定义对象。
 - **Rust 单测**：HTTP 层 mock（照 Elasticsearch 驱动现有测试方式）；OAuth 流程用 mock token endpoint；SOQL→QueryResult 映射用录制的真实响应 fixture。
 - **前端**：补全 scanner 单测（vitest）；DataGrid 编辑链路沿用现有测试模式。
-- **MCP**：`cargo test -p dbx-mcp --lib salesforce` 覆盖两步确认通道（令牌单次有效/过期/上限、连接级开关、只读与生产规则、伪命令不能从 `dbx_execute_query` 偷渡、batch/session 拒绝、身份摘要）；前端 `mcpPolicySelection.spec.ts` 用正则从 `crates/dbx-mcp/src/server.rs` 抓取已注册工具名，断言工具目录与后端严格同步——新增工具若忘记加进 `MCP_TOOL_OPTIONS`，该测试会失败。
+- **MCP**：`cargo test -p linop-db-mcp --lib salesforce` 覆盖两步确认通道（令牌单次有效/过期/上限、连接级开关、只读与生产规则、伪命令不能从 `linop_db_execute_query` 偷渡、batch/session 拒绝、身份摘要）；前端 `mcpPolicySelection.spec.ts` 用正则从 `crates/linop-db-mcp/src/server.rs` 抓取已注册工具名，断言工具目录与后端严格同步——新增工具若忘记加进 `MCP_TOOL_OPTIONS`，该测试会失败。
 - **manifest 一致性**：CLAUDE.md 规定的三个测试进 CI 必跑。
 - CI 不连真实 org（无 secret 依赖），真实 org 验证走手工 checklist。
 

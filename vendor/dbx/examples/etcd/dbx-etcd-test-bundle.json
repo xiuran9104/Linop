@@ -1,5 +1,5 @@
 {
-  "format": "dbx-etcd-bundle",
+  "format": "linop-db-etcd-bundle",
   "version": 1,
   "exportedAt": "2026-07-28T00:00:00.000Z",
   "prefix": "",

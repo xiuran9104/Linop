@@ -1,8 +1,8 @@
 /**
  * Plugin MCP tools in the built-in AI agent.
  *
- * Mirrors `crates/dbx-core/src/ai/plugin_tools.rs` (preview types) and the
- * approval events of `crates/dbx-ai-provider/src/agent_events.rs`.
+ * Mirrors `crates/linop-db-core/src/ai/plugin_tools.rs` (preview types) and the
+ * approval events of `crates/linop-db-ai-provider/src/agent_events.rs`.
  */
 
 export interface PluginToolSummary {

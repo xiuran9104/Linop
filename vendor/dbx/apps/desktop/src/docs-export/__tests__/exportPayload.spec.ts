@@ -6,7 +6,7 @@ import { readPayload } from "../exportPayload";
 function embed(payload: unknown): void {
   document.body.innerHTML = `<div id="app"></div>`;
   const node = document.createElement("script");
-  node.type = "application/dbx-snapshot";
+  node.type = "application/linop-db-snapshot";
   node.textContent = Buffer.from(JSON.stringify(payload), "utf8").toString("base64");
   document.body.appendChild(node);
 }
@@ -40,11 +40,11 @@ describe("readPayload", () => {
 
   it("names the missing element rather than throwing something opaque", () => {
     document.body.innerHTML = `<div id="app"></div>`;
-    expect(() => readPayload()).toThrow(/application\/dbx-snapshot/);
+    expect(() => readPayload()).toThrow(/application\/linop-db-snapshot/);
   });
 
   it("throws on a payload that is not base64", () => {
-    document.body.innerHTML = `<div id="app"></div><script type="application/dbx-snapshot">not base64 at all!</script>`;
+    document.body.innerHTML = `<div id="app"></div><script type="application/linop-db-snapshot">not base64 at all!</script>`;
     expect(() => readPayload()).toThrow();
     // The two failures must stay distinguishable: a document with no payload
     // and a document with a damaged one are different problems for whoever
@@ -52,6 +52,6 @@ describe("readPayload", () => {
     // Firefox and Safari each phrase it differently — but it must not be
     // mistaken for the missing-element case. `main.spec.ts` covers what the
     // reader actually sees for both.
-    expect(() => readPayload()).not.toThrow(/application\/dbx-snapshot/);
+    expect(() => readPayload()).not.toThrow(/application\/linop-db-snapshot/);
   });
 });

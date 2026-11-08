@@ -236,7 +236,7 @@ export function useQueryEditorPointer(options: QueryEditorPointerOptions) {
     const cursor = editorSelectionDropCursorEl ?? ownerDocument.createElement("div");
     if (!editorSelectionDropCursorEl) {
       cursor.setAttribute("aria-hidden", "true");
-      cursor.className = "dbx-editor-selection-drop-cursor";
+      cursor.className = "linop-db-editor-selection-drop-cursor";
       // Use a fixed overlay instead of CodeMirror's internal drop cursor layer so
       // the marker stays visible above selection layers, themes, and scrollers.
       cursor.style.position = "fixed";

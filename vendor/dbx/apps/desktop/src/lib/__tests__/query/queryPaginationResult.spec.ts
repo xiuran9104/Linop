@@ -3,7 +3,7 @@ import type { QueryResult } from "@/types/database";
 import { stripPaginationRowNumber } from "@/lib/query/queryPaginationResult";
 
 const result: QueryResult = {
-  columns: ["__dbx_row_num", "shape", "__dbx_row_num"],
+  columns: ["__linop_db_row_num", "shape", "__linop_db_row_num"],
   rows: [["user value", "POINT(1 2)", 101]],
   column_types: ["VARCHAR", "GEOMETRY", "NUMBER"],
   column_sortables: [true, false, true],
@@ -17,8 +17,8 @@ const result: QueryResult = {
 
 describe("pagination result columns", () => {
   it("removes only the generated trailing column and keeps user columns and metadata aligned", () => {
-    const cleaned = stripPaginationRowNumber(result, "__dbx_row_num");
-    expect(cleaned.columns).toEqual(["__dbx_row_num", "shape"]);
+    const cleaned = stripPaginationRowNumber(result, "__linop_db_row_num");
+    expect(cleaned.columns).toEqual(["__linop_db_row_num", "shape"]);
     expect(cleaned.rows).toEqual([["user value", "POINT(1 2)"]]);
     expect(cleaned.column_types).toEqual(["VARCHAR", "GEOMETRY"]);
     expect(cleaned.column_sortables).toEqual([true, false]);

@@ -45,7 +45,7 @@ members = [
     "crates/one-assets",
     "tools/gpui-rdp-smoke",
     "tools/windows-rdp-probe",
-    "crates/dbx_view",
+    "crates/linop_db_view",
     "crates/linop_app",
     "apps/linop",
     "apps/linop-shell",

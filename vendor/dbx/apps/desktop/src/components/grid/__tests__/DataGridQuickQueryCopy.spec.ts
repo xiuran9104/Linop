@@ -94,12 +94,12 @@ describe("quick-query SQL copy", () => {
     { databaseType: "postgres" as const, sql: "SELECT id, left(body, 4097) AS body, 'T:4096' AS \"__DBX_LARGE_VALUE_BYTES_T_1\" FROM orders WHERE status = 4 ORDER BY id DESC LIMIT 100 OFFSET 100;" },
     {
       databaseType: "oracle" as const,
-      sql: 'SELECT "ID", "BODY", "__DBX_LARGE_VALUE_BYTES_T_1" FROM (SELECT dbx_inner.*, ROWNUM AS "__dbx_row_num" FROM (SELECT "ID", DBMS_LOB.SUBSTR("BODY", 1000, 1) AS "BODY", \'T:999:\' || DBMS_LOB.GETLENGTH("BODY") AS "__DBX_LARGE_VALUE_BYTES_T_1" FROM "orders" WHERE status = 4 ORDER BY id DESC) dbx_inner WHERE ROWNUM <= 200) WHERE "__dbx_row_num" > 100',
+      sql: 'SELECT "ID", "BODY", "__DBX_LARGE_VALUE_BYTES_T_1" FROM (SELECT linop_db_inner.*, ROWNUM AS "__linop_db_row_num" FROM (SELECT "ID", DBMS_LOB.SUBSTR("BODY", 1000, 1) AS "BODY", \'T:999:\' || DBMS_LOB.GETLENGTH("BODY") AS "__DBX_LARGE_VALUE_BYTES_T_1" FROM "orders" WHERE status = 4 ORDER BY id DESC) linop_db_inner WHERE ROWNUM <= 200) WHERE "__linop_db_row_num" > 100',
     },
   ];
 
   it.each(previewCases)("shares rebuilt $databaseType preview SQL between the toolbar and footer", async ({ databaseType, sql }) => {
-    const expectedSql = databaseType === "oracle" ? 'SELECT * FROM (SELECT dbx_inner.*, ROWNUM AS "__dbx_row_num" FROM (SELECT * FROM "orders" WHERE status = 4 ORDER BY id DESC) dbx_inner WHERE ROWNUM <= 200) WHERE "__dbx_row_num" > 100' : PAGE_SQL;
+    const expectedSql = databaseType === "oracle" ? 'SELECT * FROM (SELECT linop_db_inner.*, ROWNUM AS "__linop_db_row_num" FROM (SELECT * FROM "orders" WHERE status = 4 ORDER BY id DESC) linop_db_inner WHERE ROWNUM <= 200) WHERE "__linop_db_row_num" > 100' : PAGE_SQL;
     mocks.buildSelect.mockResolvedValue(expectedSql);
     const { button, host, state, errors } = mountGrid(databaseType, { showStatusSql: true });
     state.result = result({ sqlPage: { sql, executedSql: sql, limit: 100, offset: 100 } });

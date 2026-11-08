@@ -35,10 +35,10 @@ mod windows_appcompat;
 mod windows_appcompat_state;
 
 use commands::connection::AppState;
-use dbx_core::persistence::secret_codec::SecretKeyPolicy;
-use dbx_core::sql_dialect::dialect_loader::{register_core_dialects, DialectPluginLoader, DialectRegistry};
-use dbx_core::sql_dialect::hot_reload::DialectHotReload;
-use dbx_core::storage::{maybe_import_user_data_db, DesktopIconTheme, DesktopSettings, Storage};
+use linop_db_core::persistence::secret_codec::SecretKeyPolicy;
+use linop_db_core::sql_dialect::dialect_loader::{register_core_dialects, DialectPluginLoader, DialectRegistry};
+use linop_db_core::sql_dialect::hot_reload::DialectHotReload;
+use linop_db_core::storage::{maybe_import_user_data_db, DesktopIconTheme, DesktopSettings, Storage};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -60,7 +60,7 @@ use tauri_plugin_deep_link::DeepLinkExt;
 use tauri_plugin_opener::OpenerExt;
 
 const DESKTOP_TRAY_ID: &str = "main-tray";
-const APP_CLOSE_REQUESTED_EVENT: &str = "dbx-app-close-requested";
+const APP_CLOSE_REQUESTED_EVENT: &str = "linop-db-app-close-requested";
 #[cfg(target_os = "macos")]
 const APP_MENU_QUIT_ID: &str = "app-menu-quit";
 #[cfg(target_os = "macos")]
@@ -68,7 +68,7 @@ const APP_MENU_COPY_SUPPORT_INFO_ID: &str = "app-menu-copy-support-info";
 #[cfg(target_os = "macos")]
 const APP_MENU_CLOSE_TAB_ID: &str = "app-menu-close-tab";
 #[cfg(target_os = "macos")]
-const APP_CLOSE_ACTIVE_TAB_EVENT: &str = "dbx-close-active-tab";
+const APP_CLOSE_ACTIVE_TAB_EVENT: &str = "linop-db-close-active-tab";
 
 pub struct CloseBehaviorState {
     confirmed_exit: AtomicBool,
@@ -825,7 +825,7 @@ fn open_connection_deep_links<R: tauri::Runtime>(app: &tauri::AppHandle<R>, link
         .try_state::<commands::deep_link::DeepLinkOpenState>()
         .is_none_or(|state| state.route_connection_links(links.clone()));
     if should_emit {
-        let _ = app.emit("dbx-open-connection-links", links);
+        let _ = app.emit("linop-db-open-connection-links", links);
     }
     show_main_window(app);
 }
@@ -838,7 +838,7 @@ fn open_ai_config_deep_links(app: &tauri::AppHandle, links: Vec<String>) {
         .try_state::<commands::deep_link::DeepLinkOpenState>()
         .is_none_or(|state| state.route_ai_config_links(links.clone()));
     if should_emit {
-        let _ = app.emit("dbx-open-ai-config-links", links);
+        let _ = app.emit("linop-db-open-ai-config-links", links);
     }
     show_main_window(app);
 }
@@ -851,7 +851,7 @@ fn open_plugin_install_deep_links(app: &tauri::AppHandle, links: Vec<String>) {
         .try_state::<commands::deep_link::DeepLinkOpenState>()
         .is_none_or(|state| state.route_plugin_install_links(links.clone()));
     if should_emit {
-        let _ = app.emit("dbx-open-plugin-install-links", links);
+        let _ = app.emit("linop-db-open-plugin-install-links", links);
     }
     show_main_window(app);
 }
@@ -1209,7 +1209,7 @@ async fn shutdown_runtime_resources(app_handle: &tauri::AppHandle) {
 
 fn run_shutdown_on_dedicated_thread(shutdown: impl FnOnce() + Send + 'static) -> Result<(), String> {
     std::thread::Builder::new()
-        .name("dbx-runtime-shutdown".into())
+        .name("linop-db-runtime-shutdown".into())
         .spawn(shutdown)
         .map_err(|error| format!("failed to start runtime shutdown: {error}"))?
         .join()
@@ -1272,7 +1272,7 @@ mod tests {
 
         let emitted = Arc::new(Mutex::new(Vec::<Vec<String>>::new()));
         let observed = emitted.clone();
-        app.listen("dbx-open-connection-links", move |event| {
+        app.listen("linop-db-open-connection-links", move |event| {
             observed.lock().unwrap().push(serde_json::from_str(event.payload()).unwrap());
         });
         let first = "dbx://connection/new?type=mysql&one_time=true".to_string();
@@ -1621,7 +1621,7 @@ mod tests {
 
     #[test]
     fn discovers_only_usable_linux_drm_render_device_files() {
-        let root = std::env::temp_dir().join(format!("dbx-drm-render-devices-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("linop-db-drm-render-devices-{}", uuid::Uuid::new_v4()));
         let sys_class_drm = root.join("sys/class/drm");
         let dev_dri = root.join("dev/dri");
         std::fs::create_dir_all(sys_class_drm.join("renderD128/device")).unwrap();
@@ -1651,7 +1651,7 @@ mod tests {
         assert_eq!(linux_pci_id_from_sysfs_value("0x10000"), None);
         assert_eq!(linux_pci_id_from_sysfs_value("not-a-device"), None);
 
-        let root = std::env::temp_dir().join(format!("dbx-drm-pci-ids-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("linop-db-drm-pci-ids-{}", uuid::Uuid::new_v4()));
         let sys_class_drm = root.join("sys/class/drm");
         let dev_dri = root.join("dev/dri");
         for node in ["renderD128", "renderD129"] {
@@ -1853,7 +1853,7 @@ mod tests {
 fn route_external_commands(
     main_handler: impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static,
 ) -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
-    dbx_tauri_consul::route(dbx_tauri_schema::route(main_handler))
+    linop_db_tauri_consul::route(linop_db_tauri_schema::route(main_handler))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -1873,7 +1873,7 @@ pub fn run() {
     // exhaust tokio's default 2 MiB worker stack, which aborts the process with
     // STATUS_STACK_OVERFLOW. Share the roomier stack the backup worker and Web
     // server runtimes use as well.
-    let runtime = dbx_core::scheduled_backup::worker_runtime().expect("Failed to build tokio runtime");
+    let runtime = linop_db_core::scheduled_backup::worker_runtime().expect("Failed to build tokio runtime");
     let runtime_handle = runtime.handle().clone();
     let _runtime = Box::leak(Box::new(runtime));
     tauri::async_runtime::set(runtime_handle);
@@ -1972,7 +1972,7 @@ pub fn run() {
                 if let Some(state) = app.try_state::<commands::external_sql::ExternalSqlOpenState>() {
                     state.push(paths.clone());
                 }
-                let _ = app.emit("dbx-open-sql-files", paths);
+                let _ = app.emit("linop-db-open-sql-files", paths);
             }
 
             let db_paths = commands::external_db::db_file_paths_from_args(args, std::path::Path::new(&cwd));
@@ -1980,7 +1980,7 @@ pub fn run() {
                 if let Some(state) = app.try_state::<commands::external_db::ExternalDbOpenState>() {
                     state.push(db_paths.clone());
                 }
-                let _ = app.emit("dbx-open-db-files", db_paths);
+                let _ = app.emit("linop-db-open-db-files", db_paths);
             }
             // This runs inside the *existing* instance: a second launch has already
             // handed over its arguments and exited. If we cannot reveal a window here
@@ -2205,7 +2205,7 @@ pub fn run() {
             } else {
                 AppState::new_with_plugin_dir_and_app_version(storage, plugin_dir, env!("CARGO_PKG_VERSION"))
             };
-            dbx_core::db::sqlite_worker::enable_sqlite_ssh_runtime(env!("CARGO_PKG_VERSION"));
+            linop_db_core::db::sqlite_worker::enable_sqlite_ssh_runtime(env!("CARGO_PKG_VERSION"));
             state.set_duckdb_worker_process_isolation_enabled(desktop_settings.duckdb_worker_process_isolation);
             state.set_duckdb_worker_max_processes(desktop_settings.duckdb_worker_max_processes);
             state.set_honor_fixed_ssh_local_ports(true);
@@ -3327,7 +3327,7 @@ pub fn run() {
                     if let Some(state) = app_handle.try_state::<commands::external_sql::ExternalSqlOpenState>() {
                         state.push(paths.clone());
                     }
-                    let _ = app_handle.emit("dbx-open-sql-files", paths);
+                    let _ = app_handle.emit("linop-db-open-sql-files", paths);
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();
@@ -3344,7 +3344,7 @@ pub fn run() {
                     if let Some(state) = app_handle.try_state::<commands::external_db::ExternalDbOpenState>() {
                         state.push(db_paths.clone());
                     }
-                    let _ = app_handle.emit("dbx-open-db-files", db_paths);
+                    let _ = app_handle.emit("linop-db-open-db-files", db_paths);
                     if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();

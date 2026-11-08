@@ -1,6 +1,6 @@
 import { safeLocalStorageGet, safeLocalStorageSet } from "@/lib/backend/safeStorage";
 
-export const HBASE_ROW_LIMIT_STORAGE_KEY = "dbx-hbase-row-limit";
+export const HBASE_ROW_LIMIT_STORAGE_KEY = "linop-db-hbase-row-limit";
 export const DEFAULT_HBASE_ROW_LIMIT = "100";
 export const HBASE_ROW_LIMIT_OPTIONS = ["50", "100", "200", "500"] as const;
 

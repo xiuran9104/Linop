@@ -156,7 +156,7 @@ function gbase8sConnection(): ConnectionConfig {
     name: "GBase 8s",
     db_type: "gbase8s",
     driver_profile: "gbase8s",
-    database: "dbx_test",
+    database: "linop_db_test",
   } as ConnectionConfig;
 }
 
@@ -1051,14 +1051,14 @@ describe("connectionStore metadata loading", () => {
     const store = useConnectionStore();
     useSettingsStore().editorSettings.sidebarObjectDisplay = "simple";
     const connection = gbase8sConnection();
-    const databaseNode: TreeNode = { id: `${connection.id}:dbx_test`, label: "dbx_test", type: "database", connectionId: connection.id, database: "dbx_test", isExpanded: false, children: [] };
+    const databaseNode: TreeNode = { id: `${connection.id}:linop_db_test`, label: "linop_db_test", type: "database", connectionId: connection.id, database: "linop_db_test", isExpanded: false, children: [] };
     store.connections = [connection];
     store.connectedIds.add(connection.id);
     store.treeNodes = [{ id: connection.id, label: connection.name, type: "connection", connectionId: connection.id, isExpanded: true, children: [databaseNode] }];
 
     await store.loadTreeNodeChildren(databaseNode, { force: true });
 
-    expect(listSchemaInfos).toHaveBeenCalledWith(connection.id, "dbx_test");
+    expect(listSchemaInfos).toHaveBeenCalledWith(connection.id, "linop_db_test");
     expect(listTables).toHaveBeenCalled();
     expect(databaseNode.children?.map((node) => [node.type, node.label, node.schema])).toEqual([
       ["table", "connection_smoke", undefined],

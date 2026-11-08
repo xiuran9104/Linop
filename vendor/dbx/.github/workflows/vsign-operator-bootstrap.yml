@@ -74,7 +74,7 @@ jobs:
           }
 
           $operatorDir = Join-Path $env:RUNNER_TEMP "vsign-operator"
-          $operatorFile = Join-Path $operatorDir "dbx-github-ci@ssigncode.pfx"
+          $operatorFile = Join-Path $operatorDir "linop-db-github-ci@ssigncode.pfx"
           $bundleDir = Join-Path $env:RUNNER_TEMP "vsign-bundle"
           $bundlePath = Join-Path $env:RUNNER_TEMP "vsign-operator-bundle.7z"
           New-Item -ItemType Directory -Force -Path $operatorDir, $bundleDir | Out-Null
@@ -130,7 +130,7 @@ jobs:
           }
 
           try {
-            $exportedPfx = Join-Path $bundleDir "dbx-github-ci@ssigncode.pfx"
+            $exportedPfx = Join-Path $bundleDir "linop-db-github-ci@ssigncode.pfx"
             $pfxBytes = $operatorCert.Export(
               [System.Security.Cryptography.X509Certificates.X509ContentType]::Pfx,
               $env:VSIGN_OPERATOR_PWD
@@ -139,7 +139,7 @@ jobs:
 
             $thumbprint = $operatorCert.Thumbprint.Replace(" ", "").ToUpperInvariant()
             $metadata = [ordered]@{
-              operator = "dbx-github-ci"
+              operator = "linop-db-github-ci"
               sha1 = $thumbprint
               expires = $operatorCert.NotAfter.ToUniversalTime().ToString("o")
               pfx_sha256 = (Get-FileHash -LiteralPath $exportedPfx -Algorithm SHA256).Hash

@@ -1,6 +1,6 @@
 import { safeLocalStorageGet, safeLocalStorageRemove, safeLocalStorageSet } from "@/lib/backend/safeStorage";
 
-export const LAST_EXPORT_DIRECTORY_STORAGE_KEY = "dbx-last-export-directory";
+export const LAST_EXPORT_DIRECTORY_STORAGE_KEY = "linop-db-last-export-directory";
 
 export function isAbsolutePath(filePath: string): boolean {
   const trimmed = filePath.trim();
@@ -61,7 +61,7 @@ export function clearLastExportDirectory(): void {
  * 数据库备份专用 key。备份目录通常和「数据导出」目录不同（常是挂载盘或专用备份盘），
  * 因此与 LAST_EXPORT_DIRECTORY_STORAGE_KEY 分开存储，避免两者互相覆盖。
  */
-export const LAST_BACKUP_DIRECTORY_STORAGE_KEY = "dbx-last-backup-directory";
+export const LAST_BACKUP_DIRECTORY_STORAGE_KEY = "linop-db-last-backup-directory";
 
 /** 读取上次使用过的数据库备份目录，未记录时返回空串。 */
 export function getLastBackupDirectory(): string {

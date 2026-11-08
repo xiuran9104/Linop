@@ -1,5 +1,5 @@
 {
-  "name": "@dbx-app/mcp-server",
+  "name": "@linop-db-app/mcp-server",
   "version": "0.4.141",
   "description": "MCP server for DBX — query databases from Claude Code, Cursor, and other AI agents",
   "keywords": [
@@ -19,8 +19,8 @@
     "directory": "packages/mcp-server"
   },
   "bin": {
-    "dbx-mcp-server": "bin/dbx-mcp-server.js",
-    "mcp-server": "bin/dbx-mcp-server.js"
+    "linop-db-mcp-server": "bin/linop-db-mcp-server.js",
+    "mcp-server": "bin/linop-db-mcp-server.js"
   },
   "files": [
     "bin",
@@ -28,18 +28,18 @@
   ],
   "type": "module",
   "scripts": {
-    "start": "cargo run -p dbx-mcp --",
-    "test": "cargo build -p dbx-mcp && vitest run --config vitest.config.ts",
-    "build": "node --check bin/dbx-mcp-server.js",
-    "prepublishOnly": "node bin/dbx-mcp-server.js --verify-platform"
+    "start": "cargo run -p linop-db-mcp --",
+    "test": "cargo build -p linop-db-mcp && vitest run --config vitest.config.ts",
+    "build": "node --check bin/linop-db-mcp-server.js",
+    "prepublishOnly": "node bin/linop-db-mcp-server.js --verify-platform"
   },
   "optionalDependencies": {
-    "@dbx-app/mcp-darwin-arm64": "0.4.141",
-    "@dbx-app/mcp-darwin-x64": "0.4.141",
-    "@dbx-app/mcp-linux-arm64-gnu": "0.4.141",
-    "@dbx-app/mcp-linux-x64-gnu": "0.4.141",
-    "@dbx-app/mcp-win32-arm64": "0.4.141",
-    "@dbx-app/mcp-win32-x64": "0.4.141"
+    "@linop-db-app/mcp-darwin-arm64": "0.4.141",
+    "@linop-db-app/mcp-darwin-x64": "0.4.141",
+    "@linop-db-app/mcp-linux-arm64-gnu": "0.4.141",
+    "@linop-db-app/mcp-linux-x64-gnu": "0.4.141",
+    "@linop-db-app/mcp-win32-arm64": "0.4.141",
+    "@linop-db-app/mcp-win32-x64": "0.4.141"
   },
   "devDependencies": {
     "@types/node": "^22.15.21",

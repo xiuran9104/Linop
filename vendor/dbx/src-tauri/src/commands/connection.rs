@@ -2,26 +2,26 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use tauri::{Emitter, State};
 
-pub use dbx_core::agent_connection::{
+pub use linop_db_core::agent_connection::{
     agent_connect_params, mongo_legacy_error_with_auth_hint, mongo_uses_legacy_driver, oracle_alternate_connect_config,
     oracle_error_with_driver_hint, should_retry_mongo_with_legacy_driver, with_zookeeper_endpoint_routes,
 };
-pub use dbx_core::connection::{
+pub use linop_db_core::connection::{
     agent_connect_timeout, clickhouse_http_proxy, connect_bare_metadata_pool, connect_mysql_metadata_pool,
     connection_configs_pool_equivalent, connection_configs_session_credentials_compatible, connection_url_for_endpoint,
     gaussdb_m_jdbc_config_for_endpoint, gaussdb_uses_m_jdbc_driver, metadata_connection_config,
     prestosql_jdbc_config_for_endpoint, probe_connection_endpoint, redacted_connection_url_for_endpoint, AppState,
     MysqlMode, PoolKind,
 };
-use dbx_core::database_capabilities;
-use dbx_core::db;
-use dbx_core::db::agent_driver::{AgentDriverClient, AgentMethod};
-use dbx_core::models::connection::{
+use linop_db_core::database_capabilities;
+use linop_db_core::db;
+use linop_db_core::db::agent_driver::{AgentDriverClient, AgentMethod};
+use linop_db_core::models::connection::{
     database_info_from_protocol_value, rewrite_jdbc_url_host, ConnectionConfig, ConnectionLivenessMessage,
     ConnectionResponse, ConnectionTestResult, DatabaseConnectionInfo, DatabaseType,
 };
-pub use dbx_core::path_utils::expand_tilde;
-use dbx_core::runtime_config::{release_runtime_config_on_disconnect, should_retain_runtime_config};
+pub use linop_db_core::path_utils::expand_tilde;
+use linop_db_core::runtime_config::{release_runtime_config_on_disconnect, should_retain_runtime_config};
 
 const MONGO_LEGACY_DRIVER_PROFILE: &str = "mongodb-legacy";
 const MONGO_LEGACY_DRIVER_LABEL: &str = "MongoDB (Legacy)";
@@ -60,7 +60,7 @@ async fn spawn_mongo_legacy_fallback_agent(
     native_error: &str,
 ) -> Result<AgentDriverClient, String> {
     let agent_key =
-        dbx_core::agent_manager::AgentManager::db_type_to_agent_key(db_type, Some(MONGO_LEGACY_DRIVER_PROFILE))
+        linop_db_core::agent_manager::AgentManager::db_type_to_agent_key(db_type, Some(MONGO_LEGACY_DRIVER_PROFILE))
             .ok_or_else(|| {
                 mongo_legacy_fallback_error(
                     native_error,
@@ -68,7 +68,7 @@ async fn spawn_mongo_legacy_fallback_agent(
                     "Agent mapping is unavailable",
                 )
             })?;
-    dbx_core::agent_service::ensure_agent_driver_ready(&state.agent_manager, agent_key).await.map_err(|error| {
+    linop_db_core::agent_service::ensure_agent_driver_ready(&state.agent_manager, agent_key).await.map_err(|error| {
         mongo_legacy_fallback_error(native_error, "Failed to prepare MongoDB (Legacy) fallback driver", &error)
     })?;
     state.agent_manager.spawn(db_type, Some(MONGO_LEGACY_DRIVER_PROFILE)).await.map_err(|error| {
@@ -231,8 +231,8 @@ mod tests {
         sync_connection_configs, test_connection_with_info_inner, MONGO_LEGACY_DRIVER_LABEL,
         MONGO_LEGACY_DRIVER_PROFILE,
     };
-    use dbx_core::connection::{AppState, PoolKind};
-    use dbx_core::models::connection::{
+    use linop_db_core::connection::{AppState, PoolKind};
+    use linop_db_core::models::connection::{
         AttachedDatabaseConfig, ConnectionConfig, ConnectionResponse, DatabaseType, ProxyTunnelConfig, ProxyType,
         TransportLayerConfig,
     };
@@ -243,7 +243,7 @@ mod tests {
     #[tokio::test]
     async fn tauri_load_response_is_flat_and_does_not_put_hint_in_storage_or_runtime_cache() {
         let dir = tempfile::tempdir().unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir(storage, dir.path().join("plugins"));
         let mut input = serde_json::json!({
             "id": "jdbc-oracle-mode", "name": "JDBC", "db_type": "jdbc", "driver_profile": "jdbc",
@@ -271,7 +271,7 @@ mod tests {
         let forged: ConnectionConfig = serde_json::from_value(input).unwrap();
         assert_eq!(
             ConnectionResponse::from_config(forged).jdbc_dialect,
-            Some(dbx_core::models::connection::JdbcDialectHint::OceanbaseOracle)
+            Some(linop_db_core::models::connection::JdbcDialectHint::OceanbaseOracle)
         );
         assert!(load_connection_configs(&state)
             .await
@@ -282,9 +282,9 @@ mod tests {
 
     #[tokio::test]
     async fn transport_desktop_proxy_rejects_foreign_pending_debug_before_changing_configs() {
-        use dbx_core::query::pl_debug::{pl_debug_bootstrap_core, pl_debug_start_core, PlDebugAccess, PlDebugStart};
+        use linop_db_core::query::pl_debug::{pl_debug_bootstrap_core, pl_debug_start_core, PlDebugAccess, PlDebugStart};
         let dir = tempfile::tempdir().unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new_with_plugin_dir(storage, dir.path().join("plugins")));
         let app = tauri::test::mock_builder()
             .manage(state.clone())
@@ -325,7 +325,7 @@ mod tests {
     #[tokio::test]
     async fn transport_test_cleans_up_after_jdbc_adapter_preparation_fails() {
         let dir = tempfile::tempdir().unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new_with_plugin_dir(storage, dir.path().join("plugins")));
         let config: ConnectionConfig = serde_json::from_value(serde_json::json!({
             "id":"jdbc-probe", "name":"JDBC probe", "db_type":DatabaseType::Jdbc,
@@ -344,7 +344,7 @@ mod tests {
     #[tokio::test]
     async fn transport_failed_connect_cleans_up_after_jdbc_adapter_preparation_fails() {
         let dir = tempfile::tempdir().unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new_with_plugin_dir(storage, dir.path().join("plugins")));
         let app = tauri::test::mock_builder()
             .manage(state.clone())
@@ -385,7 +385,7 @@ mod tests {
     #[tokio::test]
     async fn rocketmq_save_captures_no_save_auth_before_storage_and_rehydrates_desktop_owner() {
         let dir = tempfile::tempdir().unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir(storage, dir.path().join("plugins"));
         let config = rocketmq_config("session-sk");
         save_connection_configs(&state, std::slice::from_ref(&config), Vec::new()).await.unwrap();
@@ -399,7 +399,7 @@ mod tests {
         {
             let runtime = state.mq_admin_config_for_connection(&config.id, &saved[0]).await.unwrap();
             assert!(
-                matches!(runtime.auth, dbx_core::mq::auth::MqAuth::Basic { password, .. } if password == "session-sk")
+                matches!(runtime.auth, linop_db_core::mq::auth::MqAuth::Basic { password, .. } if password == "session-sk")
             );
         }
         save_connection_configs(&state, &saved, Vec::new()).await.unwrap();
@@ -427,7 +427,7 @@ mod tests {
     #[tokio::test]
     async fn rocketmq_save_normalizes_legacy_auth_and_failed_save_keeps_existing_session() {
         let dir = tempfile::tempdir().unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir(storage, dir.path().join("plugins"));
         let mut config = rocketmq_config("");
         let external = config.external_config.as_mut().unwrap();
@@ -448,7 +448,7 @@ mod tests {
     #[tokio::test]
     async fn rocketmq_failed_connect_rolls_back_only_new_session_credentials() {
         let dir = tempfile::tempdir().unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new_with_plugin_dir(storage, dir.path().join("plugins")));
         let app = tauri::test::mock_builder()
             .manage(state.clone())
@@ -498,12 +498,12 @@ mod tests {
             init_script: None,
             color: None,
             transport_layers: Vec::new(),
-            connect_timeout_secs: dbx_core::models::connection::default_connect_timeout_secs(),
-            query_timeout_secs: dbx_core::models::connection::default_query_timeout_secs(),
-            idle_timeout_secs: dbx_core::models::connection::default_idle_timeout_secs(),
-            manual_transaction_timeout_secs: dbx_core::models::connection::default_manual_transaction_timeout_secs(),
-            idle_disconnect_secs: dbx_core::models::connection::default_idle_disconnect_secs(),
-            keepalive_interval_secs: dbx_core::models::connection::default_keepalive_interval_secs(),
+            connect_timeout_secs: linop_db_core::models::connection::default_connect_timeout_secs(),
+            query_timeout_secs: linop_db_core::models::connection::default_query_timeout_secs(),
+            idle_timeout_secs: linop_db_core::models::connection::default_idle_timeout_secs(),
+            manual_transaction_timeout_secs: linop_db_core::models::connection::default_manual_transaction_timeout_secs(),
+            idle_disconnect_secs: linop_db_core::models::connection::default_idle_disconnect_secs(),
+            keepalive_interval_secs: linop_db_core::models::connection::default_keepalive_interval_secs(),
             ssl: false,
             ca_cert_path: String::new(),
             client_cert_path: String::new(),
@@ -520,7 +520,7 @@ mod tests {
             redis_sentinel_password: String::new(),
             redis_sentinel_tls: false,
             redis_cluster_nodes: String::new(),
-            redis_key_separator: dbx_core::models::connection::default_redis_key_separator(),
+            redis_key_separator: linop_db_core::models::connection::default_redis_key_separator(),
             redis_scan_page_size: None,
             redis_database_aliases: Default::default(),
             redis_key_templates: Vec::new(),
@@ -623,7 +623,7 @@ mod tests {
     async fn clickhouse_test_connection_uses_runtime_proxy_without_local_dns() {
         for proxy_type in [ProxyType::Socks5, ProxyType::Http] {
             let dir = tempfile::tempdir().unwrap();
-            let storage = dbx_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
+            let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
             let state = std::sync::Arc::new(AppState::new_with_plugin_dir(storage, dir.path().join("plugins")));
             let (config, server) = clickhouse_desktop_proxy_fixture(proxy_type).await;
             let id = config.id.clone();
@@ -642,7 +642,7 @@ mod tests {
     async fn clickhouse_connect_db_uses_runtime_proxy_without_local_dns() {
         for proxy_type in [ProxyType::Socks5, ProxyType::Http] {
             let dir = tempfile::tempdir().unwrap();
-            let storage = dbx_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
+            let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
             let state = std::sync::Arc::new(AppState::new_with_plugin_dir(storage, dir.path().join("plugins")));
             let app = tauri::test::mock_builder()
                 .manage(state.clone())
@@ -714,14 +714,14 @@ mod tests {
 
     #[tokio::test]
     async fn sqlite_connect_from_config_restores_attached_databases() {
-        let dir = std::env::temp_dir().join(format!("dbx-tauri-sqlite-attach-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-tauri-sqlite-attach-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         let main_path = dir.join("main.sqlite");
         let attached_path = dir.join("analytics.sqlite");
-        drop(dbx_core::db::sqlite::connect_path_create_if_missing(main_path.to_str().unwrap()).await.unwrap());
+        drop(linop_db_core::db::sqlite::connect_path_create_if_missing(main_path.to_str().unwrap()).await.unwrap());
         let attached =
-            dbx_core::db::sqlite::connect_path_create_if_missing(attached_path.to_str().unwrap()).await.unwrap();
-        dbx_core::db::sqlite::execute_query(&attached, "CREATE TABLE events(id INTEGER PRIMARY KEY);").await.unwrap();
+            linop_db_core::db::sqlite::connect_path_create_if_missing(attached_path.to_str().unwrap()).await.unwrap();
+        linop_db_core::db::sqlite::execute_query(&attached, "CREATE TABLE events(id INTEGER PRIMARY KEY);").await.unwrap();
         drop(attached);
 
         let mut config = sqlite_config(&main_path, "");
@@ -785,13 +785,13 @@ mod tests {
 
     #[tokio::test]
     async fn saving_memory_sqlite_attachments_keeps_the_live_pool_intact() {
-        let dir = std::env::temp_dir().join(format!("dbx-tauri-sqlite-memory-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-tauri-sqlite-memory-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir(storage, dir.join("plugins"));
         let initial = sqlite_config(std::path::Path::new(":memory:"), "");
-        let pool = dbx_core::db::sqlite::connect_path(":memory:").await.unwrap();
-        dbx_core::db::sqlite::execute_query(
+        let pool = linop_db_core::db::sqlite::connect_path(":memory:").await.unwrap();
+        linop_db_core::db::sqlite::execute_query(
             &pool,
             "CREATE TABLE retained(value TEXT); INSERT INTO retained VALUES ('yes');",
         )
@@ -814,7 +814,7 @@ mod tests {
         assert!(error.contains("in-memory main database"), "{error}");
         assert!(state.pool_handle(&initial.id).await.is_some());
         assert_eq!(state.configs.read().await.get(&initial.id), Some(&initial));
-        let retained = dbx_core::db::sqlite::execute_query(&pool, "SELECT value FROM retained;").await.unwrap();
+        let retained = linop_db_core::db::sqlite::execute_query(&pool, "SELECT value FROM retained;").await.unwrap();
         assert_eq!(retained.rows[0][0], serde_json::json!("yes"));
 
         drop(pool);
@@ -949,9 +949,9 @@ mod tests {
 
     #[tokio::test]
     async fn persist_mongo_legacy_driver_profile_updates_only_the_target_connection() {
-        let dir = std::env::temp_dir().join(format!("dbx-tauri-mongo-profile-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-tauri-mongo-profile-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir(storage, dir.join("plugins"));
         let mongo = mongodb_config();
         let mut other = mongodb_config();
@@ -973,12 +973,12 @@ mod tests {
     #[cfg(any(feature = "sqlite-sqlcipher", feature = "sqlite-multiple-ciphers"))]
     #[tokio::test]
     async fn sqlite_connect_from_config_uses_sqlcipher_key() {
-        let path = std::env::temp_dir().join(format!("dbx-tauri-sqlcipher-{}.db", uuid::Uuid::new_v4()));
-        let key = "dbx-pass";
+        let path = std::env::temp_dir().join(format!("linop-db-tauri-sqlcipher-{}.db", uuid::Uuid::new_v4()));
+        let key = "linop-db-pass";
 
         {
             let pool =
-                dbx_core::db::sqlite::connect_path_create_if_missing_with_cipher_key(path.to_str().unwrap(), key)
+                linop_db_core::db::sqlite::connect_path_create_if_missing_with_cipher_key(path.to_str().unwrap(), key)
                     .await
                     .expect("create encrypted sqlite");
             pool.with_connection(|conn| {
@@ -1018,9 +1018,9 @@ mod tests {
     #[cfg(feature = "mq-admin")]
     #[tokio::test]
     async fn save_connection_configs_updates_runtime_cache_and_drops_mq_adapter() {
-        let dir = std::env::temp_dir().join(format!("dbx-tauri-conn-test-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-tauri-conn-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir(storage, dir.join("plugins"));
         let initial = mq_config("mq-conn", "http://127.0.0.1:8080");
         state.configs.write().await.insert(initial.id.clone(), initial.clone());
@@ -1055,9 +1055,9 @@ mod tests {
     #[cfg(feature = "mq-admin")]
     #[tokio::test]
     async fn load_connection_configs_syncs_runtime_cache_and_drops_stale_pool() {
-        let dir = std::env::temp_dir().join(format!("dbx-tauri-conn-test-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-tauri-conn-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir(storage, dir.join("plugins"));
         let initial = mq_config("mq-conn", "http://127.0.0.1:8080");
         let updated = mq_config("mq-conn", "http://127.0.0.1:8081");
@@ -1090,9 +1090,9 @@ mod tests {
     #[cfg(feature = "mq-admin")]
     #[tokio::test]
     async fn save_connection_configs_removes_deleted_runtime_config_and_mq_adapter() {
-        let dir = std::env::temp_dir().join(format!("dbx-tauri-conn-test-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-tauri-conn-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir(storage, dir.join("plugins"));
         let kept = mongodb_config();
         let removed = mq_config("removed-mq", "http://127.0.0.1:8080");
@@ -1137,9 +1137,9 @@ mod tests {
 
     #[tokio::test]
     async fn save_connection_configs_retains_one_time_runtime_config_and_its_pool() {
-        let dir = std::env::temp_dir().join(format!("dbx-tauri-conn-test-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-tauri-conn-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir(storage, dir.join("plugins"));
         let persisted = mongodb_config();
         let preview = duckdb_preview_config();
@@ -1162,9 +1162,9 @@ mod tests {
 
     #[tokio::test]
     async fn save_connection_configs_keeps_session_credential_of_one_time_config() {
-        let dir = std::env::temp_dir().join(format!("dbx-tauri-conn-test-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-tauri-conn-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir(storage, dir.join("plugins"));
         let persisted = mongodb_config();
         let preview = duckdb_preview_config();
@@ -1183,9 +1183,9 @@ mod tests {
     #[cfg(feature = "mq-admin")]
     #[tokio::test]
     async fn save_connection_configs_removes_deleted_connection_pools() {
-        let dir = std::env::temp_dir().join(format!("dbx-tauri-conn-test-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-tauri-conn-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir(storage, dir.join("plugins"));
         let kept = mongodb_config();
         let removed = mq_config("removed-mq", "http://127.0.0.1:8080");
@@ -1209,9 +1209,9 @@ mod tests {
 
     #[tokio::test]
     async fn sync_connection_configs_ignores_password_only_changes() {
-        let dir = std::env::temp_dir().join(format!("dbx-tauri-conn-test-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-tauri-conn-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir(storage, dir.join("plugins"));
 
         let mut initial = mongodb_config();
@@ -1242,9 +1242,9 @@ mod tests {
 
     #[tokio::test]
     async fn sync_connection_configs_preserves_nacos_session_password_for_scope_updates() {
-        let dir = std::env::temp_dir().join(format!("dbx-tauri-nacos-scope-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-tauri-nacos-scope-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         let state = AppState::new_with_plugin_dir(storage, dir.join("plugins"));
         let initial = nacos_config("nacos-a");
         state.configs.write().await.insert(initial.id.clone(), initial.clone());
@@ -1482,7 +1482,7 @@ async fn connect_sqlite_from_config(config: &ConnectionConfig) -> Result<db::sql
 }
 
 async fn connect_sqlite_from_config_with_state(
-    transport: Option<(&AppState, &dbx_core::connection::ConnectionTransportStamp)>,
+    transport: Option<(&AppState, &linop_db_core::connection::ConnectionTransportStamp)>,
     connection_id: &str,
     config: &ConnectionConfig,
 ) -> Result<db::sqlite::SqliteHandle, String> {
@@ -1562,7 +1562,7 @@ pub async fn test_ssh_tunnel(state: State<'_, Arc<AppState>>, config: Connection
 pub async fn connection_parameters(
     state: State<'_, Arc<AppState>>,
     config: ConnectionConfig,
-) -> Result<dbx_core::connection::parameters::ConnectionParameterMetadata, String> {
+) -> Result<linop_db_core::connection::parameters::ConnectionParameterMetadata, String> {
     state.connection_parameter_metadata(&config).await
 }
 
@@ -1571,13 +1571,13 @@ async fn test_connection_with_info_inner(
     config: ConnectionConfig,
 ) -> Result<ConnectionTestResult, String> {
     let (mut config, password) = prepare_rocketmq_runtime_config(config);
-    if !dbx_core::connection::connection_secrets::is_rocketmq_connection(&config) {
+    if !linop_db_core::connection::connection_secrets::is_rocketmq_connection(&config) {
         return test_connection_with_info_impl(state, config).await;
     }
     // Test Connection must never replace credentials or transports of a live connection.
     let password =
         password.or_else(|| (!config.save_password).then(|| state.session_credentials.get("", &config.id)).flatten());
-    config.id = format!("{}{}", dbx_core::runtime_config::TEST_PROBE_ID_PREFIX, uuid::Uuid::new_v4());
+    config.id = format!("{}{}", linop_db_core::runtime_config::TEST_PROBE_ID_PREFIX, uuid::Uuid::new_v4());
     let transport_id = format!("{}:test", config.id);
     let credential_id = if config.has_effective_transport_layers() { &transport_id } else { &config.id };
     let token = password.as_deref().and_then(|password| state.session_credentials.set("", credential_id, password));
@@ -1601,7 +1601,7 @@ async fn test_connection_with_info_impl(
     let has_transport_layers = config.has_effective_transport_layers();
     let connection_id = if has_transport_layers { tunnel_id.as_str() } else { config.id.as_str() };
     let prepared = state.connection_endpoint_attempt(connection_id, &config).await?;
-    let mut cancellation = dbx_core::connection::ZooKeeperTransportCancellation::new(state, connection_id, &prepared);
+    let mut cancellation = linop_db_core::connection::ZooKeeperTransportCancellation::new(state, connection_id, &prepared);
     let result = async {
         let endpoint = prepared.endpoint?;
         let (host, port) = (endpoint.host.clone(), endpoint.port);
@@ -2076,18 +2076,18 @@ async fn test_connection_with_info_impl(
                     let admin_config = state.nacos_admin_config_for_connection(connection_id, &config).await?;
                     let adapter = state.nacos_registry.build_transient_config(admin_config).await?;
                     let info = adapter.test_connection_with_scope_validation().await?;
-                    database_info = dbx_core::nacos::service::database_info_from_connection(&info);
+                    database_info = linop_db_core::nacos::service::database_info_from_connection(&info);
                     Ok("Connection successful".to_string())
                 }
                 DatabaseType::Consul => {
-                    let mut consul_config = dbx_core::consul::ConsulConfig::from_connection(&config)?;
+                    let mut consul_config = linop_db_core::consul::ConsulConfig::from_connection(&config)?;
                     let validate_agent_target = consul_config.agent_target.is_some();
                     let original_host = consul_config.base_url.host_str().unwrap_or_default();
                     let original_port = consul_config.base_url.port_or_known_default().unwrap_or(config.port);
                     if host != original_host || port != original_port {
                         consul_config = consul_config.with_connect_override(&host, port);
                     }
-                    let client = dbx_core::consul::ConsulClient::new(consul_config).await?;
+                    let client = linop_db_core::consul::ConsulClient::new(consul_config).await?;
                     client.probe().await?;
                     let identity = if validate_agent_target {
                         Some(client.validate_configured_agent_target().await?)
@@ -2114,16 +2114,16 @@ async fn test_connection_with_info_impl(
                     // Probe with a transient adapter so Test Connection never retains/replaces
                     // a live cached MQ agent for this connection id (same pattern as Nacos).
                     let mqc = state.mq_admin_config_for_connection(connection_id, &config).await?;
-                    let agent_launch = dbx_core::mq::service::resolve_mq_agent_launch_spec(&mqc, state);
+                    let agent_launch = linop_db_core::mq::service::resolve_mq_agent_launch_spec(&mqc, state);
                     let adapter = state.mq_registry.build_transient_config(mqc, agent_launch).await?;
                     let info = adapter.test_connection().await?;
                     database_info = Some(DatabaseConnectionInfo {
                         product_name: Some(
                             match info.system_kind {
-                                dbx_core::mq::types::MqSystemKind::Pulsar => "Pulsar",
-                                dbx_core::mq::types::MqSystemKind::Kafka => "Kafka",
-                                dbx_core::mq::types::MqSystemKind::RocketMq => "RocketMQ",
-                                dbx_core::mq::types::MqSystemKind::RabbitMq => "RabbitMQ",
+                                linop_db_core::mq::types::MqSystemKind::Pulsar => "Pulsar",
+                                linop_db_core::mq::types::MqSystemKind::Kafka => "Kafka",
+                                linop_db_core::mq::types::MqSystemKind::RocketMq => "RocketMQ",
+                                linop_db_core::mq::types::MqSystemKind::RabbitMq => "RabbitMQ",
                             }
                             .to_string(),
                         ),
@@ -2140,8 +2140,8 @@ async fn test_connection_with_info_impl(
                 ),
                 #[cfg(feature = "mq-admin")]
                 DatabaseType::Mqtt => {
-                    let mqtt_config = dbx_core::mqtt::types::MqttConnectionConfig::from_connection(&config)?;
-                    let client = dbx_core::mqtt::client::MqttClient::connect(mqtt_config).await?;
+                    let mqtt_config = linop_db_core::mqtt::types::MqttConnectionConfig::from_connection(&config)?;
+                    let client = linop_db_core::mqtt::client::MqttClient::connect(mqtt_config).await?;
                     client.disconnect().await;
                     Ok("Connection successful".to_string())
                 }
@@ -2202,7 +2202,7 @@ async fn test_connection_with_info_impl(
 /// Normalize legacy RocketMQ ACL copies and capture no-save SK before either
 /// persistence or runtime caching. Only canonical auth owns the credential.
 fn prepare_rocketmq_runtime_config(mut config: ConnectionConfig) -> (ConnectionConfig, Option<String>) {
-    use dbx_core::connection::connection_secrets::{is_rocketmq_connection, normalize_rocketmq_credentials};
+    use linop_db_core::connection::connection_secrets::{is_rocketmq_connection, normalize_rocketmq_credentials};
     normalize_rocketmq_credentials(&mut config);
     if config.save_password || !is_rocketmq_connection(&config) {
         return (config, None);
@@ -2223,7 +2223,7 @@ fn prepare_rocketmq_runtime_config(mut config: ConnectionConfig) -> (ConnectionC
 /// Other desktop drivers retain their existing success-only capture timing.
 /// RocketMQ is captured before core adapter creation, which reads only the session.
 fn record_session_credential(state: &AppState, config: &ConnectionConfig, connection_id: &str) {
-    if dbx_core::connection::connection_secrets::is_rocketmq_connection(config) {
+    if linop_db_core::connection::connection_secrets::is_rocketmq_connection(config) {
         let (_, password) = prepare_rocketmq_runtime_config(config.clone());
         if let Some(password) = password {
             state.session_credentials.set("", connection_id, &password);
@@ -2243,11 +2243,11 @@ pub async fn connect_db(
 ) -> Result<String, String> {
     let (config, password) = prepare_rocketmq_runtime_config(config);
     let app = state.inner().clone();
-    let access = dbx_core::query::pl_debug::PlDebugAccess::desktop();
-    let permit = dbx_core::query::pl_debug::pl_debug_claim_mutation_core(
+    let access = linop_db_core::query::pl_debug::PlDebugAccess::desktop();
+    let permit = linop_db_core::query::pl_debug::pl_debug_claim_mutation_core(
         &app,
         Some(&access),
-        dbx_core::query::pl_debug::PlDebugMutationScope::Connections(vec![config.id.clone()]),
+        linop_db_core::query::pl_debug::PlDebugMutationScope::Connections(vec![config.id.clone()]),
     )?;
     permit
         .after_debug_cleanup(async {
@@ -2270,7 +2270,7 @@ async fn connect_db_inner(
     client_attempt: Option<u64>,
 ) -> Result<String, String> {
     let mut config = config.canonicalized();
-    dbx_core::query::plugin_plan::invalidate_gaussdb_dws_product_version(&mut config);
+    linop_db_core::query::plugin_plan::invalidate_gaussdb_dws_product_version(&mut config);
     if config.db_type == DatabaseType::Sqlite && !db::sqlite_worker::sqlite_remote_worker_requested(&config) {
         db::sqlite::validate_persistent_attachments(
             &config.host,
@@ -2299,7 +2299,7 @@ async fn connect_db_inner(
     }
     drop_nacos_adapters_for_connection_ids(state.inner(), std::slice::from_ref(&id)).await;
     let prepared = state.connection_endpoint_attempt(&id, &db_config).await?;
-    let mut cancellation = dbx_core::connection::ZooKeeperTransportCancellation::new(state.inner(), &id, &prepared);
+    let mut cancellation = linop_db_core::connection::ZooKeeperTransportCancellation::new(state.inner(), &id, &prepared);
     let result = async {
         let endpoint = prepared.endpoint?;
         let (host, port) = (endpoint.host, endpoint.port);
@@ -2606,7 +2606,7 @@ async fn connect_db_inner(
                         .unwrap_or_default()
                 };
                 // Same transport-layer proxy resolution as the test path and the real
-                // connect path in dbx-core: bypassing the proxy here would diverge from
+                // connect path in linop-db-core: bypassing the proxy here would diverge from
                 // both.
                 let proxy = clickhouse_http_proxy(runtime_proxy.as_ref())?;
                 let client = db::turso_driver::TursoClient::new_with_options(
@@ -2651,20 +2651,20 @@ async fn connect_db_inner(
                 PoolKind::Nacos
             }
             DatabaseType::Consul => {
-                let mut consul_config = dbx_core::consul::ConsulConfig::from_connection(&db_config)?;
+                let mut consul_config = linop_db_core::consul::ConsulConfig::from_connection(&db_config)?;
                 let original_host = consul_config.base_url.host_str().unwrap_or_default();
                 let original_port = consul_config.base_url.port_or_known_default().unwrap_or(db_config.port);
                 if host != original_host || port != original_port {
                     consul_config = consul_config.with_connect_override(&host, port);
                 }
-                let client = dbx_core::consul::ConsulClient::new(consul_config).await?;
+                let client = linop_db_core::consul::ConsulClient::new(consul_config).await?;
                 client.probe().await?;
                 PoolKind::Consul(client)
             }
             #[cfg(feature = "mq-admin")]
             DatabaseType::MessageQueue => {
                 let mqc = state.mq_admin_config_for_connection(&id, &config).await?;
-                let agent_launch = dbx_core::mq::service::resolve_mq_agent_launch_spec(&mqc, &state);
+                let agent_launch = linop_db_core::mq::service::resolve_mq_agent_launch_spec(&mqc, &state);
                 let build = match state.mq_registry.get_or_build_config(&id, mqc, agent_launch).await {
                     Ok(build) => build,
                     Err(err) => {
@@ -2676,7 +2676,7 @@ async fn connect_db_inner(
                     state.mq_registry.drop_connection(&id).await;
                     return Err(err);
                 }
-                if let Err(err) = dbx_core::mq::validate_mq_adapter_after_build(&build).await {
+                if let Err(err) = linop_db_core::mq::validate_mq_adapter_after_build(&build).await {
                     state.mq_registry.drop_connection(&id).await;
                     return Err(err);
                 }
@@ -2714,8 +2714,8 @@ async fn connect_db_inner(
             }
             #[cfg(feature = "mq-admin")]
             DatabaseType::Mqtt => {
-                let mqtt_config = dbx_core::mqtt::types::MqttConnectionConfig::from_connection(&db_config)?;
-                let client = dbx_core::mqtt::client::MqttClient::connect(mqtt_config).await?;
+                let mqtt_config = linop_db_core::mqtt::types::MqttConnectionConfig::from_connection(&db_config)?;
+                let client = linop_db_core::mqtt::client::MqttClient::connect(mqtt_config).await?;
                 PoolKind::Mqtt(client)
             }
             #[cfg(not(feature = "mq-admin"))]
@@ -2791,13 +2791,13 @@ pub async fn connection_final_proxy_port(
                 || !connection_configs_session_credentials_compatible(previous, &stored_config)
         })
     };
-    let access = dbx_core::query::pl_debug::PlDebugAccess::desktop();
+    let access = linop_db_core::query::pl_debug::PlDebugAccess::desktop();
     for _ in 0..3 {
         let affected = needs_cleanup(&*state.configs.read().await);
-        let permit = dbx_core::query::pl_debug::pl_debug_claim_mutation_core(
+        let permit = linop_db_core::query::pl_debug::pl_debug_claim_mutation_core(
             state.inner(),
             Some(&access),
-            dbx_core::query::pl_debug::PlDebugMutationScope::Connections(if affected {
+            linop_db_core::query::pl_debug::PlDebugMutationScope::Connections(if affected {
                 vec![connection_id.clone()]
             } else {
                 Vec::new()
@@ -2829,11 +2829,11 @@ pub async fn disconnect_db(
     connection_id: String,
     client_attempt: Option<u64>,
 ) -> Result<(), String> {
-    let access = dbx_core::query::pl_debug::PlDebugAccess::desktop();
-    let permit = dbx_core::query::pl_debug::pl_debug_claim_mutation_core(
+    let access = linop_db_core::query::pl_debug::PlDebugAccess::desktop();
+    let permit = linop_db_core::query::pl_debug::pl_debug_claim_mutation_core(
         state.inner(),
         Some(&access),
-        dbx_core::query::pl_debug::PlDebugMutationScope::Connections(vec![connection_id.clone()]),
+        linop_db_core::query::pl_debug::PlDebugMutationScope::Connections(vec![connection_id.clone()]),
     )?;
     let should_disconnect = if let Some(client_attempt) = client_attempt {
         state.supersede_connection_attempt_if_client_attempt(&connection_id, client_attempt).await
@@ -2895,7 +2895,7 @@ pub async fn replace_nacos_session_credential(
 ) -> Result<(), String> {
     state
         .replace_nacos_session_credential(
-            dbx_core::session_credentials::DESKTOP_OWNER,
+            linop_db_core::session_credentials::DESKTOP_OWNER,
             &connection_id,
             &username,
             &password,
@@ -2944,7 +2944,7 @@ pub fn install_connection_liveness_bridge(app: &tauri::AppHandle, state: Arc<App
         loop {
             match events.recv().await {
                 Ok(message) => {
-                    let _ = app_handle.emit("dbx-connection-liveness", message);
+                    let _ = app_handle.emit("linop-db-connection-liveness", message);
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
                     // The skipped messages are gone for good, so ask the frontend to re-check
@@ -2952,7 +2952,7 @@ pub fn install_connection_liveness_bridge(app: &tauri::AppHandle, state: Arc<App
                     // silently would leave a sidebar green indefinitely — exactly the state
                     // this bridge exists to prevent.
                     log::warn!("Desktop connection liveness bridge skipped {skipped} messages; requesting a resync");
-                    let _ = app_handle.emit("dbx-connection-liveness", ConnectionLivenessMessage::Resync);
+                    let _ = app_handle.emit("linop-db-connection-liveness", ConnectionLivenessMessage::Resync);
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
             }
@@ -3065,7 +3065,7 @@ pub async fn unlock_connection_writes(
     connection_id: String,
     duration_secs: u64,
 ) -> Result<WriteUnlockState, String> {
-    let remaining_ms = dbx_core::query::unlock_connection_writes_core(&state, &connection_id, duration_secs).await?;
+    let remaining_ms = linop_db_core::query::unlock_connection_writes_core(&state, &connection_id, duration_secs).await?;
     Ok(WriteUnlockState { remaining_ms })
 }
 
@@ -3090,7 +3090,7 @@ pub async fn ensure_connection_writable(
     connection_id: &str,
     action: &str,
 ) -> Result<(), String> {
-    if let Some(name) = dbx_core::query::connection_readonly_name(state, connection_id).await {
+    if let Some(name) = linop_db_core::query::connection_readonly_name(state, connection_id).await {
         return Err(format!(
             "Read-only mode: connection '{}' has read-only protection enabled. {} blocked.",
             name, action

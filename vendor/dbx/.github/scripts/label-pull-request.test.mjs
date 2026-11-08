@@ -45,7 +45,7 @@ test("maps agent and dialect paths to existing database types", () => {
 test("labels tests-only changes", () => {
   const result = evaluatePullRequestLabels({
     title: "test(core): cover transaction recovery",
-    changedFiles: ["crates/dbx-core/tests/transaction_recovery.rs", "apps/desktop/src/lib/__tests__/transactionRecovery.spec.ts"],
+    changedFiles: ["crates/linop-db-core/tests/transaction_recovery.rs", "apps/desktop/src/lib/__tests__/transactionRecovery.spec.ts"],
     knownDatabaseTypes,
   });
 
@@ -65,7 +65,7 @@ test("does not treat component tests or MCP server code as UI or deploy changes"
 test("recognizes conventional titles with a full-width colon", () => {
   const result = evaluatePullRequestLabels({
     title: "Fix：补全 GaussDB M 模式 SQL 生成",
-    changedFiles: ["crates/dbx-core/src/db/mod.rs"],
+    changedFiles: ["crates/linop-db-core/src/db/mod.rs"],
     knownDatabaseTypes,
   });
 
@@ -75,7 +75,7 @@ test("recognizes conventional titles with a full-width colon", () => {
 test("recognizes extracted core crates and their database sources", () => {
   const result = evaluatePullRequestLabels({
     title: "fix(sql): preserve PostgreSQL query contracts",
-    changedFiles: ["crates/dbx-driver-postgres/src/postgres.rs", "crates/dbx-sql-core/src/sql.rs", "crates/dbx-types/src/types.rs", "crates/dbx-platform/src/process.rs", "crates/dbx-ai-provider/src/ai.rs", "crates/dbx-formats/src/csv_export.rs", "crates/dbx-plugin-runtime/src/plugins.rs"],
+    changedFiles: ["crates/linop-db-driver-postgres/src/postgres.rs", "crates/linop-db-sql-core/src/sql.rs", "crates/linop-db-types/src/types.rs", "crates/linop-db-platform/src/process.rs", "crates/linop-db-ai-provider/src/ai.rs", "crates/linop-db-formats/src/csv_export.rs", "crates/linop-db-plugin-runtime/src/plugins.rs"],
     knownDatabaseTypes,
   });
 
@@ -89,9 +89,9 @@ test("collapses broad area and database changes", () => {
     changedFiles: [
       "agents/drivers/mysql/build.gradle",
       "apps/desktop/src/components/grid/GeometryViewer.vue",
-      "crates/dbx-driver-postgres/src/postgres.rs",
-      "crates/dbx-mcp/src/main.rs",
-      "crates/dbx-web/src/main.rs",
+      "crates/linop-db-driver-postgres/src/postgres.rs",
+      "crates/linop-db-mcp/src/main.rs",
+      "crates/linop-db-web/src/main.rs",
       "docs/content/docs/geometry.mdx",
       "plugins/dialects/sqlite.yaml",
       "plugins/dialects/sqlserver.yaml",
@@ -118,16 +118,16 @@ test("detects frontend and backend additions in the same pull request", () => {
   const manifests = {
     base: {
       "package.json": JSON.stringify({ dependencies: { vue: "3.5.0" } }),
-      "crates/dbx-core/Cargo.toml": '[dependencies]\ntokio = "1"\n',
+      "crates/linop-db-core/Cargo.toml": '[dependencies]\ntokio = "1"\n',
     },
     head: {
       "package.json": JSON.stringify({ dependencies: { vue: "3.5.0", zod: "4" } }),
-      "crates/dbx-core/Cargo.toml": '[dependencies]\ntokio = "1"\nserde = "1"\n',
+      "crates/linop-db-core/Cargo.toml": '[dependencies]\ntokio = "1"\nserde = "1"\n',
     },
   };
   const result = evaluatePullRequestLabels({
     title: "feat(core): add validated settings",
-    changedFiles: ["package.json", "crates/dbx-core/Cargo.toml", "pnpm-lock.yaml", "Cargo.lock"],
+    changedFiles: ["package.json", "crates/linop-db-core/Cargo.toml", "pnpm-lock.yaml", "Cargo.lock"],
     knownDatabaseTypes,
     readBaseFile: (file) => manifests.base[file],
     readHeadFile: (file) => manifests.head[file],

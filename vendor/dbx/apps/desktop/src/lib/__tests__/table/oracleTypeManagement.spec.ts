@@ -108,7 +108,7 @@ beforeEach(() => {
   edges = [edge("ROOT", "TYPE BODY", "ROOT"), edge("COLL", "TYPE", "ROOT"), edge("DEEP", "TYPE", "COLL"), edge("PROC", "PROCEDURE", "COLL"), edge("FN", "FUNCTION", "ROOT")];
   vi.mocked(api.getOracleTypeManagementSnapshot).mockImplementation(async (_connection, _database, _owner, _name, known) => snapshot(known));
   vi.mocked(api.buildOracleTypeManagementSql).mockImplementation(async (input) => {
-    // External builder transport; declaration/tokenizer correctness is tested in dbx-sql-core.
+    // External builder transport; declaration/tokenizer correctness is tested in linop-db-sql-core.
     if (input.source?.includes("BAD_DECLARATION")) throw new Error("Wrong declaration");
     const sql =
       input.source ?? `${input.operation === "drop_body" ? "DROP TYPE BODY" : input.operation === "drop_spec" ? "DROP TYPE" : `GRANT ${input.privilege ?? "EXECUTE"}`} "${input.owner}"."${input.name}"${input.grantee ? ` TO "${input.grantee}"${input.grantable ? " WITH GRANT OPTION" : ""}` : ""};`;

@@ -35,7 +35,7 @@ describe("dataGridColumnWidthState", () => {
     saveDataGridColumnWidthState(identity, [0, 1], [120, 300], new Set([1]));
 
     // Emulate new session or cold in-memory cache
-    const rawSaved = localStorage.getItem("dbx-data-grid-column-widths:result-file-/queries/test.sql-0");
+    const rawSaved = localStorage.getItem("linop-db-data-grid-column-widths:result-file-/queries/test.sql-0");
     expect(rawSaved).toBeTruthy();
 
     // Simulate an app restart: fresh module instance => empty in-memory map, same localStorage.
@@ -52,16 +52,16 @@ describe("dataGridColumnWidthState", () => {
     const identity = { cacheKey: "auto-fit-only", structureSignature, measurementSignature };
     saveDataGridColumnWidthState(identity, [0, 1], [80, 150], new Set());
 
-    expect(localStorage.getItem("dbx-data-grid-column-widths:auto-fit-only")).toBeNull();
+    expect(localStorage.getItem("linop-db-data-grid-column-widths:auto-fit-only")).toBeNull();
   });
 
   it("removes from localStorage when removeDataGridColumnWidthState is called", () => {
     const identity = { cacheKey: "to-remove", structureSignature, measurementSignature };
     saveDataGridColumnWidthState(identity, [0, 1], [100, 200], new Set([0, 1]));
-    expect(localStorage.getItem("dbx-data-grid-column-widths:to-remove")).toBeTruthy();
+    expect(localStorage.getItem("linop-db-data-grid-column-widths:to-remove")).toBeTruthy();
 
     removeDataGridColumnWidthState("to-remove");
-    expect(localStorage.getItem("dbx-data-grid-column-widths:to-remove")).toBeNull();
+    expect(localStorage.getItem("linop-db-data-grid-column-widths:to-remove")).toBeNull();
     expect(loadDataGridColumnWidthState(identity, [0, 1])).toBeUndefined();
   });
 
@@ -102,10 +102,10 @@ describe("dataGridColumnWidthState", () => {
     }
 
     // Earliest 5 should be evicted from localStorage
-    expect(localStorage.getItem("dbx-data-grid-column-widths:item-0")).toBeNull();
-    expect(localStorage.getItem("dbx-data-grid-column-widths:item-4")).toBeNull();
+    expect(localStorage.getItem("linop-db-data-grid-column-widths:item-0")).toBeNull();
+    expect(localStorage.getItem("linop-db-data-grid-column-widths:item-4")).toBeNull();
     // Latest should exist
-    expect(localStorage.getItem(`dbx-data-grid-column-widths:item-${DATA_GRID_COLUMN_WIDTH_STATE_LIMIT + 4}`)).toBeTruthy();
+    expect(localStorage.getItem(`linop-db-data-grid-column-widths:item-${DATA_GRID_COLUMN_WIDTH_STATE_LIMIT + 4}`)).toBeTruthy();
   });
 
   it("prunes orphan index entries on read when data is missing from localStorage", () => {
@@ -113,15 +113,15 @@ describe("dataGridColumnWidthState", () => {
     saveDataGridColumnWidthState(validIdentity, [0], [150], new Set([0]));
 
     // Manually inject an orphan key into the index (simulating a stale entry from a closed/evicted window)
-    const index = JSON.parse(localStorage.getItem("dbx-data-grid-column-widths-index") || "[]") as string[];
+    const index = JSON.parse(localStorage.getItem("linop-db-data-grid-column-widths-index") || "[]") as string[];
     index.unshift("orphan-key");
-    localStorage.setItem("dbx-data-grid-column-widths-index", JSON.stringify(index));
+    localStorage.setItem("linop-db-data-grid-column-widths-index", JSON.stringify(index));
 
     // Trying to load the orphan key should return undefined and prune it from the index
     const loaded = loadDataGridColumnWidthState({ cacheKey: "orphan-key", structureSignature, measurementSignature }, [0]);
     expect(loaded).toBeUndefined();
 
-    const updatedIndex = JSON.parse(localStorage.getItem("dbx-data-grid-column-widths-index") || "[]") as string[];
+    const updatedIndex = JSON.parse(localStorage.getItem("linop-db-data-grid-column-widths-index") || "[]") as string[];
     expect(updatedIndex).not.toContain("orphan-key");
     expect(updatedIndex).toContain("valid-key");
   });
@@ -131,15 +131,15 @@ describe("dataGridColumnWidthState", () => {
     saveDataGridColumnWidthState(validIdentity, [0], [150], new Set([0]));
 
     // Manually inject an orphan key into the index
-    const index = JSON.parse(localStorage.getItem("dbx-data-grid-column-widths-index") || "[]") as string[];
+    const index = JSON.parse(localStorage.getItem("linop-db-data-grid-column-widths-index") || "[]") as string[];
     index.push("stale-ghost-key");
-    localStorage.setItem("dbx-data-grid-column-widths-index", JSON.stringify(index));
+    localStorage.setItem("linop-db-data-grid-column-widths-index", JSON.stringify(index));
 
     // Writing a new state triggers reconciliation
     const nextIdentity = { cacheKey: "new-key", structureSignature, measurementSignature };
     saveDataGridColumnWidthState(nextIdentity, [0], [200], new Set([0]));
 
-    const updatedIndex = JSON.parse(localStorage.getItem("dbx-data-grid-column-widths-index") || "[]") as string[];
+    const updatedIndex = JSON.parse(localStorage.getItem("linop-db-data-grid-column-widths-index") || "[]") as string[];
     expect(updatedIndex).not.toContain("stale-ghost-key");
     expect(updatedIndex).toEqual(["valid-key", "new-key"]);
   });
@@ -153,9 +153,9 @@ describe("dataGridColumnWidthState", () => {
       widths: [[0, 180]],
       userSizedColumnIndexes: [0],
     });
-    localStorage.setItem("dbx-data-grid-column-widths:concurrent-orphan", orphanDataPayload);
+    localStorage.setItem("linop-db-data-grid-column-widths:concurrent-orphan", orphanDataPayload);
     // Index currently does NOT contain "concurrent-orphan"
-    expect(JSON.parse(localStorage.getItem("dbx-data-grid-column-widths-index") || "[]")).not.toContain("concurrent-orphan");
+    expect(JSON.parse(localStorage.getItem("linop-db-data-grid-column-widths-index") || "[]")).not.toContain("concurrent-orphan");
 
     // Reconcile or trigger save from current window
     const reconciled = reconcileDataGridColumnWidthStorageIndex();
@@ -167,7 +167,7 @@ describe("dataGridColumnWidthState", () => {
     }
 
     // Since concurrent-orphan was adopted at the oldest end, it should be evicted when capacity is reached
-    expect(localStorage.getItem("dbx-data-grid-column-widths:concurrent-orphan")).toBeNull();
+    expect(localStorage.getItem("linop-db-data-grid-column-widths:concurrent-orphan")).toBeNull();
   });
 
   it("cleans up all orphan data entries on clearDataGridColumnWidthStates even if omitted from index", () => {
@@ -175,14 +175,14 @@ describe("dataGridColumnWidthState", () => {
     saveDataGridColumnWidthState({ cacheKey: "indexed-item", structureSignature, measurementSignature }, [0], [120], new Set([0]));
 
     // Directly insert an unindexed orphan item
-    localStorage.setItem("dbx-data-grid-column-widths:unindexed-orphan", JSON.stringify({ version: 1, structureSignature, measurementSignature, widths: [[0, 100]], userSizedColumnIndexes: [0] }));
+    localStorage.setItem("linop-db-data-grid-column-widths:unindexed-orphan", JSON.stringify({ version: 1, structureSignature, measurementSignature, widths: [[0, 100]], userSizedColumnIndexes: [0] }));
 
     clearDataGridColumnWidthStates();
 
     // Both indexed item and orphan data item must be cleared
-    expect(localStorage.getItem("dbx-data-grid-column-widths:indexed-item")).toBeNull();
-    expect(localStorage.getItem("dbx-data-grid-column-widths:unindexed-orphan")).toBeNull();
-    expect(localStorage.getItem("dbx-data-grid-column-widths-index")).toBeNull();
+    expect(localStorage.getItem("linop-db-data-grid-column-widths:indexed-item")).toBeNull();
+    expect(localStorage.getItem("linop-db-data-grid-column-widths:unindexed-orphan")).toBeNull();
+    expect(localStorage.getItem("linop-db-data-grid-column-widths-index")).toBeNull();
   });
 
   it("deduplicates corrupted or raced index entries", () => {
@@ -190,7 +190,7 @@ describe("dataGridColumnWidthState", () => {
     saveDataGridColumnWidthState({ cacheKey: "dup-2", structureSignature, measurementSignature }, [0], [200], new Set([0]));
 
     // Artificially inject duplicate keys into index
-    localStorage.setItem("dbx-data-grid-column-widths-index", JSON.stringify(["dup-1", "dup-1", "dup-2", "dup-2"]));
+    localStorage.setItem("linop-db-data-grid-column-widths-index", JSON.stringify(["dup-1", "dup-1", "dup-2", "dup-2"]));
 
     const reconciled = reconcileDataGridColumnWidthStorageIndex();
     expect(reconciled).toEqual(["dup-1", "dup-2"]);
@@ -201,20 +201,20 @@ describe("dataGridColumnWidthState", () => {
     saveDataGridColumnWidthState({ cacheKey: "winA-1", structureSignature, measurementSignature }, [0], [100], new Set([0]));
 
     // Window B concurrently writes item B directly into localStorage, with an index that didn't know about winA-1
-    localStorage.setItem("dbx-data-grid-column-widths:winB-1", JSON.stringify({ version: 1, structureSignature, measurementSignature, widths: [[0, 150]], userSizedColumnIndexes: [0] }));
+    localStorage.setItem("linop-db-data-grid-column-widths:winB-1", JSON.stringify({ version: 1, structureSignature, measurementSignature, widths: [[0, 150]], userSizedColumnIndexes: [0] }));
     // Window B overwrites index to only contain winB-1
-    localStorage.setItem("dbx-data-grid-column-widths-index", JSON.stringify(["winB-1"]));
+    localStorage.setItem("linop-db-data-grid-column-widths-index", JSON.stringify(["winB-1"]));
 
     // Window A now writes item A2
     saveDataGridColumnWidthState({ cacheKey: "winA-2", structureSignature, measurementSignature }, [0], [200], new Set([0]));
 
     // All three items must be in the index: winA-1 (adopted), winB-1, winA-2
-    const finalIndex = JSON.parse(localStorage.getItem("dbx-data-grid-column-widths-index") || "[]") as string[];
+    const finalIndex = JSON.parse(localStorage.getItem("linop-db-data-grid-column-widths-index") || "[]") as string[];
     expect(finalIndex).toContain("winA-1");
     expect(finalIndex).toContain("winB-1");
     expect(finalIndex).toContain("winA-2");
-    expect(localStorage.getItem("dbx-data-grid-column-widths:winA-1")).toBeTruthy();
-    expect(localStorage.getItem("dbx-data-grid-column-widths:winB-1")).toBeTruthy();
-    expect(localStorage.getItem("dbx-data-grid-column-widths:winA-2")).toBeTruthy();
+    expect(localStorage.getItem("linop-db-data-grid-column-widths:winA-1")).toBeTruthy();
+    expect(localStorage.getItem("linop-db-data-grid-column-widths:winB-1")).toBeTruthy();
+    expect(localStorage.getItem("linop-db-data-grid-column-widths:winA-2")).toBeTruthy();
   });
 });

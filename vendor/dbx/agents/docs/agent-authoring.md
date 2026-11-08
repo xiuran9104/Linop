@@ -12,7 +12,7 @@ Every agent is a standalone JVM process that:
 - Starts with `new JsonRpcServer(new <Agent>()).run()` in its `main` method.
 - Talks to DBX over stdin/stdout JSON-RPC 2.0.
 - Uses JDBC for database access unless the module is explicitly designed around a non-JDBC protocol.
-- Produces one shadow JAR named `dbx-agent-<agent-name>.jar`.
+- Produces one shadow JAR named `linop-db-agent-<agent-name>.jar`.
 
 The public behavior should be consistent across agents even when each database has different SQL dialects.
 
@@ -136,7 +136,7 @@ dependencies {
 }
 ```
 
-The root Gradle convention supplies `project(':common')`, `project(':test-support')`, JUnit, Java toolchains, the Shadow plugin, and the `dbx-agent-<module>` archive name for included agent modules.
+The root Gradle convention supplies `project(':common')`, `project(':test-support')`, JUnit, Java toolchains, the Shadow plugin, and the `linop-db-agent-<module>` archive name for included agent modules.
 
 No manifest flag is needed.
 
@@ -173,7 +173,7 @@ When adding an agent named `exampledb`:
 - Set `Main-Class` to the Java agent class, usually `com.dbx.agent.exampledb.ExampledbAgent`.
 - Add the database to the README support table.
 
-The root `build.gradle` convention derives the archive name from the module name, so `exampledb` builds `dbx-agent-exampledb.jar` without per-module archive configuration.
+The root `build.gradle` convention derives the archive name from the module name, so `exampledb` builds `linop-db-agent-exampledb.jar` without per-module archive configuration.
 
 `versions.json` must contain only modules included in `settings.gradle`, excluding infrastructure modules such as `common` and `test-support`.
 

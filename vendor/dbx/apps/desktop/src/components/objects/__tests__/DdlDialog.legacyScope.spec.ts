@@ -49,7 +49,7 @@ describe("DdlViewDialog legacy fallback selectors", () => {
     const content = document.body.querySelector<HTMLElement>('[data-slot="dialog-content"]');
     const footer = document.body.querySelector<HTMLElement>('[data-slot="dialog-footer"]');
     expect(content).not.toBeNull();
-    expect(content!.className).toContain("dbx-ddl-view-dialog");
+    expect(content!.className).toContain("linop-db-ddl-view-dialog");
     expect(content!.className).toContain("max-w-sm");
     // The dialog content element is rendered by the child DialogContent component
     // through reka-ui's portal Teleport, so the parent scoped-style attribute

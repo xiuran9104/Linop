@@ -11,7 +11,7 @@ struct AgentProcess {
 
 impl AgentProcess {
     fn spawn() -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_dbx-tdengine-driver"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_linop-db-tdengine-driver"))
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())

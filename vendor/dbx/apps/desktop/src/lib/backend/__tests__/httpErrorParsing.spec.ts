@@ -110,8 +110,8 @@ describe("HTTP query transport diagnostics", () => {
   test("records timing and payload sizes without logging query contents", async () => {
     vi.stubGlobal("localStorage", new MemoryStorage());
     const sql = "SELECT 'private-query-marker'";
-    localStorage.setItem("dbx-debug-logging-enabled", "1");
-    localStorage.removeItem("dbx-debug-log-entries");
+    localStorage.setItem("linop-db-debug-logging-enabled", "1");
+    localStorage.removeItem("linop-db-debug-log-entries");
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -119,8 +119,8 @@ describe("HTTP query transport diagnostics", () => {
           status: 200,
           headers: {
             "content-type": "application/json",
-            "x-dbx-core-ms": "41",
-            "x-dbx-serialize-ms": "7",
+            "x-linop-db-core-ms": "41",
+            "x-linop-db-serialize-ms": "7",
           },
         }),
       ),
@@ -145,8 +145,8 @@ describe("HTTP query transport diagnostics", () => {
 
   test("preserves structured backend errors while logging only safe failure metadata", async () => {
     vi.stubGlobal("localStorage", new MemoryStorage());
-    localStorage.setItem("dbx-debug-logging-enabled", "1");
-    localStorage.removeItem("dbx-debug-log-entries");
+    localStorage.setItem("linop-db-debug-logging-enabled", "1");
+    localStorage.removeItem("linop-db-debug-log-entries");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(envelope), { status: 400 })));
 
     const error = await executeMulti("connection-1", "database-1", "SELECT 'failed-query-marker'", undefined, "trace-87654321").catch((value: unknown) => value);

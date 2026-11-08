@@ -5,7 +5,7 @@ type EditorViewType = import("@codemirror/view").EditorView;
 type DecorationSet = import("@codemirror/view").DecorationSet;
 
 export const NEWLINE_MARKER = "↵";
-export const NEWLINE_MARKER_CLASS = "cm-dbx-newline-marker";
+export const NEWLINE_MARKER_CLASS = "cm-linop-db-newline-marker";
 
 /**
  * Display-only whitespace markers for the SQL editor: spaces as "·", tabs as "→"

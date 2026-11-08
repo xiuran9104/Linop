@@ -50,7 +50,7 @@ make cargo-check-fast  # 快速 Rust 检查
 
 签名 runner 仅接受 `debug/dbx`，保留 Cargo feature 和应用参数，不影响 Linux、Windows 或正式打包。使用这些 macOS 开发入口时，需要取消自定义的 `CARGO_TARGET_*_RUNNER` 环境变量。
 
-Core、桌面端和 Web 的 Storage 测试夹具使用 `dbx_core::persistence::test_storage`（仅由开发依赖启用 `test-support` feature），在迁移预检查前选择测试目录自己的密钥，不访问用户钥匙串，也不继承 `DBX_SECRET_KEY` / `DBX_SECRET_KEY_FILE`。测试数据库复制时，应将夹具目录及其密钥一起保留。
+Core、桌面端和 Web 的 Storage 测试夹具使用 `linop_db_core::persistence::test_storage`（仅由开发依赖启用 `test-support` feature），在迁移预检查前选择测试目录自己的密钥，不访问用户钥匙串，也不继承 `DBX_SECRET_KEY` / `DBX_SECRET_KEY_FILE`。测试数据库复制时，应将夹具目录及其密钥一起保留。
 
 ```bash
 node --test scripts/dev-tauri.test.mjs
@@ -78,10 +78,10 @@ cd agents
 | ----------------------- | --------------------------------- |
 | `apps/desktop/src/`     | Vue 前端                          |
 | `src-tauri/`            | Tauri 桌面端壳层与命令层          |
-| `crates/dbx-core/`      | 共享 Rust 数据库逻辑              |
-| `crates/dbx-web/`       | Docker / Web HTTP 后端            |
-| `packages/cli/`         | `@dbx-app/cli`                    |
-| `packages/mcp-server/`  | `@dbx-app/mcp-server`             |
+| `crates/linop-db-core/`      | 共享 Rust 数据库逻辑              |
+| `crates/linop-db-web/`       | Docker / Web HTTP 后端            |
+| `packages/cli/`         | `@linop-db-app/cli`                    |
+| `packages/mcp-server/`  | `@linop-db-app/mcp-server`             |
 | `packages/mongo-shell/` | 桌面端内部 MongoDB 编辑器解析工具 |
 | `docs/`                 | 官方文档站                        |
 | `examples/`             | 配置与自动化示例                  |

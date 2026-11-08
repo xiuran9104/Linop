@@ -75,19 +75,19 @@ describe("renderCodeSnapshotHtml", () => {
 
     expect(html).toContain("<style>");
     expect(html).toContain(CODE_SNAPSHOT_CSS);
-    expect(html).toContain('class="dbx-code-snapshot"');
+    expect(html).toContain('class="linop-db-code-snapshot"');
     expect(html).toContain('data-snapshot-appearance="dark"');
-    expect(html).toContain('class="dbx-code-snapshot__pre dbx-code-snapshot__pre--numbered"');
-    expect(html).toContain(".dbx-code-snapshot *");
+    expect(html).toContain('class="linop-db-code-snapshot__pre linop-db-code-snapshot__pre--numbered"');
+    expect(html).toContain(".linop-db-code-snapshot *");
     expect(html).toContain("border: 0");
     expect(html).toContain("outline: 0");
-    expect(html).toContain(".dbx-code-snapshot__line-number");
+    expect(html).toContain(".linop-db-code-snapshot__line-number");
   });
 
   it("renders macOS traffic lights and an optional title by default", async () => {
     const html = await renderCodeSnapshotHtml({ code: "SELECT 1", lang: "sql", title: "Query example" }, { appearance: "dark" });
 
-    expect(html).toContain('class="dbx-code-snapshot__bar"');
+    expect(html).toContain('class="linop-db-code-snapshot__bar"');
     expect(html).toContain("#ff5f57");
     expect(html).toContain("#febc2e");
     expect(html).toContain("#28c840");
@@ -97,22 +97,22 @@ describe("renderCodeSnapshotHtml", () => {
   it("hides the bar when traffic lights are disabled and no title is set", async () => {
     const html = await renderCodeSnapshotHtml({ code: "SELECT 1", lang: "sql" }, { appearance: "light", showTrafficLights: false });
 
-    expect(html).not.toContain('class="dbx-code-snapshot__bar"');
+    expect(html).not.toContain('class="linop-db-code-snapshot__bar"');
   });
 
   it("keeps the title bar but hides traffic lights when window controls are disabled", async () => {
     const html = await renderCodeSnapshotHtml({ code: "SELECT 1", lang: "sql", title: "Query example" }, { appearance: "dark", showTrafficLights: false });
 
-    expect(html).toContain('class="dbx-code-snapshot__bar"');
+    expect(html).toContain('class="linop-db-code-snapshot__bar"');
     expect(html).toContain("Query example");
-    expect(html).not.toContain('class="dbx-code-snapshot__dot"');
+    expect(html).not.toContain('class="linop-db-code-snapshot__dot"');
   });
 
   it("hides line numbers when disabled", async () => {
     const html = await renderCodeSnapshotHtml({ code: "SELECT 1", lang: "sql" }, { appearance: "light", showLineNumbers: false });
 
-    expect(html).toContain('class="dbx-code-snapshot__pre"');
-    expect(html).not.toContain('class="dbx-code-snapshot__pre dbx-code-snapshot__pre--numbered"');
+    expect(html).toContain('class="linop-db-code-snapshot__pre"');
+    expect(html).not.toContain('class="linop-db-code-snapshot__pre linop-db-code-snapshot__pre--numbered"');
   });
 
   it("gives SQL table names their own color, distinct from quoted fields", async () => {
@@ -181,10 +181,10 @@ describe("renderCodeSnapshotHtml", () => {
     const light = await renderCodeSnapshotHtml({ code: "SELECT 1", lang: "sql" }, { appearance: "light" });
 
     expect(dark).toContain("background:#0d1117");
-    expect(dark).toContain("--dbx-snapshot-line-number:#484f58");
+    expect(dark).toContain("--linop-db-snapshot-line-number:#484f58");
     expect(dark).toContain("color:#e1e4e8");
     expect(light).toContain("background:#ffffff");
-    expect(light).toContain("--dbx-snapshot-line-number:#d0d7de");
+    expect(light).toContain("--linop-db-snapshot-line-number:#d0d7de");
     expect(light).toContain("color:#24292f");
   });
 
@@ -196,19 +196,19 @@ describe("renderCodeSnapshotHtml", () => {
   });
 
   it("materializes real line-number nodes in the export clone", () => {
-    document.body.innerHTML = '<div class="dbx-code-snapshot"><pre class="dbx-code-snapshot__pre dbx-code-snapshot__pre--numbered"><code><span class="line">SELECT 1</span><span class="line">FROM dual</span></code></pre></div>';
+    document.body.innerHTML = '<div class="linop-db-code-snapshot"><pre class="linop-db-code-snapshot__pre linop-db-code-snapshot__pre--numbered"><code><span class="line">SELECT 1</span><span class="line">FROM dual</span></code></pre></div>';
     const root = document.body.firstElementChild as HTMLElement;
 
     materializeSnapshotCloneLineNumbers(root);
 
-    const pre = root.querySelector(".dbx-code-snapshot__pre") as HTMLElement;
+    const pre = root.querySelector(".linop-db-code-snapshot__pre") as HTMLElement;
     const lines = Array.from(root.querySelectorAll<HTMLElement>("code > .line"));
-    expect(pre.classList.contains("dbx-code-snapshot__pre--numbered")).toBe(false);
+    expect(pre.classList.contains("linop-db-code-snapshot__pre--numbered")).toBe(false);
     expect(lines).toHaveLength(2);
-    expect(lines[0]?.querySelector(".dbx-code-snapshot__line-number")?.textContent).toBe("1");
-    expect(lines[1]?.querySelector(".dbx-code-snapshot__line-number")?.textContent).toBe("2");
-    expect(lines[0]?.querySelector(".dbx-code-snapshot__line-content")?.textContent).toBe("SELECT 1");
-    expect(lines[1]?.querySelector(".dbx-code-snapshot__line-content")?.textContent).toBe("FROM dual");
+    expect(lines[0]?.querySelector(".linop-db-code-snapshot__line-number")?.textContent).toBe("1");
+    expect(lines[1]?.querySelector(".linop-db-code-snapshot__line-number")?.textContent).toBe("2");
+    expect(lines[0]?.querySelector(".linop-db-code-snapshot__line-content")?.textContent).toBe("SELECT 1");
+    expect(lines[1]?.querySelector(".linop-db-code-snapshot__line-content")?.textContent).toBe("FROM dual");
   });
 
   it("exports at a capped device-pixel ratio for crisp high-DPI snapshots", async () => {
@@ -253,10 +253,10 @@ describe("renderCodeSnapshotHtml", () => {
       expect(options.adjustPseudoElement?.(document.createElement("span"), ":after", {} as CSSStyleDeclaration)).toBeUndefined();
 
       const clone = document.createElement("div");
-      clone.innerHTML = '<div class="dbx-code-snapshot"><pre class="dbx-code-snapshot__pre dbx-code-snapshot__pre--numbered" style="--dbx-snapshot-line-number:#d0d7de"><code><span class="line">SELECT 1</span><span class="line">FROM dual</span></code></pre></div>';
+      clone.innerHTML = '<div class="linop-db-code-snapshot"><pre class="linop-db-code-snapshot__pre linop-db-code-snapshot__pre--numbered" style="--linop-db-snapshot-line-number:#d0d7de"><code><span class="line">SELECT 1</span><span class="line">FROM dual</span></code></pre></div>';
       options.onclone?.(clone);
 
-      const line = clone.querySelector<HTMLElement>(".dbx-code-snapshot__line-number");
+      const line = clone.querySelector<HTMLElement>(".linop-db-code-snapshot__line-number");
       expect(line?.textContent).toBe("1");
       expect(line?.getAttribute("style")).toContain("display: inline-block");
       expect(line?.getAttribute("style")).toContain("margin-right: 1.4em");
@@ -333,7 +333,7 @@ describe("renderCodeSnapshotHtml", () => {
   it("encompasses the last row bottom edge and relaxes clone height for grid snapshots", async () => {
     toPng.mockResolvedValue("data:image/png;base64,test");
     const container = document.createElement("div");
-    container.className = "dbx-grid-snapshot";
+    container.className = "linop-db-grid-snapshot";
     container.innerHTML = "<table><tbody><tr><td>row1</td></tr><tr><td>row2</td></tr></tbody></table>";
     document.body.appendChild(container);
 

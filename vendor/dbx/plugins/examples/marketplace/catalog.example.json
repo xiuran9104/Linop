@@ -38,7 +38,7 @@
               "target": "darwin-arm64",
               "url": "../hello-workbench/dist/dbx.example.hello-1.0.0-darwin-arm64.dbxp",
               "sha256": "98261c584716ad4c55f9daffcebbde2849214167ec8a722e646c6786632f2f96",
-              "signingKeyId": "dbx-store-preview-2026",
+              "signingKeyId": "linop-db-store-preview-2026",
               "size": 329815
             }
           ]

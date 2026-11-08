@@ -52,8 +52,8 @@ pub(crate) fn format_support_info_for_clipboard(promoted: Option<&str>) -> Strin
 /// bug report still names the build that was actually installed.
 #[cfg(any(target_os = "macos", test))]
 fn clipboard_version(app_version: &str, promoted: Option<&str>) -> String {
-    match dbx_platform::version::promoted_base_version(app_version, promoted) {
-        Some(base) => format!("v{base} ({})", dbx_platform::version::normalize_version(app_version)),
+    match linop_db_platform::version::promoted_base_version(app_version, promoted) {
+        Some(base) => format!("v{base} ({})", linop_db_platform::version::normalize_version(app_version)),
         None => normalize_app_version(app_version),
     }
 }
@@ -153,7 +153,7 @@ fn platform_product_version() -> Option<String> {
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 fn command_first_line(command: &str, args: &[&str]) -> Option<String> {
-    let mut process = dbx_core::process::new_std_command(command);
+    let mut process = linop_db_core::process::new_std_command(command);
     process.args(args);
     let output = process.output().ok()?;
     if !output.status.success() {

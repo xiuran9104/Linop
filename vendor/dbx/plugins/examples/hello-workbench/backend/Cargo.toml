@@ -1,5 +1,5 @@
 [package]
-name = "dbx-example-hello"
+name = "linop-db-example-hello"
 version = "1.0.0"
 edition = "2021"
 license = "Apache-2.0"
@@ -7,7 +7,7 @@ license = "Apache-2.0"
 [workspace]
 
 [dependencies]
-dbx-plugin-sdk = { path = "../../../sdk/rust/dbx-plugin-sdk" }
+linop-db-plugin-sdk = { path = "../../../sdk/rust/linop-db-plugin-sdk" }
 serde_json = "1"
 
 [profile.release]

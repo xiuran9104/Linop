@@ -2,15 +2,15 @@
 
 Rust-powered Model Context Protocol server for [DBX](https://github.com/t8y2/dbx). It lets MCP-compatible AI agents inspect schemas and run safe database operations using connections configured in DBX.
 
-[中文说明](#中文说明) | [npm](https://www.npmjs.com/package/@dbx-app/mcp-server) | [Native releases](https://github.com/t8y2/dbx/releases?q=packages-v)
+[中文说明](#中文说明) | [npm](https://www.npmjs.com/package/@linop-db-app/mcp-server) | [Native releases](https://github.com/t8y2/dbx/releases?q=packages-v)
 
 ## Architecture
 
 ```text
-@dbx-app/mcp-server
+@linop-db-app/mcp-server
 └── small Node.js launcher
-    └── platform-specific Rust dbx-mcp binary
-        └── dbx-core database and agent infrastructure
+    └── platform-specific Rust linop-db-mcp binary
+        └── linop-db-core database and agent infrastructure
 ```
 
 The MCP protocol, connection loading, SQL safety, schema access, Redis support, MongoDB shell parsing, Web backend access, and database execution are implemented in Rust. Node.js is used only by the npm launcher so existing `npm`, `npx`, and MCP client configurations continue to work.
@@ -34,7 +34,7 @@ The MCP protocol, connection loading, SQL safety, schema access, Redis support, 
 ### npm global install
 
 ```bash
-npm install -g @dbx-app/mcp-server
+npm install -g @linop-db-app/mcp-server
 ```
 
 Then configure the MCP client to run:
@@ -43,7 +43,7 @@ Then configure the MCP client to run:
 {
   "mcpServers": {
     "dbx": {
-      "command": "dbx-mcp-server"
+      "command": "linop-db-mcp-server"
     }
   }
 }
@@ -58,7 +58,7 @@ No global installation is required:
   "mcpServers": {
     "dbx": {
       "command": "npx",
-      "args": ["-y", "@dbx-app/mcp-server"]
+      "args": ["-y", "@linop-db-app/mcp-server"]
     }
   }
 }
@@ -72,19 +72,19 @@ Every package release publishes native archives and `SHA256SUMS` in [GitHub Rele
 
 | Platform | Release asset | npm platform package |
 | --- | --- | --- |
-| macOS Apple Silicon | `dbx-mcp-darwin-arm64.tar.gz` | `@dbx-app/mcp-darwin-arm64` |
-| macOS Intel | `dbx-mcp-darwin-x64.tar.gz` | `@dbx-app/mcp-darwin-x64` |
-| Linux glibc ARM64 | `dbx-mcp-linux-arm64-gnu.tar.gz` | `@dbx-app/mcp-linux-arm64-gnu` |
-| Linux glibc x64 | `dbx-mcp-linux-x64-gnu.tar.gz` | `@dbx-app/mcp-linux-x64-gnu` |
-| Windows ARM64 | `dbx-mcp-win32-arm64.zip` | `@dbx-app/mcp-win32-arm64` |
-| Windows x64 | `dbx-mcp-win32-x64.zip` | `@dbx-app/mcp-win32-x64` |
+| macOS Apple Silicon | `linop-db-mcp-darwin-arm64.tar.gz` | `@linop-db-app/mcp-darwin-arm64` |
+| macOS Intel | `linop-db-mcp-darwin-x64.tar.gz` | `@linop-db-app/mcp-darwin-x64` |
+| Linux glibc ARM64 | `linop-db-mcp-linux-arm64-gnu.tar.gz` | `@linop-db-app/mcp-linux-arm64-gnu` |
+| Linux glibc x64 | `linop-db-mcp-linux-x64-gnu.tar.gz` | `@linop-db-app/mcp-linux-x64-gnu` |
+| Windows ARM64 | `linop-db-mcp-win32-arm64.zip` | `@linop-db-app/mcp-win32-arm64` |
+| Windows x64 | `linop-db-mcp-win32-x64.zip` | `@linop-db-app/mcp-win32-x64` |
 
 Verify a Unix archive before extracting it:
 
 ```bash
 sha256sum --check SHA256SUMS
-tar -xzf dbx-mcp-linux-x64-gnu.tar.gz
-chmod +x dbx-mcp
+tar -xzf linop-db-mcp-linux-x64-gnu.tar.gz
+chmod +x linop-db-mcp
 ```
 
 On macOS, use `shasum -a 256` if `sha256sum` is unavailable. On Windows, use `certutil -hashfile <archive> SHA256` and compare the value with `SHA256SUMS`.
@@ -95,7 +95,7 @@ Configure the MCP client to run the extracted file directly:
 {
   "mcpServers": {
     "dbx": {
-      "command": "/absolute/path/to/dbx-mcp"
+      "command": "/absolute/path/to/linop-db-mcp"
     }
   }
 }
@@ -120,9 +120,9 @@ Direct native execution does not require Node.js. GitHub package releases are in
 
 DBX MCP reads connection profiles from DBX storage. DBX does not need to remain open for native connections. However:
 
-- the connection must already exist in DBX storage, unless it is added through `dbx_add_connection`;
+- the connection must already exist in DBX storage, unless it is added through `linop_db_add_connection`;
 - DBX Agent/JDBC databases require the matching agent, JDBC driver, and JRE to be installed;
-- `dbx_open_table` and `dbx_execute_and_show` require a running DBX desktop application;
+- `linop_db_open_table` and `linop_db_execute_and_show` require a running DBX desktop application;
 - DBX Web mode requires a reachable DBX Web server.
 
 ## Usage Examples
@@ -140,42 +140,42 @@ Ask the MCP client to:
 
 ## Tools
 
-`dbx_list_connections` and `dbx://connections` include saved connection notes regardless of the sidebar display setting. Notes are visible to MCP clients that can access the connection; do not store passwords or other secrets in notes.
+`linop_db_list_connections` and `dbx://connections` include saved connection notes regardless of the sidebar display setting. Notes are visible to MCP clients that can access the connection; do not store passwords or other secrets in notes.
 
 | Tool | Description |
 | --- | --- |
-| `dbx_list_connections` | List connections visible to the MCP session, including saved notes |
-| `dbx_list_databases` | List databases available through a connection, respecting its MCP database scope |
-| `dbx_add_connection` | Add a connection to DBX storage |
-| `dbx_duplicate_connection` | Duplicate a DBX connection with its complete settings |
-| `dbx_remove_connection` | Remove a connection from DBX storage |
-| `dbx_list_tables` | List tables, views, collections, or message queue topics |
-| `dbx_describe_table` | Return columns and table metadata |
-| `dbx_list_routines` | List stored procedures and functions in a schema, with an optional `routine_type` filter (PROCEDURE or FUNCTION) |
-| `dbx_get_routine_source` | Return the source of a stored procedure or function by name, with an optional `signature` for overloaded names |
-| `dbx_get_schema_context` | Return compact schema context suitable for an AI model |
-| `dbx_execute_query` | Execute SQL or a supported MongoDB shell command, returning 100 rows by default (up to 1000 with the `max_rows` parameter) |
-| `dbx_execute_batch` | Execute a SQL script containing multiple statements in one call, returning a result per statement (or a single merged result with `use_transaction` on a multi-statement script) |
-| `dbx_open_session` | Open a stateful SQL query session pinned to one backend connection |
-| `dbx_close_session` | Close a session and release its pinned connection resources |
-| `dbx_execute_redis_command` | Execute a Redis command |
-| `dbx_salesforce_current_user` | Show the Salesforce user and org behind a connection, including the "Modify All Data" flag |
-| `dbx_salesforce_prepare_write` | Prepare one Salesforce record write and return a summary plus a single-use confirm token |
-| `dbx_salesforce_apply_write` | Apply a prepared Salesforce write using its confirm token |
-| `dbx_peek_messages` | Read Kafka messages without committing consumer offsets |
-| `dbx_send_message` | Send a message to a supported message queue topic |
-| `dbx_open_table` | Open a table in the running DBX desktop application |
-| `dbx_execute_and_show` | Execute a query and display the result in the DBX desktop application |
+| `linop_db_list_connections` | List connections visible to the MCP session, including saved notes |
+| `linop_db_list_databases` | List databases available through a connection, respecting its MCP database scope |
+| `linop_db_add_connection` | Add a connection to DBX storage |
+| `linop_db_duplicate_connection` | Duplicate a DBX connection with its complete settings |
+| `linop_db_remove_connection` | Remove a connection from DBX storage |
+| `linop_db_list_tables` | List tables, views, collections, or message queue topics |
+| `linop_db_describe_table` | Return columns and table metadata |
+| `linop_db_list_routines` | List stored procedures and functions in a schema, with an optional `routine_type` filter (PROCEDURE or FUNCTION) |
+| `linop_db_get_routine_source` | Return the source of a stored procedure or function by name, with an optional `signature` for overloaded names |
+| `linop_db_get_schema_context` | Return compact schema context suitable for an AI model |
+| `linop_db_execute_query` | Execute SQL or a supported MongoDB shell command, returning 100 rows by default (up to 1000 with the `max_rows` parameter) |
+| `linop_db_execute_batch` | Execute a SQL script containing multiple statements in one call, returning a result per statement (or a single merged result with `use_transaction` on a multi-statement script) |
+| `linop_db_open_session` | Open a stateful SQL query session pinned to one backend connection |
+| `linop_db_close_session` | Close a session and release its pinned connection resources |
+| `linop_db_execute_redis_command` | Execute a Redis command |
+| `linop_db_salesforce_current_user` | Show the Salesforce user and org behind a connection, including the "Modify All Data" flag |
+| `linop_db_salesforce_prepare_write` | Prepare one Salesforce record write and return a summary plus a single-use confirm token |
+| `linop_db_salesforce_apply_write` | Apply a prepared Salesforce write using its confirm token |
+| `linop_db_peek_messages` | Read Kafka messages without committing consumer offsets |
+| `linop_db_send_message` | Send a message to a supported message queue topic |
+| `linop_db_open_table` | Open a table in the running DBX desktop application |
+| `linop_db_execute_and_show` | Execute a query and display the result in the DBX desktop application |
 
 When connection scoping is enabled, mutating connection tools and desktop UI tools are hidden.
 
-`dbx_execute_query` accepts an optional `max_rows` parameter (1–1000, default 100; out-of-range values are clamped, not rejected). It applies to SQL connections only: MongoDB shell commands always return at most 100 rows, and multi-statement scripts routed to the batch executor return at most 100 rows per statement.
+`linop_db_execute_query` accepts an optional `max_rows` parameter (1–1000, default 100; out-of-range values are clamped, not rejected). It applies to SQL connections only: MongoDB shell commands always return at most 100 rows, and multi-statement scripts routed to the batch executor return at most 100 rows per statement.
 
-`dbx_peek_messages` reads a Kafka topic in local or Web mode when `mq-admin` is enabled. Pass `connection_id` or `connection_name`, `topic`, optional `count` (1–100, default 20), `start_position` (`latest` by default, `earliest`, or `offset`), and optional non-negative `partition`. A non-negative `offset` is required only in offset mode; without a partition it applies to all partitions. The JSON response preserves base64 payloads and metadata, reports broker partial reads via `incomplete`, and reports whole-message omissions under a 256 KiB output budget via `outputTruncated`. It respects connection/tool scopes and permits read-only and production reads without committing consumer offsets. It does not support other MQ types or continuous subscriptions.
+`linop_db_peek_messages` reads a Kafka topic in local or Web mode when `mq-admin` is enabled. Pass `connection_id` or `connection_name`, `topic`, optional `count` (1–100, default 20), `start_position` (`latest` by default, `earliest`, or `offset`), and optional non-negative `partition`. A non-negative `offset` is required only in offset mode; without a partition it applies to all partitions. The JSON response preserves base64 payloads and metadata, reports broker partial reads via `incomplete`, and reports whole-message omissions under a 256 KiB output budget via `outputTruncated`. It respects connection/tool scopes and permits read-only and production reads without committing consumer offsets. It does not support other MQ types or continuous subscriptions.
 
-`dbx_list_databases` returns only database names allowed by the selected connection's MCP database scope. `dbx_send_message` is available when message-queue support is included in the server build.
+`linop_db_list_databases` returns only database names allowed by the selected connection's MCP database scope. `linop_db_send_message` is available when message-queue support is included in the server build.
 
-Salesforce connections take SOQL through `dbx_execute_query` and list objects through `dbx_list_tables`. `dbx_execute_batch` and `dbx_open_session` are refused: SOQL is read-only, and every call is a stateless REST request with no session to pin. A record write is a two-step confirmed operation — `dbx_salesforce_prepare_write` returns a summary plus a single-use `confirm_token` that expires after 5 minutes, a person approves that summary, and `dbx_salesforce_apply_write` sends exactly the prepared statement. Preparing needs the per-connection **Allow DML** switch in DBX Settings → MCP, which is off by default, and Salesforce cannot roll an applied write back.
+Salesforce connections take SOQL through `linop_db_execute_query` and list objects through `linop_db_list_tables`. `linop_db_execute_batch` and `linop_db_open_session` are refused: SOQL is read-only, and every call is a stateless REST request with no session to pin. A record write is a two-step confirmed operation — `linop_db_salesforce_prepare_write` returns a summary plus a single-use `confirm_token` that expires after 5 minutes, a person approves that summary, and `linop_db_salesforce_apply_write` sends exactly the prepared statement. Preparing needs the per-connection **Allow DML** switch in DBX Settings → MCP, which is off by default, and Salesforce cannot roll an applied write back.
 
 ## Resources
 
@@ -206,7 +206,7 @@ DBX connection storage defaults to:
 - Linux: `~/.local/share/com.dbx.app/dbx.db`
 - Windows: `%APPDATA%\com.dbx.app\dbx.db`
 
-Override the directory with `DBX_DATA_DIR`.
+Override the directory with `LINOP_DB_DATA_DIR`.
 
 ### Agent/JDBC databases
 
@@ -222,7 +222,7 @@ Set `DBX_WEB_URL` to use a deployed DBX Web backend instead of local desktop sto
 {
   "mcpServers": {
     "dbx": {
-      "command": "dbx-mcp-server",
+      "command": "linop-db-mcp-server",
       "env": {
         "DBX_WEB_URL": "https://dbx.example.com",
         "DBX_WEB_PASSWORD": "your-web-login-password"
@@ -243,7 +243,7 @@ Docker and DBX Web also require the standalone DuckDB driver. Install it from Dr
 The native server uses stdio by default. To host a local Streamable HTTP endpoint instead, start it with a bearer token:
 
 ```bash
-DBX_MCP_HTTP_TOKEN=replace-with-a-long-random-secret dbx-mcp-server --http
+DBX_MCP_HTTP_TOKEN=replace-with-a-long-random-secret linop-db-mcp-server --http
 ```
 
 It listens on `http://127.0.0.1:5225/mcp` by default. Configure an HTTP-capable MCP client with that URL and `Authorization: Bearer <token>`:
@@ -274,15 +274,15 @@ Clients send `Authorization: Bearer <DBX_WEB_MCP_TOKEN>`. Browser clients also r
 
 ### Windows portable DBX
 
-Point `DBX_DATA_DIR` at the portable `data` directory containing `dbx.db`:
+Point `LINOP_DB_DATA_DIR` at the portable `data` directory containing `dbx.db`:
 
 ```json
 {
   "mcpServers": {
     "dbx": {
-      "command": "dbx-mcp-server",
+      "command": "linop-db-mcp-server",
       "env": {
-        "DBX_DATA_DIR": "D:\\DBX_x64-portable\\data"
+        "LINOP_DB_DATA_DIR": "D:\\DBX_x64-portable\\data"
       }
     }
   }
@@ -308,8 +308,8 @@ Legacy connection scope variables can still narrow the DBX allowlist for existin
 ```json
 {
   "mcpServers": {
-    "dbx-production-scope": {
-      "command": "dbx-mcp-server",
+    "linop-db-production-scope": {
+      "command": "linop-db-mcp-server",
       "env": {
         "DBX_MCP_SCOPE_CONNECTION_NAME": "production-postgres",
         "DBX_MCP_SCOPE_DATABASE": "analytics"
@@ -333,7 +333,7 @@ SQL text is not included in normal MCP errors or logged by default. Enable tempo
 
 | Variable | Purpose |
 | --- | --- |
-| `DBX_DATA_DIR` | Override the local DBX data directory |
+| `LINOP_DB_DATA_DIR` | Override the local DBX data directory |
 | `DBX_SESSION_IDLE_TTL_SECS` | Stateful session idle timeout in positive whole seconds (default: `1800`). Invalid, zero, negative or unrepresentable values use the default. Applies to transaction-owned connections too; restart the MCP host after changing it. |
 | `DBX_WEB_URL` | Use a DBX Web/Docker backend |
 | `DBX_WEB_PASSWORD` | Authenticate to the DBX Web backend |
@@ -370,8 +370,8 @@ SQL text is not included in normal MCP errors or logged by default. Enable tempo
 Reinstall without `--no-optional`:
 
 ```bash
-npm uninstall -g @dbx-app/mcp-server
-npm install -g @dbx-app/mcp-server@latest
+npm uninstall -g @linop-db-app/mcp-server
+npm install -g @linop-db-app/mcp-server@latest
 ```
 
 Verify the current Node platform:
@@ -386,11 +386,11 @@ The published Linux packages target glibc. Alpine Linux uses musl by default and
 
 ### `dbx.db` cannot be found
 
-Set `DBX_DATA_DIR` to the directory containing `dbx.db`, not to the database file itself.
+Set `LINOP_DB_DATA_DIR` to the directory containing `dbx.db`, not to the database file itself.
 
 ### Desktop action says DBX is not running
 
-Database queries can run without the desktop application when the connection is supported locally. `dbx_open_table` and `dbx_execute_and_show` intentionally require DBX desktop to be running.
+Database queries can run without the desktop application when the connection is supported locally. `linop_db_open_table` and `linop_db_execute_and_show` intentionally require DBX desktop to be running.
 
 ### Agent/JDBC database cannot start
 
@@ -398,10 +398,10 @@ Open DBX Driver Manager and install/update the matching database agent and JRE. 
 
 ### `better-sqlite3` or Node ABI error
 
-The Rust MCP runtime does not depend on `better-sqlite3`. This error normally indicates an older MCP version or the separate TypeScript-based `@dbx-app/cli` package. Upgrade MCP with:
+The Rust MCP runtime does not depend on `better-sqlite3`. This error normally indicates an older MCP version or the separate TypeScript-based `@linop-db-app/cli` package. Upgrade MCP with:
 
 ```bash
-npm install -g @dbx-app/mcp-server@latest
+npm install -g @linop-db-app/mcp-server@latest
 ```
 
 ## Development
@@ -409,28 +409,28 @@ npm install -g @dbx-app/mcp-server@latest
 Run the Rust server from source:
 
 ```bash
-cargo run -p dbx-mcp --no-default-features
+cargo run -p linop-db-mcp --no-default-features
 ```
 
 Run tests:
 
 ```bash
-cargo test -p dbx-mcp --no-default-features
-pnpm --filter @dbx-app/mcp-server test
+cargo test -p linop-db-mcp --no-default-features
+pnpm --filter @linop-db-app/mcp-server test
 ```
 
 Build a release binary:
 
 ```bash
-cargo build --release -p dbx-mcp --no-default-features
+cargo build --release -p linop-db-mcp --no-default-features
 ```
 
 ## DBX CLI
 
-`@dbx-app/cli` is a separate terminal-oriented package and currently remains TypeScript/Node.js based:
+`@linop-db-app/cli` is a separate terminal-oriented package and currently remains TypeScript/Node.js based:
 
 ```bash
-npm install -g @dbx-app/cli
+npm install -g @linop-db-app/cli
 dbx connections list --json
 dbx query local "select 1" --json
 ```
@@ -447,15 +447,15 @@ Apache-2.0
 
 DBX MCP Server 是 [DBX](https://github.com/t8y2/dbx) 的 Rust MCP 服务，让 Claude Code、Cursor、Windsurf 等兼容 MCP 的 AI 工具使用 DBX 中已有的连接查询数据库。
 
-[npm](https://www.npmjs.com/package/@dbx-app/mcp-server) | [原生版本下载](https://github.com/t8y2/dbx/releases?q=packages-v)
+[npm](https://www.npmjs.com/package/@linop-db-app/mcp-server) | [原生版本下载](https://github.com/t8y2/dbx/releases?q=packages-v)
 
 ### 架构
 
 ```text
-@dbx-app/mcp-server
+@linop-db-app/mcp-server
 └── 轻量 Node.js 启动器
-    └── 当前平台的 Rust dbx-mcp 二进制
-        └── dbx-core 数据库和 Agent 基础设施
+    └── 当前平台的 Rust linop-db-mcp 二进制
+        └── linop-db-core 数据库和 Agent 基础设施
 ```
 
 MCP 协议、连接读取、SQL 安全检查、Schema、Redis、MongoDB、Web 后端和数据库执行均由 Rust 实现。Node.js 只用于保持原有 npm/npx 安装入口不变。
@@ -475,7 +475,7 @@ MCP 协议、连接读取、SQL 安全检查、Schema、Redis、MongoDB、Web �
 ### npm 安装
 
 ```bash
-npm install -g @dbx-app/mcp-server
+npm install -g @linop-db-app/mcp-server
 ```
 
 MCP 配置：
@@ -484,7 +484,7 @@ MCP 配置：
 {
   "mcpServers": {
     "dbx": {
-      "command": "dbx-mcp-server"
+      "command": "linop-db-mcp-server"
     }
   }
 }
@@ -497,7 +497,7 @@ MCP 配置：
   "mcpServers": {
     "dbx": {
       "command": "npx",
-      "args": ["-y", "@dbx-app/mcp-server"]
+      "args": ["-y", "@linop-db-app/mcp-server"]
     }
   }
 }
@@ -511,12 +511,12 @@ MCP 配置：
 
 | 平台 | 文件 |
 | --- | --- |
-| macOS Apple Silicon | `dbx-mcp-darwin-arm64.tar.gz` |
-| macOS Intel | `dbx-mcp-darwin-x64.tar.gz` |
-| Linux glibc ARM64 | `dbx-mcp-linux-arm64-gnu.tar.gz` |
-| Linux glibc x64 | `dbx-mcp-linux-x64-gnu.tar.gz` |
-| Windows ARM64 | `dbx-mcp-win32-arm64.zip` |
-| Windows x64 | `dbx-mcp-win32-x64.zip` |
+| macOS Apple Silicon | `linop-db-mcp-darwin-arm64.tar.gz` |
+| macOS Intel | `linop-db-mcp-darwin-x64.tar.gz` |
+| Linux glibc ARM64 | `linop-db-mcp-linux-arm64-gnu.tar.gz` |
+| Linux glibc x64 | `linop-db-mcp-linux-x64-gnu.tar.gz` |
+| Windows ARM64 | `linop-db-mcp-win32-arm64.zip` |
+| Windows x64 | `linop-db-mcp-win32-x64.zip` |
 
 下载后使用 `SHA256SUMS` 校验，并直接配置：
 
@@ -524,7 +524,7 @@ MCP 配置：
 {
   "mcpServers": {
     "dbx": {
-      "command": "/绝对路径/dbx-mcp"
+      "command": "/绝对路径/linop-db-mcp"
     }
   }
 }
@@ -536,42 +536,42 @@ MCP 配置：
 
 - npm 安装需要 Node.js 18.18.0 或更高版本
 - 原生二进制不需要 Node.js、Rust、Cargo、Python 或本地编译环境
-- 连接配置需要存在于 DBX 存储中，或通过 `dbx_add_connection` 添加
+- 连接配置需要存在于 DBX 存储中，或通过 `linop_db_add_connection` 添加
 - Agent/JDBC 数据库需要提前安装对应 Agent、JDBC Driver 和 JRE
-- `dbx_open_table`、`dbx_execute_and_show` 需要 DBX 桌面端正在运行
+- `linop_db_open_table`、`linop_db_execute_and_show` 需要 DBX 桌面端正在运行
 
 ### 工具列表
 
 | 工具 | 说明 |
 | --- | --- |
-| `dbx_list_connections` | 列出当前 MCP 会话可见的连接 |
-| `dbx_list_databases` | 列出连接中可通过 MCP 访问的数据库，并遵守该连接的数据库范围 |
-| `dbx_add_connection` | 添加 DBX 连接配置 |
-| `dbx_duplicate_connection` | 复制一个连接及其完整配置 |
-| `dbx_remove_connection` | 删除 DBX 连接配置 |
-| `dbx_list_tables` | 列出表、视图、集合或消息队列 Topic |
-| `dbx_describe_table` | 获取字段和表结构 |
-| `dbx_get_schema_context` | 获取适合 AI 使用的紧凑 Schema 上下文 |
-| `dbx_execute_query` | 执行 SQL 或支持的 MongoDB Shell 命令，默认返回 100 行，可用 `max_rows` 参数提高到最多 1000 行 |
-| `dbx_execute_batch` | 一次执行包含多条语句的 SQL 脚本，按语句返回结果（多语句脚本搭配 `use_transaction` 时返回单个合并结果） |
-| `dbx_open_session` | 为 SQL 连接打开固定后端连接的有状态查询会话 |
-| `dbx_close_session` | 关闭会话并释放固定连接资源 |
-| `dbx_execute_redis_command` | 执行 Redis 命令 |
-| `dbx_salesforce_current_user` | 显示连接背后的 Salesforce 用户与组织，包括 “Modify All Data” 标志 |
-| `dbx_salesforce_prepare_write` | 准备一条 Salesforce 记录写入，返回摘要和一次性确认令牌 |
-| `dbx_salesforce_apply_write` | 使用确认令牌应用已准备的 Salesforce 写入 |
-| `dbx_peek_messages` | 读取 Kafka 消息，不提交消费位点 |
-| `dbx_send_message` | 向支持的消息队列 Topic 发送消息 |
-| `dbx_open_table` | 在 DBX 桌面端打开表 |
-| `dbx_execute_and_show` | 执行查询并在 DBX 桌面端展示结果 |
+| `linop_db_list_connections` | 列出当前 MCP 会话可见的连接 |
+| `linop_db_list_databases` | 列出连接中可通过 MCP 访问的数据库，并遵守该连接的数据库范围 |
+| `linop_db_add_connection` | 添加 DBX 连接配置 |
+| `linop_db_duplicate_connection` | 复制一个连接及其完整配置 |
+| `linop_db_remove_connection` | 删除 DBX 连接配置 |
+| `linop_db_list_tables` | 列出表、视图、集合或消息队列 Topic |
+| `linop_db_describe_table` | 获取字段和表结构 |
+| `linop_db_get_schema_context` | 获取适合 AI 使用的紧凑 Schema 上下文 |
+| `linop_db_execute_query` | 执行 SQL 或支持的 MongoDB Shell 命令，默认返回 100 行，可用 `max_rows` 参数提高到最多 1000 行 |
+| `linop_db_execute_batch` | 一次执行包含多条语句的 SQL 脚本，按语句返回结果（多语句脚本搭配 `use_transaction` 时返回单个合并结果） |
+| `linop_db_open_session` | 为 SQL 连接打开固定后端连接的有状态查询会话 |
+| `linop_db_close_session` | 关闭会话并释放固定连接资源 |
+| `linop_db_execute_redis_command` | 执行 Redis 命令 |
+| `linop_db_salesforce_current_user` | 显示连接背后的 Salesforce 用户与组织，包括 “Modify All Data” 标志 |
+| `linop_db_salesforce_prepare_write` | 准备一条 Salesforce 记录写入，返回摘要和一次性确认令牌 |
+| `linop_db_salesforce_apply_write` | 使用确认令牌应用已准备的 Salesforce 写入 |
+| `linop_db_peek_messages` | 读取 Kafka 消息，不提交消费位点 |
+| `linop_db_send_message` | 向支持的消息队列 Topic 发送消息 |
+| `linop_db_open_table` | 在 DBX 桌面端打开表 |
+| `linop_db_execute_and_show` | 执行查询并在 DBX 桌面端展示结果 |
 
-`dbx_execute_query` 支持可选参数 `max_rows`（取值 1–1000，默认 100；越界值会被夹取到范围内，而不是报错）。该参数仅对 SQL 连接生效：MongoDB shell 命令始终最多返回 100 行，路由到批量执行器的多语句脚本每条语句最多返回 100 行。
+`linop_db_execute_query` 支持可选参数 `max_rows`（取值 1–1000，默认 100；越界值会被夹取到范围内，而不是报错）。该参数仅对 SQL 连接生效：MongoDB shell 命令始终最多返回 100 行，路由到批量执行器的多语句脚本每条语句最多返回 100 行。
 
-启用 `mq-admin` 后，`dbx_peek_messages` 可在本地和 Web 模式下读取 Kafka Topic。参数为 `connection_id` 或 `connection_name`、`topic`、可选 `count`（1–100，默认 20）、`start_position`（默认 `latest`，也支持 `earliest`、`offset`）及可选的非负 `partition`。仅 offset 模式必须且允许指定非负 `offset`，未指定分区时该位点应用于所有分区。JSON 结果保留 base64 消息体和元数据，通过 `incomplete` 标记底层不完整读取，通过 `outputTruncated` 标记因 256 KiB 输出预算而省略整条消息。工具遵守连接和工具范围，允许只读与生产连接读取，不提交消费位点，不支持其他 MQ 类型或持续订阅。
+启用 `mq-admin` 后，`linop_db_peek_messages` 可在本地和 Web 模式下读取 Kafka Topic。参数为 `connection_id` 或 `connection_name`、`topic`、可选 `count`（1–100，默认 20）、`start_position`（默认 `latest`，也支持 `earliest`、`offset`）及可选的非负 `partition`。仅 offset 模式必须且允许指定非负 `offset`，未指定分区时该位点应用于所有分区。JSON 结果保留 base64 消息体和元数据，通过 `incomplete` 标记底层不完整读取，通过 `outputTruncated` 标记因 256 KiB 输出预算而省略整条消息。工具遵守连接和工具范围，允许只读与生产连接读取，不提交消费位点，不支持其他 MQ 类型或持续订阅。
 
-`dbx_list_databases` 只返回该连接 MCP 数据库范围内允许访问的名称。`dbx_send_message` 仅在 Server 构建时包含消息队列支持时可用。
+`linop_db_list_databases` 只返回该连接 MCP 数据库范围内允许访问的名称。`linop_db_send_message` 仅在 Server 构建时包含消息队列支持时可用。
 
-Salesforce 连接通过 `dbx_execute_query` 执行 SOQL，通过 `dbx_list_tables` 列出对象。`dbx_execute_batch` 与 `dbx_open_session` 会被拒绝：SOQL 只读，且每次调用都是无状态 REST 请求，没有可固定的会话。写入记录是两步确认操作——`dbx_salesforce_prepare_write` 返回摘要和一次性 `confirm_token`（5 分钟后过期），由人确认该摘要后，`dbx_salesforce_apply_write` 才会发送那条已准备好的语句。准备写入需要在 DBX 设置 → MCP 中为该连接开启 **允许 DML**（默认关闭），且 Salesforce 无法回滚已应用的写入。
+Salesforce 连接通过 `linop_db_execute_query` 执行 SOQL，通过 `linop_db_list_tables` 列出对象。`linop_db_execute_batch` 与 `linop_db_open_session` 会被拒绝：SOQL 只读，且每次调用都是无状态 REST 请求，没有可固定的会话。写入记录是两步确认操作——`linop_db_salesforce_prepare_write` 返回摘要和一次性 `confirm_token`（5 分钟后过期），由人确认该摘要后，`linop_db_salesforce_apply_write` 才会发送那条已准备好的语句。准备写入需要在 DBX 设置 → MCP 中为该连接开启 **允许 DML**（默认关闭），且 Salesforce 无法回滚已应用的写入。
 
 ### Resources
 
@@ -592,7 +592,7 @@ Resource 的发现和读取会复用对应 Tool 的白名单，以及连接、�
 - Linux：`~/.local/share/com.dbx.app/dbx.db`
 - Windows：`%APPDATA%\com.dbx.app\dbx.db`
 
-通过 `DBX_DATA_DIR` 覆盖默认目录。Windows 便携版应指向 `DBX.exe` 同级、包含 `dbx.db` 的 `data` 文件夹。
+通过 `LINOP_DB_DATA_DIR` 覆盖默认目录。Windows 便携版应指向 `DBX.exe` 同级、包含 `dbx.db` 的 `data` 文件夹。
 
 ### DBX Web / Docker
 
@@ -600,7 +600,7 @@ Resource 的发现和读取会复用对应 Tool 的白名单，以及连接、�
 {
   "mcpServers": {
     "dbx": {
-      "command": "dbx-mcp-server",
+      "command": "linop-db-mcp-server",
       "env": {
         "DBX_WEB_URL": "https://dbx.example.com",
         "DBX_WEB_PASSWORD": "Web 登录密码"
@@ -619,7 +619,7 @@ DBX Web 请求遵循标准系统代理环境变量：https 地址读取 `HTTPS_P
 原生 Server 默认使用 stdio。需要直接提供本机 Streamable HTTP 服务时，启动时传入 Bearer Token：
 
 ```bash
-DBX_MCP_HTTP_TOKEN=replace-with-a-long-random-secret dbx-mcp-server --http
+DBX_MCP_HTTP_TOKEN=replace-with-a-long-random-secret linop-db-mcp-server --http
 ```
 
 默认监听 `http://127.0.0.1:5225/mcp`。在支持 HTTP 的 MCP 客户端中填写该 URL，并携带 `Authorization: Bearer <token>`：
@@ -673,8 +673,8 @@ DBX 在 **设置 → MCP** 中保存一份权威策略，并在每次请求时�
 ```json
 {
   "mcpServers": {
-    "dbx-production-scope": {
-      "command": "dbx-mcp-server",
+    "linop-db-production-scope": {
+      "command": "linop-db-mcp-server",
       "env": {
         "DBX_MCP_SCOPE_CONNECTION_NAME": "production-postgres",
         "DBX_MCP_SCOPE_DATABASE": "analytics"
@@ -696,7 +696,7 @@ MongoDB 更新和删除在未启用完全访问时必须提供可验证有效的
 
 | 变量 | 用途 |
 | --- | --- |
-| `DBX_DATA_DIR` | 覆盖本地 DBX 数据目录 |
+| `LINOP_DB_DATA_DIR` | 覆盖本地 DBX 数据目录 |
 | `DBX_SESSION_IDLE_TTL_SECS` | 有状态会话空闲超时，单位为正整数秒，默认 `1800`。非法值、零、负数或无法表示的时长回退默认值；同样适用于事务专属连接。修改后需重启 MCP 宿主进程。 |
 | `DBX_WEB_URL` | 使用 DBX Web/Docker 后端 |
 | `DBX_WEB_PASSWORD` | DBX Web 登录密码 |
@@ -733,13 +733,13 @@ MongoDB 更新和删除在未启用完全访问时必须提供可验证有效的
 重新安装并确保没有使用 `--no-optional`：
 
 ```bash
-npm uninstall -g @dbx-app/mcp-server
-npm install -g @dbx-app/mcp-server@latest
+npm uninstall -g @linop-db-app/mcp-server
+npm install -g @linop-db-app/mcp-server@latest
 ```
 
 **提示找不到 `dbx.db`**
 
-将 `DBX_DATA_DIR` 设置为包含 `dbx.db` 的目录，而不是数据库文件路径。
+将 `LINOP_DB_DATA_DIR` 设置为包含 `dbx.db` 的目录，而不是数据库文件路径。
 
 **提示 DBX 未运行**
 
@@ -751,23 +751,23 @@ npm install -g @dbx-app/mcp-server@latest
 
 **出现 `better-sqlite3` 或 Node ABI 错误**
 
-Rust MCP 不依赖 `better-sqlite3`。请升级 MCP；如果错误来自 `@dbx-app/cli`，则属于当前仍为 TypeScript 的独立 CLI 包。
+Rust MCP 不依赖 `better-sqlite3`。请升级 MCP；如果错误来自 `@linop-db-app/cli`，则属于当前仍为 TypeScript 的独立 CLI 包。
 
 ### 开发和测试
 
 ```bash
-cargo run -p dbx-mcp --no-default-features
-cargo test -p dbx-mcp --no-default-features
-pnpm --filter @dbx-app/mcp-server test
-cargo build --release -p dbx-mcp --no-default-features
+cargo run -p linop-db-mcp --no-default-features
+cargo test -p linop-db-mcp --no-default-features
+pnpm --filter @linop-db-app/mcp-server test
+cargo build --release -p linop-db-mcp --no-default-features
 ```
 
 ### DBX CLI
 
-`@dbx-app/cli` 是独立的终端包，目前仍使用 TypeScript/Node.js：
+`@linop-db-app/cli` 是独立的终端包，目前仍使用 TypeScript/Node.js：
 
 ```bash
-npm install -g @dbx-app/cli
+npm install -g @linop-db-app/cli
 dbx connections list --json
 ```
 

@@ -26,7 +26,7 @@ fn start_postgres() -> Option<(u16, PgContainer)> {
         eprintln!("docker 不可用,跳过 postgres e2e");
         return None;
     }
-    let name = format!("linop-dbx-pg-{}", std::process::id());
+    let name = format!("linop-linop-db-pg-{}", std::process::id());
     let _ = std::process::Command::new("docker")
         .args(["rm", "-f", &name])
         .output();
@@ -99,7 +99,7 @@ fn psql(container: &PgContainer, sql: &str) {
 }
 
 #[tokio::test]
-async fn query_via_dbx_core_state_injection() {
+async fn query_via_linop_db_core_state_injection() {
     let Some((port, container)) = start_postgres() else {
         return;
     };

@@ -22,7 +22,7 @@ Add DBX as a flake input and include the package in `environment.systemPackages`
         ./configuration.nix
         {
           environment.systemPackages = [
-            dbx.packages.x86_64-linux.dbx-desktop
+            dbx.packages.x86_64-linux.linop-db-desktop
           ];
         }
       ];
@@ -74,7 +74,7 @@ This method installs DBX for a specific user through [Home Manager](https://gith
       modules = [
         {
           home.packages = [
-            dbx.packages.x86_64-linux.dbx-desktop
+            dbx.packages.x86_64-linux.linop-db-desktop
           ];
         }
       ];
@@ -110,7 +110,7 @@ This method installs DBX for a specific user through [Home Manager](https://gith
         {
           home-manager.users.youruser = {
             home.packages = [
-              dbx.packages.x86_64-linux.dbx-desktop
+              dbx.packages.x86_64-linux.linop-db-desktop
             ];
           };
         }
@@ -159,12 +159,12 @@ Inside the shell:
 
 ## Building from Source
 
-Build the `dbx-desktop` package directly from the flake:
+Build the `linop-db-desktop` package directly from the flake:
 
 ```bash
-nix build github:t8y2/dbx#dbx-desktop
+nix build github:t8y2/dbx#linop-db-desktop
 # or, from a local clone:
-nix build .#dbx-desktop
+nix build .#linop-db-desktop
 ```
 
 The resulting binary is available at `./result/bin/dbx`.

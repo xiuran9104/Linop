@@ -153,7 +153,7 @@ async function openMenu(host: HTMLElement, name: string) {
 }
 
 function menuButton(label: string): HTMLButtonElement {
-  const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-dbx-context-menu] button")].filter((button) => button.textContent?.trim() === label);
+  const buttons = [...document.querySelectorAll<HTMLButtonElement>("[data-linop-db-context-menu] button")].filter((button) => button.textContent?.trim() === label);
   expect(buttons, label).toHaveLength(1);
   expect(buttons[0]!.disabled).toBe(false);
   return buttons[0]!;
@@ -192,8 +192,8 @@ describe.each(["list", "grid", "compact"] as const)("ObjectBrowser locate in sid
 
   it("reloads list column visibility when the selected schema changes", async () => {
     if (viewMode !== "list") return;
-    localStorage.setItem("dbx-object-browser-columns:v1:locate-connection:browser_database:browser_schema", JSON.stringify({ comment: false }));
-    localStorage.setItem("dbx-object-browser-columns:v1:locate-connection:browser_database:row_schema", JSON.stringify({ comment: true }));
+    localStorage.setItem("linop-db-object-browser-columns:v1:locate-connection:browser_database:browser_schema", JSON.stringify({ comment: false }));
+    localStorage.setItem("linop-db-object-browser-columns:v1:locate-connection:browser_database:row_schema", JSON.stringify({ comment: true }));
 
     const host = await mountBrowser({ schema: "browser_schema" });
     const table = () => host.querySelector<HTMLElement>(".object-browser-table");
@@ -205,7 +205,7 @@ describe.each(["list", "grid", "compact"] as const)("ObjectBrowser locate in sid
 
   it("keeps the column picker clear of the trailing resize handle", async () => {
     if (viewMode !== "list") return;
-    localStorage.setItem("dbx-object-browser-columns:v1:locate-connection:browser_database:browser_schema", JSON.stringify({ type: false }));
+    localStorage.setItem("linop-db-object-browser-columns:v1:locate-connection:browser_database:browser_schema", JSON.stringify({ type: false }));
 
     const host = await mountBrowser({ schema: "browser_schema" });
     expect(host.querySelector('[title="objects.configureColumns"]')).not.toBeNull();
@@ -239,7 +239,7 @@ describe.each(["list", "grid", "compact"] as const)("ObjectBrowser locate in sid
     expect(mocks.locateTable).toHaveBeenCalledExactlyOnceWith({ tableName, tableType, schema: "row_schema", catalog: "external_catalog" });
     expect(mocks.openTable).not.toHaveBeenCalled();
     expect(mocks.ensureConnected).not.toHaveBeenCalled();
-    expect(document.querySelector("[data-dbx-context-menu]")).toBeNull();
+    expect(document.querySelector("[data-linop-db-context-menu]")).toBeNull();
   });
 
   it("keeps the default schema and catalog unspecified", async () => {
@@ -340,7 +340,7 @@ describe.each(["list", "grid", "compact"] as const)("ObjectBrowser locate in sid
   it("keeps non-table object menus unchanged", async () => {
     const host = await mountBrowser();
     await openMenu(host, "refresh_orders");
-    expect(document.querySelector("[data-dbx-context-menu]")?.textContent).not.toContain("Locate in sidebar");
+    expect(document.querySelector("[data-linop-db-context-menu]")?.textContent).not.toContain("Locate in sidebar");
     menuButton("contextMenu.viewSource");
     menuButton("contextMenu.executeProcedure");
   });

@@ -3,16 +3,16 @@ use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::connection::AppState;
-use dbx_core::backend_error::BackendError;
-use dbx_core::db;
-use dbx_core::models::connection::DatabaseType;
-use dbx_core::query_cancel::RunningTaskMetadata;
-use dbx_core::sql::split_sql_statements;
+use linop_db_core::backend_error::BackendError;
+use linop_db_core::db;
+use linop_db_core::models::connection::DatabaseType;
+use linop_db_core::query_cancel::RunningTaskMetadata;
+use linop_db_core::sql::split_sql_statements;
 
 fn query_messages_callback(
     app: &AppHandle,
     execution_id: Option<&str>,
-) -> Option<dbx_core::query::query_messages::QueryMessagesCallback> {
+) -> Option<linop_db_core::query::query_messages::QueryMessagesCallback> {
     let execution_id = execution_id?.to_string();
     let app = app.clone();
     Some(Arc::new(move |messages| {
@@ -42,10 +42,10 @@ pub enum ManualTransactionCommandError {
 }
 
 fn manual_transaction_command_error(error: String) -> ManualTransactionCommandError {
-    if let Some(error) = dbx_core::query::sqlserver_manual_transaction::backend_error(&error) {
+    if let Some(error) = linop_db_core::query::sqlserver_manual_transaction::backend_error(&error) {
         return ManualTransactionCommandError::Structured(Box::new(error));
     }
-    if dbx_core::query::is_manual_transaction_session_expired_error(&error) {
+    if linop_db_core::query::is_manual_transaction_session_expired_error(&error) {
         ManualTransactionCommandError::Structured(Box::new(BackendError::from_manual_transaction_session_expired()))
     } else {
         ManualTransactionCommandError::Legacy(error)
@@ -70,7 +70,7 @@ pub async fn execute_query(
     result_session_id: Option<String>,
     client_session_id: Option<String>,
     timeout_secs: Option<u64>,
-    execution_mode: Option<dbx_core::query::QueryExecutionMode>,
+    execution_mode: Option<linop_db_core::query::QueryExecutionMode>,
 ) -> Result<db::QueryResult, BackendError> {
     let execution_id = execution_id.filter(|id| !id.trim().is_empty());
     let registered_query = execution_id.as_ref().map(|id| {
@@ -82,16 +82,16 @@ pub async fn execute_query(
     let cancel_token = registered_query.as_ref().map(|query| query.token());
 
     let messages = query_messages_callback(&app, execution_id.as_deref());
-    let result = dbx_core::query::query_messages::with_query_messages(
+    let result = linop_db_core::query::query_messages::with_query_messages(
         messages,
-        dbx_core::query::execute_sql_statement_with_options_typed(
+        linop_db_core::query::execute_sql_statement_with_options_typed(
             &state,
             &connection_id,
             &database,
             &sql,
             schema.as_deref(),
             cancel_token,
-            dbx_core::query::QueryExecutionOptions {
+            linop_db_core::query::QueryExecutionOptions {
                 max_rows,
                 fetch_size,
                 page_size,
@@ -112,7 +112,7 @@ pub async fn execute_query(
         registered_query.finish(&result);
     }
 
-    result.map_err(dbx_core::query::QueryExecutionError::into_backend_error)
+    result.map_err(linop_db_core::query::QueryExecutionError::into_backend_error)
 }
 
 #[tauri::command]
@@ -132,12 +132,12 @@ pub async fn execute_conditional_update(
     result_session_id: Option<String>,
     client_session_id: Option<String>,
     timeout_secs: Option<u64>,
-    execution_mode: Option<dbx_core::query::QueryExecutionMode>,
-    type_recovery: Option<dbx_core::storage::TypeRecoveryContext>,
+    execution_mode: Option<linop_db_core::query::QueryExecutionMode>,
+    type_recovery: Option<linop_db_core::storage::TypeRecoveryContext>,
 ) -> Result<db::QueryResult, BackendError> {
     let execution_id =
         execution_id.filter(|id| !id.trim().is_empty()).unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-    let recovery = type_recovery.map(|context| dbx_core::storage::TypeExecutionBinding {
+    let recovery = type_recovery.map(|context| linop_db_core::storage::TypeExecutionBinding {
         execution_id: execution_id.clone(),
         context,
         connection_id: connection_id.clone(),
@@ -154,19 +154,19 @@ pub async fn execute_conditional_update(
         RunningTaskMetadata::query(connection_id.clone(), database.clone(), client_session_id.clone()),
     );
     let cancel_token = registered.token();
-    let response_timeout = dbx_core::query::query_timeout_duration(timeout_secs);
+    let response_timeout = linop_db_core::query::query_timeout_duration(timeout_secs);
     let app_state = state.inner().clone();
     let (result_tx, result_rx) = tokio::sync::oneshot::channel();
 
     tokio::spawn(async move {
-        let result = dbx_core::query::execute_sql_statement_with_options_typed(
+        let result = linop_db_core::query::execute_sql_statement_with_options_typed(
             &app_state,
             &connection_id,
             &database,
             &sql,
             schema.as_deref(),
             Some(cancel_token),
-            dbx_core::query::QueryExecutionOptions {
+            linop_db_core::query::QueryExecutionOptions {
                 max_rows,
                 fetch_size,
                 page_size,
@@ -182,7 +182,7 @@ pub async fn execute_conditional_update(
             },
         )
         .await;
-        let result = dbx_core::query_cancel::finish_conditional_update(
+        let result = linop_db_core::query_cancel::finish_conditional_update(
             registered,
             &app_state.storage,
             recovery.as_ref(),
@@ -245,11 +245,11 @@ pub async fn execute_multi(
     timeout_secs: Option<u64>,
     use_transaction: Option<bool>,
     continue_on_error: Option<bool>,
-    execution_mode: Option<dbx_core::query::QueryExecutionMode>,
+    execution_mode: Option<linop_db_core::query::QueryExecutionMode>,
     preserve_explicit_transaction: Option<bool>,
     defer_lobs: Option<bool>,
     report_compilation_errors: Option<bool>,
-) -> Result<Vec<dbx_core::query::ExecuteMultiResult>, BackendError> {
+) -> Result<Vec<linop_db_core::query::ExecuteMultiResult>, BackendError> {
     let execution_id = execution_id.filter(|id| !id.trim().is_empty());
     let registered_query = execution_id.as_ref().map(|id| {
         state.running_queries.register_task(
@@ -261,7 +261,7 @@ pub async fn execute_multi(
     let progress = execution_id.as_ref().map(|execution_id| {
         let app = app.clone();
         let execution_id = execution_id.clone();
-        Arc::new(move |progress: dbx_core::query::ExecuteMultiProgress| {
+        Arc::new(move |progress: linop_db_core::query::ExecuteMultiProgress| {
             let _ = app.emit(
                 "query-batch-progress",
                 ExecuteMultiProgress {
@@ -275,11 +275,11 @@ pub async fn execute_multi(
                     error: progress.error,
                 },
             );
-        }) as dbx_core::query::ExecuteMultiProgressCallback
+        }) as linop_db_core::query::ExecuteMultiProgressCallback
     });
     let trace_id = execution_id.as_deref().unwrap_or("no-execution-id").to_string();
     let started_at = Instant::now();
-    dbx_core::sql_diagnostics::debug_sql("query:execute_multi:start", &sql);
+    linop_db_core::sql_diagnostics::debug_sql("query:execute_multi:start", &sql);
     log::info!(
         "[query][execute_multi:start] trace_id={} connection_id={} database={} schema={:?}",
         trace_id,
@@ -289,17 +289,17 @@ pub async fn execute_multi(
     );
 
     let messages = query_messages_callback(&app, execution_id.as_deref());
-    let result = dbx_core::query::query_messages::with_query_messages(
+    let result = linop_db_core::query::query_messages::with_query_messages(
         messages,
-        dbx_core::query::batch_progress::with_coalesced_execute_multi_progress(progress, |progress| {
-            dbx_core::query::execute_multi_core_with_options_for_client_and_progress_typed(
+        linop_db_core::query::batch_progress::with_coalesced_execute_multi_progress(progress, |progress| {
+            linop_db_core::query::execute_multi_core_with_options_for_client_and_progress_typed(
                 &state,
                 &connection_id,
                 &database,
                 &sql,
                 schema.as_deref(),
                 cancel_token,
-                dbx_core::query::QueryExecutionOptions {
+                linop_db_core::query::QueryExecutionOptions {
                     max_rows,
                     fetch_size,
                     page_size,
@@ -346,7 +346,7 @@ pub async fn execute_multi(
         registered_query.finish(&result);
     }
 
-    result.map_err(dbx_core::query::QueryExecutionError::into_backend_error)
+    result.map_err(linop_db_core::query::QueryExecutionError::into_backend_error)
 }
 
 #[tauri::command]
@@ -359,13 +359,13 @@ pub async fn cancel_conditional_update(
     state: State<'_, Arc<AppState>>,
     execution_id: String,
     cancel: Option<bool>,
-    type_recovery: Option<dbx_core::storage::TypeExecutionBinding>,
-) -> Result<dbx_core::query_cancel::CancellationWaitResult, String> {
+    type_recovery: Option<linop_db_core::storage::TypeExecutionBinding>,
+) -> Result<linop_db_core::query_cancel::CancellationWaitResult, String> {
     if let Some(binding) = type_recovery {
         if cancel != Some(false) || binding.execution_id != execution_id {
             return Err("TYPE recovery observation requires the original execution ID and cancel=false".into());
         }
-        return dbx_core::query_cancel::observe_type_execution(
+        return linop_db_core::query_cancel::observe_type_execution(
             &state.storage,
             &state.running_queries,
             &binding,
@@ -391,7 +391,7 @@ pub async fn close_query_session(
     txn_session_id: Option<String>,
 ) -> Result<bool, String> {
     if let Some(txn_session_id) = txn_session_id {
-        return dbx_core::query::close_manual_transaction_query_session(
+        return linop_db_core::query::close_manual_transaction_query_session(
             &state,
             &connection_id,
             &txn_session_id,
@@ -399,7 +399,7 @@ pub async fn close_query_session(
         )
         .await;
     }
-    dbx_core::query::close_query_session(
+    linop_db_core::query::close_query_session(
         &state,
         &connection_id,
         &database,
@@ -413,18 +413,18 @@ pub async fn close_query_session(
 #[tauri::command]
 pub async fn read_large_value_chunk(
     state: State<'_, Arc<AppState>>,
-    request: dbx_core::query::LargeValueRequest,
+    request: linop_db_core::query::LargeValueRequest,
     report_outcome: Option<bool>,
 ) -> Result<serde_json::Value, String> {
     if report_outcome == Some(true) {
-        Ok(snapshot_outcome(dbx_core::query::request_large_value_reported(&state, request).await))
+        Ok(snapshot_outcome(linop_db_core::query::request_large_value_reported(&state, request).await))
     } else {
-        dbx_core::query::request_large_value(&state, request, false).await
+        linop_db_core::query::request_large_value(&state, request, false).await
     }
 }
 
 fn snapshot_outcome<T: serde::Serialize>(
-    result: Result<T, dbx_core::query::LargeValueOperationError>,
+    result: Result<T, linop_db_core::query::LargeValueOperationError>,
 ) -> serde_json::Value {
     match result {
         Ok(value) => serde_json::json!({"status": "succeeded", "value": value}),
@@ -435,21 +435,21 @@ fn snapshot_outcome<T: serde::Serialize>(
 #[tauri::command]
 pub async fn release_large_value(
     state: State<'_, Arc<AppState>>,
-    request: dbx_core::query::LargeValueRequest,
+    request: linop_db_core::query::LargeValueRequest,
 ) -> Result<serde_json::Value, String> {
-    dbx_core::query::request_large_value(&state, request, true).await
+    linop_db_core::query::request_large_value(&state, request, true).await
 }
 
 #[tauri::command]
 pub async fn download_large_value(
     state: State<'_, Arc<AppState>>,
-    request: dbx_core::query::LargeValueRequest,
+    request: linop_db_core::query::LargeValueRequest,
     file_path: String,
 ) -> Result<u64, String> {
     let path = std::path::Path::new(&file_path);
     let parent = path.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
     let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
-    let written = dbx_core::query::write_large_value_snapshot(&state, request, temporary.as_file_mut()).await?;
+    let written = linop_db_core::query::write_large_value_snapshot(&state, request, temporary.as_file_mut()).await?;
     temporary.persist(path).map_err(|error| error.to_string())?;
     Ok(written)
 }
@@ -473,7 +473,7 @@ pub async fn close_client_connection_session(
 #[tauri::command]
 pub async fn export_snapshot_result(
     state: State<'_, Arc<AppState>>,
-    request: dbx_core::query::snapshot_export::SnapshotExportRequest,
+    request: linop_db_core::query::snapshot_export::SnapshotExportRequest,
     file_path: String,
     report_outcome: Option<bool>,
 ) -> Result<serde_json::Value, String> {
@@ -483,22 +483,22 @@ pub async fn export_snapshot_result(
     let path = std::path::Path::new(&file_path);
     let parent = path.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
     let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
-    dbx_core::query::snapshot_export::write_snapshot_export(&state, request, temporary.as_file_mut()).await?;
+    linop_db_core::query::snapshot_export::write_snapshot_export(&state, request, temporary.as_file_mut()).await?;
     temporary.persist(path).map_err(|error| error.to_string())?;
     Ok(serde_json::Value::Null)
 }
 
 async fn write_reported_snapshot(
     state: &AppState,
-    request: dbx_core::query::snapshot_export::SnapshotExportRequest,
+    request: linop_db_core::query::snapshot_export::SnapshotExportRequest,
     file_path: &str,
-) -> Result<(), dbx_core::query::LargeValueOperationError> {
-    use dbx_core::query::{LargeValueCompletion, LargeValueOperationError};
+) -> Result<(), linop_db_core::query::LargeValueOperationError> {
+    use linop_db_core::query::{LargeValueCompletion, LargeValueOperationError};
     let path = std::path::Path::new(file_path);
     let parent = path.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
     let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
     if let Err(error) =
-        dbx_core::query::snapshot_export::write_snapshot_export_reported(state, request, temporary.as_file_mut()).await
+        linop_db_core::query::snapshot_export::write_snapshot_export_reported(state, request, temporary.as_file_mut()).await
     {
         return match temporary.close() {
             Ok(()) => Err(error),
@@ -543,7 +543,7 @@ pub async fn execute_batch(
     bound_statements: Option<Vec<db::BlobBoundStatement>>,
 ) -> Result<db::QueryResult, String> {
     if let Some(bound) = bound_statements.as_ref() {
-        return dbx_core::query::execute_blob_bound_statements(
+        return linop_db_core::query::execute_blob_bound_statements(
             &state,
             &connection_id,
             &database,
@@ -555,7 +555,7 @@ pub async fn execute_batch(
         )
         .await;
     }
-    dbx_core::query::execute_statements_with_transaction_option(
+    linop_db_core::query::execute_statements_with_transaction_option(
         &state,
         &connection_id,
         &database,
@@ -580,13 +580,13 @@ pub async fn execute_script(
         configs.get(&connection_id).map(|config| config.db_type)
     };
 
-    dbx_core::query::execute_statements(
+    linop_db_core::query::execute_statements(
         &state,
         &connection_id,
         &database,
         &db_type.map_or_else(
             || split_sql_statements(&sql),
-            |db_type| dbx_core::sql::split_sql_statements_for_database(&sql, db_type),
+            |db_type| linop_db_core::sql::split_sql_statements_for_database(&sql, db_type),
         ),
         schema.as_deref(),
         None,
@@ -605,7 +605,7 @@ pub async fn execute_in_transaction(
     bound_statements: Option<Vec<db::BlobBoundStatement>>,
 ) -> Result<db::QueryResult, String> {
     if let Some(bound) = bound_statements.as_ref() {
-        return dbx_core::query::execute_blob_bound_statements(
+        return linop_db_core::query::execute_blob_bound_statements(
             &state,
             &connection_id,
             &database,
@@ -617,7 +617,7 @@ pub async fn execute_in_transaction(
         )
         .await;
     }
-    dbx_core::query::execute_statements_in_transaction(
+    linop_db_core::query::execute_statements_in_transaction(
         &state,
         &connection_id,
         &database,
@@ -640,8 +640,8 @@ pub async fn execute_script_with_2pc_core(
     statements: Vec<String>,
     schema: Option<String>,
     destructive_confirmed: bool,
-) -> dbx_core::query::SchemaDiffDeployResult {
-    dbx_core::query::execute_schema_diff_deploy(
+) -> linop_db_core::query::SchemaDiffDeployResult {
+    linop_db_core::query::execute_schema_diff_deploy(
         &app,
         &connection_id,
         &database,
@@ -660,7 +660,7 @@ pub async fn execute_script_with_2pc(
     statements: Vec<String>,
     schema: Option<String>,
     destructive_confirmed: Option<bool>,
-) -> Result<dbx_core::query::SchemaDiffDeployResult, String> {
+) -> Result<linop_db_core::query::SchemaDiffDeployResult, String> {
     let app: Arc<AppState> = (*state).clone();
     Ok(execute_script_with_2pc_core(
         app,
@@ -681,7 +681,7 @@ pub async fn begin_manual_transaction(
     schema: Option<String>,
     catalog: Option<String>,
 ) -> Result<String, ManualTransactionCommandError> {
-    dbx_core::query::begin_manual_transaction(&state, &connection_id, &database, schema.as_deref(), catalog.as_deref())
+    linop_db_core::query::begin_manual_transaction(&state, &connection_id, &database, schema.as_deref(), catalog.as_deref())
         .await
         .map_err(manual_transaction_command_error)
 }
@@ -705,17 +705,17 @@ pub async fn execute_in_manual_transaction(
     bound_statements: Option<Vec<db::BlobBoundStatement>>,
     defer_lobs: Option<bool>,
     report_compilation_errors: Option<bool>,
-) -> Result<Vec<dbx_core::query::ExecuteMultiResult>, ManualTransactionCommandError> {
+) -> Result<Vec<linop_db_core::query::ExecuteMultiResult>, ManualTransactionCommandError> {
     let messages = query_messages_callback(&app, execution_id.as_deref());
-    dbx_core::query::query_messages::with_query_messages(
+    linop_db_core::query::query_messages::with_query_messages(
         messages,
-        dbx_core::query::execute_in_manual_transaction_with_options(
+        linop_db_core::query::execute_in_manual_transaction_with_options(
             &state,
             &txn_session_id,
             &sql,
             &database,
             schema.as_deref(),
-            dbx_core::query::ManualTransactionExecutionOptions {
+            linop_db_core::query::ManualTransactionExecutionOptions {
                 defer_lobs: defer_lobs.unwrap_or(false),
                 bound_statements,
                 max_rows,
@@ -738,7 +738,7 @@ pub async fn commit_manual_transaction(
     state: State<'_, Arc<AppState>>,
     txn_session_id: String,
 ) -> Result<db::QueryResult, ManualTransactionCommandError> {
-    dbx_core::query::commit_manual_transaction(&state, &txn_session_id).await.map_err(manual_transaction_command_error)
+    linop_db_core::query::commit_manual_transaction(&state, &txn_session_id).await.map_err(manual_transaction_command_error)
 }
 
 #[tauri::command]
@@ -746,7 +746,7 @@ pub async fn rollback_manual_transaction(
     state: State<'_, Arc<AppState>>,
     txn_session_id: String,
 ) -> Result<db::QueryResult, ManualTransactionCommandError> {
-    dbx_core::query::rollback_manual_transaction(&state, &txn_session_id)
+    linop_db_core::query::rollback_manual_transaction(&state, &txn_session_id)
         .await
         .map_err(manual_transaction_command_error)
 }
@@ -755,8 +755,8 @@ pub async fn rollback_manual_transaction(
 pub async fn analyze_sql_references(
     sql: String,
     dialect: Option<String>,
-) -> Result<dbx_core::sql_analysis::SqlReferenceAnalysis, String> {
-    dbx_core::sql_analysis::analyze_sql_references(&sql, dialect.as_deref())
+) -> Result<linop_db_core::sql_analysis::SqlReferenceAnalysis, String> {
+    linop_db_core::sql_analysis::analyze_sql_references(&sql, dialect.as_deref())
 }
 
 #[tauri::command]
@@ -766,44 +766,44 @@ pub fn find_statement_at_cursor(
     database_type: Option<DatabaseType>,
 ) -> Result<String, String> {
     Ok(database_type
-        .map(|db_type| dbx_core::sql::find_statement_at_cursor_for_database(&sql, cursor_pos, db_type))
-        .unwrap_or_else(|| dbx_core::sql::find_statement_at_cursor(&sql, cursor_pos)))
+        .map(|db_type| linop_db_core::sql::find_statement_at_cursor_for_database(&sql, cursor_pos, db_type))
+        .unwrap_or_else(|| linop_db_core::sql::find_statement_at_cursor(&sql, cursor_pos)))
 }
 
 #[tauri::command]
 pub fn prepare_query_pagination_execution_plan(
-    options: dbx_core::query_result_sql::QueryPaginationExecutionPlanOptions,
-) -> Result<dbx_core::query_result_sql::QueryPaginationExecutionPlan, String> {
-    Ok(dbx_core::query_result_sql::build_query_pagination_execution_plan(options))
+    options: linop_db_core::query_result_sql::QueryPaginationExecutionPlanOptions,
+) -> Result<linop_db_core::query_result_sql::QueryPaginationExecutionPlan, String> {
+    Ok(linop_db_core::query_result_sql::build_query_pagination_execution_plan(options))
 }
 
 #[tauri::command]
 pub fn build_sorted_query_sql(
-    options: dbx_core::query_result_sql::SortedQuerySqlOptions,
-) -> Result<dbx_core::query_result_sql::QuerySqlBuildResult, String> {
-    Ok(dbx_core::query_result_sql::build_sorted_query_sql(options))
+    options: linop_db_core::query_result_sql::SortedQuerySqlOptions,
+) -> Result<linop_db_core::query_result_sql::QuerySqlBuildResult, String> {
+    Ok(linop_db_core::query_result_sql::build_sorted_query_sql(options))
 }
 
 #[tauri::command]
 pub fn build_explain_sql(
-    options: dbx_core::query_execution_sql::ExplainSqlOptions,
-) -> Result<dbx_core::query_execution_sql::ExplainSqlBuildResult, String> {
-    Ok(dbx_core::query_execution_sql::build_explain_sql(options))
+    options: linop_db_core::query_execution_sql::ExplainSqlOptions,
+) -> Result<linop_db_core::query_execution_sql::ExplainSqlBuildResult, String> {
+    Ok(linop_db_core::query_execution_sql::build_explain_sql(options))
 }
 
 #[tauri::command]
 pub fn build_dropped_file_preview_sql(
-    options: dbx_core::query_execution_sql::DroppedFilePreviewSqlOptions,
+    options: linop_db_core::query_execution_sql::DroppedFilePreviewSqlOptions,
 ) -> Result<Option<String>, String> {
-    Ok(dbx_core::query_execution_sql::build_dropped_file_preview_sql(options))
+    Ok(linop_db_core::query_execution_sql::build_dropped_file_preview_sql(options))
 }
 
 #[tauri::command]
 pub fn build_table_select_sql(
-    options: dbx_core::sql_dialect::TableDataSelectSqlOptions,
+    options: linop_db_core::sql_dialect::TableDataSelectSqlOptions,
     include_database_name: Option<bool>,
 ) -> Result<String, String> {
-    Ok(dbx_core::sql_dialect::build_table_data_select_sql_with_database(
+    Ok(linop_db_core::sql_dialect::build_table_data_select_sql_with_database(
         options,
         include_database_name.unwrap_or(false),
     ))
@@ -811,38 +811,38 @@ pub fn build_table_select_sql(
 
 #[tauri::command]
 pub fn build_database_search_sql(
-    options: dbx_core::database_search_sql::DatabaseSearchSqlOptions,
-) -> Result<Option<dbx_core::database_search_sql::DatabaseSearchSql>, String> {
-    Ok(dbx_core::database_search_sql::build_database_search_sql(options))
+    options: linop_db_core::database_search_sql::DatabaseSearchSqlOptions,
+) -> Result<Option<linop_db_core::database_search_sql::DatabaseSearchSql>, String> {
+    Ok(linop_db_core::database_search_sql::build_database_search_sql(options))
 }
 
 #[tauri::command]
 pub fn build_database_structure_search_sql(
-    options: dbx_core::database_structure_search_sql::DatabaseStructureSearchSqlOptions,
-) -> Result<Option<dbx_core::database_structure_search_sql::DatabaseStructureSearchSql>, String> {
-    Ok(dbx_core::database_structure_search_sql::build_database_structure_search_sql(options))
+    options: linop_db_core::database_structure_search_sql::DatabaseStructureSearchSqlOptions,
+) -> Result<Option<linop_db_core::database_structure_search_sql::DatabaseStructureSearchSql>, String> {
+    Ok(linop_db_core::database_structure_search_sql::build_database_structure_search_sql(options))
 }
 
 #[tauri::command]
 pub fn build_database_search_columns_sql(
-    options: dbx_core::database_search_columns_sql::DatabaseSearchColumnsSqlOptions,
-) -> Result<Option<dbx_core::database_search_columns_sql::DatabaseSearchColumnsSql>, String> {
-    Ok(dbx_core::database_search_columns_sql::build_database_search_columns_sql(options))
+    options: linop_db_core::database_search_columns_sql::DatabaseSearchColumnsSqlOptions,
+) -> Result<Option<linop_db_core::database_search_columns_sql::DatabaseSearchColumnsSql>, String> {
+    Ok(linop_db_core::database_search_columns_sql::build_database_search_columns_sql(options))
 }
 
 #[tauri::command]
 pub fn build_database_search_probe_sql(
-    options: dbx_core::database_search_probe_sql::DatabaseSearchProbeSqlOptions,
-) -> Result<Option<dbx_core::database_search_probe_sql::DatabaseSearchProbeSql>, String> {
-    Ok(dbx_core::database_search_probe_sql::build_database_search_probe_sql(options))
+    options: linop_db_core::database_search_probe_sql::DatabaseSearchProbeSqlOptions,
+) -> Result<Option<linop_db_core::database_search_probe_sql::DatabaseSearchProbeSql>, String> {
+    Ok(linop_db_core::database_search_probe_sql::build_database_search_probe_sql(options))
 }
 
 #[tauri::command]
 pub fn supports_database_structure_search(
-    database_type: Option<dbx_core::models::connection::DatabaseType>,
+    database_type: Option<linop_db_core::models::connection::DatabaseType>,
     driver_profile: Option<String>,
 ) -> Result<bool, String> {
-    Ok(dbx_core::database_structure_search_sql::supports_database_structure_search(
+    Ok(linop_db_core::database_structure_search_sql::supports_database_structure_search(
         database_type,
         driver_profile.as_deref(),
     ))
@@ -850,223 +850,223 @@ pub fn supports_database_structure_search(
 
 #[tauri::command]
 pub fn build_search_result_where(
-    options: dbx_core::database_search_sql::SearchResultWhereOptions,
+    options: linop_db_core::database_search_sql::SearchResultWhereOptions,
 ) -> Result<String, String> {
-    Ok(dbx_core::database_search_sql::build_search_result_where(options))
+    Ok(linop_db_core::database_search_sql::build_search_result_where(options))
 }
 
 #[tauri::command]
-pub fn build_rename_object_sql(options: dbx_core::db_admin_sql::RenameObjectSqlOptions) -> Result<String, String> {
-    dbx_core::db_admin_sql::build_rename_object_sql(options)
+pub fn build_rename_object_sql(options: linop_db_core::db_admin_sql::RenameObjectSqlOptions) -> Result<String, String> {
+    linop_db_core::db_admin_sql::build_rename_object_sql(options)
 }
 
 #[tauri::command]
 pub fn build_rename_database_sql(
-    database_type: Option<dbx_core::models::connection::DatabaseType>,
+    database_type: Option<linop_db_core::models::connection::DatabaseType>,
     old_name: String,
     new_name: String,
     terminate_connections: bool,
 ) -> Result<String, String> {
-    dbx_core::db_admin_sql::build_rename_database_sql(database_type, &old_name, &new_name, terminate_connections)
+    linop_db_core::db_admin_sql::build_rename_database_sql(database_type, &old_name, &new_name, terminate_connections)
 }
 
 #[tauri::command]
 pub fn build_rename_database_preflight_sql(
-    database_type: Option<dbx_core::models::connection::DatabaseType>,
+    database_type: Option<linop_db_core::models::connection::DatabaseType>,
     database_name: String,
 ) -> Result<String, String> {
-    dbx_core::db_admin_sql::build_rename_database_preflight_sql(database_type, &database_name)
+    linop_db_core::db_admin_sql::build_rename_database_preflight_sql(database_type, &database_name)
 }
 
 #[tauri::command]
-pub fn build_create_database_sql(options: dbx_core::db_admin_sql::CreateDatabaseSqlOptions) -> Result<String, String> {
-    dbx_core::db_admin_sql::build_create_database_sql(options)
+pub fn build_create_database_sql(options: linop_db_core::db_admin_sql::CreateDatabaseSqlOptions) -> Result<String, String> {
+    linop_db_core::db_admin_sql::build_create_database_sql(options)
 }
 
 #[cfg(feature = "duckdb-sidecar")]
 #[tauri::command]
 pub fn build_duckdb_attach_database_sql(
-    options: dbx_core::db_admin_sql::DuckDbAttachDatabaseSqlOptions,
+    options: linop_db_core::db_admin_sql::DuckDbAttachDatabaseSqlOptions,
 ) -> Result<String, String> {
-    Ok(dbx_core::db_admin_sql::build_duckdb_attach_database_sql(options))
+    Ok(linop_db_core::db_admin_sql::build_duckdb_attach_database_sql(options))
 }
 
 #[tauri::command]
 pub fn build_sqlite_attach_database_sql(
-    options: dbx_core::db_admin_sql::SqliteAttachDatabaseSqlOptions,
+    options: linop_db_core::db_admin_sql::SqliteAttachDatabaseSqlOptions,
 ) -> Result<String, String> {
-    Ok(dbx_core::db_admin_sql::build_sqlite_attach_database_sql(options))
+    Ok(linop_db_core::db_admin_sql::build_sqlite_attach_database_sql(options))
 }
 
 #[tauri::command]
-pub fn build_drop_object_sql(options: dbx_core::db_admin_sql::DropObjectSqlOptions) -> Result<String, String> {
-    Ok(dbx_core::db_admin_sql::build_drop_object_sql(options))
+pub fn build_drop_object_sql(options: linop_db_core::db_admin_sql::DropObjectSqlOptions) -> Result<String, String> {
+    Ok(linop_db_core::db_admin_sql::build_drop_object_sql(options))
 }
 
 #[tauri::command]
-pub fn build_drop_table_sql(options: dbx_core::db_admin_sql::TableAdminSqlOptions) -> Result<String, String> {
-    Ok(dbx_core::db_admin_sql::build_drop_table_sql(options))
+pub fn build_drop_table_sql(options: linop_db_core::db_admin_sql::TableAdminSqlOptions) -> Result<String, String> {
+    Ok(linop_db_core::db_admin_sql::build_drop_table_sql(options))
 }
 
 #[tauri::command]
 pub fn build_drop_table_child_object_sql(
-    options: dbx_core::db_admin_sql::DropTableChildObjectSqlOptions,
+    options: linop_db_core::db_admin_sql::DropTableChildObjectSqlOptions,
 ) -> Result<String, String> {
-    dbx_core::db_admin_sql::build_drop_table_child_object_sql(options)
+    linop_db_core::db_admin_sql::build_drop_table_child_object_sql(options)
 }
 
 #[tauri::command]
-pub fn build_empty_table_sql(options: dbx_core::db_admin_sql::TableAdminSqlOptions) -> Result<String, String> {
-    Ok(dbx_core::db_admin_sql::build_empty_table_sql(options))
+pub fn build_empty_table_sql(options: linop_db_core::db_admin_sql::TableAdminSqlOptions) -> Result<String, String> {
+    Ok(linop_db_core::db_admin_sql::build_empty_table_sql(options))
 }
 
 #[tauri::command]
-pub fn build_truncate_table_sql(options: dbx_core::db_admin_sql::TableAdminSqlOptions) -> Result<String, String> {
-    Ok(dbx_core::db_admin_sql::build_truncate_table_sql(options))
+pub fn build_truncate_table_sql(options: linop_db_core::db_admin_sql::TableAdminSqlOptions) -> Result<String, String> {
+    Ok(linop_db_core::db_admin_sql::build_truncate_table_sql(options))
 }
 
 #[tauri::command]
-pub fn build_vacuum_table_sql(options: dbx_core::db_admin_sql::VacuumTableSqlOptions) -> Result<String, String> {
-    dbx_core::db_admin_sql::build_vacuum_table_sql(options)
+pub fn build_vacuum_table_sql(options: linop_db_core::db_admin_sql::VacuumTableSqlOptions) -> Result<String, String> {
+    linop_db_core::db_admin_sql::build_vacuum_table_sql(options)
 }
 
 #[tauri::command]
 pub fn build_mysql_auto_increment_sql(
-    options: dbx_core::db_admin_sql::MysqlAutoIncrementSqlOptions,
+    options: linop_db_core::db_admin_sql::MysqlAutoIncrementSqlOptions,
 ) -> Result<String, String> {
-    dbx_core::db_admin_sql::build_mysql_auto_increment_sql(options)
+    linop_db_core::db_admin_sql::build_mysql_auto_increment_sql(options)
 }
 
 #[tauri::command]
-pub fn build_drop_database_sql(options: dbx_core::db_admin_sql::DatabaseNameSqlOptions) -> Result<String, String> {
-    Ok(dbx_core::db_admin_sql::build_drop_database_sql(options))
+pub fn build_drop_database_sql(options: linop_db_core::db_admin_sql::DatabaseNameSqlOptions) -> Result<String, String> {
+    Ok(linop_db_core::db_admin_sql::build_drop_database_sql(options))
 }
 
 #[tauri::command]
-pub fn build_create_schema_sql(options: dbx_core::db_admin_sql::SchemaNameSqlOptions) -> Result<String, String> {
-    dbx_core::db_admin_sql::build_create_schema_sql(options)
+pub fn build_create_schema_sql(options: linop_db_core::db_admin_sql::SchemaNameSqlOptions) -> Result<String, String> {
+    linop_db_core::db_admin_sql::build_create_schema_sql(options)
 }
 
 #[tauri::command]
 pub fn build_update_database_properties_sql(
-    options: dbx_core::db_admin_sql::DatabasePropertyEditSqlOptions,
+    options: linop_db_core::db_admin_sql::DatabasePropertyEditSqlOptions,
 ) -> Result<String, String> {
-    dbx_core::db_admin_sql::build_update_database_properties_sql(options)
+    linop_db_core::db_admin_sql::build_update_database_properties_sql(options)
 }
 
 #[tauri::command]
-pub fn build_drop_schema_sql(options: dbx_core::db_admin_sql::SchemaNameSqlOptions) -> Result<String, String> {
-    Ok(dbx_core::db_admin_sql::build_drop_schema_sql(options))
+pub fn build_drop_schema_sql(options: linop_db_core::db_admin_sql::SchemaNameSqlOptions) -> Result<String, String> {
+    Ok(linop_db_core::db_admin_sql::build_drop_schema_sql(options))
 }
 
 #[tauri::command]
 pub fn build_duplicate_table_structure_sql(
-    options: dbx_core::db_admin_sql::DuplicateTableStructureSqlOptions,
+    options: linop_db_core::db_admin_sql::DuplicateTableStructureSqlOptions,
 ) -> Result<String, String> {
-    Ok(dbx_core::db_admin_sql::build_duplicate_table_structure_sql(options))
+    Ok(linop_db_core::db_admin_sql::build_duplicate_table_structure_sql(options))
 }
 
 #[tauri::command]
-pub fn build_copy_table_data_sql(options: dbx_core::db_admin_sql::CopyTableDataSqlOptions) -> Result<String, String> {
-    Ok(dbx_core::db_admin_sql::build_copy_table_data_sql(options))
+pub fn build_copy_table_data_sql(options: linop_db_core::db_admin_sql::CopyTableDataSqlOptions) -> Result<String, String> {
+    Ok(linop_db_core::db_admin_sql::build_copy_table_data_sql(options))
 }
 
 #[tauri::command]
 pub fn build_executable_object_source_statements(
-    input: dbx_core::object_source_sql::EditableObjectSourceSqlInput,
+    input: linop_db_core::object_source_sql::EditableObjectSourceSqlInput,
 ) -> Result<Vec<String>, String> {
-    dbx_core::object_source_sql::build_executable_object_source_statements(input)
+    linop_db_core::object_source_sql::build_executable_object_source_statements(input)
 }
 
 #[tauri::command]
 pub fn validate_oracle_executable_object_source(
-    input: dbx_core::object_source_sql::OracleObjectSourceValidationInput,
+    input: linop_db_core::object_source_sql::OracleObjectSourceValidationInput,
 ) -> Result<(), String> {
-    dbx_core::object_source_sql::validate_oracle_executable_object_source(input)
+    linop_db_core::object_source_sql::validate_oracle_executable_object_source(input)
 }
 
 #[tauri::command]
 pub fn prepare_oracle_trigger_sql(
-    input: dbx_core::object_source_sql::OracleTriggerSqlInput,
-) -> Result<dbx_core::object_source_sql::PreparedOracleTriggerSql, String> {
-    dbx_core::object_source_sql::prepare_oracle_trigger_sql(input)
+    input: linop_db_core::object_source_sql::OracleTriggerSqlInput,
+) -> Result<linop_db_core::object_source_sql::PreparedOracleTriggerSql, String> {
+    linop_db_core::object_source_sql::prepare_oracle_trigger_sql(input)
 }
 
 #[tauri::command]
 pub fn fingerprint_oracle_routine_object_source(
-    input: dbx_core::object_source_sql::EditableObjectSourceSqlInput,
+    input: linop_db_core::object_source_sql::EditableObjectSourceSqlInput,
 ) -> Result<String, String> {
-    dbx_core::object_source_sql::fingerprint_oracle_routine_object_source(input)
+    linop_db_core::object_source_sql::fingerprint_oracle_routine_object_source(input)
 }
 
 #[tauri::command]
 pub fn build_executable_object_source_sql(
-    input: dbx_core::object_source_sql::EditableObjectSourceSqlInput,
+    input: linop_db_core::object_source_sql::EditableObjectSourceSqlInput,
 ) -> Result<String, String> {
-    dbx_core::object_source_sql::build_executable_object_source_sql(input)
+    linop_db_core::object_source_sql::build_executable_object_source_sql(input)
 }
 
 #[tauri::command]
 pub fn build_editable_object_source(
-    input: dbx_core::object_source_sql::EditableObjectSourceSqlInput,
+    input: linop_db_core::object_source_sql::EditableObjectSourceSqlInput,
 ) -> Result<String, String> {
-    Ok(dbx_core::object_source_sql::build_editable_object_source(input))
+    Ok(linop_db_core::object_source_sql::build_editable_object_source(input))
 }
 
 #[tauri::command]
 pub fn build_routine_rename_object_source_statements(
-    input: dbx_core::object_source_sql::RoutineRenameObjectSourceInput,
+    input: linop_db_core::object_source_sql::RoutineRenameObjectSourceInput,
 ) -> Result<Vec<String>, String> {
-    dbx_core::object_source_sql::build_routine_rename_object_source_statements(input)
+    linop_db_core::object_source_sql::build_routine_rename_object_source_statements(input)
 }
 
 #[tauri::command]
 pub fn rewrite_oracle_routine_references(
-    input: dbx_core::object_source_sql::OracleRoutineReferenceRewriteInput,
+    input: linop_db_core::object_source_sql::OracleRoutineReferenceRewriteInput,
 ) -> Result<String, String> {
-    dbx_core::object_source_sql::rewrite_oracle_routine_references(input)
+    linop_db_core::object_source_sql::rewrite_oracle_routine_references(input)
 }
 
 #[tauri::command]
 pub fn rewrite_oracle_table_references(
-    input: dbx_core::object_source_sql::OracleTableReferenceRewriteInput,
+    input: linop_db_core::object_source_sql::OracleTableReferenceRewriteInput,
 ) -> Result<String, String> {
-    dbx_core::object_source_sql::rewrite_oracle_table_references(input)
+    linop_db_core::object_source_sql::rewrite_oracle_table_references(input)
 }
 
 #[tauri::command]
-pub fn build_view_ddl_sql(input: dbx_core::object_source_sql::BuildViewDdlInput) -> Result<String, String> {
-    Ok(dbx_core::object_source_sql::build_view_ddl_sql(input))
+pub fn build_view_ddl_sql(input: linop_db_core::object_source_sql::BuildViewDdlInput) -> Result<String, String> {
+    Ok(linop_db_core::object_source_sql::build_view_ddl_sql(input))
 }
 
 #[tauri::command]
 pub fn parse_oracle_object_name(input: String) -> Result<String, String> {
-    dbx_core::oracle_view_rename::parse_oracle_object_name(&input)
+    linop_db_core::oracle_view_rename::parse_oracle_object_name(&input)
 }
 
 #[tauri::command]
 pub fn build_oracle_view_rename_source(
-    input: dbx_core::oracle_view_rename::OracleViewRenameSourceInput,
-) -> Result<dbx_core::oracle_view_rename::OracleViewRenameSource, String> {
-    dbx_core::oracle_view_rename::build_oracle_view_rename_source(input)
+    input: linop_db_core::oracle_view_rename::OracleViewRenameSourceInput,
+) -> Result<linop_db_core::oracle_view_rename::OracleViewRenameSource, String> {
+    linop_db_core::oracle_view_rename::build_oracle_view_rename_source(input)
 }
 
 #[tauri::command]
 pub fn review_oracle_view_rename_source(
-    input: dbx_core::oracle_view_rename::OracleViewRenameSourceInput,
-) -> dbx_core::oracle_view_rename::OracleViewRenameSourceReview {
-    dbx_core::oracle_view_rename::review_oracle_view_rename_source(input)
+    input: linop_db_core::oracle_view_rename::OracleViewRenameSourceInput,
+) -> linop_db_core::oracle_view_rename::OracleViewRenameSourceReview {
+    linop_db_core::oracle_view_rename::review_oracle_view_rename_source(input)
 }
 
 #[tauri::command]
 pub fn build_table_structure_change_sql(
-    options: dbx_core::table_structure_sql::TableStructureSqlOptions,
-    starrocks: Option<dbx_core::table_structure_sql::StarRocksAlterOptions>,
-    mysql_table_charset: Option<dbx_core::table_structure_sql::MysqlTableCharsetChange>,
-) -> Result<dbx_core::table_structure_sql::TableStructureSqlPlan, String> {
+    options: linop_db_core::table_structure_sql::TableStructureSqlOptions,
+    starrocks: Option<linop_db_core::table_structure_sql::StarRocksAlterOptions>,
+    mysql_table_charset: Option<linop_db_core::table_structure_sql::MysqlTableCharsetChange>,
+) -> Result<linop_db_core::table_structure_sql::TableStructureSqlPlan, String> {
     let table_charset = mysql_table_charset
-        .map(|change| dbx_core::table_structure_sql::build_mysql_table_charset_change_sql(&options, change));
-    let mut result = dbx_core::table_structure_sql::build_table_structure_change_sql_plan(options, starrocks);
+        .map(|change| linop_db_core::table_structure_sql::build_mysql_table_charset_change_sql(&options, change));
+    let mut result = linop_db_core::table_structure_sql::build_table_structure_change_sql_plan(options, starrocks);
     if let Some(extra) = table_charset {
         result.sql.statements.extend(extra.statements);
         result.sql.warnings.extend(extra.warnings);
@@ -1076,9 +1076,9 @@ pub fn build_table_structure_change_sql(
 
 #[tauri::command]
 pub fn build_table_owner_change_sql(
-    options: dbx_core::table_structure_sql::TableOwnerChangeSqlOptions,
-) -> Result<dbx_core::table_structure_sql::TableStructureSqlResult, String> {
-    Ok(dbx_core::table_structure_sql::build_table_owner_change_sql(options))
+    options: linop_db_core::table_structure_sql::TableOwnerChangeSqlOptions,
+) -> Result<linop_db_core::table_structure_sql::TableStructureSqlResult, String> {
+    Ok(linop_db_core::table_structure_sql::build_table_owner_change_sql(options))
 }
 
 #[tauri::command]
@@ -1086,9 +1086,9 @@ pub async fn preview_sqlite_table_structure_change(
     state: State<'_, Arc<AppState>>,
     connection_id: String,
     database: String,
-    options: dbx_core::table_structure_sql::TableStructureSqlOptions,
-) -> Result<dbx_core::table_structure_sql::SqliteTableStructurePreview, String> {
-    dbx_core::table_structure_sql::preview_sqlite_table_structure_change(&state, &connection_id, &database, options)
+    options: linop_db_core::table_structure_sql::TableStructureSqlOptions,
+) -> Result<linop_db_core::table_structure_sql::SqliteTableStructurePreview, String> {
+    linop_db_core::table_structure_sql::preview_sqlite_table_structure_change(&state, &connection_id, &database, options)
         .await
 }
 
@@ -1097,10 +1097,10 @@ pub async fn apply_sqlite_table_structure_change(
     state: State<'_, Arc<AppState>>,
     connection_id: String,
     database: String,
-    options: dbx_core::table_structure_sql::TableStructureSqlOptions,
+    options: linop_db_core::table_structure_sql::TableStructureSqlOptions,
     schema_revision: String,
 ) -> Result<db::QueryResult, String> {
-    dbx_core::table_structure_sql::apply_sqlite_table_structure_change(
+    linop_db_core::table_structure_sql::apply_sqlite_table_structure_change(
         &state,
         &connection_id,
         &database,
@@ -1112,11 +1112,11 @@ pub async fn apply_sqlite_table_structure_change(
 
 #[tauri::command]
 pub fn build_create_table_sql(
-    options: dbx_core::table_structure_sql::TableStructureSqlOptions,
+    options: linop_db_core::table_structure_sql::TableStructureSqlOptions,
     server_version: Option<String>,
-    dialect_options: Option<dbx_core::table_structure_sql::CreateTableDialectOptions>,
-) -> Result<dbx_core::table_structure_sql::TableStructureSqlPlan, String> {
-    Ok(dbx_core::table_structure_sql::build_create_table_sql_plan_with_dialect_options(
+    dialect_options: Option<linop_db_core::table_structure_sql::CreateTableDialectOptions>,
+) -> Result<linop_db_core::table_structure_sql::TableStructureSqlPlan, String> {
+    Ok(linop_db_core::table_structure_sql::build_create_table_sql_plan_with_dialect_options(
         options,
         server_version.as_deref(),
         dialect_options.unwrap_or_default(),
@@ -1125,54 +1125,54 @@ pub fn build_create_table_sql(
 
 #[tauri::command]
 pub fn build_create_partitioned_table_sql(
-    options: dbx_core::table_structure_sql::TableStructureSqlOptions,
-    partitioning: dbx_core::table_structure_sql::TablePartitionDefinition,
-) -> Result<dbx_core::table_structure_sql::TableStructureSqlResult, String> {
-    Ok(dbx_core::table_structure_sql::build_create_partitioned_table_sql(options, partitioning))
+    options: linop_db_core::table_structure_sql::TableStructureSqlOptions,
+    partitioning: linop_db_core::table_structure_sql::TablePartitionDefinition,
+) -> Result<linop_db_core::table_structure_sql::TableStructureSqlResult, String> {
+    Ok(linop_db_core::table_structure_sql::build_create_partitioned_table_sql(options, partitioning))
 }
 
 #[tauri::command]
 pub fn build_table_partition_operation_sql(
-    options: dbx_core::table_structure_sql::TablePartitionSqlOptions,
-) -> Result<dbx_core::table_structure_sql::TableStructureSqlResult, String> {
-    Ok(dbx_core::table_structure_sql::build_table_partition_operation_sql(options))
+    options: linop_db_core::table_structure_sql::TablePartitionSqlOptions,
+) -> Result<linop_db_core::table_structure_sql::TableStructureSqlResult, String> {
+    Ok(linop_db_core::table_structure_sql::build_table_partition_operation_sql(options))
 }
 
 #[tauri::command]
 pub fn build_single_column_alter_sql(
-    options: dbx_core::table_structure_sql::SingleColumnAlterSqlOptions,
-) -> Result<dbx_core::table_structure_sql::TableStructureSqlResult, String> {
-    Ok(dbx_core::table_structure_sql::build_single_column_alter_sql(options))
+    options: linop_db_core::table_structure_sql::SingleColumnAlterSqlOptions,
+) -> Result<linop_db_core::table_structure_sql::TableStructureSqlResult, String> {
+    Ok(linop_db_core::table_structure_sql::build_single_column_alter_sql(options))
 }
 
 #[tauri::command]
-pub fn analyze_editable_query_editability(sql: String) -> Result<dbx_core::sql_editability::QueryEditability, String> {
-    Ok(dbx_core::sql_editability::analyze_editable_query_editability(&sql))
+pub fn analyze_editable_query_editability(sql: String) -> Result<linop_db_core::sql_editability::QueryEditability, String> {
+    Ok(linop_db_core::sql_editability::analyze_editable_query_editability(&sql))
 }
 
 #[tauri::command]
 pub fn prepare_data_grid_save(
-    options: dbx_core::data_grid_sql::DataGridSaveStatementOptions,
+    options: linop_db_core::data_grid_sql::DataGridSaveStatementOptions,
     driver_profile: Option<String>,
-) -> Result<dbx_core::data_grid_sql::DataGridSavePreparation, String> {
-    Ok(dbx_core::data_grid_sql::prepare_data_grid_save_for_driver_profile(options, driver_profile.as_deref()))
+) -> Result<linop_db_core::data_grid_sql::DataGridSavePreparation, String> {
+    Ok(linop_db_core::data_grid_sql::prepare_data_grid_save_for_driver_profile(options, driver_profile.as_deref()))
 }
 
 #[tauri::command]
 pub async fn extract_data_grid_selection(
-    request: dbx_core::data_grid_extractors::DataGridExtractRequest,
-) -> Result<dbx_core::data_grid_extractors::DataGridExtractResult, dbx_core::data_grid_extractors::DataGridExtractError>
+    request: linop_db_core::data_grid_extractors::DataGridExtractRequest,
+) -> Result<linop_db_core::data_grid_extractors::DataGridExtractResult, linop_db_core::data_grid_extractors::DataGridExtractError>
 {
     tauri::async_runtime::spawn_blocking(move || {
         // Cells pasted from the grid land in a spreadsheet, so formula-triggering text
-        // is neutralized before the extractor renders it (see dbx_core::data::grid_clipboard_guard).
-        let request = dbx_core::data::grid_clipboard_guard::neutralize_spreadsheet_formulas(request);
-        dbx_core::data_grid_extractors::extract_data_grid_selection(request)
+        // is neutralized before the extractor renders it (see linop_db_core::data::grid_clipboard_guard).
+        let request = linop_db_core::data::grid_clipboard_guard::neutralize_spreadsheet_formulas(request);
+        linop_db_core::data_grid_extractors::extract_data_grid_selection(request)
     })
     .await
     .map_err(|error| {
-        dbx_core::data_grid_extractors::DataGridExtractError::new(
-            dbx_core::data_grid_extractors::DataGridExtractErrorCode::ExecutionFailed,
+        linop_db_core::data_grid_extractors::DataGridExtractError::new(
+            linop_db_core::data_grid_extractors::DataGridExtractErrorCode::ExecutionFailed,
             format!("Data grid extractor worker failed: {error}"),
         )
     })?
@@ -1180,90 +1180,90 @@ pub async fn extract_data_grid_selection(
 
 #[tauri::command]
 pub fn build_data_grid_copy_update_statements(
-    options: dbx_core::data_grid_sql::DataGridCopyUpdateStatementOptions,
+    options: linop_db_core::data_grid_sql::DataGridCopyUpdateStatementOptions,
 ) -> Result<Vec<String>, String> {
-    Ok(dbx_core::data_grid_sql::build_data_grid_copy_update_statements(options))
+    Ok(linop_db_core::data_grid_sql::build_data_grid_copy_update_statements(options))
 }
 
 #[tauri::command]
 pub fn build_data_grid_copy_insert_statement(
-    options: dbx_core::data_grid_sql::DataGridCopyInsertStatementOptions,
+    options: linop_db_core::data_grid_sql::DataGridCopyInsertStatementOptions,
 ) -> Result<Option<String>, String> {
-    Ok(dbx_core::data_grid_sql::build_data_grid_copy_insert_statement(options))
+    Ok(linop_db_core::data_grid_sql::build_data_grid_copy_insert_statement(options))
 }
 
 #[tauri::command]
 pub fn build_dml_change_preview_sql(
-    options: dbx_core::dml_preview_sql::DmlChangePreviewSqlOptions,
-) -> Result<dbx_core::dml_preview_sql::DmlChangePreviewSqlResult, String> {
-    dbx_core::dml_preview_sql::build_dml_change_preview_sql(options)
+    options: linop_db_core::dml_preview_sql::DmlChangePreviewSqlOptions,
+) -> Result<linop_db_core::dml_preview_sql::DmlChangePreviewSqlResult, String> {
+    linop_db_core::dml_preview_sql::build_dml_change_preview_sql(options)
 }
 
 #[tauri::command]
 pub fn build_data_grid_context_filter_condition(
-    options: dbx_core::data_grid_sql::DataGridContextFilterConditionOptions,
+    options: linop_db_core::data_grid_sql::DataGridContextFilterConditionOptions,
 ) -> Result<Option<String>, String> {
-    Ok(dbx_core::data_grid_sql::build_data_grid_context_filter_condition(options))
+    Ok(linop_db_core::data_grid_sql::build_data_grid_context_filter_condition(options))
 }
 
 #[tauri::command]
 pub fn build_data_grid_column_value_filter_condition(
-    options: dbx_core::data_grid_sql::DataGridColumnValueFilterConditionOptions,
+    options: linop_db_core::data_grid_sql::DataGridColumnValueFilterConditionOptions,
 ) -> Result<Option<String>, String> {
-    Ok(dbx_core::data_grid_sql::build_data_grid_column_value_filter_condition(options))
+    Ok(linop_db_core::data_grid_sql::build_data_grid_column_value_filter_condition(options))
 }
 
 #[tauri::command]
 pub fn build_data_grid_column_values_filter_condition(
-    options: dbx_core::data_grid_sql::DataGridColumnValuesFilterConditionOptions,
+    options: linop_db_core::data_grid_sql::DataGridColumnValuesFilterConditionOptions,
 ) -> Result<Option<String>, String> {
-    Ok(dbx_core::data_grid_sql::build_data_grid_column_values_filter_condition(options))
+    Ok(linop_db_core::data_grid_sql::build_data_grid_column_values_filter_condition(options))
 }
 
 #[tauri::command]
 pub fn build_data_grid_column_distinct_values_sql(
-    options: dbx_core::data_grid_sql::DataGridColumnDistinctValuesSqlOptions,
+    options: linop_db_core::data_grid_sql::DataGridColumnDistinctValuesSqlOptions,
 ) -> Result<String, String> {
-    Ok(dbx_core::data_grid_sql::build_data_grid_column_distinct_values_sql(options))
+    Ok(linop_db_core::data_grid_sql::build_data_grid_column_distinct_values_sql(options))
 }
 
 #[tauri::command]
-pub fn build_data_grid_count_sql(options: dbx_core::data_grid_sql::DataGridCountSqlOptions) -> Result<String, String> {
-    Ok(dbx_core::data_grid_sql::build_data_grid_count_sql(options))
+pub fn build_data_grid_count_sql(options: linop_db_core::data_grid_sql::DataGridCountSqlOptions) -> Result<String, String> {
+    Ok(linop_db_core::data_grid_sql::build_data_grid_count_sql(options))
 }
 
 #[tauri::command]
 pub fn build_data_grid_conditional_update_sql(
-    options: dbx_core::data_grid_sql::DataGridConditionalUpdateSqlOptions,
+    options: linop_db_core::data_grid_sql::DataGridConditionalUpdateSqlOptions,
 ) -> Result<Option<String>, String> {
-    Ok(dbx_core::data_grid_sql::build_data_grid_conditional_update_sql(options))
+    Ok(linop_db_core::data_grid_sql::build_data_grid_conditional_update_sql(options))
 }
 
 #[tauri::command]
 pub fn build_hive_table_properties_sql(
-    options: dbx_core::data_grid_sql::HiveTablePropertiesSqlOptions,
+    options: linop_db_core::data_grid_sql::HiveTablePropertiesSqlOptions,
 ) -> Result<String, String> {
-    Ok(dbx_core::data_grid_sql::build_hive_table_properties_sql(options))
+    Ok(linop_db_core::data_grid_sql::build_hive_table_properties_sql(options))
 }
 
 #[tauri::command]
 pub fn build_export_insert_statements(
-    options: dbx_core::database_export::BuildExportInsertStatementsOptions,
+    options: linop_db_core::database_export::BuildExportInsertStatementsOptions,
 ) -> Result<Vec<String>, String> {
-    dbx_core::database_export::build_export_insert_statements(options)
+    linop_db_core::database_export::build_export_insert_statements(options)
 }
 
 #[tauri::command]
 pub fn build_export_sql_insert(
-    options: dbx_core::database_export::BuildExportSqlInsertOptions,
+    options: linop_db_core::database_export::BuildExportSqlInsertOptions,
 ) -> Result<String, String> {
-    dbx_core::database_export::build_export_sql_insert(options)
+    linop_db_core::database_export::build_export_sql_insert(options)
 }
 
 #[tauri::command]
 pub async fn build_database_sql_export(
-    state: tauri::State<'_, std::sync::Arc<dbx_core::connection::AppState>>,
-    mut options: dbx_core::database_export::BuildDatabaseSqlExportOptions,
+    state: tauri::State<'_, std::sync::Arc<linop_db_core::connection::AppState>>,
+    mut options: linop_db_core::database_export::BuildDatabaseSqlExportOptions,
 ) -> Result<String, String> {
     // Sort tables by FK dependency when connection info is available.
     if let (Some(ref conn_id), Some(ref database), Some(ref schema)) =
@@ -1272,7 +1272,7 @@ pub async fn build_database_sql_export(
         if options.tables.len() > 1 {
             let table_names: Vec<String> = options.tables.iter().filter_map(|t| t.table_name.clone()).collect();
             if table_names.len() > 1 {
-                if let Ok(sorted_names) = dbx_core::transfer::sort_tables_by_fk_dependency(
+                if let Ok(sorted_names) = linop_db_core::transfer::sort_tables_by_fk_dependency(
                     &state,
                     conn_id,
                     database,
@@ -1292,12 +1292,12 @@ pub async fn build_database_sql_export(
             }
         }
     }
-    dbx_core::database_export::build_database_sql_export(options)
+    linop_db_core::database_export::build_database_sql_export(options)
 }
 
 #[tauri::command]
 pub async fn get_explain_info(
-    state: tauri::State<'_, std::sync::Arc<dbx_core::connection::AppState>>,
+    state: tauri::State<'_, std::sync::Arc<linop_db_core::connection::AppState>>,
     connection_id: String,
     database: Option<String>,
     schema: Option<String>,
@@ -1306,7 +1306,7 @@ pub async fn get_explain_info(
     execution_id: Option<String>,
     timeout_secs: Option<u64>,
 ) -> Result<String, String> {
-    dbx_core::agent_explain::get_agent_explain_info_core_with_execution_id(
+    linop_db_core::agent_explain::get_agent_explain_info_core_with_execution_id(
         &state,
         &connection_id,
         database.as_deref(),
@@ -1321,20 +1321,20 @@ pub async fn get_explain_info(
 
 #[tauri::command]
 pub async fn get_plugin_plan_capabilities(
-    state: tauri::State<'_, std::sync::Arc<dbx_core::connection::AppState>>,
+    state: tauri::State<'_, std::sync::Arc<linop_db_core::connection::AppState>>,
     connection_id: String,
-) -> Result<dbx_core::query::plugin_plan::PluginPlanCapabilities, String> {
-    dbx_core::query::plugin_plan::plugin_plan_capabilities(&state, &connection_id).await
+) -> Result<linop_db_core::query::plugin_plan::PluginPlanCapabilities, String> {
+    linop_db_core::query::plugin_plan::plugin_plan_capabilities(&state, &connection_id).await
 }
 
 /// Read-only estimated plan acquisition for the plugin Host API. The request
 /// carries the original SQL only; the host generates and owns the EXPLAIN.
 #[tauri::command]
 pub async fn get_plugin_estimated_plan(
-    state: tauri::State<'_, std::sync::Arc<dbx_core::connection::AppState>>,
-    request: dbx_core::query::plugin_plan::PluginPlanRequest,
-) -> Result<dbx_core::query::plugin_plan::PluginPlanResult, String> {
-    dbx_core::query::plugin_plan::explain_estimated_plan(&state, request).await
+    state: tauri::State<'_, std::sync::Arc<linop_db_core::connection::AppState>>,
+    request: linop_db_core::query::plugin_plan::PluginPlanRequest,
+) -> Result<linop_db_core::query::plugin_plan::PluginPlanResult, String> {
+    linop_db_core::query::plugin_plan::explain_estimated_plan(&state, request).await
 }
 
 /// Read-only data query for the plugin Host API (`host.data:read`). The
@@ -1342,34 +1342,34 @@ pub async fn get_plugin_estimated_plan(
 /// permission, the user's grant, and the read-only statement gate.
 #[tauri::command]
 pub async fn query_plugin_data(
-    state: tauri::State<'_, std::sync::Arc<dbx_core::connection::AppState>>,
+    state: tauri::State<'_, std::sync::Arc<linop_db_core::connection::AppState>>,
     plugin_id: String,
-    request: dbx_core::query::plugin_data::PluginDataQueryRequest,
-) -> Result<dbx_core::query::plugin_data::PluginDataQueryResult, String> {
-    dbx_core::query::plugin_data::query_plugin_data(&state, &plugin_id, request).await
+    request: linop_db_core::query::plugin_data::PluginDataQueryRequest,
+) -> Result<linop_db_core::query::plugin_data::PluginDataQueryResult, String> {
+    linop_db_core::query::plugin_data::query_plugin_data(&state, &plugin_id, request).await
 }
 
 #[tauri::command]
 pub async fn get_plugin_data_grants(
-    state: tauri::State<'_, std::sync::Arc<dbx_core::connection::AppState>>,
+    state: tauri::State<'_, std::sync::Arc<linop_db_core::connection::AppState>>,
     plugin_id: String,
-) -> Result<Vec<dbx_core::query::plugin_data::PluginDataGrant>, String> {
-    dbx_core::query::plugin_data::list_plugin_data_grants(&state, &plugin_id).await
+) -> Result<Vec<linop_db_core::query::plugin_data::PluginDataGrant>, String> {
+    linop_db_core::query::plugin_data::list_plugin_data_grants(&state, &plugin_id).await
 }
 
 #[tauri::command]
 pub async fn set_plugin_data_grant(
-    state: tauri::State<'_, std::sync::Arc<dbx_core::connection::AppState>>,
+    state: tauri::State<'_, std::sync::Arc<linop_db_core::connection::AppState>>,
     plugin_id: String,
     connection_id: String,
     granted: bool,
-) -> Result<Vec<dbx_core::query::plugin_data::PluginDataGrant>, String> {
-    dbx_core::query::plugin_data::set_plugin_data_grant(&state, &plugin_id, &connection_id, granted).await
+) -> Result<Vec<linop_db_core::query::plugin_data::PluginDataGrant>, String> {
+    linop_db_core::query::plugin_data::set_plugin_data_grant(&state, &plugin_id, &connection_id, granted).await
 }
 
 #[tauri::command]
 pub fn build_create_user_sql(username: String, password: String, tablespace: String) -> Result<String, String> {
-    Ok(dbx_core::db_admin_sql::build_create_user_sql(&username, &password, &tablespace))
+    Ok(linop_db_core::db_admin_sql::build_create_user_sql(&username, &password, &tablespace))
 }
 
 #[cfg(test)]
@@ -1378,13 +1378,13 @@ mod tests {
     use std::sync::Arc;
 
     async fn test_app_state() -> Arc<AppState> {
-        let dir = std::env::temp_dir().join(format!("dbx-query-test-{}", uuid::Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("linop-db-query-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.unwrap();
         Arc::new(AppState::new_with_plugin_dir(storage, dir.join("plugins")))
     }
 
-    fn snapshot_request(format: &str) -> dbx_core::query::snapshot_export::SnapshotExportRequest {
+    fn snapshot_request(format: &str) -> linop_db_core::query::snapshot_export::SnapshotExportRequest {
         serde_json::from_value(serde_json::json!({
             "context": {"connectionId":"original", "database":"APP", "valueRef":""},
             "format": format, "columns":["C"], "rows":[["complete"]], "cells":[]

@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
-const packageDirectory = resolve(process.argv[2] ?? "/tmp/dbx-pack-check");
-const expectedPackages = ["@dbx-app/cli", "@dbx-app/mcp-server", "@dbx-app/plugin-cli"];
+const packageDirectory = resolve(process.argv[2] ?? "/tmp/linop-db-pack-check");
+const expectedPackages = ["@linop-db-app/cli", "@linop-db-app/mcp-server", "@linop-db-app/plugin-cli"];
 const tarballs = readdirSync(packageDirectory)
   .filter((file) => file.endsWith(".tgz"))
   .map((file) => join(packageDirectory, file))
@@ -14,8 +14,8 @@ if (tarballs.length !== expectedPackages.length) {
   throw new Error(`Expected ${expectedPackages.length} package tarballs, found ${tarballs.length}: ${tarballs.map(basename).join(", ")}`);
 }
 
-const installDirectory = mkdtempSync(join(tmpdir(), "dbx-package-install-"));
-writeFileSync(join(installDirectory, "package.json"), `${JSON.stringify({ name: "dbx-package-install-check", private: true }, null, 2)}\n`);
+const installDirectory = mkdtempSync(join(tmpdir(), "linop-db-package-install-"));
+writeFileSync(join(installDirectory, "package.json"), `${JSON.stringify({ name: "linop-db-package-install-check", private: true }, null, 2)}\n`);
 
 // Installing every release tarball together verifies workspace dependencies are publishable and semver-compatible.
 const install = spawnSync("npm", ["install", "--ignore-scripts", "--no-audit", "--no-fund", ...tarballs], { cwd: installDirectory, stdio: "inherit" });

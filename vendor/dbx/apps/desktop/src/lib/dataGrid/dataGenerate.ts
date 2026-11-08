@@ -2022,7 +2022,7 @@ function isTdengineStableGenerate(config: TableGenerateConfig, databaseType?: Da
 
 function generateTdengineChildTableName(): string {
   const randomSuffix = Math.random().toString(36).slice(2, 8).padEnd(6, "0");
-  return `dbx_gen_${Date.now().toString(36)}_${randomSuffix}`;
+  return `linop_db_gen_${Date.now().toString(36)}_${randomSuffix}`;
 }
 
 /**

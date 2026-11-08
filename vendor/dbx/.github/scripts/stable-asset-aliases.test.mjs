@@ -21,7 +21,7 @@ test("a beta tag aliases every user-facing package to the stable file name", () 
 });
 
 test("applying aliases copies the packages and tolerates an existing alias", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "dbx-aliases-"));
+  const directory = await mkdtemp(join(tmpdir(), "linop-db-aliases-"));
   for (const [source] of stableAliasPairs(tag)) await writeFile(join(directory, source), source);
   await writeFile(join(directory, "DBX_0.6.63_x64-setup.exe"), "already there");
 
@@ -32,6 +32,6 @@ test("applying aliases copies the packages and tolerates an existing alias", asy
 });
 
 test("applying aliases fails when a beta package is missing", async () => {
-  const directory = await mkdtemp(join(tmpdir(), "dbx-aliases-"));
+  const directory = await mkdtemp(join(tmpdir(), "linop-db-aliases-"));
   assert.throws(() => applyStableAliases(tag, directory), /Missing beta package asset/);
 });

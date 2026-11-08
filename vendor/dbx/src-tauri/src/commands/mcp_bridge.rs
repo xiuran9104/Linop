@@ -1,4 +1,4 @@
-use dbx_core::mcp_access::{McpAccessLevel, McpCallDecision, McpConfirmPolicy};
+use linop_db_core::mcp_access::{McpAccessLevel, McpCallDecision, McpConfirmPolicy};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -11,8 +11,8 @@ use tokio::sync::oneshot;
 
 use super::connection::AppState;
 
-use dbx_core::mcp_policy::McpConnectionGroupPath;
-use dbx_core::storage::{McpDatabaseScope, McpGlobalPolicy};
+use linop_db_core::mcp_policy::McpConnectionGroupPath;
+use linop_db_core::storage::{McpDatabaseScope, McpGlobalPolicy};
 
 const BIND_ADDR: &str = "127.0.0.1:0";
 const MCP_BRIDGE_PORT_FILE: &str = "mcp-bridge-port";
@@ -63,7 +63,7 @@ struct SqlApprovalEvent {
 }
 
 /// A high-risk non-SQL tool call awaiting confirmation (plugin tool declared
-/// `full`, dangerous Redis command). Mirrors `dbx_mcp::approval::ToolApprovalRequest`.
+/// `full`, dangerous Redis command). Mirrors `linop_db_mcp::approval::ToolApprovalRequest`.
 #[derive(Deserialize)]
 struct ToolApprovalRequest {
     kind: String,
@@ -335,7 +335,7 @@ pub struct McpExecuteQueryEvent {
     pub connection_id: String,
     pub database: String,
     pub sql: String,
-    pub results: Vec<dbx_core::db::QueryResult>,
+    pub results: Vec<linop_db_core::db::QueryResult>,
 }
 
 pub fn start(app_handle: AppHandle, state: Arc<AppState>, data_dir: PathBuf) {
@@ -350,7 +350,7 @@ pub fn start(app_handle: AppHandle, state: Arc<AppState>, data_dir: PathBuf) {
         log::info!("MCP bridge listening on {BIND_ADDR}");
         let actual_port = listener.local_addr().map(|a| a.port()).unwrap_or(0);
         log::info!("MCP bridge assigned port {actual_port}");
-        // Publish into DBX's resolved data dir so DBX_DATA_DIR and portable mode share the same discovery file.
+        // Publish into DBX's resolved data dir so LINOP_DB_DATA_DIR and portable mode share the same discovery file.
         if let Err(err) = write_port_file(&data_dir, actual_port) {
             log::warn!("MCP bridge failed to write port file in {}: {err}", data_dir.display());
         }
@@ -522,7 +522,7 @@ fn parse_content_length(header_block: &str) -> usize {
 /// `Content-Type: application/json` — either one marks a fire-and-forget
 /// CSRF attempt. A `Host` outside the loopback forms marks DNS rebinding.
 /// All are refused before routing; ordinary local clients (the plugin
-/// sidecars, dbx-mcp, dbx-cli) send Host + application/json and no Origin.
+/// sidecars, linop-db-mcp, linop-db-cli) send Host + application/json and no Origin.
 fn bridge_request_is_local_client(first_line: &str, head: &str) -> bool {
     let header_value = |name: &str| -> Option<String> {
         head.lines().skip(1).find_map(|line| {
@@ -570,15 +570,15 @@ mod tests {
         resolve_call_plugin_target, resolve_connection, resolve_mongo_database, resolve_mongo_target_values,
         sql_approvals, take_sql_approval, write_port_file, AppState, SqlApprovalGrant, TimedSqlApproval,
     };
-    use dbx_core::models::connection::{ConnectionConfig, DatabaseType};
-    use dbx_core::storage::{McpConnectionPolicy, McpDatabasePolicy, McpDatabaseScope, McpGlobalPolicy};
+    use linop_db_core::models::connection::{ConnectionConfig, DatabaseType};
+    use linop_db_core::storage::{McpConnectionPolicy, McpDatabasePolicy, McpDatabaseScope, McpGlobalPolicy};
     use std::sync::Arc;
     use std::time::{Duration, Instant};
 
     #[tokio::test]
     async fn tool_approval_bridge_keeps_resource_overrides_under_global_read() {
         let root = tempfile::tempdir().unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&root.path().join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&root.path().join("storage.db")).await.unwrap();
         let config = mysql_config(false);
         storage.save_connections(std::slice::from_ref(&config)).await.unwrap();
         let state = Arc::new(AppState::new_with_plugin_dir(storage, root.path().join("plugins")));
@@ -589,7 +589,7 @@ mod tests {
         state.storage.save_mcp_global_policy(&policy).await.unwrap();
         let mut request = super::ToolApprovalRequest {
             kind: "product_tool".into(),
-            tool: "dbx_nacos_delete_config".into(),
+            tool: "linop_db_nacos_delete_config".into(),
             plugin: None,
             connection_id: Some(config.id.clone()),
             database: Some("dev".into()),
@@ -616,9 +616,9 @@ mod tests {
 
     #[tokio::test]
     async fn call_safety_bridge_requires_confirmation_without_elevating_permissions() {
-        use dbx_core::mcp_access::McpConfirmPolicy;
+        use linop_db_core::mcp_access::McpConfirmPolicy;
         let root = tempfile::tempdir().unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&root.path().join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&root.path().join("storage.db")).await.unwrap();
         let config = mysql_config(false);
         storage.save_connections(std::slice::from_ref(&config)).await.unwrap();
         let state = Arc::new(AppState::new_with_plugin_dir(storage, root.path().join("plugins")));
@@ -727,7 +727,7 @@ mod tests {
     #[test]
     fn writes_bridge_port_file_to_resolved_data_dir() {
         let root = std::env::temp_dir().join(format!(
-            "dbx-mcp-bridge-port-test-{}-{}",
+            "linop-db-mcp-bridge-port-test-{}-{}",
             std::process::id(),
             uuid::Uuid::new_v4()
         ));
@@ -965,12 +965,12 @@ mod tests {
     #[tokio::test]
     async fn resolve_connection_refreshes_read_only_from_storage() {
         let root = std::env::temp_dir().join(format!(
-            "dbx-mcp-bridge-connection-refresh-test-{}-{}",
+            "linop-db-mcp-bridge-connection-refresh-test-{}-{}",
             std::process::id(),
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&root).unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&root.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&root.join("storage.db")).await.unwrap();
         let mut config = mysql_config(false);
         storage.save_connections(&[config.clone()]).await.unwrap();
         let state = Arc::new(AppState::new_with_plugin_dir(storage, root.join("plugins")));
@@ -1034,7 +1034,7 @@ mod tests {
                 read_only: false,
                 allow_dangerous_sql: false,
                 execution_mode_configured: true,
-                execution_mode_policy_version: Some(dbx_core::mcp_policy::MCP_EXECUTION_POLICY_VERSION),
+                execution_mode_policy_version: Some(linop_db_core::mcp_policy::MCP_EXECUTION_POLICY_VERSION),
                 database_scope: McpDatabaseScope::Selected,
                 allowed_databases: vec!["aa".to_string(), "aaa".to_string()],
                 database_policies: vec![
@@ -1054,12 +1054,12 @@ mod tests {
     #[tokio::test]
     async fn database_execution_policy_blocks_cross_database_mongo_aggregate_output() {
         let root = std::env::temp_dir().join(format!(
-            "dbx-mcp-bridge-database-policy-test-{}-{}",
+            "linop-db-mcp-bridge-database-policy-test-{}-{}",
             std::process::id(),
             uuid::Uuid::new_v4()
         ));
         std::fs::create_dir_all(&root).unwrap();
-        let storage = dbx_core::persistence::test_storage::open(&root.join("storage.db")).await.unwrap();
+        let storage = linop_db_core::persistence::test_storage::open(&root.join("storage.db")).await.unwrap();
         let mut config = mysql_config(false);
         config.id = "conn-1".to_string();
         storage.save_connections(&[config]).await.unwrap();
@@ -1070,7 +1070,7 @@ mod tests {
                     read_only: false,
                     allow_dangerous_sql: true,
                     execution_mode_configured: true,
-                    execution_mode_policy_version: Some(dbx_core::mcp_policy::MCP_EXECUTION_POLICY_VERSION),
+                    execution_mode_policy_version: Some(linop_db_core::mcp_policy::MCP_EXECUTION_POLICY_VERSION),
                     database_scope: McpDatabaseScope::Selected,
                     allowed_databases: vec!["operations".to_string(), "reporting".to_string()],
                     database_policies: vec![McpDatabasePolicy {
@@ -1284,13 +1284,13 @@ async fn load_mcp_policy_context(
 ) -> Result<(McpGlobalPolicy, HashMap<String, McpConnectionGroupPath>), String> {
     let policy = load_mcp_policy(state).await?;
     let group_paths = match state.storage.load_sidebar_layout().await {
-        Ok(Some(layout)) => dbx_core::mcp_policy::connection_group_paths(&layout),
+        Ok(Some(layout)) => linop_db_core::mcp_policy::connection_group_paths(&layout),
         Ok(None) => Ok(HashMap::new()),
         Err(error) => Err(error),
     };
     match group_paths {
         Ok(paths) => Ok((policy, paths)),
-        Err(error) if dbx_core::mcp_policy::policy_uses_connection_groups(&policy) => {
+        Err(error) if linop_db_core::mcp_policy::policy_uses_connection_groups(&policy) => {
             Err(mcp_policy_unavailable(error))
         }
         Err(_) => Ok((policy, HashMap::new())),
@@ -1315,7 +1315,7 @@ fn ensure_connection_in_mcp_scope_with_groups(
     group_path: Option<&McpConnectionGroupPath>,
     connection_id: &str,
 ) -> Result<(), String> {
-    if !dbx_core::mcp_policy::policy_allows_connection(policy, group_path, connection_id) {
+    if !linop_db_core::mcp_policy::policy_allows_connection(policy, group_path, connection_id) {
         return Err(format!(
             "CONNECTION_OUT_OF_SCOPE: connection '{connection_id}' is not allowed by DBX MCP settings"
         ));
@@ -1352,7 +1352,7 @@ fn effective_database_execution_policy_with_groups(
     connection_id: &str,
     database: &str,
 ) -> (bool, bool) {
-    dbx_core::mcp_policy::effective_database_execution_policy_with_groups(policy, group_ids, connection_id, database)
+    linop_db_core::mcp_policy::effective_database_execution_policy_with_groups(policy, group_ids, connection_id, database)
 }
 
 async fn ensure_mcp_write_allowed(
@@ -1392,7 +1392,7 @@ async fn ensure_mcp_write_allowed_with_risk(
             config.name
         ));
     }
-    if dbx_core::production_safety::is_production_database(config, database) {
+    if linop_db_core::production_safety::is_production_database(config, database) {
         return Err(format!("PRODUCTION_DATABASE_READ_ONLY: {action} blocked for production database '{database}'."));
     }
     Ok(())
@@ -1440,7 +1440,7 @@ async fn ensure_mcp_mongo_pipeline_target_allowed_by_id(
 ) -> Result<(), String> {
     let (policy, group_paths) = load_mcp_policy_context(state).await?;
     ensure_connection_in_mcp_scope_with_groups(&policy, group_paths.get(connection_id), connection_id)?;
-    dbx_core::mcp_policy::ensure_mongo_database_execution_scope(&policy, connection_id, database, pipeline_json)?;
+    linop_db_core::mcp_policy::ensure_mongo_database_execution_scope(&policy, connection_id, database, pipeline_json)?;
     for target_database in mongo_pipeline_output_databases(pipeline_json, database)? {
         ensure_database_in_mcp_scope(&policy, connection_id, &target_database)?;
     }
@@ -1449,7 +1449,7 @@ async fn ensure_mcp_mongo_pipeline_target_allowed_by_id(
         .iter()
         .find(|config| config.id == connection_id)
         .ok_or_else(|| format!("Connection with id '{connection_id}' not found"))?;
-    if dbx_core::production_safety::mongo_pipeline_targets_production_database(config, database, pipeline_json) {
+    if linop_db_core::production_safety::mongo_pipeline_targets_production_database(config, database, pipeline_json) {
         return Err(
             "PRODUCTION_DATABASE_READ_ONLY: MongoDB aggregate write targeting production scope is blocked.".to_string()
         );
@@ -1458,7 +1458,7 @@ async fn ensure_mcp_mongo_pipeline_target_allowed_by_id(
 }
 
 fn mongo_pipeline_output_databases(pipeline_json: &str, active_database: &str) -> Result<Vec<String>, String> {
-    dbx_core::mcp_policy::mongo_pipeline_output_databases(pipeline_json, active_database)
+    linop_db_core::mcp_policy::mongo_pipeline_output_databases(pipeline_json, active_database)
 }
 
 async fn ensure_mcp_write_allowed_by_id_with_risk(
@@ -1497,7 +1497,7 @@ pub(crate) async fn ensure_mcp_mongo_bulk_write_allowed_by_id(
     database: &str,
     operations_json: &str,
 ) -> Result<(), String> {
-    let command = dbx_core::mongo_shell::MongoCommand::BulkWrite {
+    let command = linop_db_core::mongo_shell::MongoCommand::BulkWrite {
         collection: String::new(),
         operations: operations_json.to_string(),
         options: None,
@@ -1758,7 +1758,7 @@ async fn ensure_mcp_sql_allowed_with_approval(
     ensure_database_in_mcp_scope(&policy, &config.id, database)?;
     if let Some(rule) = policy.connection_policies.iter().find(|rule| rule.connection_id == config.id) {
         if rule.database_scope == McpDatabaseScope::Selected
-            && dbx_core::production_safety::sql_references_disallowed_database_for_connection(
+            && linop_db_core::production_safety::sql_references_disallowed_database_for_connection(
                 sql,
                 config,
                 database,
@@ -1772,11 +1772,11 @@ async fn ensure_mcp_sql_allowed_with_approval(
         }
     }
     ensure_mcp_sql_database_switch_allowed(config.db_type, sql)?;
-    let risk = dbx_core::sql_risk::classify_sql_risk_for_database(sql, config.db_type)
+    let risk = linop_db_core::sql_risk::classify_sql_risk_for_database(sql, config.db_type)
         .map_err(|error| format!("SQL_BLOCKED: {error}"))?;
-    let is_write = risk != dbx_core::sql_risk::SqlRisk::ReadOnly
-        || dbx_core::query_execution_sql::is_write_sql_for_database(sql, config.db_type);
-    dbx_core::mcp_policy::ensure_sql_database_execution_scope(&policy, config, database, sql)?;
+    let is_write = risk != linop_db_core::sql_risk::SqlRisk::ReadOnly
+        || linop_db_core::query_execution_sql::is_write_sql_for_database(sql, config.db_type);
+    linop_db_core::mcp_policy::ensure_sql_database_execution_scope(&policy, config, database, sql)?;
     let group_ids = group_path.map(|path| path.ids.as_slice()).unwrap_or_default();
     let (read_only, allow_dangerous_sql) =
         effective_database_execution_policy_with_groups(&policy, group_ids, &config.id, database);
@@ -1785,8 +1785,8 @@ async fn ensure_mcp_sql_allowed_with_approval(
             "MCP_READ_ONLY: MCP execution permission for database '{database}' is read-only. SQL write blocked."
         ));
     }
-    let high_risk = risk == dbx_core::sql_risk::SqlRisk::Ddl
-        || dbx_core::sql_risk::is_dangerous_sql_for_database(sql, config.db_type);
+    let high_risk = risk == linop_db_core::sql_risk::SqlRisk::Ddl
+        || linop_db_core::sql_risk::is_dangerous_sql_for_database(sql, config.db_type);
     if high_risk {
         match policy.confirmation_policy().decide(
             McpAccessLevel::from_flags(read_only, allow_dangerous_sql),
@@ -1803,7 +1803,7 @@ async fn ensure_mcp_sql_allowed_with_approval(
         }
     }
     ensure_mcp_connection_sql_write_allowed(config, is_write)?;
-    if is_write && dbx_core::production_safety::targets_production_database(config, database, sql) {
+    if is_write && linop_db_core::production_safety::targets_production_database(config, database, sql) {
         return Err("PRODUCTION_DATABASE_READ_ONLY: SQL write targeting production scope is blocked.".to_string());
     }
     Ok(())
@@ -1836,9 +1836,9 @@ async fn handle_sql_approval(app: &AppHandle, state: &Arc<AppState>, body: &str,
     let group_ids = group_paths.get(&config.id).map(|path| path.ids.as_slice()).unwrap_or_default();
     let (read_only, allow_dangerous) =
         effective_database_execution_policy_with_groups(&policy, group_ids, &config.id, &req.database);
-    let high_risk = dbx_core::sql_risk::classify_sql_risk_for_database(&req.sql, config.db_type)
-        .is_ok_and(|risk| risk == dbx_core::sql_risk::SqlRisk::Ddl)
-        || dbx_core::sql_risk::is_dangerous_sql_for_database(&req.sql, config.db_type);
+    let high_risk = linop_db_core::sql_risk::classify_sql_risk_for_database(&req.sql, config.db_type)
+        .is_ok_and(|risk| risk == linop_db_core::sql_risk::SqlRisk::Ddl)
+        || linop_db_core::sql_risk::is_dangerous_sql_for_database(&req.sql, config.db_type);
     let confirmation = policy.confirmation_policy();
     let allow_timed = confirmation == McpConfirmPolicy::Full;
     if !high_risk
@@ -1981,7 +1981,7 @@ async fn tool_approval_target(state: &Arc<AppState>, req: &ToolApprovalRequest) 
     if config.read_only {
         return Err("CONNECTION_READ_ONLY: The connection has read-only protection enabled.".to_string());
     }
-    if dbx_core::production_safety::is_production_database(&config, req.database.as_deref().unwrap_or_default()) {
+    if linop_db_core::production_safety::is_production_database(&config, req.database.as_deref().unwrap_or_default()) {
         return Err("PRODUCTION_WRITE_BLOCKED: The target has production protection enabled.".to_string());
     }
     Ok(Some(config.name))
@@ -2087,7 +2087,7 @@ fn ensure_mcp_sql_database_switch_allowed(
     database_type: crate::models::connection::DatabaseType,
     sql: &str,
 ) -> Result<(), String> {
-    if dbx_core::sql_risk::mcp_sql_has_forbidden_database_switch(sql, database_type) {
+    if linop_db_core::sql_risk::mcp_sql_has_forbidden_database_switch(sql, database_type) {
         return Err("SQL_BLOCKED: MCP does not allow USE or persistent database switching.".to_string());
     }
     Ok(())
@@ -2420,9 +2420,9 @@ async fn handle_execute_query(app: &AppHandle, state: &Arc<AppState>, body: &str
         return;
     }
     let statements = if config.db_type == crate::models::connection::DatabaseType::SqlServer {
-        dbx_core::sql::split_sql_batches(&req.sql)
+        linop_db_core::sql::split_sql_batches(&req.sql)
     } else {
-        dbx_core::sql::split_sql_statements_for_database(&req.sql, config.db_type)
+        linop_db_core::sql::split_sql_statements_for_database(&req.sql, config.db_type)
     };
     let statements = if statements.is_empty() { vec![req.sql.clone()] } else { statements };
     let mut results = Vec::with_capacity(statements.len());
@@ -2438,7 +2438,7 @@ async fn handle_execute_query(app: &AppHandle, state: &Arc<AppState>, body: &str
             respond(stream, "403 Forbidden", &e).await;
             return;
         }
-        match dbx_core::query::execute_sql_statement(state, &current.id, &database, &statement, None, None).await {
+        match linop_db_core::query::execute_sql_statement(state, &current.id, &database, &statement, None, None).await {
             Ok(result) => results.push(result),
             Err(e) => {
                 respond(stream, "500 Internal Server Error", &format!("QUERY_ERROR: {e}")).await;
@@ -2454,7 +2454,7 @@ async fn handle_execute_query(app: &AppHandle, state: &Arc<AppState>, body: &str
 fn ensure_mcp_execute_and_show_supported(
     database_type: &crate::models::connection::DatabaseType,
 ) -> Result<(), &'static str> {
-    if dbx_core::query_execution_sql::supports_sql_query(*database_type) {
+    if linop_db_core::query_execution_sql::supports_sql_query(*database_type) {
         Ok(())
     } else {
         Err(MCP_EXECUTE_AND_SHOW_SQL_ONLY)
@@ -2482,7 +2482,7 @@ async fn handle_list_tables_data(state: &Arc<AppState>, body: &str, stream: &mut
         respond_error(stream, "403 Forbidden", &e).await;
         return;
     }
-    match dbx_core::schema::list_tables_core(state, &config.id, &database, &schema, None, None, None, None, None).await
+    match linop_db_core::schema::list_tables_core(state, &config.id, &database, &schema, None, None, None, None, None).await
     {
         Ok(tables) => respond_json(stream, &tables).await,
         Err(e) => respond_error(stream, "500 Internal Server Error", &e).await,
@@ -2510,7 +2510,7 @@ async fn handle_describe_table_data(state: &Arc<AppState>, body: &str, stream: &
         respond_error(stream, "403 Forbidden", &e).await;
         return;
     }
-    match dbx_core::schema::get_columns_core(state, &config.id, &database, &schema, &req.table).await {
+    match linop_db_core::schema::get_columns_core(state, &config.id, &database, &schema, &req.table).await {
         Ok(columns) => respond_json(stream, &columns).await,
         Err(e) => respond_error(stream, "500 Internal Server Error", &e).await,
     }
@@ -2529,7 +2529,7 @@ async fn handle_mongo_list_collections_data(state: &Arc<AppState>, body: &str, s
     else {
         return;
     };
-    match dbx_core::mongo_ops::mongo_list_collections_core(state, &connection_id, &database).await {
+    match linop_db_core::mongo_ops::mongo_list_collections_core(state, &connection_id, &database).await {
         Ok(collections) => respond_json(stream, &collections).await,
         Err(e) => respond_error(stream, "500 Internal Server Error", &e).await,
     }
@@ -2548,7 +2548,7 @@ async fn handle_mongo_find_documents_data(state: &Arc<AppState>, body: &str, str
     else {
         return;
     };
-    match dbx_core::mongo_ops::mongo_find_documents_core(
+    match linop_db_core::mongo_ops::mongo_find_documents_core(
         state,
         &connection_id,
         &database,
@@ -2580,7 +2580,7 @@ async fn handle_mongo_count_documents_data(state: &Arc<AppState>, body: &str, st
     else {
         return;
     };
-    match dbx_core::mongo_ops::mongo_count_documents_core(
+    match linop_db_core::mongo_ops::mongo_count_documents_core(
         state,
         &connection_id,
         &database,
@@ -2608,7 +2608,7 @@ async fn handle_mongo_server_version_data(state: &Arc<AppState>, body: &str, str
     else {
         return;
     };
-    match dbx_core::mongo_ops::mongo_server_version_core(state, &connection_id, &database).await {
+    match linop_db_core::mongo_ops::mongo_server_version_core(state, &connection_id, &database).await {
         Ok(version) => respond_json(stream, &version).await,
         Err(e) => respond_error(stream, "500 Internal Server Error", &e).await,
     }
@@ -2627,7 +2627,7 @@ async fn handle_mongo_collection_stats_data(state: &Arc<AppState>, body: &str, s
     else {
         return;
     };
-    match dbx_core::mongo_ops::mongo_collection_stats_core(state, &connection_id, &database, &req.collection, req.scale)
+    match linop_db_core::mongo_ops::mongo_collection_stats_core(state, &connection_id, &database, &req.collection, req.scale)
         .await
     {
         Ok(result) => respond_json(stream, &result).await,
@@ -2653,7 +2653,7 @@ async fn handle_mongo_aggregate_documents_data(state: &Arc<AppState>, body: &str
         respond_error(stream, "403 Forbidden", &e).await;
         return;
     }
-    match dbx_core::mongo_ops::mongo_aggregate_documents_core(
+    match linop_db_core::mongo_ops::mongo_aggregate_documents_core(
         state,
         &connection_id,
         &database,
@@ -2682,7 +2682,7 @@ async fn handle_mongo_distinct_data(state: &Arc<AppState>, body: &str, stream: &
     else {
         return;
     };
-    match dbx_core::mongo_ops::mongo_distinct_core(
+    match linop_db_core::mongo_ops::mongo_distinct_core(
         state,
         &connection_id,
         &database,
@@ -2714,7 +2714,7 @@ async fn handle_mongo_create_index_data(state: &Arc<AppState>, body: &str, strea
         respond_error(stream, "403 Forbidden", &e).await;
         return;
     }
-    match dbx_core::mongo_ops::mongo_create_index_core(
+    match linop_db_core::mongo_ops::mongo_create_index_core(
         state,
         &connection_id,
         &database,
@@ -2746,7 +2746,7 @@ async fn handle_mongo_drop_indexes_data(state: &Arc<AppState>, body: &str, strea
         respond_error(stream, "403 Forbidden", &e).await;
         return;
     }
-    match dbx_core::mongo_ops::mongo_drop_indexes_core(
+    match linop_db_core::mongo_ops::mongo_drop_indexes_core(
         state,
         &connection_id,
         &database,
@@ -2779,7 +2779,7 @@ async fn handle_mongo_drop_collection_data(state: &Arc<AppState>, body: &str, st
         respond_error(stream, "403 Forbidden", &e).await;
         return;
     }
-    match dbx_core::mongo_ops::mongo_drop_collection_core(state, &connection_id, &database, &req.collection).await {
+    match linop_db_core::mongo_ops::mongo_drop_collection_core(state, &connection_id, &database, &req.collection).await {
         Ok(()) => respond_json(stream, &serde_json::json!({ "ok": true })).await,
         Err(e) => respond_error(stream, "500 Internal Server Error", &e).await,
     }
@@ -2802,7 +2802,7 @@ async fn handle_mongo_insert_documents_data(state: &Arc<AppState>, body: &str, s
         respond_error(stream, "403 Forbidden", &e).await;
         return;
     }
-    match dbx_core::mongo_ops::mongo_insert_documents_core(
+    match linop_db_core::mongo_ops::mongo_insert_documents_core(
         state,
         &connection_id,
         &database,
@@ -2838,7 +2838,7 @@ async fn handle_mongo_update_documents_data(state: &Arc<AppState>, body: &str, s
         respond_error(stream, "403 Forbidden", &e).await;
         return;
     }
-    match dbx_core::mongo_ops::mongo_update_documents_core(
+    match linop_db_core::mongo_ops::mongo_update_documents_core(
         state,
         &connection_id,
         &database,
@@ -2877,7 +2877,7 @@ async fn handle_mongo_delete_documents_data(state: &Arc<AppState>, body: &str, s
         respond_error(stream, "403 Forbidden", &e).await;
         return;
     }
-    match dbx_core::mongo_ops::mongo_delete_documents_core(
+    match linop_db_core::mongo_ops::mongo_delete_documents_core(
         state,
         &connection_id,
         &database,
@@ -2912,7 +2912,7 @@ async fn handle_redis_execute_command_data(state: &Arc<AppState>, body: &str, st
         respond_error(stream, "403 Forbidden", &e).await;
         return;
     }
-    let argv = match dbx_core::db::redis_driver::parse_command_argv(&req.command) {
+    let argv = match linop_db_core::db::redis_driver::parse_command_argv(&req.command) {
         Ok(argv) => argv,
         Err(error) => {
             respond_error(stream, "400 Bad Request", &format!("Invalid Redis command: {error}")).await;
@@ -2920,9 +2920,9 @@ async fn handle_redis_execute_command_data(state: &Arc<AppState>, body: &str, st
         }
     };
     let cmd_name = String::from_utf8_lossy(&argv[0]).to_ascii_uppercase();
-    let safety = dbx_core::db::redis_driver::classify_command(&cmd_name);
-    let centrally_approved_high_risk = safety == dbx_core::db::redis_driver::RedisCommandSafety::Blocked;
-    if safety != dbx_core::db::redis_driver::RedisCommandSafety::Allowed {
+    let safety = linop_db_core::db::redis_driver::classify_command(&cmd_name);
+    let centrally_approved_high_risk = safety == linop_db_core::db::redis_driver::RedisCommandSafety::Blocked;
+    if safety != linop_db_core::db::redis_driver::RedisCommandSafety::Allowed {
         let policy_check = if centrally_approved_high_risk {
             ensure_mcp_write_allowed_with_risk(state, &config, &database, &format!("Redis command '{cmd_name}'"), true)
                 .await
@@ -2934,7 +2934,7 @@ async fn handle_redis_execute_command_data(state: &Arc<AppState>, body: &str, st
             return;
         }
     }
-    match dbx_core::redis_ops::redis_execute_command_core(
+    match linop_db_core::redis_ops::redis_execute_command_core(
         state,
         &config.id,
         req.db,
@@ -2973,9 +2973,9 @@ async fn handle_execute_query_data(state: &Arc<AppState>, body: &str, stream: &m
         return;
     }
     let statements = if config.db_type == crate::models::connection::DatabaseType::SqlServer {
-        dbx_core::sql::split_sql_batches(&req.sql)
+        linop_db_core::sql::split_sql_batches(&req.sql)
     } else {
-        dbx_core::sql::split_sql_statements_for_database(&req.sql, config.db_type)
+        linop_db_core::sql::split_sql_statements_for_database(&req.sql, config.db_type)
     };
     let statements = if statements.is_empty() { vec![req.sql] } else { statements };
     let mut last_result = None;
@@ -2993,7 +2993,7 @@ async fn handle_execute_query_data(state: &Arc<AppState>, body: &str, stream: &m
             respond_error(stream, "403 Forbidden", &e).await;
             return;
         }
-        match dbx_core::query::execute_sql_statement(
+        match linop_db_core::query::execute_sql_statement(
             state,
             &current.id,
             &database,

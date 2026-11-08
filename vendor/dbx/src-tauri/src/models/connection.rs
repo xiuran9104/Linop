@@ -1,1 +1,1 @@
-pub use dbx_core::models::connection::*;
+pub use linop_db_core::models::connection::*;

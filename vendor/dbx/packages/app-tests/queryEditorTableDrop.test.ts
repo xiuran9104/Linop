@@ -22,7 +22,7 @@ test("creates table drag payload only when table context is complete", () => {
       databaseType: "sqlite",
     }),
     {
-      kind: "dbx-table-reference",
+      kind: "linop-db-table-reference",
       connectionId: "c1",
       database: "",
       tableName: "catalogless_table",
@@ -38,7 +38,7 @@ test("creates table drag payload only when table context is complete", () => {
       databaseType: "postgres",
     }),
     {
-      kind: "dbx-table-reference",
+      kind: "linop-db-table-reference",
       connectionId: "c1",
       database: "db",
       schema: "public",
@@ -59,7 +59,7 @@ test("creates column drag payload when column context is complete", () => {
       databaseType: "postgres",
     }),
     {
-      kind: "dbx-table-reference",
+      kind: "linop-db-table-reference",
       connectionId: "c1",
       database: "db",
       schema: "public",
@@ -83,25 +83,25 @@ test("round trips table drag payload and rejects unrelated data", () => {
   assert.deepEqual(
     parseTableReferencePayload(
       JSON.stringify({
-        kind: "dbx-table-reference",
+        kind: "linop-db-table-reference",
         connectionId: "c1",
         database: "",
         tableName: "orders",
       }),
     ),
     {
-      kind: "dbx-table-reference",
+      kind: "linop-db-table-reference",
       connectionId: "c1",
       database: "",
       tableName: "orders",
     },
   );
   assert.equal(parseTableReferencePayload("not json"), null);
-  assert.equal(parseTableReferencePayload(JSON.stringify({ kind: "dbx-table-reference", tableName: "orders" })), null);
+  assert.equal(parseTableReferencePayload(JSON.stringify({ kind: "linop-db-table-reference", tableName: "orders" })), null);
   assert.equal(
     parseTableReferencePayload(
       JSON.stringify({
-        kind: "dbx-table-reference",
+        kind: "linop-db-table-reference",
         connectionId: "c1",
         database: "db",
         tableName: "orders",
@@ -135,7 +135,7 @@ test("detects table drag payload type without reading drag data", () => {
 test("formats dropped table reference for the source database type", () => {
   assert.equal(
     tableReferenceInsertText({
-      kind: "dbx-table-reference",
+      kind: "linop-db-table-reference",
       connectionId: "c1",
       database: "db",
       schema: "sales",
@@ -146,7 +146,7 @@ test("formats dropped table reference for the source database type", () => {
   );
   assert.equal(
     tableReferenceInsertText({
-      kind: "dbx-table-reference",
+      kind: "linop-db-table-reference",
       connectionId: "c1",
       database: "db",
       schema: "dbo",
@@ -157,7 +157,7 @@ test("formats dropped table reference for the source database type", () => {
   );
   assert.equal(
     tableReferenceInsertText({
-      kind: "dbx-table-reference",
+      kind: "linop-db-table-reference",
       connectionId: "c1",
       database: "db",
       schema: "ignored",
@@ -171,7 +171,7 @@ test("formats dropped table reference for the source database type", () => {
 test("formats dropped column references for the source database type", () => {
   assert.equal(
     tableReferenceInsertText({
-      kind: "dbx-table-reference",
+      kind: "linop-db-table-reference",
       connectionId: "c1",
       database: "db",
       tableName: "users",

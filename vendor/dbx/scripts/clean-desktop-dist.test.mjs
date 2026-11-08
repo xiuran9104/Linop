@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 test("cleans only the script's desktop dist directory, even from another cwd", async (t) => {
-  const root = await mkdtemp(path.join(tmpdir(), "dbx-clean-desktop-dist-"));
+  const root = await mkdtemp(path.join(tmpdir(), "linop-db-clean-desktop-dist-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const scripts = path.join(root, "scripts");
   const dist = path.join(root, "dist");

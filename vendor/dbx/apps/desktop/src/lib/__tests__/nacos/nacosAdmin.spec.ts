@@ -95,9 +95,9 @@ describe("nacosAdmin helpers", () => {
   });
 
   it("formats instance metadata for a readable table without flattening nested values", () => {
-    expect(nacosMetadataTableRows({ role: "manual-test", source: "dbx-ui", ports: [8080, 8848], nested: { enabled: true } })).toEqual([
+    expect(nacosMetadataTableRows({ role: "manual-test", source: "linop-db-ui", ports: [8080, 8848], nested: { enabled: true } })).toEqual([
       { key: "role", value: "manual-test" },
-      { key: "source", value: "dbx-ui" },
+      { key: "source", value: "linop-db-ui" },
       { key: "ports", value: "[8080,8848]" },
       { key: "nested", value: '{"enabled":true}' },
     ]);

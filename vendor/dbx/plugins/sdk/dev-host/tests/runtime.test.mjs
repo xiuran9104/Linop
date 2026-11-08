@@ -8,7 +8,7 @@ import { startDevelopment, resolveGoWorkVersion } from "../runtime.mjs";
 import { Diagnostics } from "../diagnostics.mjs";
 
 async function project(t) {
-  const root = await mkdtemp(join(tmpdir(), "dbx-dev-runtime-"));
+  const root = await mkdtemp(join(tmpdir(), "linop-db-dev-runtime-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "ui"));
   await writeFile(join(root, "ui/index.html"), "<html><head></head><body>Test</body></html>");
@@ -28,7 +28,7 @@ async function project(t) {
 }
 
 test("go.work go directive tracks the newest module requirement", async (t) => {
-  const root = await mkdtemp(join(tmpdir(), "dbx-dev-gowork-"));
+  const root = await mkdtemp(join(tmpdir(), "linop-db-dev-gowork-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "newer"), { recursive: true });
   await mkdir(join(root, "older"), { recursive: true });
@@ -49,7 +49,7 @@ test("backend build go.work is written with the module go directive", async (t) 
     commands: { backend: { command: process.execPath, args: ["-e", "process.exit(0)"], goWorkspace: [moduleDirectory] } },
   });
   t.after(() => host.close());
-  const work = await readFile(join(options.project, ".dbx-dev", "go.work"), "utf8");
+  const work = await readFile(join(options.project, ".linop-db-dev", "go.work"), "utf8");
   assert.match(work, /^go 1\.25\.0$/m);
   assert.ok(work.includes(JSON.stringify(moduleDirectory)), "workspace lists the SDK module");
 });

@@ -38,7 +38,7 @@ async function mountEditor() {
   await vi.waitFor(() => expect(host.querySelector(".cm-editor")).not.toBeNull());
   const view = EditorView.findFromDOM(host.querySelector(".cm-editor") as HTMLElement)!;
   const root = host.querySelector<HTMLElement>("[data-query-editor-root]")!;
-  return { settings, view, fontSize: () => root.style.getPropertyValue("--dbx-editor-font-size") };
+  return { settings, view, fontSize: () => root.style.getPropertyValue("--linop-db-editor-font-size") };
 }
 
 function wheel(view: EditorView, timeStamp: number, init: WheelEventInit) {

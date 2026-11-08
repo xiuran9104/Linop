@@ -11,7 +11,7 @@ make db-verify DB=postgresql@17.4
 make db-down DB=postgresql@17.4
 ```
 
-每个产品都有专属的 `101xx` 至 `115xx` 默认宿主端口段，因此所有已提交配方可同时启动，且不会占用常见服务端口或在版本间冲突。默认密码统一为 `123456`，默认数据库名为 `dbx`；Redis 使用 DB 0 和 `dbx:` 键前缀。容器名统一为 `dbx-<product>-<version>`。`DB_PORT` 和 `DB_PASSWORD` 可覆盖主连接端口和密码；辅助端口使用各服务原有的专属环境变量覆盖。端口默认仅绑定 `127.0.0.1`；如需远程访问，必须显式设置 `DB_BIND_ADDRESS=0.0.0.0`，同时使用强密码和防火墙限制访问。`make db-reset` 会删除命名卷及其数据，因此必须显式传入 `CONFIRM=1`：
+每个产品都有专属的 `101xx` 至 `115xx` 默认宿主端口段，因此所有已提交配方可同时启动，且不会占用常见服务端口或在版本间冲突。默认密码统一为 `123456`，默认数据库名为 `dbx`；Redis 使用 DB 0 和 `dbx:` 键前缀。容器名统一为 `linop-db-<product>-<version>`。`DB_PORT` 和 `DB_PASSWORD` 可覆盖主连接端口和密码；辅助端口使用各服务原有的专属环境变量覆盖。端口默认仅绑定 `127.0.0.1`；如需远程访问，必须显式设置 `DB_BIND_ADDRESS=0.0.0.0`，同时使用强密码和防火墙限制访问。`make db-reset` 会删除命名卷及其数据，因此必须显式传入 `CONFIRM=1`：
 
 ```bash
 make db-reset DB=redis@7.4 CONFIRM=1

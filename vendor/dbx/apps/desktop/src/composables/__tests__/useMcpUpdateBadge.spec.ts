@@ -115,7 +115,7 @@ describe("useMcpUpdateBadge", () => {
     const badge = makeBadge(true);
     const refresh = badge.refreshMcpUpdateStatus();
 
-    badge.handleMcpStatusChanged(new CustomEvent("dbx-mcp-status-changed", { detail: { updateAvailable: true, requestId: settingsRequestId } }));
+    badge.handleMcpStatusChanged(new CustomEvent("linop-db-mcp-status-changed", { detail: { updateAvailable: true, requestId: settingsRequestId } }));
     expect(badge.mcpUpdateAvailable.value).toBe(false);
 
     pending.resolve(makeStatus(true));

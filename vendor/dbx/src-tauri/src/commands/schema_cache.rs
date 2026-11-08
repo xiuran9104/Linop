@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tauri::State;
 
-use dbx_core::connection::AppState;
+use linop_db_core::connection::AppState;
 
 #[tauri::command]
 pub async fn save_schema_cache(

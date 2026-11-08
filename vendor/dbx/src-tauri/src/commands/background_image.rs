@@ -67,7 +67,7 @@ fn copy_background_image_into(data_dir: &Path, source: &Path, extension: &str) -
 
 /// Copies the picked image into the resolved data dir so the background
 /// survives the original file being moved or deleted. The data dir must be
-/// resolved here (portable mode / DBX_DATA_DIR override) — the frontend only
+/// resolved here (portable mode / LINOP_DB_DATA_DIR override) — the frontend only
 /// knows the default app data dir.
 #[tauri::command]
 pub async fn save_background_image(app: AppHandle, source_path: String) -> Result<BackgroundImageInfo, String> {
@@ -134,7 +134,7 @@ mod tests {
 
     impl TempDir {
         fn new(label: &str) -> Self {
-            let path = std::env::temp_dir().join(format!("dbx-tauri-{label}-{}", uuid::Uuid::new_v4()));
+            let path = std::env::temp_dir().join(format!("linop-db-tauri-{label}-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&path).unwrap();
             Self(path)
         }

@@ -47,7 +47,7 @@ pub fn generate_signing_key() -> Result<SigningKeyMaterial, String> {
 
 pub fn main_entry() {
     if let Err(error) = run_cli(std::env::args().skip(1)) {
-        eprintln!("dbx-plugin-packager: {error}");
+        eprintln!("linop-db-plugin-packager: {error}");
         std::process::exit(1);
     }
 }
@@ -671,13 +671,13 @@ fn executable_permissions(path: &Path) -> u32 {
 
 fn usage() -> String {
     format!(
-        "Usage: dbx-plugin-packager <source-dir> <output.dbxp> [--key-id ID] [--artifact-metadata FILE --target TARGET [--artifact-url URL]]\n       {}",
+        "Usage: linop-db-plugin-packager <source-dir> <output.dbxp> [--key-id ID] [--artifact-metadata FILE --target TARGET [--artifact-url URL]]\n       {}",
         sign_usage()
     )
 }
 
 fn sign_usage() -> String {
-    "dbx-plugin-packager sign <unsigned.dbxp> <signed.dbxp> --key-id ID [--artifact-metadata FILE --target TARGET [--artifact-url URL]]".to_string()
+    "linop-db-plugin-packager sign <unsigned.dbxp> <signed.dbxp> --key-id ID [--artifact-metadata FILE --target TARGET [--artifact-url URL]]".to_string()
 }
 
 #[cfg(test)]
@@ -775,7 +775,7 @@ mod tests {
             .unwrap();
 
         let signing_key = SigningKey::from_bytes(&[7u8; 32]);
-        sign_existing_package(&unsigned, &signed, "dbx-store.test", &signing_key, None, false).unwrap();
+        sign_existing_package(&unsigned, &signed, "linop-db-store.test", &signing_key, None, false).unwrap();
 
         let mut archive = ZipArchive::new(std::fs::File::open(&signed).unwrap()).unwrap();
         let mut checksums = Vec::new();
@@ -785,7 +785,7 @@ mod tests {
             archive.by_name("signature.json").unwrap().read_to_end(&mut raw).unwrap();
             serde_json::from_slice(&raw).unwrap()
         };
-        assert_eq!(signature["key_id"], "dbx-store.test");
+        assert_eq!(signature["key_id"], "linop-db-store.test");
         let signature_bytes: [u8; 64] = base64::engine::general_purpose::STANDARD
             .decode(signature["signature"].as_str().unwrap())
             .unwrap()
@@ -795,7 +795,7 @@ mod tests {
         assert!(sign_existing_package(
             &signed,
             &root.path().join("resigned.dbxp"),
-            "dbx-store.test",
+            "linop-db-store.test",
             &signing_key,
             None,
             false

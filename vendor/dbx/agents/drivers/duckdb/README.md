@@ -8,13 +8,13 @@ existing newline-delimited JSON worker runtime, while keeping DuckDB and
 
 ```bash
 cd agents/drivers/duckdb
-cargo build --release --bin dbx-duckdb-driver
+cargo build --release --bin linop-db-duckdb-driver
 ```
 
 Point DBX at the resulting executable with:
 
 ```bash
-DBX_DUCKDB_DRIVER_PATH=/absolute/path/to/dbx-duckdb-driver \
+DBX_DUCKDB_DRIVER_PATH=/absolute/path/to/linop-db-duckdb-driver \
   cargo run -p dbx --no-default-features --features duckdb-sidecar
 ```
 
@@ -29,7 +29,7 @@ online Driver Manager installation and manual single-driver import:
 
 ```text
 agent-registry.json
-drivers/dbx-agent-duckdb-<version>-<platform>[.exe]
+drivers/linop-db-agent-duckdb-<version>-<platform>[.exe]
 ```
 
 DBX decompresses the package itself, so users do not need to install `zstd`,

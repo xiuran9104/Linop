@@ -153,7 +153,7 @@ function oracleConnection(overrides: Partial<ConnectionConfig> = {}): Connection
     driver_label: "Oracle",
     host: "oracle.example.test",
     port: 1521,
-    username: "dbx_test",
+    username: "linop_db_test",
     password: "secret",
     database: "XEPDB1",
     save_password: true,

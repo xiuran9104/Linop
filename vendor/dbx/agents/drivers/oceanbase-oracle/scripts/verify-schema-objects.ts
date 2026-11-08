@@ -26,7 +26,7 @@ async function main() {
   const output = process.env.OB_TEST_OUTPUT ?? "agents/drivers/oceanbase-oracle/build/schema-object-evidence";
   mkdirSync(output, { recursive: true });
   const java = process.env.JAVA_HOME ? join(process.env.JAVA_HOME, "bin", process.platform === "win32" ? "java.exe" : "java") : "java";
-  const child = spawn(java, ["-jar", "agents/drivers/oceanbase-oracle/build/libs/dbx-agent-oceanbase-oracle.jar"], { stdio: ["pipe", "pipe", "pipe"] });
+  const child = spawn(java, ["-jar", "agents/drivers/oceanbase-oracle/build/libs/linop-db-agent-oceanbase-oracle.jar"], { stdio: ["pipe", "pipe", "pipe"] });
   child.stderr.resume();
   const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
   let requestId = 0;

@@ -3,8 +3,8 @@ import { uuid } from "@/lib/common/utils";
 import type { SchemaDiffConfig, SchemaDiffCompareOptions } from "@/types/schemaDiff";
 import { createEmptyConfig, getDefaultOptionsForDbType } from "@/types/schemaDiff";
 
-const STORAGE_KEY = "dbx-schema-diff-configs";
-const HISTORY_KEY = "dbx-schema-diff-history";
+const STORAGE_KEY = "linop-db-schema-diff-configs";
+const HISTORY_KEY = "linop-db-schema-diff-history";
 const MAX_HISTORY = 10;
 
 const configs = ref<SchemaDiffConfig[]>(loadConfigsFromStorage());

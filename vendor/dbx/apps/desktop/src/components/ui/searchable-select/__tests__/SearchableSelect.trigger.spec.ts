@@ -209,7 +209,7 @@ describe("SearchableSelect trigger", () => {
     trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true }));
     await nextTick();
 
-    const optionButtons = document.body.querySelectorAll(".dbx-searchable-select-list button");
+    const optionButtons = document.body.querySelectorAll(".linop-db-searchable-select-list button");
     expect(optionButtons.length).toBeGreaterThan(0);
     for (const btn of optionButtons) {
       expect(btn.getAttribute("tabindex")).toBe("-1");

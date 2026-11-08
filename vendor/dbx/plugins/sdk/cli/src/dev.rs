@@ -52,10 +52,10 @@ fn relative_path(path: &Path) -> Result<(), String> {
 fn build_config(options: &Options, sdk_root: Option<&Path>) -> Result<Value, String> {
     let project = canonical_directory(&options.path)?;
     let config: ProjectConfig = toml::from_str(
-        &fs::read_to_string(project.join("dbx-plugin.toml"))
-            .map_err(|e| format!("Cannot read dbx-plugin.toml: {e}"))?,
+        &fs::read_to_string(project.join("linop-db-plugin.toml"))
+            .map_err(|e| format!("Cannot read linop-db-plugin.toml: {e}"))?,
     )
-    .map_err(|e| format!("Invalid dbx-plugin.toml: {e}"))?;
+    .map_err(|e| format!("Invalid linop-db-plugin.toml: {e}"))?;
     if config.schema_version != 1 {
         return Err("Unsupported project configuration version".into());
     }
@@ -79,7 +79,7 @@ fn build_config(options: &Options, sdk_root: Option<&Path>) -> Result<Value, Str
     let data_dir = match &options.data_dir {
         Some(path) if path.is_absolute() => path.clone(),
         Some(path) => project.join(path),
-        None => project.join(".dbx-dev"),
+        None => project.join(".linop-db-dev"),
     };
     let mut launch = json!({"project": project, "dataDir": data_dir, "port": options.port,
         "commands": {"ui": config.dev.ui_build, "watch": config.dev.ui_watch}});
@@ -116,17 +116,17 @@ fn build_config(options: &Options, sdk_root: Option<&Path>) -> Result<Value, Str
                     args.push("--locked".into());
                 }
                 // A crates.io patch is inappropriate for explicitly pinned Git or path dependencies.
-                let dependency = cargo.get("dependencies").and_then(|d| d.get("dbx-plugin-sdk"));
+                let dependency = cargo.get("dependencies").and_then(|d| d.get("linop-db-plugin-sdk"));
                 let explicit_source = dependency.is_some_and(|d| d.get("git").is_some() || d.get("path").is_some());
                 if let Some(root) = sdk_root.filter(|_| dependency.is_some() && !explicit_source) {
-                    let sdk = root.join("plugins/sdk/rust/dbx-plugin-sdk");
+                    let sdk = root.join("plugins/sdk/rust/linop-db-plugin-sdk");
                     if !sdk.join("Cargo.toml").is_file() {
                         return Err("Rust SDK root is invalid".into());
                     }
                     args.extend([
                         "--config".into(),
                         format!(
-                            "patch.crates-io.dbx-plugin-sdk.path={}",
+                            "patch.crates-io.linop-db-plugin-sdk.path={}",
                             serde_json::to_string(&sdk.to_string_lossy()).map_err(|e| e.to_string())?
                         ),
                     ]);
@@ -143,7 +143,7 @@ fn build_config(options: &Options, sdk_root: Option<&Path>) -> Result<Value, Str
                 let binary = data_dir.join("bin").join(executable_name(&backend.binary));
                 let mut command = json!({"command":"go", "args":["build","-trimpath","-o",binary,"."],"cwd":directory});
                 if let Some(root) = sdk_root {
-                    let sdk = root.join("plugins/sdk/go/dbx-plugin-sdk");
+                    let sdk = root.join("plugins/sdk/go/linop-db-plugin-sdk");
                     if !sdk.join("go.mod").is_file() {
                         return Err("Go SDK root is invalid".into());
                     }
@@ -164,7 +164,7 @@ fn build_config(options: &Options, sdk_root: Option<&Path>) -> Result<Value, Str
 
 pub(super) fn run(arguments: Vec<String>) -> Result<(), String> {
     if arguments.iter().any(|a| a == "--help" || a == "-h") {
-        println!("Run a plugin without starting DBX (Node.js 22+)\n\nUsage: dbx-plugin dev [--path DIR] [--port PORT] [--data-dir DIR]\n\n  --path DIR      Plugin project (default: current directory)\n  --port PORT     Loopback port (default: 5190; occupied ports fall back to a free port)\n  --data-dir DIR  Development data (default: <project>/.dbx-dev)\n\nOptional [dev] ui_build and ui_watch arrays configure UI commands.\nDevelopment credentials are stored locally as plaintext.\nDBX_PLUGIN_DEV_RUNTIME overrides the runtime entrypoint; DBX_PLUGIN_NODE selects Node.");
+        println!("Run a plugin without starting DBX (Node.js 22+)\n\nUsage: linop-db-plugin dev [--path DIR] [--port PORT] [--data-dir DIR]\n\n  --path DIR      Plugin project (default: current directory)\n  --port PORT     Loopback port (default: 5190; occupied ports fall back to a free port)\n  --data-dir DIR  Development data (default: <project>/.linop-db-dev)\n\nOptional [dev] ui_build and ui_watch arrays configure UI commands.\nDevelopment credentials are stored locally as plaintext.\nDBX_PLUGIN_DEV_RUNTIME overrides the runtime entrypoint; DBX_PLUGIN_NODE selects Node.");
         return Ok(());
     }
     let options = parse(&arguments)?;
@@ -174,7 +174,7 @@ pub(super) fn run(arguments: Vec<String>) -> Result<(), String> {
         .map(PathBuf::from)
         .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../dev-host/dist/runtime.mjs"));
     if !runtime.is_file() {
-        return Err("Development runtime is missing. Install @dbx-app/plugin-cli, or run 'npm ci --prefix plugins/sdk/dev-host && npm run build --prefix plugins/sdk/dev-host' in a DBX checkout and set DBX_PLUGIN_DEV_RUNTIME to dist/runtime.mjs.".into());
+        return Err("Development runtime is missing. Install @linop-db-app/plugin-cli, or run 'npm ci --prefix plugins/sdk/dev-host && npm run build --prefix plugins/sdk/dev-host' in a DBX checkout and set DBX_PLUGIN_DEV_RUNTIME to dist/runtime.mjs.".into());
     }
     let node = std::env::var_os("DBX_PLUGIN_NODE").unwrap_or_else(|| "node".into());
     let version = Command::new(&node)
@@ -225,7 +225,7 @@ mod tests {
         fs::write(root.path().join("manifest.json"), r#"{"entrypoints":{"ui":{"root":"ui","entry":"ui/index.html"}}}"#)
             .unwrap();
         fs::write(
-            root.path().join("dbx-plugin.toml"),
+            root.path().join("linop-db-plugin.toml"),
             "schema_version=1\n[package]\ninclude=[\"ui\"]\n[dev]\nui_build=[\"npm\",\"run\",\"build\"]\n",
         )
         .unwrap();
@@ -234,7 +234,7 @@ mod tests {
         assert!(config.get("backend").is_none());
         assert_eq!(config["commands"]["ui"][0], "npm");
         fs::write(
-            root.path().join("dbx-plugin.toml"),
+            root.path().join("linop-db-plugin.toml"),
             "schema_version=1\n[package]\ninclude=[]\n[dev]\nui_build=\"npm run build\"\n",
         )
         .unwrap();

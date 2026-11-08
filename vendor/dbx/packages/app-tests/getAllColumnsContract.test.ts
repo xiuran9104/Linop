@@ -26,13 +26,13 @@ test("getAllColumns is exported from both backends with table_name", () => {
 });
 
 test("get_all_columns is registered in Tauri and mounted on the web API", () => {
-  const schemaCommands = source("crates/dbx-tauri-schema/src/commands.rs");
-  const schemaRegistry = source("crates/dbx-tauri-schema/src/lib.rs");
+  const schemaCommands = source("crates/linop-db-tauri-schema/src/commands.rs");
+  const schemaRegistry = source("crates/linop-db-tauri-schema/src/lib.rs");
   const lib = source("src-tauri/src/lib.rs");
-  const webMain = source("crates/dbx-web/src/main.rs");
+  const webMain = source("crates/linop-db-web/src/main.rs");
 
   assert.match(schemaCommands, /pub async fn get_all_columns/);
   assert.match(schemaRegistry, /get_all_columns/);
-  assert.match(lib, /dbx_tauri_schema::route/);
+  assert.match(lib, /linop_db_tauri_schema::route/);
   assert.match(webMain, /\/schema\/all-columns/);
 });
