@@ -9,7 +9,7 @@
 //! 2. 指定密钥模式：使用 encrypt_with_key/decrypt_with_key 直接传入密钥
 //!
 //! 密钥派生（KDF）：
-//! - 新版本使用 Argon2id + 随机盐，验证信封格式为 `NAVOPKDF2:` 前缀的 JSON
+//! - 新版本使用 Argon2id + 随机盐，验证信封格式为 `LINOPKDF2:` 前缀的 JSON
 //! - 旧版 `SHA-256(主密钥 || 固定盐)` 的验证数据与密文仍然可以解密（legacy 兜底），
 //!   解锁后由上层迁移流程重新加密
 //! - 迁移是 crash-safe 的：新信封先落盘，迁移窗口内旧密文靠 legacy 派生兜底
@@ -92,7 +92,7 @@ const MIN_ENCRYPTED_LENGTH: usize = NONCE_LENGTH + AUTH_TAG_LENGTH;
 const VERIFICATION_MAGIC: &str = "ONEHUB_KEY_VERIFY_V1";
 
 /// 新版 KDF 信封前缀（Argon2id + 随机盐）
-const KDF_ENVELOPE_PREFIX: &str = "NAVOPKDF2:";
+const KDF_ENVELOPE_PREFIX: &str = "LINOPKDF2:";
 /// KDF 信封版本
 const KDF_ENVELOPE_VERSION: u8 = 2;
 /// KDF 算法名
@@ -663,7 +663,7 @@ fn generate_key_verification_with_spec(master_key: &str, spec: &KdfSpec) -> Opti
 /// 生成密钥验证数据
 ///
 /// 返回一个加密的魔术字符串，用于验证用户输入的密钥是否正确。
-/// 新格式为 `NAVOPKDF2:` + base64(JSON 信封)，包含随机盐与 Argon2 参数；
+/// 新格式为 `LINOPKDF2:` + base64(JSON 信封)，包含随机盐与 Argon2 参数；
 /// 仅在已有旧版信封时才会生成旧格式。
 pub fn generate_key_verification(master_key: &str) -> String {
     // 沿用当前规范；只有从未识别过信封（首次设置）时才新建随机盐的 Argon2id。

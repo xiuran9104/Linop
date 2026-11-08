@@ -66,7 +66,7 @@ impl BackgroundTaskPanel {
             .child(
                 Button::new("background-task-button")
                     // 任务语义自有 SVG（gpui-component IconName 无合适变体），经应用 AssetSource 内嵌。
-                    .icon(Icon::default().path(crate::storage::NAVOP_BACKGROUND_TASK_ICON))
+                    .icon(Icon::default().path(crate::storage::LINOP_BACKGROUND_TASK_ICON))
                     .ghost()
                     .compact()
                     .tooltip(t!("BackgroundTasks.open").to_string())
@@ -211,7 +211,7 @@ pub(crate) fn render_panel_content(
                     .text_color(cx.theme().muted_foreground)
                     .child(
                         Icon::default()
-                            .path(crate::storage::NAVOP_BACKGROUND_TASK_ICON)
+                            .path(crate::storage::LINOP_BACKGROUND_TASK_ICON)
                             .with_size(px(22.0))
                             .text_color(cx.theme().muted_foreground),
                     )

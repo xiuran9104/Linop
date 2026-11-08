@@ -472,7 +472,7 @@ impl HomePage {
                         // 历史语义图标（redesign §6.1：避免与收藏星标混淆），
                         // 资源经应用 AssetSource 内嵌。
                         Icon::default()
-                            .path(NAVOP_HISTORY_ICON)
+                            .path(LINOP_HISTORY_ICON)
                             .with_size(IconSize::Small)
                             .text_color(cx.theme().muted_foreground),
                     )

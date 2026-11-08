@@ -250,11 +250,11 @@ fn scp_wrapper_passes_pinned_known_hosts_without_any_credentials() {
         &fake_scp,
         r#"#!/bin/sh
 set -eu
-: > "$NAVOP_CAPTURED_ARGS"
+: > "$LINOP_CAPTURED_ARGS"
 previous=
 known_hosts=
 for arg in "$@"; do
-  printf '%s\0' "$arg" >> "$NAVOP_CAPTURED_ARGS"
+  printf '%s\0' "$arg" >> "$LINOP_CAPTURED_ARGS"
   if [ "$previous" = "-o" ]; then
     case "$arg" in
       UserKnownHostsFile=*) known_hosts=${arg#UserKnownHostsFile=} ;;
@@ -263,9 +263,9 @@ for arg in "$@"; do
   previous=$arg
 done
 [ -n "$known_hosts" ]
-cat "$known_hosts" > "$NAVOP_CAPTURED_KNOWN_HOSTS"
+cat "$known_hosts" > "$LINOP_CAPTURED_KNOWN_HOSTS"
 printf '%s\n%s\n%s\n' "${SSH_ASKPASS-}" "${SSH_ASKPASS_REQUIRE-}" "${DISPLAY-}" \
-  > "$NAVOP_CAPTURED_ENVIRONMENT"
+  > "$LINOP_CAPTURED_ENVIRONMENT"
 "#,
     )
     .expect("fake scp script");
@@ -289,9 +289,9 @@ printf '%s\n%s\n%s\n' "${SSH_ASKPASS-}" "${SSH_ASKPASS_REQUIRE-}" "${DISPLAY-}" 
                 inherited_path.to_string_lossy()
             ),
         )
-        .env("NAVOP_CAPTURED_KNOWN_HOSTS", &captured_known_hosts)
-        .env("NAVOP_CAPTURED_ENVIRONMENT", &captured_environment)
-        .env("NAVOP_CAPTURED_ARGS", &captured_args)
+        .env("LINOP_CAPTURED_KNOWN_HOSTS", &captured_known_hosts)
+        .env("LINOP_CAPTURED_ENVIRONMENT", &captured_environment)
+        .env("LINOP_CAPTURED_ARGS", &captured_args)
         .env_remove("SSH_ASKPASS")
         .env_remove("SSH_ASKPASS_REQUIRE")
         .env_remove("DISPLAY")

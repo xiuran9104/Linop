@@ -9,8 +9,8 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 pub const ASCIICAST_VERSION: u32 = 2;
-pub const NAVOP_RECORDING_FORMAT_VERSION: u32 = 1;
-pub const NAVOP_EVENT_STREAM: &str = "terminal_parser_input_v1";
+pub const LINOP_RECORDING_FORMAT_VERSION: u32 = 1;
+pub const LINOP_EVENT_STREAM: &str = "terminal_parser_input_v1";
 
 pub const DEFAULT_MAX_RECORDING_HEADER_BYTES: usize = 64 * 1024;
 pub const DEFAULT_MAX_SERIALIZED_RECORDING_EVENT_BYTES: usize = 8 * 1024 * 1024;
@@ -119,7 +119,7 @@ impl RecordingHeader {
             height: initial_size.rows,
             timestamp: metadata.started_at_unix_ms / 1_000,
             linop: RecordingHeaderMetadata {
-                format_version: NAVOP_RECORDING_FORMAT_VERSION,
+                format_version: LINOP_RECORDING_FORMAT_VERSION,
                 recording_id: metadata.recording_id,
                 session_id: metadata.session_id,
                 backend: metadata.backend,
@@ -127,7 +127,7 @@ impl RecordingHeader {
                 application_version: metadata.application_version,
                 started_at_unix_ms: metadata.started_at_unix_ms,
                 capture_input: metadata.capture_input,
-                event_stream: NAVOP_EVENT_STREAM.to_string(),
+                event_stream: LINOP_EVENT_STREAM.to_string(),
                 session: metadata.session,
             },
         }
@@ -137,7 +137,7 @@ impl RecordingHeader {
         if self.version != ASCIICAST_VERSION {
             return Err(RecordingFileError::UnknownAsciicastVersion(self.version));
         }
-        if self.linop.format_version != NAVOP_RECORDING_FORMAT_VERSION {
+        if self.linop.format_version != LINOP_RECORDING_FORMAT_VERSION {
             return Err(RecordingFileError::UnknownLinopVersion(
                 self.linop.format_version,
             ));
@@ -162,7 +162,7 @@ impl RecordingHeader {
                 "timestamp does not match started_at_unix_ms".to_string(),
             ));
         }
-        if self.linop.event_stream != NAVOP_EVENT_STREAM {
+        if self.linop.event_stream != LINOP_EVENT_STREAM {
             return Err(RecordingFileError::InvalidHeader(format!(
                 "unsupported event stream: {}",
                 self.linop.event_stream

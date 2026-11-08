@@ -84,7 +84,7 @@ impl PersistentConnectionSidebar {
             .child(tree_chevron(true, expanded, cx))
             .child(
                 Icon::default()
-                    .path(crate::home_tab::NAVOP_HISTORY_ICON)
+                    .path(crate::home_tab::LINOP_HISTORY_ICON)
                     .mono()
                     .with_size(IconSize::Default)
                     .text_color(palette.muted_foreground),

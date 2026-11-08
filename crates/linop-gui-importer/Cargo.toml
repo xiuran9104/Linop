@@ -1,6 +1,6 @@
 [package]
-name = "linop-navop-importer"
-description = "Linop connections.toml importer as a navop WASM extension (wasm32-wasip2 component)"
+name = "linop-gui-importer"
+description = "Linop connections.toml importer as a Linop GUI WASM extension (wasm32-wasip2 component)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

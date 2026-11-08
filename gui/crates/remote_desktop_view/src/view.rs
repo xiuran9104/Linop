@@ -83,7 +83,7 @@ const RESIZE_MIN_INTERVAL: Duration = Duration::from_millis(1200);
 const RESIZE_DELTA_THRESHOLD: u16 = 16;
 const RDP_INITIAL_LAYOUT_DEBOUNCE: Duration = Duration::from_millis(150);
 const REMOTE_DESKTOP_CONTEXT: &str = "RemoteDesktopView";
-const REMOTE_DESKTOP_DIAGNOSTICS_ENV: &str = "NAVOP_REMOTE_DESKTOP_DIAGNOSTICS";
+const REMOTE_DESKTOP_DIAGNOSTICS_ENV: &str = "LINOP_REMOTE_DESKTOP_DIAGNOSTICS";
 #[cfg(all(feature = "windows-native-rdp", target_os = "windows"))]
 const WINDOWS_NATIVE_EVENT_POLL_INTERVAL: Duration = Duration::from_millis(16);
 #[cfg(all(feature = "windows-native-rdp", target_os = "windows"))]

@@ -4,7 +4,7 @@ use gpui_component::{
     setting::{SettingField, SettingItem},
     v_flex,
 };
-use public_mcp::client_config::{ClientConfigInstall, NAVOP_MCP_CLIENT_TAG};
+use public_mcp::client_config::{ClientConfigInstall, LINOP_MCP_CLIENT_TAG};
 use rust_i18n::t;
 
 #[cfg(test)]
@@ -41,7 +41,7 @@ fn runtime_requirements_status() -> String {
             "Settings.General.Mcp.runtime_requirements_ready",
             command = command,
             path = path.display().to_string(),
-            package = format!("@linop/mcp@{NAVOP_MCP_CLIENT_TAG}")
+            package = format!("@linop/mcp@{LINOP_MCP_CLIENT_TAG}")
         )
         .to_string(),
         None => t!(

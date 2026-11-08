@@ -196,7 +196,7 @@ fn read_credential(target: &str) -> windows::core::Result<Option<CredentialSnaps
 
 fn is_linop_temporary(credential: &CredentialSnapshot) -> bool {
     credential.persist == CRED_PERSIST_SESSION
-        && credential.comment == super::NAVOP_CREDENTIAL_MARKER
+        && credential.comment == super::LINOP_CREDENTIAL_MARKER
 }
 
 fn password_blob(password: &str) -> Vec<u8> {
@@ -217,7 +217,7 @@ fn write_or_zeroize(
 fn write_temporary(credentials: &MstscCredentials, blob: &[u8]) -> windows::core::Result<()> {
     let mut target = wide_null(&credentials.target);
     let mut username = wide_null(&credentials.username);
-    let mut comment = wide_null(super::NAVOP_CREDENTIAL_MARKER);
+    let mut comment = wide_null(super::LINOP_CREDENTIAL_MARKER);
     let credential = CREDENTIALW {
         Type: CRED_TYPE_GENERIC,
         TargetName: PWSTR(target.as_mut_ptr()),

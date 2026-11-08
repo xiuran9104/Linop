@@ -199,12 +199,12 @@ impl ConnectionType {
 /// 外部 gpui-component 的 `IconName` 由其资产宏生成,无法在本仓库扩展变体;
 /// TDengine/MQTT 品牌图标以 SVG 形式内嵌于应用(main 的 `AppAssets`),
 /// 通过 `Icon::default().path(...)` 按路径引用。
-pub const NAVOP_TDENGINE_COLOR_ICON: &str = "linop/tdengine-color.svg";
-pub const NAVOP_TDENGINE_LINE_COLOR_ICON: &str = "linop/tdengine-line-color.svg";
-pub const NAVOP_MQTT_COLOR_ICON: &str = "linop/mqtt-color.svg";
-pub const NAVOP_MQTT_LINE_ICON: &str = "linop/mqtt-line.svg";
+pub const LINOP_TDENGINE_COLOR_ICON: &str = "linop/tdengine-color.svg";
+pub const LINOP_TDENGINE_LINE_COLOR_ICON: &str = "linop/tdengine-line-color.svg";
+pub const LINOP_MQTT_COLOR_ICON: &str = "linop/mqtt-color.svg";
+pub const LINOP_MQTT_LINE_ICON: &str = "linop/mqtt-line.svg";
 /// 后台任务入口的任务语义图标（待办清单 + 勾选），内嵌于应用 AssetSource。
-pub const NAVOP_BACKGROUND_TASK_ICON: &str = "linop/background-task.svg";
+pub const LINOP_BACKGROUND_TASK_ICON: &str = "linop/background-task.svg";
 
 /// Database type enumeration
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -323,7 +323,7 @@ impl DatabaseType {
             DatabaseType::Oracle => IconName::OracleColor.color().with_size(Large),
             DatabaseType::ClickHouse => IconName::ClickHouseColor.color().with_size(Large),
             DatabaseType::TDengine => Icon::default()
-                .path(NAVOP_TDENGINE_COLOR_ICON)
+                .path(LINOP_TDENGINE_COLOR_ICON)
                 .color()
                 .with_size(Large),
             DatabaseType::External { .. } => IconName::Database.color().with_size(Large),
@@ -339,7 +339,7 @@ impl DatabaseType {
             DatabaseType::Oracle => IconName::OracleLineColor.color().with_size(Large),
             DatabaseType::ClickHouse => IconName::ClickHouseLineColor.color().with_size(Large),
             DatabaseType::TDengine => Icon::default()
-                .path(NAVOP_TDENGINE_LINE_COLOR_ICON)
+                .path(LINOP_TDENGINE_LINE_COLOR_ICON)
                 .color()
                 .with_size(Large),
             DatabaseType::External { .. } => IconName::Database.color().with_size(Large),

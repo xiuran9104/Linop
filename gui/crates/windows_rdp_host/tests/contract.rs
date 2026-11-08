@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 const HOST_CRATE: &str = "crates/windows_rdp_host";
-const ABI_VERSION: &str = "NAVOP_RDP_ABI_VERSION UINT32_C(1)";
+const ABI_VERSION: &str = "LINOP_RDP_ABI_VERSION UINT32_C(1)";
 const HOST_TEST: &str = "cargo test --locked -p windows_rdp_host --target $RustTarget";
 
 fn workspace_root() -> PathBuf {
@@ -99,38 +99,38 @@ fn c_abi_is_versioned_fixed_width_and_opaque() {
             ABI_VERSION,
             "typedef struct NativeRdpHost NativeRdpHost;",
             "typedef int32_t LinopRdpResult;",
-            "NAVOP_RDP_RESULT_OK",
-            "NAVOP_RDP_RESULT_INVALID_ARGUMENT",
-            "NAVOP_RDP_RESULT_ABI_MISMATCH",
-            "NAVOP_RDP_RESULT_ALLOCATION_FAILED",
-            "NAVOP_RDP_RESULT_INTERNAL_ERROR",
-            "NAVOP_RDP_RESULT_UNAVAILABLE",
-            "NAVOP_RDP_RESULT_WRONG_THREAD",
-            "NAVOP_RDP_RESULT_CALLBACK_IN_FLIGHT",
-            "NAVOP_RDP_RESULT_INVALID_STATE",
-            "NAVOP_RDP_MAX_HOST_UTF16_CODE_UNITS UINT32_C(255)",
-            "NAVOP_RDP_LAST_ERROR_LEGACY_SIZE UINT32_C(24)",
-            "NAVOP_RDP_CREATE_STAGE_NONE UINT32_C(0)",
-            "NAVOP_RDP_CREATE_STAGE_OLE_INITIALIZE UINT32_C(1)",
-            "NAVOP_RDP_CREATE_STAGE_ATL_AX_WIN_INIT UINT32_C(2)",
-            "NAVOP_RDP_CREATE_STAGE_CREATE_WINDOW UINT32_C(3)",
-            "NAVOP_RDP_CREATE_STAGE_CREATE_CONTROL UINT32_C(4)",
-            "NAVOP_RDP_CREATE_STAGE_QUERY_CLIENT UINT32_C(5)",
-            "NAVOP_RDP_CREATE_STAGE_QUERY_NON_SCRIPTABLE UINT32_C(6)",
-            "NAVOP_RDP_CREATE_STAGE_SET_PARENT UINT32_C(7)",
-            "NAVOP_RDP_CREATE_STAGE_EVENT_SUBSCRIPTION UINT32_C(8)",
-            "NAVOP_RDP_CREATE_STAGE_EXCEPTION UINT32_C(9)",
-            "NAVOP_RDP_STAGE_CONNECT_GET_CONNECTED UINT32_C(10)",
-            "NAVOP_RDP_STAGE_CONNECT_SET_SERVER UINT32_C(11)",
-            "NAVOP_RDP_STAGE_CONNECT_GET_ADVANCED_SETTINGS UINT32_C(12)",
-            "NAVOP_RDP_STAGE_CONNECT_SET_RDP_PORT UINT32_C(13)",
-            "NAVOP_RDP_STAGE_CONNECT_POLICY UINT32_C(14)",
-            "NAVOP_RDP_STAGE_CONNECT_SET_DESKTOP_WIDTH UINT32_C(15)",
-            "NAVOP_RDP_STAGE_CONNECT_SET_DESKTOP_HEIGHT UINT32_C(16)",
-            "NAVOP_RDP_STAGE_CONNECT_SET_COLOR_DEPTH UINT32_C(17)",
-            "NAVOP_RDP_STAGE_CONNECT_INVOKE UINT32_C(18)",
-            "NAVOP_RDP_STAGE_CONNECT_DISPLAY_DESKTOP_SCALE_FACTOR UINT32_C(19)",
-            "NAVOP_RDP_STAGE_CONNECT_DISPLAY_DEVICE_SCALE_FACTOR UINT32_C(20)",
+            "LINOP_RDP_RESULT_OK",
+            "LINOP_RDP_RESULT_INVALID_ARGUMENT",
+            "LINOP_RDP_RESULT_ABI_MISMATCH",
+            "LINOP_RDP_RESULT_ALLOCATION_FAILED",
+            "LINOP_RDP_RESULT_INTERNAL_ERROR",
+            "LINOP_RDP_RESULT_UNAVAILABLE",
+            "LINOP_RDP_RESULT_WRONG_THREAD",
+            "LINOP_RDP_RESULT_CALLBACK_IN_FLIGHT",
+            "LINOP_RDP_RESULT_INVALID_STATE",
+            "LINOP_RDP_MAX_HOST_UTF16_CODE_UNITS UINT32_C(255)",
+            "LINOP_RDP_LAST_ERROR_LEGACY_SIZE UINT32_C(24)",
+            "LINOP_RDP_CREATE_STAGE_NONE UINT32_C(0)",
+            "LINOP_RDP_CREATE_STAGE_OLE_INITIALIZE UINT32_C(1)",
+            "LINOP_RDP_CREATE_STAGE_ATL_AX_WIN_INIT UINT32_C(2)",
+            "LINOP_RDP_CREATE_STAGE_CREATE_WINDOW UINT32_C(3)",
+            "LINOP_RDP_CREATE_STAGE_CREATE_CONTROL UINT32_C(4)",
+            "LINOP_RDP_CREATE_STAGE_QUERY_CLIENT UINT32_C(5)",
+            "LINOP_RDP_CREATE_STAGE_QUERY_NON_SCRIPTABLE UINT32_C(6)",
+            "LINOP_RDP_CREATE_STAGE_SET_PARENT UINT32_C(7)",
+            "LINOP_RDP_CREATE_STAGE_EVENT_SUBSCRIPTION UINT32_C(8)",
+            "LINOP_RDP_CREATE_STAGE_EXCEPTION UINT32_C(9)",
+            "LINOP_RDP_STAGE_CONNECT_GET_CONNECTED UINT32_C(10)",
+            "LINOP_RDP_STAGE_CONNECT_SET_SERVER UINT32_C(11)",
+            "LINOP_RDP_STAGE_CONNECT_GET_ADVANCED_SETTINGS UINT32_C(12)",
+            "LINOP_RDP_STAGE_CONNECT_SET_RDP_PORT UINT32_C(13)",
+            "LINOP_RDP_STAGE_CONNECT_POLICY UINT32_C(14)",
+            "LINOP_RDP_STAGE_CONNECT_SET_DESKTOP_WIDTH UINT32_C(15)",
+            "LINOP_RDP_STAGE_CONNECT_SET_DESKTOP_HEIGHT UINT32_C(16)",
+            "LINOP_RDP_STAGE_CONNECT_SET_COLOR_DEPTH UINT32_C(17)",
+            "LINOP_RDP_STAGE_CONNECT_INVOKE UINT32_C(18)",
+            "LINOP_RDP_STAGE_CONNECT_DISPLAY_DESKTOP_SCALE_FACTOR UINT32_C(19)",
+            "LINOP_RDP_STAGE_CONNECT_DISPLAY_DEVICE_SCALE_FACTOR UINT32_C(20)",
             "typedef struct LinopRdpProbeOptions",
             "typedef struct LinopRdpProbeResult",
             "typedef struct LinopRdpCreateOptions",
@@ -142,8 +142,8 @@ fn c_abi_is_versioned_fixed_width_and_opaque() {
             "int32_t desktop_height;",
             "int32_t color_depth;",
             "uint32_t flags;",
-            "NAVOP_RDP_CREATE_WITH_PARENT_ABI_VERSION UINT32_C(1)",
-            "NAVOP_RDP_SESSION_DISPLAY_SETTINGS_ABI_VERSION UINT32_C(1)",
+            "LINOP_RDP_CREATE_WITH_PARENT_ABI_VERSION UINT32_C(1)",
+            "LINOP_RDP_SESSION_DISPLAY_SETTINGS_ABI_VERSION UINT32_C(1)",
             "typedef struct LinopRdpCreateWithParentOptions",
             "uintptr_t parent_hwnd;",
             "typedef struct LinopRdpLastError",
@@ -339,7 +339,7 @@ fn cpp_and_rust_freeze_the_same_struct_layout() {
             "static_assert(offsetof(LinopRdpLastError, stage) == 24)",
             "static_assert(offsetof(LinopRdpLastError, win32_code) == 28)",
             "static_assert(offsetof(LinopRdpLastError, has_win32_code) == 32)",
-            "NAVOP_RDP_LAST_ERROR_LEGACY_SIZE",
+            "LINOP_RDP_LAST_ERROR_LEGACY_SIZE",
             "static_assert(sizeof(LinopRdpBounds) == 16)",
             "static_assert(alignof(LinopRdpBounds) == 4)",
             "static_assert(offsetof(LinopRdpBounds, x) == 0)",
@@ -446,24 +446,24 @@ fn event_callback_abi_is_versioned_owned_and_architecture_independent() {
             "uint32_t reserved;",
             "int32_t code;",
             "uint32_t payload_len;",
-            "NAVOP_RDP_EVENT_CONNECTING UINT32_C(1)",
-            "NAVOP_RDP_EVENT_CONNECTED UINT32_C(2)",
-            "NAVOP_RDP_EVENT_LOGIN_COMPLETE UINT32_C(3)",
-            "NAVOP_RDP_EVENT_RECONNECTING UINT32_C(4)",
-            "NAVOP_RDP_EVENT_RECONNECTED UINT32_C(5)",
-            "NAVOP_RDP_EVENT_NETWORK_STATUS_CHANGED UINT32_C(6)",
-            "NAVOP_RDP_EVENT_REMOTE_DESKTOP_SIZE_CHANGED UINT32_C(7)",
-            "NAVOP_RDP_EVENT_ENTER_FULLSCREEN UINT32_C(8)",
-            "NAVOP_RDP_EVENT_LEAVE_FULLSCREEN UINT32_C(9)",
-            "NAVOP_RDP_EVENT_AUTHENTICATION_WARNING_DISPLAYED UINT32_C(10)",
-            "NAVOP_RDP_EVENT_AUTHENTICATION_WARNING_DISMISSED UINT32_C(11)",
-            "NAVOP_RDP_EVENT_WARNING UINT32_C(12)",
-            "NAVOP_RDP_EVENT_FATAL_ERROR UINT32_C(13)",
-            "NAVOP_RDP_EVENT_LOGON_ERROR UINT32_C(14)",
-            "NAVOP_RDP_EVENT_DISCONNECTED UINT32_C(15)",
-            "NAVOP_RDP_EVENT_CLOSE_CONFIRMED UINT32_C(16)",
-            "NAVOP_RDP_EVENT_FOCUS_RELEASED UINT32_C(17)",
-            "NAVOP_RDP_MAX_EVENT_PAYLOAD_BYTES UINT32_C(65536)",
+            "LINOP_RDP_EVENT_CONNECTING UINT32_C(1)",
+            "LINOP_RDP_EVENT_CONNECTED UINT32_C(2)",
+            "LINOP_RDP_EVENT_LOGIN_COMPLETE UINT32_C(3)",
+            "LINOP_RDP_EVENT_RECONNECTING UINT32_C(4)",
+            "LINOP_RDP_EVENT_RECONNECTED UINT32_C(5)",
+            "LINOP_RDP_EVENT_NETWORK_STATUS_CHANGED UINT32_C(6)",
+            "LINOP_RDP_EVENT_REMOTE_DESKTOP_SIZE_CHANGED UINT32_C(7)",
+            "LINOP_RDP_EVENT_ENTER_FULLSCREEN UINT32_C(8)",
+            "LINOP_RDP_EVENT_LEAVE_FULLSCREEN UINT32_C(9)",
+            "LINOP_RDP_EVENT_AUTHENTICATION_WARNING_DISPLAYED UINT32_C(10)",
+            "LINOP_RDP_EVENT_AUTHENTICATION_WARNING_DISMISSED UINT32_C(11)",
+            "LINOP_RDP_EVENT_WARNING UINT32_C(12)",
+            "LINOP_RDP_EVENT_FATAL_ERROR UINT32_C(13)",
+            "LINOP_RDP_EVENT_LOGON_ERROR UINT32_C(14)",
+            "LINOP_RDP_EVENT_DISCONNECTED UINT32_C(15)",
+            "LINOP_RDP_EVENT_CLOSE_CONFIRMED UINT32_C(16)",
+            "LINOP_RDP_EVENT_FOCUS_RELEASED UINT32_C(17)",
+            "LINOP_RDP_MAX_EVENT_PAYLOAD_BYTES UINT32_C(65536)",
             "architecture-independent byte protocol",
             "Every integer is little-endian",
             "payload_len is 4 or 8",
@@ -472,7 +472,7 @@ fn event_callback_abi_is_versioned_owned_and_architecture_independent() {
             "optional extended_code:i32",
             "Within the same ABI version, unknown kinds and malformed known",
             "payload schemas are immutable",
-            "payload_len must not exceed NAVOP_RDP_MAX_EVENT_PAYLOAD_BYTES",
+            "payload_len must not exceed LINOP_RDP_MAX_EVENT_PAYLOAD_BYTES",
             "callback payload is borrowed only for the duration",
             "owner thread",
             "does not retain callback or callback_context",
@@ -556,7 +556,7 @@ fn native_callback_gate_validates_before_retaining_and_closes_before_destroy() {
             "host->callback != nullptr",
             "host->callback = callback;",
             "host->callback_context = callback_context;",
-            "return NAVOP_RDP_RESULT_OK;",
+            "return LINOP_RDP_RESULT_OK;",
             "catch (...)",
         ],
     );
@@ -568,7 +568,7 @@ fn native_callback_gate_validates_before_retaining_and_closes_before_destroy() {
             "try {",
             "host == nullptr",
             "close_callback_gate(host);",
-            "return NAVOP_RDP_RESULT_OK;",
+            "return LINOP_RDP_RESULT_OK;",
             "catch (...)",
         ],
     );
@@ -594,8 +594,8 @@ fn native_callback_dispatch_enforces_owner_thread_and_quiescent_close() {
     assert_contains_all(
         header,
         &[
-            "NAVOP_RDP_RESULT_WRONG_THREAD",
-            "NAVOP_RDP_RESULT_CALLBACK_IN_FLIGHT",
+            "LINOP_RDP_RESULT_WRONG_THREAD",
+            "LINOP_RDP_RESULT_CALLBACK_IN_FLIGHT",
             "Wrong-thread calls",
             "callback is in flight",
             "preserve",
@@ -634,8 +634,8 @@ fn native_callback_dispatch_enforces_owner_thread_and_quiescent_close() {
             "host_->callbacks_in_flight += UINT32_C(1);",
             "host_->callbacks_in_flight -= UINT32_C(1);",
             "GetCurrentThreadId()",
-            "NAVOP_RDP_RESULT_WRONG_THREAD",
-            "NAVOP_RDP_RESULT_CALLBACK_IN_FLIGHT",
+            "LINOP_RDP_RESULT_WRONG_THREAD",
+            "LINOP_RDP_RESULT_CALLBACK_IN_FLIGHT",
             "host->callback_state != CallbackState::Open",
             "host->callback == nullptr",
             "host->callbacks_in_flight == UINT32_MAX",
@@ -661,7 +661,7 @@ fn native_callback_dispatch_enforces_owner_thread_and_quiescent_close() {
             "GetCurrentThreadId()",
             "ensure_owner_thread(host)",
             "LinopRdpResult close_result = close_callback_gate(owned);",
-            "if (close_result != NAVOP_RDP_RESULT_OK)",
+            "if (close_result != LINOP_RDP_RESULT_OK)",
         ],
     );
     assert_contains_all(
@@ -758,7 +758,7 @@ fn credential_transport_is_versioned_borrowed_and_architecture_specific() {
             "LinopRdpBorrowedUtf16 domain;",
             "LinopRdpBorrowedUtf16 gateway_username;",
             "LinopRdpBorrowedUtf16 gateway_domain;",
-            "NAVOP_RDP_CREDENTIAL_LEGACY_SIZE",
+            "LINOP_RDP_CREDENTIAL_LEGACY_SIZE",
             "append-only fields",
             "borrowed only for the synchronous call",
             "must not retain",
@@ -909,7 +909,7 @@ fn native_credentials_validate_copy_and_wipe_on_every_exit_path() {
             "credentials == nullptr",
             "validate_struct_size(",
             "credentials->struct_size",
-            "NAVOP_RDP_CREDENTIAL_LEGACY_SIZE",
+            "LINOP_RDP_CREDENTIAL_LEGACY_SIZE",
             "validate_abi_version(",
             "credentials->abi_version",
             "credentials->flags != UINT32_C(0)",
@@ -930,9 +930,9 @@ fn native_credentials_validate_copy_and_wipe_on_every_exit_path() {
             "gateway_username",
             "gateway_domain",
             "gateway_password.borrowed()",
-            "return NAVOP_RDP_RESULT_OK;",
+            "return LINOP_RDP_RESULT_OK;",
             "catch (...)",
-            "NAVOP_RDP_RESULT_INTERNAL_ERROR",
+            "LINOP_RDP_RESULT_INTERNAL_ERROR",
         ],
     );
     assert_excludes_all(
@@ -967,7 +967,7 @@ fn native_credentials_validate_copy_and_wipe_on_every_exit_path() {
             "SysFreeString(",
             "record_last_hresult(",
             "get_Connected(",
-            "NAVOP_RDP_RESULT_INVALID_STATE",
+            "LINOP_RDP_RESULT_INVALID_STATE",
         ],
     );
     assert_tokens_in_scope(
@@ -1072,7 +1072,7 @@ fn native_entrypoints_validate_headers_and_contain_failures() {
             "out_result->abi_version",
             "out_result->struct_size = caller_result_size;",
             "catch (...)",
-            "NAVOP_RDP_RESULT_INTERNAL_ERROR",
+            "LINOP_RDP_RESULT_INTERNAL_ERROR",
         ],
     );
     assert_tokens_in_scope(
@@ -1089,10 +1089,10 @@ fn native_entrypoints_validate_headers_and_contain_failures() {
             "validate_abi_version(",
             "options->abi_version",
             "new (std::nothrow) NativeRdpHost",
-            "NAVOP_RDP_RESULT_ALLOCATION_FAILED",
+            "LINOP_RDP_RESULT_ALLOCATION_FAILED",
             "*out_host = host;",
             "catch (...)",
-            "NAVOP_RDP_RESULT_INTERNAL_ERROR",
+            "LINOP_RDP_RESULT_INTERNAL_ERROR",
         ],
     );
     assert_tokens_in_scope(
@@ -1106,19 +1106,19 @@ fn native_entrypoints_validate_headers_and_contain_failures() {
             "options == nullptr",
             "validate_struct_size(",
             "options->struct_size",
-            "NAVOP_RDP_CREATE_WITH_PARENT_ABI_VERSION",
+            "LINOP_RDP_CREATE_WITH_PARENT_ABI_VERSION",
             "options->parent_hwnd == 0",
             "reinterpret_cast<HWND>(options->parent_hwnd)",
             "IsWindow(parent)",
             "GetWindowThreadProcessId(parent, nullptr)",
             "GetCurrentThreadId()",
-            "NAVOP_RDP_RESULT_WRONG_THREAD",
+            "LINOP_RDP_RESULT_WRONG_THREAD",
             "new (std::nothrow) NativeRdpHost",
             "create_active_x_resources(",
             "delete host;",
             "*out_host = host;",
             "catch (...)",
-            "NAVOP_RDP_RESULT_INTERNAL_ERROR",
+            "LINOP_RDP_RESULT_INTERNAL_ERROR",
         ],
     );
     assert_tokens_in_scope(
@@ -1129,14 +1129,14 @@ fn native_entrypoints_validate_headers_and_contain_failures() {
             "try {",
             "if (host == nullptr)",
             "const LinopRdpResult owner_result = ensure_owner_thread(host)",
-            "if (owner_result != NAVOP_RDP_RESULT_OK)",
+            "if (owner_result != LINOP_RDP_RESULT_OK)",
             "clear_last_error(host)",
             "bounds == nullptr || bounds->width < 0 || bounds->height < 0",
             "host->callback_state != CallbackState::Open",
             "record_last_error(",
             "set_active_x_bounds(host->active_x_resources, *bounds)",
             "catch (...)",
-            "NAVOP_RDP_RESULT_INTERNAL_ERROR",
+            "LINOP_RDP_RESULT_INTERNAL_ERROR",
         ],
     );
     assert_tokens_in_scope(
@@ -1147,7 +1147,7 @@ fn native_entrypoints_validate_headers_and_contain_failures() {
             "try {",
             "if (host == nullptr)",
             "const LinopRdpResult owner_result = ensure_owner_thread(host)",
-            "if (owner_result != NAVOP_RDP_RESULT_OK)",
+            "if (owner_result != LINOP_RDP_RESULT_OK)",
             "clear_last_error(host)",
             "visible > UINT32_C(1)",
             "host->callback_state != CallbackState::Open",
@@ -1155,7 +1155,7 @@ fn native_entrypoints_validate_headers_and_contain_failures() {
             "set_active_x_visible(",
             "visible == UINT32_C(1)",
             "catch (...)",
-            "NAVOP_RDP_RESULT_INTERNAL_ERROR",
+            "LINOP_RDP_RESULT_INTERNAL_ERROR",
         ],
     );
     assert_tokens_in_scope(
@@ -1169,7 +1169,7 @@ fn native_entrypoints_validate_headers_and_contain_failures() {
             "host->callback_state != CallbackState::Open",
             "focus_active_x(host->active_x_resources)",
             "catch (...)",
-            "NAVOP_RDP_RESULT_INTERNAL_ERROR",
+            "LINOP_RDP_RESULT_INTERNAL_ERROR",
         ],
     );
     assert_tokens_in_scope(
@@ -1184,7 +1184,7 @@ fn native_entrypoints_validate_headers_and_contain_failures() {
             "*host = nullptr;",
             "delete owned;",
             "catch (...)",
-            "NAVOP_RDP_RESULT_INTERNAL_ERROR",
+            "LINOP_RDP_RESULT_INTERNAL_ERROR",
         ],
     );
     assert_excludes_all(
@@ -1265,8 +1265,8 @@ fn native_audio_policy_uses_complete_options_and_secured_settings3() {
     assert_contains_all(
         &format!("{HOST_CRATE}/native/windows_rdp_host.h"),
         &[
-            "NAVOP_RDP_CONNECTION_FLAG_AUDIO_PLAYBACK_DISABLED UINT32_C(1)",
-            "NAVOP_RDP_CONNECTION_FLAGS_KNOWN",
+            "LINOP_RDP_CONNECTION_FLAG_AUDIO_PLAYBACK_DISABLED UINT32_C(1)",
+            "LINOP_RDP_CONNECTION_FLAGS_KNOWN",
             "unknown connection flag",
         ],
     );
@@ -1280,7 +1280,7 @@ fn native_audio_policy_uses_complete_options_and_secured_settings3() {
     );
     assert_contains_all(
         &format!("{HOST_CRATE}/native/configuration.cpp"),
-        &["(options.flags & ~NAVOP_RDP_CONNECTION_FLAGS_KNOWN) != 0"],
+        &["(options.flags & ~LINOP_RDP_CONNECTION_FLAGS_KNOWN) != 0"],
     );
     assert_contains_all(
         &format!("{HOST_CRATE}/build.rs"),
@@ -1311,7 +1311,7 @@ fn native_audio_policy_uses_complete_options_and_secured_settings3() {
     );
     assert_excludes_all(
         &format!("{HOST_CRATE}/native/audio_redirection.cpp"),
-        &["NAVOP_RDP_CONNECTION_FLAG_AUDIO_PLAYBACK_DISABLED"],
+        &["LINOP_RDP_CONNECTION_FLAG_AUDIO_PLAYBACK_DISABLED"],
     );
 }
 
@@ -1708,9 +1708,9 @@ fn active_x_host_subclasses_an_isolated_native_child_and_releases_owned_resource
             "synchronize_control_bounds(resources->state)",
             "if (FAILED(layout_result))",
             "if (layout_result == kPresentationIncompleteHresult)",
-            "return NAVOP_RDP_RESULT_PRESENTATION_INCOMPLETE;",
-            "return NAVOP_RDP_RESULT_INTERNAL_ERROR;",
-            "return NAVOP_RDP_RESULT_OK;",
+            "return LINOP_RDP_RESULT_PRESENTATION_INCOMPLETE;",
+            "return LINOP_RDP_RESULT_INTERNAL_ERROR;",
+            "return LINOP_RDP_RESULT_OK;",
         ],
     );
     assert_tokens_in_scope(
@@ -1721,9 +1721,9 @@ fn active_x_host_subclasses_an_isolated_native_child_and_releases_owned_resource
             "synchronize_control_bounds(resources->state)",
             "if (FAILED(layout_result))",
             "if (layout_result == kPresentationIncompleteHresult)",
-            "return NAVOP_RDP_RESULT_PRESENTATION_INCOMPLETE;",
-            "return NAVOP_RDP_RESULT_INTERNAL_ERROR;",
-            "return NAVOP_RDP_RESULT_OK;",
+            "return LINOP_RDP_RESULT_PRESENTATION_INCOMPLETE;",
+            "return LINOP_RDP_RESULT_INTERNAL_ERROR;",
+            "return LINOP_RDP_RESULT_OK;",
         ],
     );
     assert_excludes_all(
@@ -1962,23 +1962,23 @@ fn active_x_event_sink_maps_known_dispids_and_unadvises_before_releasing_the_con
             "trace_native_stage(\"event_subscription.complete\")",
             "DWORD advise_cookie = 0;",
             "subscription->advise_cookie = advise_cookie;",
-            "NAVOP_RDP_EVENT_CONNECTING",
-            "NAVOP_RDP_EVENT_CONNECTED",
-            "NAVOP_RDP_EVENT_LOGIN_COMPLETE",
-            "NAVOP_RDP_EVENT_RECONNECTING",
-            "NAVOP_RDP_EVENT_RECONNECTED",
-            "NAVOP_RDP_EVENT_NETWORK_STATUS_CHANGED",
-            "NAVOP_RDP_EVENT_REMOTE_DESKTOP_SIZE_CHANGED",
-            "NAVOP_RDP_EVENT_ENTER_FULLSCREEN",
-            "NAVOP_RDP_EVENT_LEAVE_FULLSCREEN",
-            "NAVOP_RDP_EVENT_AUTHENTICATION_WARNING_DISPLAYED",
-            "NAVOP_RDP_EVENT_AUTHENTICATION_WARNING_DISMISSED",
-            "NAVOP_RDP_EVENT_WARNING",
-            "NAVOP_RDP_EVENT_FATAL_ERROR",
-            "NAVOP_RDP_EVENT_LOGON_ERROR",
-            "NAVOP_RDP_EVENT_DISCONNECTED",
-            "NAVOP_RDP_EVENT_CLOSE_CONFIRMED",
-            "NAVOP_RDP_EVENT_FOCUS_RELEASED",
+            "LINOP_RDP_EVENT_CONNECTING",
+            "LINOP_RDP_EVENT_CONNECTED",
+            "LINOP_RDP_EVENT_LOGIN_COMPLETE",
+            "LINOP_RDP_EVENT_RECONNECTING",
+            "LINOP_RDP_EVENT_RECONNECTED",
+            "LINOP_RDP_EVENT_NETWORK_STATUS_CHANGED",
+            "LINOP_RDP_EVENT_REMOTE_DESKTOP_SIZE_CHANGED",
+            "LINOP_RDP_EVENT_ENTER_FULLSCREEN",
+            "LINOP_RDP_EVENT_LEAVE_FULLSCREEN",
+            "LINOP_RDP_EVENT_AUTHENTICATION_WARNING_DISPLAYED",
+            "LINOP_RDP_EVENT_AUTHENTICATION_WARNING_DISMISSED",
+            "LINOP_RDP_EVENT_WARNING",
+            "LINOP_RDP_EVENT_FATAL_ERROR",
+            "LINOP_RDP_EVENT_LOGON_ERROR",
+            "LINOP_RDP_EVENT_DISCONNECTED",
+            "LINOP_RDP_EVENT_CLOSE_CONFIRMED",
+            "LINOP_RDP_EVENT_FOCUS_RELEASED",
             "dispatch_disconnected_from_parameters(host, parameters)",
             "event_sink.detached_callback",
             "event_sink.dispatch_failure",
@@ -1997,7 +1997,7 @@ fn active_x_event_sink_maps_known_dispids_and_unadvises_before_releasing_the_con
             "event_subscription.destroy.complete",
             "get_active_x_extended_disconnect_reason(",
             "trace_active_x_disconnect_description(",
-            "extended_result == NAVOP_RDP_RESULT_OK",
+            "extended_result == LINOP_RDP_RESULT_OK",
             "parameters->rgvarg[1]",
             "parameters->rgvarg[0]",
             "encode_u32_le(",
@@ -2171,19 +2171,19 @@ fn native_connection_entrypoints_validate_gate_outputs_and_exceptions() {
                 "ensure_owner_thread(host)",
                 "callback_state != CallbackState::Open",
                 "catch (...)",
-                "NAVOP_RDP_RESULT_INTERNAL_ERROR",
+                "LINOP_RDP_RESULT_INTERNAL_ERROR",
             ],
         );
     }
     assert_contains_all(
         &format!("{HOST_CRATE}/native/configuration.cpp"),
         &[
-            "struct_size < NAVOP_RDP_CONNECTION_LEGACY_SIZE",
+            "struct_size < LINOP_RDP_CONNECTION_LEGACY_SIZE",
             "connection_field_available",
             "read_connection_field",
             "validate_abi_version",
-            "(options.flags & ~NAVOP_RDP_CONNECTION_FLAGS_KNOWN) != 0",
-            "NAVOP_RDP_MAX_HOST_UTF16_CODE_UNITS",
+            "(options.flags & ~LINOP_RDP_CONNECTION_FLAGS_KNOWN) != 0",
+            "LINOP_RDP_MAX_HOST_UTF16_CODE_UNITS",
             "options.host.data == nullptr",
             "options.port > UINT32_C(65535)",
             "options.desktop_width <= 0",
@@ -2202,7 +2202,7 @@ fn native_connection_entrypoints_validate_gate_outputs_and_exceptions() {
             "*out_state = UINT32_C(0)",
             "host == nullptr",
             "LinopRdpResult result = ensure_owner_thread(host)",
-            "if (result != NAVOP_RDP_RESULT_OK)",
+            "if (result != LINOP_RDP_RESULT_OK)",
             "clear_last_error(host)",
             "callback_state != CallbackState::Open",
         ],
@@ -2216,7 +2216,7 @@ fn native_connection_entrypoints_validate_gate_outputs_and_exceptions() {
             "*out_status = UINT32_C(0)",
             "host == nullptr",
             "LinopRdpResult result = ensure_owner_thread(host)",
-            "if (result != NAVOP_RDP_RESULT_OK)",
+            "if (result != LINOP_RDP_RESULT_OK)",
             "clear_last_error(host)",
             "callback_state != CallbackState::Open",
             "return request_close_active_x(host, host->active_x_resources, out_status);",
@@ -2238,14 +2238,14 @@ fn native_session_display_entrypoint_validates_headers_and_state() {
             "try {",
             "if (host == nullptr)",
             "const LinopRdpResult owner_result = ensure_owner_thread(host)",
-            "if (owner_result != NAVOP_RDP_RESULT_OK)",
+            "if (owner_result != LINOP_RDP_RESULT_OK)",
             "clear_last_error(host)",
             "settings == nullptr",
             "validate_struct_size(",
             "settings->struct_size",
             "sizeof(LinopRdpSessionDisplaySettings)",
             "settings->abi_version",
-            "NAVOP_RDP_SESSION_DISPLAY_SETTINGS_ABI_VERSION",
+            "LINOP_RDP_SESSION_DISPLAY_SETTINGS_ABI_VERSION",
             "settings->desktop_width == UINT32_C(0)",
             "settings->desktop_height == UINT32_C(0)",
             "settings->physical_width == UINT32_C(0)",
@@ -2253,10 +2253,10 @@ fn native_session_display_entrypoint_validates_headers_and_state() {
             "settings->desktop_scale_factor == UINT32_C(0)",
             "settings->device_scale_factor == UINT32_C(0)",
             "host->callback_state != CallbackState::Open",
-            "NAVOP_RDP_RESULT_INVALID_STATE",
+            "LINOP_RDP_RESULT_INVALID_STATE",
             "update_active_x_session_display_settings(",
             "catch (...)",
-            "NAVOP_RDP_RESULT_INTERNAL_ERROR",
+            "LINOP_RDP_RESULT_INTERNAL_ERROR",
         ],
     );
 }
@@ -2275,10 +2275,10 @@ fn active_x_session_display_requires_connected_and_preserves_hresult() {
             "\"display.connected_state\"",
             "if (FAILED(result))",
             "record_last_hresult(",
-            "NAVOP_RDP_RESULT_INTERNAL_ERROR",
+            "LINOP_RDP_RESULT_INTERNAL_ERROR",
             "static_cast<int32_t>(result)",
             "if (connected != 1)",
-            "record_last_error(owner, NAVOP_RDP_RESULT_INVALID_STATE)",
+            "record_last_error(owner, LINOP_RDP_RESULT_INVALID_STATE)",
             "\"display.update_session_display_settings.before\"",
             "resources->state.client->UpdateSessionDisplaySettings(",
             "static_cast<ULONG>(settings.desktop_width)",
@@ -2291,9 +2291,9 @@ fn active_x_session_display_requires_connected_and_preserves_hresult() {
             "\"display.update_session_display_settings.after\"",
             "if (FAILED(result))",
             "record_last_hresult(",
-            "NAVOP_RDP_RESULT_INTERNAL_ERROR",
+            "LINOP_RDP_RESULT_INTERNAL_ERROR",
             "static_cast<int32_t>(result)",
-            "return NAVOP_RDP_RESULT_OK;",
+            "return LINOP_RDP_RESULT_OK;",
         ],
     );
 }
@@ -2326,8 +2326,8 @@ fn active_x_connect_aligns_initial_display_properties_with_axhost() {
             "static_cast<ULONG>(options.device_scale_factor)",
             "result == E_FAIL",
             "connect.display.extended_property.unsupported",
-            "NAVOP_RDP_STAGE_CONNECT_DISPLAY_DESKTOP_SCALE_FACTOR",
-            "NAVOP_RDP_STAGE_CONNECT_DISPLAY_DEVICE_SCALE_FACTOR",
+            "LINOP_RDP_STAGE_CONNECT_DISPLAY_DESKTOP_SCALE_FACTOR",
+            "LINOP_RDP_STAGE_CONNECT_DISPLAY_DEVICE_SCALE_FACTOR",
         ],
     );
     assert_contains_all(
@@ -2459,9 +2459,9 @@ fn native_unsupported_resource_and_gateway_requests_fail_closed() {
     assert_contains_all(
         runtime_policy,
         &[
-            "if ((options.resource_flags & NAVOP_RDP_RESOURCE_FLAG_CAMERAS) != 0)",
+            "if ((options.resource_flags & LINOP_RDP_RESOURCE_FLAG_CAMERAS) != 0)",
             "connect.resource.cameras.unavailable",
-            "NAVOP_RDP_RESULT_UNAVAILABLE",
+            "LINOP_RDP_RESULT_UNAVAILABLE",
         ],
     );
     assert_excludes_all(runtime_policy, &["connect.resource.cameras.unsupported"]);
@@ -2469,10 +2469,10 @@ fn native_unsupported_resource_and_gateway_requests_fail_closed() {
     let gateway_policy = &format!("{HOST_CRATE}/native/connection_policy_gateway.cpp");
     let gateway_contents = read(gateway_policy);
     let disabled_end = gateway_contents
-        .find("if (options.gateway_mode == NAVOP_RDP_GATEWAY_MODE_NONE)")
+        .find("if (options.gateway_mode == LINOP_RDP_GATEWAY_MODE_NONE)")
         .expect("gateway disabled branch must remain explicit");
     let bypass_check = gateway_contents
-        .find("if ((options.gateway_flags & NAVOP_RDP_GATEWAY_FLAG_BYPASS_LOCAL) != 0)")
+        .find("if ((options.gateway_flags & LINOP_RDP_GATEWAY_FLAG_BYPASS_LOCAL) != 0)")
         .expect("gateway bypass-local check must remain explicit");
     assert!(
         disabled_end < bypass_check,
@@ -2483,7 +2483,7 @@ fn native_unsupported_resource_and_gateway_requests_fail_closed() {
         &[
             "connect.gateway.bypass_local.unavailable",
             "return record_last_error(",
-            "NAVOP_RDP_RESULT_UNAVAILABLE",
+            "LINOP_RDP_RESULT_UNAVAILABLE",
         ],
     );
     assert_excludes_all(
@@ -3031,11 +3031,11 @@ fn native_dispatch_helpers_own_variant_and_bstr_lifecycles() {
             "set_dispatch_bool(",
             "trace_native_hresult(",
             "result == DISP_E_UNKNOWNNAME",
-            "return NAVOP_RDP_RESULT_OK;",
+            "return LINOP_RDP_RESULT_OK;",
             "if (FAILED(result))",
             "record_last_hresult(",
             "static_cast<int32_t>(result)",
-            "return NAVOP_RDP_RESULT_OK;",
+            "return LINOP_RDP_RESULT_OK;",
         ],
     );
     assert_tokens_in_scope(
@@ -3057,11 +3057,11 @@ fn native_dispatch_helpers_own_variant_and_bstr_lifecycles() {
             "result == E_NOINTERFACE",
             "result == E_FAIL",
             "connect.display.extended_property.unsupported",
-            "return NAVOP_RDP_RESULT_OK;",
+            "return LINOP_RDP_RESULT_OK;",
             "if (FAILED(result))",
             "record_last_stage_hresult(",
             "static_cast<int32_t>(result)",
-            "return NAVOP_RDP_RESULT_OK;",
+            "return LINOP_RDP_RESULT_OK;",
         ],
     );
     assert_tokens_in_scope(
@@ -3071,9 +3071,9 @@ fn native_dispatch_helpers_own_variant_and_bstr_lifecycles() {
         &[
             "L\"DesktopScaleFactor\"",
             "optional_extended_property_result(",
-            "NAVOP_RDP_STAGE_CONNECT_DISPLAY_DESKTOP_SCALE_FACTOR",
+            "LINOP_RDP_STAGE_CONNECT_DISPLAY_DESKTOP_SCALE_FACTOR",
             "L\"DeviceScaleFactor\"",
-            "NAVOP_RDP_STAGE_CONNECT_DISPLAY_DEVICE_SCALE_FACTOR",
+            "LINOP_RDP_STAGE_CONNECT_DISPLAY_DEVICE_SCALE_FACTOR",
         ],
     );
     assert_tokens_in_scope(
@@ -3098,7 +3098,7 @@ fn reconnect_defaults_and_bounds_are_shared_across_the_abi() {
     let native_config = &format!("{HOST_CRATE}/native/configuration.cpp");
     let core_security = "crates/core/src/storage/rdp_settings/security.rs";
 
-    assert_contains_all(header, &["NAVOP_RDP_MAX_RECONNECT_ATTEMPTS UINT32_C(200)"]);
+    assert_contains_all(header, &["LINOP_RDP_MAX_RECONNECT_ATTEMPTS UINT32_C(200)"]);
     assert_contains_all(
         ffi,
         &[
@@ -3119,8 +3119,8 @@ fn reconnect_defaults_and_bounds_are_shared_across_the_abi() {
     assert_contains_all(
         native_config,
         &[
-            "normalized.max_reconnect_attempts = NAVOP_RDP_MAX_RECONNECT_ATTEMPTS;",
-            "options.max_reconnect_attempts > NAVOP_RDP_MAX_RECONNECT_ATTEMPTS",
+            "normalized.max_reconnect_attempts = LINOP_RDP_MAX_RECONNECT_ATTEMPTS;",
+            "options.max_reconnect_attempts > LINOP_RDP_MAX_RECONNECT_ATTEMPTS",
             "(std::numeric_limits<int32_t>::max)() / INT32_C(1000)",
         ],
     );
@@ -3145,7 +3145,7 @@ fn presentation_state_query_abi_is_frozen() {
     assert_contains_all(
         header,
         &[
-            "NAVOP_RDP_PRESENTATION_STATE_ABI_VERSION UINT32_C(1)",
+            "LINOP_RDP_PRESENTATION_STATE_ABI_VERSION UINT32_C(1)",
             "typedef struct LinopRdpPresentationState",
             "uint32_t control_hwnd_valid;",
             "uint32_t host_rect_nonzero;",

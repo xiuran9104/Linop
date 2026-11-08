@@ -35,7 +35,7 @@ fn client_config_health_labels_match_config_states() {
 
 #[test]
 fn package_health_labels_include_the_latest_recommended_tag() {
-    let package = format!("@linop/mcp@{}", NAVOP_MCP_CLIENT_TAG);
+    let package = format!("@linop/mcp@{}", LINOP_MCP_CLIENT_TAG);
 
     assert!(client_config_health_label(ClientConfigHealth::UpToDate).contains(&package));
     assert!(

@@ -1686,7 +1686,7 @@ fn standalone_window_starts_active_with_native_focus_requested() {
 fn overlay_composition_diagnostics_are_gated_behind_the_diagnostics_env() {
     let source = include_str!("windows_native_overlay/diagnostics.rs").replace("\r\n", "\n");
 
-    assert!(source.contains("NAVOP_REMOTE_DESKTOP_DIAGNOSTICS"));
+    assert!(source.contains("LINOP_REMOTE_DESKTOP_DIAGNOSTICS"));
     assert!(source.contains("fn overlay_diagnostics_enabled"));
     assert!(
         source

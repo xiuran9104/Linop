@@ -9274,10 +9274,7 @@ impl Storage {
         self.with_conn(move |conn| {
             conn.prepare("SELECT version FROM state_store WHERE key = ?1")
                 .and_then(|mut stmt| {
-                    stmt.query_row(params![key], |row| {
-                        row.get::<_, i64>(0).map(|v| v as u64)
-                    })
-                    .optional()
+                    stmt.query_row(params![key], |row| row.get::<_, i64>(0).map(|v| v as u64)).optional()
                 })
                 .map_err(|e| e.to_string())
         })

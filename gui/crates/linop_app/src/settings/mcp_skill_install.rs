@@ -17,7 +17,7 @@ enum SkillTarget {
     Agents,
 }
 
-const NAVOP_CLI_PACKAGE: &str = "@linop/cli@latest";
+const LINOP_CLI_PACKAGE: &str = "@linop/cli@latest";
 
 impl SkillTarget {
     fn id(self) -> &'static str {
@@ -110,7 +110,7 @@ fn mcp_skill_install_item(target: SkillTarget) -> SettingItem {
 fn skill_install_args(target: SkillTarget, force: bool) -> Vec<String> {
     let mut args = vec![
         "-y".to_string(),
-        NAVOP_CLI_PACKAGE.to_string(),
+        LINOP_CLI_PACKAGE.to_string(),
         "skill".to_string(),
         "install".to_string(),
         "--target".to_string(),
@@ -219,7 +219,7 @@ mod tests {
         let args = skill_install_args(SkillTarget::Codex, false);
 
         assert_eq!("-y", args[0]);
-        assert_eq!(NAVOP_CLI_PACKAGE, args[1]);
+        assert_eq!(LINOP_CLI_PACKAGE, args[1]);
         assert_eq!(
             vec![
                 "skill", "install", "--target", "codex", "--scope", "user", "--json"

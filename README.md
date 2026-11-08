@@ -160,9 +160,11 @@ vendored 于 `vendor/dbx/`,与 navop 同法本地化(gaussdb/mysql_async fork
 - **russh 已统一**:dbx 侧升级 0.60→0.65(与 navop 侧同版本,
   ed25519-dalek 3 冲突消失),为 navop+dbx 合并清障;移植面仅
   `check_server_key` 回调签名一处。
-- **品牌**:navop 的 display_name(窗口标题/托盘等)已改为 **Linop**
-  (数据目录 `~/.navop-dev` 暂保留以延续既有数据);DBX 显示名随
-  合并阶段统一,内部 crate 名(dbx-core 等)在合并时一次性机械重命名。
+- **品牌**:用户可见层已全部 Linop(窗口标题/WM_CLASS/数据目录
+  `~/.linop-dev`/托盘/常量与文案;构建镜像 `linop-build`);
+  vendored 上游的**内部 crate 名**(dbx-core 等)与**上游 fork 的
+  git tag 标识**(`v0.65.0-navop.1` 等,是外部仓库真实 tag,改名即
+  无法拉取)暂保留,合并阶段一次性机械重命名。
 - **合并路线**:navop(GUI 壳)⊕ dbx(数据库内核)→ 统一 Linop;
   两棵 vendored 树已在本 workspace 共存(russh/ed25519 对齐)。
 

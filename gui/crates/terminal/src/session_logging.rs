@@ -50,7 +50,7 @@ pub(crate) fn build_automatic_session_log_request(
 }
 
 pub(crate) fn application_version() -> String {
-    option_env!("NAVOP_APPLICATION_VERSION")
+    option_env!("LINOP_APPLICATION_VERSION")
         .unwrap_or(env!("CARGO_PKG_VERSION"))
         .to_string()
 }

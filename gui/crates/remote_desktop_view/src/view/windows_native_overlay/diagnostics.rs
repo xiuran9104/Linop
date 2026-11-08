@@ -21,7 +21,7 @@ const MAX_ANCESTRY_DEPTH: usize = 64;
 const GWL_STYLE: i32 = -16;
 const GWL_EXSTYLE: i32 = -20;
 const RDP_OUTPUT_CLASS: &str = "OPWindowClass";
-const OVERLAY_DIAGNOSTICS_ENV: &str = "NAVOP_REMOTE_DESKTOP_DIAGNOSTICS";
+const OVERLAY_DIAGNOSTICS_ENV: &str = "LINOP_REMOTE_DESKTOP_DIAGNOSTICS";
 
 fn overlay_diagnostics_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();

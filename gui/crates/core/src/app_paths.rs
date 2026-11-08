@@ -7,7 +7,7 @@ pub const PORTABLE_MARKER_FILE: &str = "linop.portable";
 
 /// debug 构建的默认数据目录名。开发态必须与已安装版本完全隔离，
 /// 否则 `cargo run` 会直接写生产配置（连接库、设置、登录态）。
-/// 与 `.env.local` 中常用的 `NAVOP_DATA_DIR=~/.linop-dev` 保持一致。
+/// 与 `.env.local` 中常用的 `LINOP_DATA_DIR=~/.linop-dev` 保持一致。
 pub const DEVELOPMENT_DATA_DIR_NAME: &str = ".linop-dev";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -274,8 +274,8 @@ pub fn process_context() -> Result<AppPathResolutionContext> {
         development_data_dir: development_data_dir_for(&executable_path),
         executable_path,
         current_dir: std::env::current_dir().context("resolve current directory")?,
-        portable_environment: std::env::var_os("NAVOP_PORTABLE"),
-        data_dir_environment: std::env::var_os("NAVOP_DATA_DIR"),
+        portable_environment: std::env::var_os("LINOP_PORTABLE"),
+        data_dir_environment: std::env::var_os("LINOP_DATA_DIR"),
     })
 }
 

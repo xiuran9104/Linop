@@ -17,7 +17,7 @@ const KDF_NAME: &str = "argon2id";
 const DATA_KEY_LEN: usize = 32;
 const SALT_LEN: usize = 16;
 const NONCE_LEN: usize = 12;
-const WRAPPED_MAGIC: &[u8] = b"NAVOP_TEAM_KEY_V2\0";
+const WRAPPED_MAGIC: &[u8] = b"LINOP_TEAM_KEY_V2\0";
 
 #[derive(Debug, Clone, Copy)]
 pub struct TeamKeyKdfParams {

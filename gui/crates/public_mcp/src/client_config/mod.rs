@@ -21,11 +21,11 @@ const PACKAGE_NAME: &str = "@linop/mcp";
 const NPX_COMMAND: &str = "npx";
 /// npm distribution tag used for the external MCP stdio launcher.
 /// The launcher resolves the current published package at startup.
-pub const NAVOP_MCP_CLIENT_TAG: &str = "latest";
-const CODEX_BEGIN: &str = "# BEGIN NAVOP MCP";
-const CODEX_END: &str = "# END NAVOP MCP";
-const DEV_CODEX_BEGIN: &str = "# BEGIN NAVOP MCP (DEV)";
-const DEV_CODEX_END: &str = "# END NAVOP MCP (DEV)";
+pub const LINOP_MCP_CLIENT_TAG: &str = "latest";
+const CODEX_BEGIN: &str = "# BEGIN LINOP MCP";
+const CODEX_END: &str = "# END LINOP MCP";
+const DEV_CODEX_BEGIN: &str = "# BEGIN LINOP MCP (DEV)";
+const DEV_CODEX_END: &str = "# END LINOP MCP (DEV)";
 const LEGACY_CODEX_BEGIN: &str = "# BEGIN ONETCLI PUBLIC MCP";
 const LEGACY_CODEX_END: &str = "# END ONETCLI PUBLIC MCP";
 
@@ -105,7 +105,7 @@ impl ClientConfigInstall {
     pub fn from_current_app() -> Self {
         Self::from_npx_command(
             crate::discovery::public_mcp_discovery_path(),
-            NAVOP_MCP_CLIENT_TAG,
+            LINOP_MCP_CLIENT_TAG,
         )
     }
 
@@ -274,7 +274,7 @@ fn classify_config_match(matches: bool, text: &str) -> Result<ClientConfigHealth
         return Ok(ClientConfigHealth::UpToDate);
     }
     if text.contains(PACKAGE_NAME)
-        && !text.contains(&format!("{PACKAGE_NAME}@{NAVOP_MCP_CLIENT_TAG}"))
+        && !text.contains(&format!("{PACKAGE_NAME}@{LINOP_MCP_CLIENT_TAG}"))
     {
         return Ok(ClientConfigHealth::PackageVersionOutdated);
     }

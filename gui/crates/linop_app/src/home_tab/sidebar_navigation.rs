@@ -151,7 +151,7 @@ impl HomePage {
         let show_team = is_feature_enabled(Feature::TeamManagement, cx);
         let mut menu = v_flex().w_full().gap_1().child(self.render_nav_row(
             "home-app-home",
-            Icon::default().path(NAVOP_HOME_LINE_ICON).mono(),
+            Icon::default().path(LINOP_HOME_LINE_ICON).mono(),
             t!("Home.connections_entry").to_string(),
             true, // Home is already visible. Do not reset search, groups, layout or scroll.
             None,

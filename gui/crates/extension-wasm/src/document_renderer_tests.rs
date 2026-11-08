@@ -2,7 +2,7 @@ use crate::{DocumentRenderRequest, DocumentRenderTheme, DocumentRendererRuntime}
 
 #[test]
 fn real_mermaid_component_renders_svg_when_fixture_is_provided() {
-    let Ok(path) = std::env::var("NAVOP_MERMAID_COMPONENT") else {
+    let Ok(path) = std::env::var("LINOP_MERMAID_COMPONENT") else {
         return;
     };
     let runtime = DocumentRendererRuntime::from_file("mermaid", path.as_ref()).unwrap();
@@ -31,7 +31,7 @@ fn real_mermaid_component_renders_svg_when_fixture_is_provided() {
 
 #[test]
 fn real_math_component_renders_visible_svg_paths_when_fixture_is_provided() {
-    let Ok(path) = std::env::var("NAVOP_MATH_COMPONENT") else {
+    let Ok(path) = std::env::var("LINOP_MATH_COMPONENT") else {
         return;
     };
     let runtime = DocumentRendererRuntime::from_file("math", path.as_ref()).unwrap();

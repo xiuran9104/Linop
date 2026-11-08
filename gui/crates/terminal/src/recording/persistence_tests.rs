@@ -1,5 +1,5 @@
 use super::{
-    ASCIICAST_VERSION, NAVOP_RECORDING_FORMAT_VERSION, RecordingArtifactKind, RecordingBackend,
+    ASCIICAST_VERSION, LINOP_RECORDING_FORMAT_VERSION, RecordingArtifactKind, RecordingBackend,
     RecordingCompleteness, RecordingEvent, RecordingEventKind, RecordingFileConfig,
     RecordingFileError, RecordingFileLimit, RecordingFileLimits, RecordingFileState,
     RecordingFileTransition, RecordingFileWriter, RecordingMetadata, RecordingSessionMetadata,
@@ -91,7 +91,7 @@ fn durable_writer_publishes_a_versioned_recording_only_after_stop() {
     let recording = read_recording(&final_path, RecordingFileLimits::default()).unwrap();
     assert_eq!(ASCIICAST_VERSION, recording.header.version);
     assert_eq!(
-        NAVOP_RECORDING_FORMAT_VERSION,
+        LINOP_RECORDING_FORMAT_VERSION,
         recording.header.linop.format_version
     );
     assert_eq!("recording-1", recording.header.linop.recording_id);

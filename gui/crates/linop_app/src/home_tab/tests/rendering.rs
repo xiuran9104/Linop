@@ -120,7 +120,7 @@ fn home_redesign_layout_contracts() {
     assert!(!card.contains("shadow_md"));
     assert!(!card.contains("shadow_sm"));
     // 最近区使用历史语义图标而非收藏星标，逐项「最近」角标已删除
-    assert!(content.contains("NAVOP_HISTORY_ICON"));
+    assert!(content.contains("LINOP_HISTORY_ICON"));
     assert!(!content.contains("IconName::StarFill"));
     assert!(!card.contains("recent_badge"));
 }
@@ -150,7 +150,7 @@ fn home_sidebar_refinement_contracts() {
     assert!(nav.contains(".on_key_down("));
     assert!(!nav.contains("SidebarMenuItem::new"));
     // 功能图标统一线性单色；Home 用自有线稿资源；会话日志用 SquareTerminal 线性资源
-    assert!(nav.contains("NAVOP_HOME_LINE_ICON"));
+    assert!(nav.contains("LINOP_HOME_LINE_ICON"));
     assert!(nav.contains(".mono()"));
     assert!(applications.contains("IconName::SquareTerminal"));
     assert!(!applications.contains("IconName::Terminal,"));

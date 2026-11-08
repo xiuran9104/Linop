@@ -93,7 +93,7 @@ pub(crate) fn connection_type_navigation_icon(
     // MQTT 品牌线条图标经应用 AssetSource 提供
     if kind == ConnectionType::Mqtt {
         return Icon::default()
-            .path(one_core::storage::NAVOP_MQTT_LINE_ICON)
+            .path(one_core::storage::LINOP_MQTT_LINE_ICON)
             .mono()
             .with_size(size.icon_size());
     }
@@ -132,7 +132,7 @@ pub(crate) fn connection_type_icon(kind: ConnectionType, size: ConnectionVisualS
     // MQTT 品牌图标经应用 AssetSource 提供(外部 IconName 无此变体)
     if kind == ConnectionType::Mqtt {
         return Icon::default()
-            .path(one_core::storage::NAVOP_MQTT_COLOR_ICON)
+            .path(one_core::storage::LINOP_MQTT_COLOR_ICON)
             .color()
             .with_size(size.icon_size());
     }
@@ -145,7 +145,7 @@ pub(crate) fn database_type_icon(kind: &DatabaseType, size: ConnectionVisualSize
     // TDengine 品牌图标经应用 AssetSource 提供(外部 IconName 无此变体)
     if matches!(kind, DatabaseType::TDengine) {
         return Icon::default()
-            .path(one_core::storage::NAVOP_TDENGINE_COLOR_ICON)
+            .path(one_core::storage::LINOP_TDENGINE_COLOR_ICON)
             .color()
             .with_size(size.icon_size());
     }

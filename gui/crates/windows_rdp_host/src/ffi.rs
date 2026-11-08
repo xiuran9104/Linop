@@ -160,7 +160,7 @@ pub(crate) const REQUEST_CLOSE_CAN_PROCEED: u32 = 0;
 pub(crate) const REQUEST_CLOSE_WAIT_FOR_EVENTS: u32 = 1;
 
 // Shared reconnect bounds. MAX_RECONNECT_ATTEMPTS mirrors
-// NAVOP_RDP_MAX_RECONNECT_ATTEMPTS; MAX_KEEP_ALIVE_SECONDS keeps the
+// LINOP_RDP_MAX_RECONNECT_ATTEMPTS; MAX_KEEP_ALIVE_SECONDS keeps the
 // seconds→milliseconds LONG conversion in range.
 pub(crate) const MAX_RECONNECT_ATTEMPTS: u32 = 200;
 pub(crate) const MAX_KEEP_ALIVE_SECONDS: u32 = (i32::MAX / 1_000) as u32;

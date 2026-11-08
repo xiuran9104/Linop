@@ -303,12 +303,12 @@ mod tests {
     fn unexpandable_windows_env_is_skipped_not_granted() {
         // 合法形式但 env 缺失：跳过并上报，不把字面量当 root。
         let (capabilities, skipped) = capabilities_from_permissions(
-            &permissions(&["fs:read:%NAVOP_MISSING_VAR%/data"]),
+            &permissions(&["fs:read:%LINOP_MISSING_VAR%/data"]),
             std::path::Path::new("/tmp/ext"),
         );
         assert_eq!(
             skipped,
-            vec!["fs:read:%NAVOP_MISSING_VAR%/data".to_string()]
+            vec!["fs:read:%LINOP_MISSING_VAR%/data".to_string()]
         );
         assert!(!capabilities.has_read_access());
     }

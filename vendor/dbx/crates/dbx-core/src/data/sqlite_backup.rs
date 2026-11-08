@@ -1,6 +1,5 @@
 use std::path::{Path, PathBuf};
 
-
 use crate::db::sqlite::{is_memory_database_path, SqliteHandle};
 use crate::path_utils::expand_tilde;
 

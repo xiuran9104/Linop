@@ -42,13 +42,13 @@ pub fn public_base_url_from_parts(
 }
 
 pub fn public_base_url() -> Option<String> {
-    let runtime = std::env::var("NAVOP_PUBLIC_BASE_URL").ok();
-    public_base_url_from_parts(runtime.as_deref(), option_env!("NAVOP_PUBLIC_BASE_URL"))
+    let runtime = std::env::var("LINOP_PUBLIC_BASE_URL").ok();
+    public_base_url_from_parts(runtime.as_deref(), option_env!("LINOP_PUBLIC_BASE_URL"))
 }
 
 pub fn website_base_url() -> Option<String> {
-    let runtime = std::env::var("NAVOP_WEBSITE_BASE_URL").ok();
-    public_base_url_from_parts(runtime.as_deref(), option_env!("NAVOP_WEBSITE_BASE_URL"))
+    let runtime = std::env::var("LINOP_WEBSITE_BASE_URL").ok();
+    public_base_url_from_parts(runtime.as_deref(), option_env!("LINOP_WEBSITE_BASE_URL"))
 }
 
 pub fn update_url_from_public_base(base_url: &str) -> String {
@@ -71,11 +71,11 @@ impl UpdateConfig {
 
     /// 获取更新接口地址
     fn get_update_url() -> String {
-        if let Some(url) = runtime_env("NAVOP_UPDATE_URL") {
+        if let Some(url) = runtime_env("LINOP_UPDATE_URL") {
             return url;
         }
 
-        if let Some(url) = trimmed_value(option_env!("NAVOP_UPDATE_URL")) {
+        if let Some(url) = trimmed_value(option_env!("LINOP_UPDATE_URL")) {
             return url;
         }
 
@@ -86,11 +86,11 @@ impl UpdateConfig {
 
     /// 获取下载页地址
     fn get_download_url() -> Option<String> {
-        if let Some(url) = runtime_env("NAVOP_UPDATE_DOWNLOAD_URL") {
+        if let Some(url) = runtime_env("LINOP_UPDATE_DOWNLOAD_URL") {
             return Some(url);
         }
 
-        trimmed_value(option_env!("NAVOP_UPDATE_DOWNLOAD_URL"))
+        trimmed_value(option_env!("LINOP_UPDATE_DOWNLOAD_URL"))
     }
 
     /// 检查配置是否有效

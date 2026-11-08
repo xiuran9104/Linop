@@ -485,7 +485,7 @@ mod tests {
             r#"#!/bin/sh
 set -eu
 if [ "${1-}" = "-y" ]; then
-  printf '%s\n' "$NAVOP_FAKE_PUBLIC_KEY"
+  printf '%s\n' "$LINOP_FAKE_PUBLIC_KEY"
   exit 0
 fi
 key_path=
@@ -498,8 +498,8 @@ for argument in "$@"; do
 done
 [ -n "$key_path" ]
 printf 'private-key-generated-on-source\n' > "$key_path"
-printf '%s generated\n' "$NAVOP_FAKE_PUBLIC_KEY" > "$key_path.pub"
-printf 'generated\n' >> "$NAVOP_GENERATED_COUNT"
+printf '%s generated\n' "$LINOP_FAKE_PUBLIC_KEY" > "$key_path.pub"
+printf 'generated\n' >> "$LINOP_GENERATED_COUNT"
 "#,
         )
         .expect("fake ssh-keygen");
@@ -527,8 +527,8 @@ printf 'generated\n' >> "$NAVOP_GENERATED_COUNT"
                     "PATH",
                     format!("{}:{}", bin.display(), inherited_path.to_string_lossy()),
                 )
-                .env("NAVOP_FAKE_PUBLIC_KEY", &fake_public_key)
-                .env("NAVOP_GENERATED_COUNT", &generated_count)
+                .env("LINOP_FAKE_PUBLIC_KEY", &fake_public_key)
+                .env("LINOP_GENERATED_COUNT", &generated_count)
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())

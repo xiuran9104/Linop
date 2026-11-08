@@ -3,8 +3,8 @@
 //! 验证 meatshell 式运行时注入的完整生命周期：
 //! 只读探测 → 首屏输出注入 → 回显抑制 → OSC 133;B 就绪 → 命令记录 → 远端零文件写入。
 //!
-//! 通过环境变量 `NAVOP_LIVE_SSH` 提供目标（缺省时使用内网默认值），格式：
-//! `NAVOP_LIVE_SSH=user:password@host:port`
+//! 通过环境变量 `LINOP_LIVE_SSH` 提供目标（缺省时使用内网默认值），格式：
+//! `LINOP_LIVE_SSH=user:password@host:port`
 //!
 //! 运行：`cargo test -p terminal --test ssh_runtime_integration_live -- --ignored --nocapture`
 
@@ -27,10 +27,10 @@ struct LiveTarget {
 
 impl LiveTarget {
     fn from_env() -> Self {
-        let raw = std::env::var("NAVOP_LIVE_SSH")
+        let raw = std::env::var("LINOP_LIVE_SSH")
             .unwrap_or_else(|_| "root:IA@seeyon@2023@113@10.1.131.181:22".to_string());
         // user:password@host:port，密码里可能含 '@'，从右往左拆。
-        let (userinfo, hostport) = raw.rsplit_once('@').expect("NAVOP_LIVE_SSH 需要包含 '@'");
+        let (userinfo, hostport) = raw.rsplit_once('@').expect("LINOP_LIVE_SSH 需要包含 '@'");
         let (user, password) = userinfo.split_once(':').expect("需要 user:password");
         let (host, port) = hostport
             .rsplit_once(':')

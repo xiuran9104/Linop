@@ -13,13 +13,13 @@ use one_core::config::{UpdateConfig, public_base_url, update_url_from_public_bas
 use one_core::settings::UpdateChannel;
 
 /// 运行时覆盖更新接口地址；与 `one_core::config` 共用同一个环境变量。
-const UPDATE_URL_ENV: &str = "NAVOP_UPDATE_URL";
+const UPDATE_URL_ENV: &str = "LINOP_UPDATE_URL";
 /// 编译期注入的更新接口地址。
-const BUILD_TIME_UPDATE_URL: Option<&str> = option_env!("NAVOP_UPDATE_URL");
+const BUILD_TIME_UPDATE_URL: Option<&str> = option_env!("LINOP_UPDATE_URL");
 /// 更新下载页地址（可选）。
-const UPDATE_DOWNLOAD_URL_ENV: &str = "NAVOP_UPDATE_DOWNLOAD_URL";
+const UPDATE_DOWNLOAD_URL_ENV: &str = "LINOP_UPDATE_DOWNLOAD_URL";
 /// 编译期注入的更新下载页地址。
-const BUILD_TIME_DOWNLOAD_URL: Option<&str> = option_env!("NAVOP_UPDATE_DOWNLOAD_URL");
+const BUILD_TIME_DOWNLOAD_URL: Option<&str> = option_env!("LINOP_UPDATE_DOWNLOAD_URL");
 /// 更新清单所在的分发子目录。
 const UPDATE_ROOT: &str = "updates";
 /// 统一更新清单文件名。

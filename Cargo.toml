@@ -13,7 +13,7 @@ members = [
     "crates/linop-theme",
     "crates/linop-sync",
     "crates/linop-dbx",
-    "crates/linop-navop-importer",
+    "crates/linop-gui-importer",
     "crates/linop-testsupport",
     "apps/linop",
 ]

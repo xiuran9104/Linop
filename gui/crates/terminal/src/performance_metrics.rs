@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-pub const TERMINAL_PERFORMANCE_METRICS_ENV: &str = "NAVOP_TERMINAL_PERFORMANCE_METRICS";
+pub const TERMINAL_PERFORMANCE_METRICS_ENV: &str = "LINOP_TERMINAL_PERFORMANCE_METRICS";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TerminalActivity {
@@ -464,7 +464,7 @@ pub fn terminal_performance_metrics_enabled() -> bool {
     let runtime = std::env::var(TERMINAL_PERFORMANCE_METRICS_ENV).ok();
     terminal_performance_metrics_enabled_from(
         runtime.as_deref(),
-        option_env!("NAVOP_TERMINAL_PERFORMANCE_METRICS"),
+        option_env!("LINOP_TERMINAL_PERFORMANCE_METRICS"),
     )
 }
 

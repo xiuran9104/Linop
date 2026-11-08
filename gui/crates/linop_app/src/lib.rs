@@ -68,7 +68,7 @@ pub struct AppAssets {
     linop_icons: one_assets::Assets,
 }
 
-pub(crate) const NAVOP_ICON_ASSET_PATH: &str = "linop/app-icon.png";
+pub(crate) const LINOP_ICON_ASSET_PATH: &str = "linop/app-icon.png";
 
 /// Linop 自带品牌图标(TDengine/MQTT)。
 ///
@@ -76,25 +76,25 @@ pub(crate) const NAVOP_ICON_ASSET_PATH: &str = "linop/app-icon.png";
 /// 以 include_bytes 内嵌并按路径对外提供(路径常量定义在 one-core)。
 fn linop_brand_icon(path: &str) -> Option<std::borrow::Cow<'static, [u8]>> {
     let bytes: &'static [u8] = match path {
-        one_core::storage::NAVOP_TDENGINE_COLOR_ICON => {
+        one_core::storage::LINOP_TDENGINE_COLOR_ICON => {
             include_bytes!("../../../resources/icons/tdengine-color.svg")
         }
-        one_core::storage::NAVOP_TDENGINE_LINE_COLOR_ICON => {
+        one_core::storage::LINOP_TDENGINE_LINE_COLOR_ICON => {
             include_bytes!("../../../resources/icons/tdengine-line-color.svg")
         }
-        one_core::storage::NAVOP_MQTT_COLOR_ICON => {
+        one_core::storage::LINOP_MQTT_COLOR_ICON => {
             include_bytes!("../../../resources/icons/mqtt-color.svg")
         }
-        one_core::storage::NAVOP_MQTT_LINE_ICON => {
+        one_core::storage::LINOP_MQTT_LINE_ICON => {
             include_bytes!("../../../resources/icons/mqtt-line.svg")
         }
-        one_core::storage::NAVOP_BACKGROUND_TASK_ICON => {
+        one_core::storage::LINOP_BACKGROUND_TASK_ICON => {
             include_bytes!("../../../resources/icons/background-task.svg")
         }
-        crate::home_tab::NAVOP_HISTORY_ICON => {
+        crate::home_tab::LINOP_HISTORY_ICON => {
             include_bytes!("../../../resources/icons/history.svg")
         }
-        crate::home_tab::NAVOP_HOME_LINE_ICON => {
+        crate::home_tab::LINOP_HOME_LINE_ICON => {
             include_bytes!("../../../resources/icons/home-line.svg")
         }
         _ => return None,
@@ -104,7 +104,7 @@ fn linop_brand_icon(path: &str) -> Option<std::borrow::Cow<'static, [u8]>> {
 
 /// 单实例失败提示的对话框标题：只在 Windows 上需要（release 无控制台）。
 #[cfg(target_os = "windows")]
-pub(crate) const NAVOP_WINDOW_TITLE: &str = "Linop";
+pub(crate) const LINOP_WINDOW_TITLE: &str = "Linop";
 const DEFAULT_MAIN_WINDOW_WIDTH: f32 = 1800.0;
 const DEFAULT_MAIN_WINDOW_HEIGHT: f32 = 1260.0;
 const MAIN_WINDOW_DISPLAY_RATIO: f32 = 0.9;
@@ -254,7 +254,7 @@ impl AppAssets {
 
 impl AssetSource for AppAssets {
     fn load(&self, path: &str) -> Result<Option<std::borrow::Cow<'static, [u8]>>> {
-        if path == NAVOP_ICON_ASSET_PATH {
+        if path == LINOP_ICON_ASSET_PATH {
             return Ok(Some(std::borrow::Cow::Borrowed(include_bytes!(
                 "../../../resources/linop-icon.png"
             ))));
@@ -331,7 +331,7 @@ fn report_single_instance_failure(message: &str) {
     use windows::core::HSTRING;
 
     let text = HSTRING::from(message);
-    let caption = HSTRING::from(NAVOP_WINDOW_TITLE);
+    let caption = HSTRING::from(LINOP_WINDOW_TITLE);
     // SAFETY: 两个字符串在调用期间保持存活；无属主窗口时句柄传 None。
     unsafe {
         MessageBoxW(
@@ -381,14 +381,14 @@ where
     // 过早 cloak 会让合成 surface 永久为空、RDP 区域只剩 gpui 背景色 `#171717`。
     // 见 `docs/windows-native-rdp-cloak-ordering.md`。
     //
-    // `NAVOP_RDP_DISABLE_COMPOSITION=1` 是逃生门：直接关掉整条合成路径（同时关掉
+    // `LINOP_RDP_DISABLE_COMPOSITION=1` 是逃生门：直接关掉整条合成路径（同时关掉
     // GPUI 的 DirectComposition），退回经典 HWND 子窗口。该环境变量只在 platform
     // 单例构造时读取一次，所以必须在这里、在 GPUI 之前决定；使用共享编译期标记
     // （`remote_desktop_view/windows-native-rdp` 也会启用它）而不是 main 自身的
     // feature，保证两种 feature 写法都生效。
     #[cfg(feature = "shell")]
     if remote_desktop::windows_native_rdp_compiled()
-        && std::env::var_os("NAVOP_RDP_DISABLE_COMPOSITION").is_some()
+        && std::env::var_os("LINOP_RDP_DISABLE_COMPOSITION").is_some()
     {
         // SAFETY: 进程尚未创建 GPUI platform，也没有任何线程会读取该
         // 环境变量；与 smoke 工具在进程首部执行相同操作。
@@ -402,7 +402,7 @@ where
     // （RDP/SSH/插件），以及更新弹窗用的品牌图标路径。
     app_kit::update::set_current_version(version);
     app_kit::update::set_shutdown_hook(linop_app::shutdown_application_resources_and_quit);
-    app_kit::update::set_icon_asset_path(NAVOP_ICON_ASSET_PATH);
+    app_kit::update::set_icon_asset_path(LINOP_ICON_ASSET_PATH);
 
     if update::handle_update_command() {
         return;
@@ -807,7 +807,7 @@ mod embedded_cli_removal_tests {
     /// 只有 GPUI 真的画了浮层内容时才 cloaks，见
     /// `WindowsNativeAdapter::set_overlay_cloak`；窗口默认保持普通子窗口的输入。
     ///
-    /// 逃生门 `NAVOP_RDP_DISABLE_COMPOSITION=1` 退回经典 HWND 路径，此时必须
+    /// 逃生门 `LINOP_RDP_DISABLE_COMPOSITION=1` 退回经典 HWND 路径，此时必须
     /// **同时**关掉 GPUI 的 DirectComposition：否则 RDP 只是一个普通子窗口，会被
     /// GPUI 的合成 visual 盖住。
     #[test]
@@ -821,7 +821,7 @@ mod embedded_cli_removal_tests {
         let gate = &source[marker..];
         let switch = marker
             + gate
-                .find("NAVOP_RDP_DISABLE_COMPOSITION")
+                .find("LINOP_RDP_DISABLE_COMPOSITION")
                 .expect("escape hatch for the composition presentation path");
         let setter = marker
             + gate
@@ -839,12 +839,12 @@ mod embedded_cli_removal_tests {
         // 关闭动作只能由逃生门把关：默认启用，只有显式关掉合成才跟着关。
         let guard = &source[marker..setter];
         assert!(
-            guard.contains("var_os(\"NAVOP_RDP_DISABLE_COMPOSITION\").is_some()"),
+            guard.contains("var_os(\"LINOP_RDP_DISABLE_COMPOSITION\").is_some()"),
             "DirectComposition must stay on unless the composition path is explicitly disabled"
         );
         // 旧的 opt-in 开关已不再承认：留着它会让"默认启用"变成一句空话。
         assert!(
-            !source.contains("NAVOP_RDP_ENABLE_COMPOSITION"),
+            !source.contains("LINOP_RDP_ENABLE_COMPOSITION"),
             "the retired opt-in switch must not survive as a no-op"
         );
     }

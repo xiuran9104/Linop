@@ -4,7 +4,7 @@ const TERMSRV_PREFIX: &str = "TERMSRV/";
 #[cfg(target_os = "windows")]
 const HANDOFF_GRACE_PERIOD: std::time::Duration = std::time::Duration::from_secs(10);
 #[cfg(target_os = "windows")]
-const NAVOP_CREDENTIAL_MARKER: &str = "Linop temporary MSTSC credential";
+const LINOP_CREDENTIAL_MARKER: &str = "Linop temporary MSTSC credential";
 
 pub(super) struct MstscCredentials {
     pub(super) target: String,

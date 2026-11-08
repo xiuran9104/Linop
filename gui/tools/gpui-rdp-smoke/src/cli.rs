@@ -158,7 +158,7 @@ Options:
   -h, --help                    Print this help
 
 Password:
-  Read only from NAVOP_RDP_PASSWORD. Do not put a password on the command line."
+  Read only from LINOP_RDP_PASSWORD. Do not put a password on the command line."
 }
 
 #[cfg(test)]

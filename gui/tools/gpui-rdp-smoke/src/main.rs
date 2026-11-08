@@ -12,7 +12,7 @@ mod windows_app;
 use cli::{Config, ParseOutcome, parse_args, usage};
 
 fn main() -> ExitCode {
-    let password = env::var("NAVOP_RDP_PASSWORD").ok();
+    let password = env::var("LINOP_RDP_PASSWORD").ok();
     let outcome = match parse_args(env::args().skip(1), password) {
         Ok(outcome) => outcome,
         Err(error) => {
@@ -59,7 +59,7 @@ fn run(config: Config) -> ExitCode {
         }
         // Keep the native presentation stage traces so the smoke tool still
         // produces the diagnostic output its README workflow relies on.
-        env::set_var("NAVOP_REMOTE_DESKTOP_DIAGNOSTICS", "1");
+        env::set_var("LINOP_REMOTE_DESKTOP_DIAGNOSTICS", "1");
     }
     println!(
         "presentation: compose_mode={compose:?} direct_composition={}",

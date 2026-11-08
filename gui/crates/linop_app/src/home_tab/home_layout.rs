@@ -13,7 +13,7 @@ impl TabContent for HomePage {
 
     fn icon(&self, _cx: &App) -> Option<Icon> {
         // 与侧栏「连接」入口使用同一枚线性 Home（避免固定填充色资源与 Tab 混线稿）。
-        Some(Icon::default().path(NAVOP_HOME_LINE_ICON).mono())
+        Some(Icon::default().path(LINOP_HOME_LINE_ICON).mono())
     }
 
     fn closeable(&self, _cx: &App) -> bool {

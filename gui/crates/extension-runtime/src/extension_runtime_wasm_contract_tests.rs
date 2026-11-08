@@ -94,7 +94,7 @@ fn html_preview_transform_runs_registered_wasm_component() {
 
 #[test]
 fn installed_mermaid_extension_registers_and_renders_when_fixture_is_provided() {
-    let Ok(dir) = std::env::var("NAVOP_INSTALLED_MERMAID_EXTENSION") else {
+    let Ok(dir) = std::env::var("LINOP_INSTALLED_MERMAID_EXTENSION") else {
         return;
     };
     let manifest = crate::extension::manifest::load_from_dir(std::path::Path::new(&dir)).unwrap();
@@ -134,7 +134,7 @@ fn installed_mermaid_extension_registers_and_renders_when_fixture_is_provided() 
 
 #[test]
 fn installed_math_extension_registers_and_renders_when_fixture_is_provided() {
-    let Ok(dir) = std::env::var("NAVOP_INSTALLED_MATH_EXTENSION") else {
+    let Ok(dir) = std::env::var("LINOP_INSTALLED_MATH_EXTENSION") else {
         return;
     };
     let manifest = crate::extension::manifest::load_from_dir(std::path::Path::new(&dir)).unwrap();
@@ -173,7 +173,7 @@ fn installed_math_extension_registers_and_renders_when_fixture_is_provided() {
 
 #[test]
 fn installed_notes_exporter_registers_and_exports_all_formats_when_fixture_is_provided() {
-    let Ok(dir) = std::env::var("NAVOP_INSTALLED_NOTES_EXPORTER_EXTENSION") else {
+    let Ok(dir) = std::env::var("LINOP_INSTALLED_NOTES_EXPORTER_EXTENSION") else {
         return;
     };
     let manifest = crate::extension::manifest::load_from_dir(std::path::Path::new(&dir)).unwrap();

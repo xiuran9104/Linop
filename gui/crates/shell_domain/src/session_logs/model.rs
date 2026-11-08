@@ -152,7 +152,7 @@ mod tests {
     use super::*;
     use std::path::PathBuf;
     use terminal::recording::{
-        ASCIICAST_VERSION, NAVOP_EVENT_STREAM, NAVOP_RECORDING_FORMAT_VERSION,
+        ASCIICAST_VERSION, LINOP_EVENT_STREAM, LINOP_RECORDING_FORMAT_VERSION,
         RecordingArtifactKind, RecordingCompleteness, RecordingHeader, RecordingHeaderMetadata,
         RecordingSessionMetadata,
     };
@@ -166,7 +166,7 @@ mod tests {
                 height: 40,
                 timestamp: 1_765_000_000,
                 linop: RecordingHeaderMetadata {
-                    format_version: NAVOP_RECORDING_FORMAT_VERSION,
+                    format_version: LINOP_RECORDING_FORMAT_VERSION,
                     recording_id: "recording-1".to_string(),
                     session_id: "session-1".to_string(),
                     backend,
@@ -174,7 +174,7 @@ mod tests {
                     application_version: "0.10.7".to_string(),
                     started_at_unix_ms: 1_765_000_000_000,
                     capture_input: false,
-                    event_stream: NAVOP_EVENT_STREAM.to_string(),
+                    event_stream: LINOP_EVENT_STREAM.to_string(),
                     session: Some(RecordingSessionMetadata {
                         connection_name: Some("Production Shell".to_string()),
                         local_user: Some("hufei".to_string()),

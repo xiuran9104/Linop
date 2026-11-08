@@ -4937,7 +4937,7 @@ mod tests {
         parse_shell_history, push_history_entry,
     };
     use crate::recording::{
-        ASCIICAST_VERSION, NAVOP_EVENT_STREAM, NAVOP_RECORDING_FORMAT_VERSION, ParsedRecording,
+        ASCIICAST_VERSION, LINOP_EVENT_STREAM, LINOP_RECORDING_FORMAT_VERSION, ParsedRecording,
         RecordingArtifactKind, RecordingBackend, RecordingCompleteness, RecordingConfig,
         RecordingEvent, RecordingEventKind, RecordingFileLimits, RecordingHeader,
         RecordingHeaderMetadata, RecordingMetadata, RecordingPlayback, RecordingPlaybackError,
@@ -5162,7 +5162,7 @@ mod tests {
                 height: 24,
                 timestamp: 1_700_000_000,
                 linop: RecordingHeaderMetadata {
-                    format_version: NAVOP_RECORDING_FORMAT_VERSION,
+                    format_version: LINOP_RECORDING_FORMAT_VERSION,
                     recording_id: "terminal-playback-test-recording".to_string(),
                     session_id: "terminal-playback-test-session".to_string(),
                     backend,
@@ -5170,7 +5170,7 @@ mod tests {
                     application_version: "0.1.0-test".to_string(),
                     started_at_unix_ms: 1_700_000_000_123,
                     capture_input: true,
-                    event_stream: NAVOP_EVENT_STREAM.to_string(),
+                    event_stream: LINOP_EVENT_STREAM.to_string(),
                     session: None,
                 },
             },

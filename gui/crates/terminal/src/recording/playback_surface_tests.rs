@@ -1,5 +1,5 @@
 use super::{
-    ASCIICAST_VERSION, NAVOP_EVENT_STREAM, NAVOP_RECORDING_FORMAT_VERSION, ParsedRecording,
+    ASCIICAST_VERSION, LINOP_EVENT_STREAM, LINOP_RECORDING_FORMAT_VERSION, ParsedRecording,
     RecordingArtifactKind, RecordingBackend, RecordingCompleteness, RecordingEvent,
     RecordingEventKind, RecordingHeader, RecordingHeaderMetadata, RecordingPlayback,
     RecordingPlaybackLimits, TerminalPlaybackRuntime,
@@ -33,7 +33,7 @@ fn parsed_recording(capture_input: bool, events: Vec<RecordingEvent>) -> ParsedR
             height: 24,
             timestamp: 1_700_000_000,
             linop: RecordingHeaderMetadata {
-                format_version: NAVOP_RECORDING_FORMAT_VERSION,
+                format_version: LINOP_RECORDING_FORMAT_VERSION,
                 recording_id: "playback-surface-recording".to_string(),
                 session_id: "playback-surface-session".to_string(),
                 backend: RecordingBackend::Ssh,
@@ -41,7 +41,7 @@ fn parsed_recording(capture_input: bool, events: Vec<RecordingEvent>) -> ParsedR
                 application_version: "0.1.0-test".to_string(),
                 started_at_unix_ms: 1_700_000_000_123,
                 capture_input,
-                event_stream: NAVOP_EVENT_STREAM.to_string(),
+                event_stream: LINOP_EVENT_STREAM.to_string(),
                 session: None,
             },
         },

@@ -1858,7 +1858,7 @@ mod tests {
     fn home_is_a_noncloseable_tab_with_the_line_home_icon() {
         let source = include_str!("home_tab/home_layout.rs");
         assert!(source.contains("impl TabContent for HomePage"));
-        assert!(source.contains("NAVOP_HOME_LINE_ICON"));
+        assert!(source.contains("LINOP_HOME_LINE_ICON"));
         assert!(source.contains("fn closeable"));
         assert!(source.contains("false"));
     }

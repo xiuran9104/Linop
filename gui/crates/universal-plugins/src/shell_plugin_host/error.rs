@@ -2,14 +2,14 @@
 //!
 //! gpui-shell 的 `HostError` 只携带一句 message,runtime 还会在外层补
 //! `` `module.function`: ``。Linop 把稳定 code 编码为可搜索 marker +
-//! Base64URL JSON 追加到 message 末尾,SDK 搜索最后一个 `__NAVOP_ERROR__`
+//! Base64URL JSON 追加到 message 末尾,SDK 搜索最后一个 `__LINOP_ERROR__`
 //! 并解码,解码失败则退回普通 JavaScript Error。
 
 use base64::Engine as _;
 use gpui_shell::HostError;
 
 /// SDK 用于定位 envelope 的 marker。
-pub(crate) const ERROR_MARKER: &str = "__NAVOP_ERROR__";
+pub(crate) const ERROR_MARKER: &str = "__LINOP_ERROR__";
 const MAX_MESSAGE_CHARS: usize = 2048;
 const MAX_DETAILS_BYTES: usize = 8192;
 
@@ -74,7 +74,7 @@ impl LinopError {
         self
     }
 
-    /// 渲染为 `message\n__NAVOP_ERROR__<base64url-json>`。
+    /// 渲染为 `message\n__LINOP_ERROR__<base64url-json>`。
     pub(crate) fn render(&self) -> String {
         let message = truncate_chars(&self.message, MAX_MESSAGE_CHARS);
         let mut envelope = serde_json::json!({

@@ -803,12 +803,12 @@ impl Drop for WindowsNativeAdapter {
 pub(super) fn enable_composition_surface(
     window: &gpui::Window,
 ) -> Option<gpui::WindowCompositionSurface> {
-    // Diagnostic escape hatch, in the spirit of the other `NAVOP_*` switches:
+    // Diagnostic escape hatch, in the spirit of the other `LINOP_*` switches:
     // force the plain child-window presentation so the composition fallback can be
     // exercised on a real machine rather than only where composition fails.
-    if std::env::var_os("NAVOP_RDP_DISABLE_COMPOSITION").is_some() {
+    if std::env::var_os("LINOP_RDP_DISABLE_COMPOSITION").is_some() {
         tracing::warn!(
-            "NAVOP_RDP_DISABLE_COMPOSITION is set; presenting the Windows native RDP \
+            "LINOP_RDP_DISABLE_COMPOSITION is set; presenting the Windows native RDP \
              session as a plain child window"
         );
         return None;

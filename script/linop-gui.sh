@@ -5,7 +5,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 NAME=linop-gui
-IMAGE=navop-build:2
+IMAGE=linop-build:1
 GUI=/home/xiuran/Linop/gui
 
 case "${1:-start}" in

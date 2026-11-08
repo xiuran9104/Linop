@@ -197,10 +197,10 @@ mod stack_tests {
     /// 转成 SIGILL（Bus error: 10）——见崩溃报告 linop-2026-10-12-181737.ips。
     const GPUI_BACKGROUND_STACK_BYTES: usize = 536_576;
 
-    /// Probe helper: `NAVOP_WASM_STORE_TEST_STACK` overrides the stack size so the
+    /// Probe helper: `LINOP_WASM_STORE_TEST_STACK` overrides the stack size so the
     /// overflow threshold can be measured without touching the default.
     fn probe_stack_bytes() -> usize {
-        std::env::var("NAVOP_WASM_STORE_TEST_STACK")
+        std::env::var("LINOP_WASM_STORE_TEST_STACK")
             .ok()
             .and_then(|raw| raw.parse::<usize>().ok())
             .unwrap_or(GPUI_BACKGROUND_STACK_BYTES)

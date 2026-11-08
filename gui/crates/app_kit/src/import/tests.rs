@@ -77,8 +77,8 @@ fn keeps_absolute_and_unknown_variable_paths() {
     assert_eq!(expand_source_path("/tmp/linop-connections.json"), absolute);
     // 未定义的变量原样保留，避免把 `%VAR%` 吞成空路径。
     assert_eq!(
-        expand_source_path("%NAVOP_TESTS_UNSET_VAR%\\one-hub.db"),
-        PathBuf::from("%NAVOP_TESTS_UNSET_VAR%\\one-hub.db")
+        expand_source_path("%LINOP_TESTS_UNSET_VAR%\\one-hub.db"),
+        PathBuf::from("%LINOP_TESTS_UNSET_VAR%\\one-hub.db")
     );
     // 只有前缀是 `~` 才算 home，`~user` 之类不动。
     assert_eq!(

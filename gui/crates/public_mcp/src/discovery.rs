@@ -23,7 +23,7 @@ pub struct DiscoveryIdentity {
 }
 
 impl DiscoveryIdentity {
-    pub const NAVOP: Self = Self {
+    pub const LINOP: Self = Self {
         app: APP_NAME,
         legacy: Some(LEGACY_APP_NAME),
         file_name: DISCOVERY_FILE_NAME,
@@ -45,7 +45,7 @@ fn discovery_identity() -> DiscoveryIdentity {
     DISCOVERY_IDENTITY
         .get()
         .copied()
-        .unwrap_or(DiscoveryIdentity::NAVOP)
+        .unwrap_or(DiscoveryIdentity::LINOP)
 }
 
 /// 宿主注入的发现文件路径（正式、开发、便携必须各自落在自己的目录里）。
@@ -255,8 +255,8 @@ mod tests {
 
     #[test]
     fn full_identity_keeps_legacy_onetcli_compatibility() {
-        assert!(DiscoveryIdentity::NAVOP.accepts("linop"));
-        assert!(DiscoveryIdentity::NAVOP.accepts("onetcli"));
-        assert!(!DiscoveryIdentity::NAVOP.accepts("linop-data"));
+        assert!(DiscoveryIdentity::LINOP.accepts("linop"));
+        assert!(DiscoveryIdentity::LINOP.accepts("onetcli"));
+        assert!(!DiscoveryIdentity::LINOP.accepts("linop-data"));
     }
 }

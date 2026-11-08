@@ -6,21 +6,21 @@ use crate::{
 fn installed_notes_exporter_components_export_their_formats_when_provided() {
     for (environment, exporter, format, media_type, signature) in [
         (
-            "NAVOP_NOTES_HTML_EXPORTER_WASM",
+            "LINOP_NOTES_HTML_EXPORTER_WASM",
             "notes-html",
             "html",
             "text/html",
             b"<!doctype html".as_slice(),
         ),
         (
-            "NAVOP_NOTES_PDF_EXPORTER_WASM",
+            "LINOP_NOTES_PDF_EXPORTER_WASM",
             "notes-pdf",
             "pdf",
             "application/pdf",
             b"%PDF-1.7".as_slice(),
         ),
         (
-            "NAVOP_NOTES_WORD_EXPORTER_WASM",
+            "LINOP_NOTES_WORD_EXPORTER_WASM",
             "notes-word",
             "docx",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

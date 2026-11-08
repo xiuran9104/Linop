@@ -35,11 +35,11 @@
 //! cargo test -p terminal --test conpty_live -- --ignored --nocapture
 //!
 //! # 指定本机 shell
-//! NAVOP_LIVE_CONPTY="powershell.exe,cmd.exe" \
+//! LINOP_LIVE_CONPTY="powershell.exe,cmd.exe" \
 //!   cargo test -p terminal --test conpty_live -- --ignored --nocapture
 //!
 //! # 追加 WSL 发行版（逗号分隔，需本机已安装 WSL）
-//! NAVOP_LIVE_WSL="Ubuntu-24.04,Debian" \
+//! LINOP_LIVE_WSL="Ubuntu-24.04,Debian" \
 //!   cargo test -p terminal --test conpty_live -- --ignored --nocapture
 //! ```
 //! 不可用的目标会打印跳过原因并被过滤掉；全部不可用时各用例直接返回，不视为失败。
@@ -65,7 +65,7 @@ use terminal::{
 };
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 
-/// 未指定 `NAVOP_LIVE_CONPTY` 时使用的本机 shell（Windows 上始终存在）。
+/// 未指定 `LINOP_LIVE_CONPTY` 时使用的本机 shell（Windows 上始终存在）。
 const DEFAULT_LOCAL_SHELL: &str = "powershell.exe";
 
 /// 首屏输出等待上限：WSL2 冷启动（首启 + VM 拉起）可能较慢。
@@ -154,12 +154,12 @@ fn split_env(name: &str) -> Vec<String> {
 
 /// 解析本次要跑的目标；两个环境变量都没设置时退回本机 `powershell.exe`。
 fn live_targets() -> Vec<Target> {
-    let mut targets: Vec<Target> = split_env("NAVOP_LIVE_WSL")
+    let mut targets: Vec<Target> = split_env("LINOP_LIVE_WSL")
         .into_iter()
         .map(Target::Wsl)
         .collect();
     targets.extend(
-        split_env("NAVOP_LIVE_CONPTY")
+        split_env("LINOP_LIVE_CONPTY")
             .into_iter()
             .map(|program| Target::Local { program }),
     );
@@ -385,9 +385,9 @@ fn marker_command(target: &Target, marker: &str) -> Vec<u8> {
     let lines: Vec<String> = match target {
         // cmd 的 `%VAR%` 在解析整行时就会展开，故赋值与使用必须分成不同行。
         Target::Local { program } if is_cmd_exe(program) => vec![
-            format!("set \"NAVOP_A={head}\""),
-            format!("set \"NAVOP_B={tail}\""),
-            "echo %NAVOP_A%%NAVOP_B%".to_string(),
+            format!("set \"LINOP_A={head}\""),
+            format!("set \"LINOP_B={tail}\""),
+            "echo %LINOP_A%%LINOP_B%".to_string(),
         ],
         Target::Local { .. } => vec![
             format!("$a='{head}'"),
@@ -487,7 +487,7 @@ fn check_unsafe_sizes(target: &Target) -> Result<(), String> {
 
     // 非法尺寸不应破坏后续合法尺寸与正常读写。
     spawned.resize(size(30, 100));
-    if !round_trip_marker(&spawned, "__NAVOP_UNSAFE_OK__") {
+    if !round_trip_marker(&spawned, "__LINOP_UNSAFE_OK__") {
         return Err(format!(
             "{}: 非法尺寸之后会话已无法回显（stopped={}）\n--- 屏幕快照 ---\n{}\n--- 快照结束 ---",
             spawned.label,
@@ -540,7 +540,7 @@ fn check_resize_storm(target: &Target) -> Result<(), String> {
             spawned.label
         ));
     }
-    if !round_trip_marker(&spawned, "__NAVOP_STORM_OK__") {
+    if !round_trip_marker(&spawned, "__LINOP_STORM_OK__") {
         return Err(format!("{}: resize 抖动后会话不再回显", spawned.label));
     }
 
@@ -583,7 +583,7 @@ fn check_concurrent_targets(targets: &[Target]) -> Result<(), String> {
         }
     }
     for spawned in &sessions {
-        if !round_trip_marker(spawned, "__NAVOP_CONCURRENT_OK__") {
+        if !round_trip_marker(spawned, "__LINOP_CONCURRENT_OK__") {
             failures.push(format!("{}: 并发抖动后会话不再回显", spawned.label));
         }
     }

@@ -192,7 +192,7 @@ pub fn install(host: TrayHost, config: TrayConfig, cx: &mut App) -> bool {
     }
 
     #[cfg(debug_assertions)]
-    if std::env::var_os("NAVOP_TRAY_SMOKE").is_some() {
+    if std::env::var_os("LINOP_TRAY_SMOKE").is_some() {
         smoke::install(cx);
     }
 

@@ -16,7 +16,7 @@
 //! ```text
 //! cargo test -p terminal --test wsl_workspace_root_live -- --ignored --nocapture
 //!
-//! NAVOP_LIVE_WSL="Ubuntu-24.04,Debian" \
+//! LINOP_LIVE_WSL="Ubuntu-24.04,Debian" \
 //!   cargo test -p terminal --test wsl_workspace_root_live -- --ignored --nocapture
 //! ```
 //! 未安装的发行版会被跳过并打印原因；全部不可用时直接返回，不视为失败。
@@ -30,7 +30,7 @@ use terminal::{
     list_wsl_distributions, local_config_for_wsl_distro, resolve_reported_working_dir, wsl_unc_root,
 };
 
-/// 未指定 `NAVOP_LIVE_WSL` 时尝试使用的发行版。
+/// 未指定 `LINOP_LIVE_WSL` 时尝试使用的发行版。
 const DEFAULT_DISTRO: &str = "Ubuntu-24.04";
 
 /// 发行版根目录下必须存在的 Linux 顶层目录。
@@ -54,7 +54,7 @@ fn wsl_reported_working_dir_stays_inside_the_distribution() {
 fn for_each_distro(check: fn(&str) -> Result<(), String>) {
     let distros = live_distros();
     if distros.is_empty() {
-        eprintln!("跳过：本机没有可用的 WSL 发行版（可用 NAVOP_LIVE_WSL 指定）");
+        eprintln!("跳过：本机没有可用的 WSL 发行版（可用 LINOP_LIVE_WSL 指定）");
         return;
     }
     let mut failures = Vec::new();
@@ -67,9 +67,9 @@ fn for_each_distro(check: fn(&str) -> Result<(), String>) {
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
 }
 
-/// 解析 `NAVOP_LIVE_WSL`，并过滤掉本机未安装的发行版。
+/// 解析 `LINOP_LIVE_WSL`，并过滤掉本机未安装的发行版。
 fn live_distros() -> Vec<String> {
-    let requested: Vec<String> = std::env::var("NAVOP_LIVE_WSL")
+    let requested: Vec<String> = std::env::var("LINOP_LIVE_WSL")
         .ok()
         .map(|value| {
             value
