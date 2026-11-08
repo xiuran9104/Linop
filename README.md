@@ -123,9 +123,19 @@ cargo fmt --all
   (`stop` / `status` / `logs` 子命令同理)
 - **release 构建**:`cargo build -p navop --release`(fat LTO + strip,
   约 25 分钟),二进制 164M(debug 3.7G 的 4.4%);GUI 容器已默认切换
-- **渲染后端**:容器内无发行版打包的 dzn(D3D12 Vulkan)驱动
-  (Debian/Ubuntu/Fedora 均未启用),wgpu 落到 llvmpipe 软渲染 ——
-  可用;真 GPU 加速需自编 mesa(`-Dvulkan-drivers=dzn`)或等待上游
+- **渲染后端(定论)**:真 GPU 加速在本机 WSL 上不可行,证据链完整:
+  1. 发行版(Debian/Ubuntu/Fedora)mesa 包均不含 dzn —— 已自编
+     (mesa 23.3.6 + DirectX-Headers 1.610.0 对齐 WSL 驱动 SDK 610,
+     `script/build-mesa-dzn.sh` 一键复现,产物 41M 编译通过);
+  2. dzn ICD 注册/加载/到 DXCore 的整条链路全通(strace 确认
+     /dev/dxg 打开成功);
+  3. **断点在宿主驱动栈**:`script/dxg-probe.c`(裸 COM 探针)实测
+     WSL 的 DXCore 层 D3D12 GRAPHICS / CORE_COMPUTE 适配器数均为 0
+     (宿主直跑与容器内一致;nvidia-smi 可见 RTX 5060 Ti)—— 即
+     本机 GPU 直通只启用了 CUDA 通道,未暴露 D3D12 适配器,任何
+     Vulkan-on-D3D12(含 dzn)无从工作;
+  4. 出路:Windows 侧更新 NVIDIA 驱动并确认 GPU 半虚拟化配置、或
+     Windows 原生运行。当前 wgpu 自动落到 llvmpipe 软渲染,可用
 - **Linop 扩展接入 navop**:`crates/linop-navop-importer` ——
   wasm32-wasip2 组件,实现 navop `connection-importer` WIT world,
   把 Linop 的 connections.toml(SSH + 本地/反向/SOCKS 转发)导入
