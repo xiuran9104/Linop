@@ -3,11 +3,13 @@
 //! 借鉴 navop 的 `connection_form` / `core` crate:连接以 profile 形式
 //! 持久化在 TOML 文件中,供 SSH/SFTP/端口转发等上层模块共用。
 
+mod db_registry;
 mod model;
 mod registry;
 pub mod ssh_config;
 mod telnet_registry;
 
+pub use db_registry::{DbDriver, DbProfile, DbRegistry, default_databases_path};
 pub use model::{Auth, Connection, PortForward, RemoteForward};
 pub use registry::{
     Registry, config_dir, default_connections_path, endpoint, known_hosts_path, newest_recording,

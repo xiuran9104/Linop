@@ -1,18 +1,18 @@
-//! linop-dbx:Linop 的数据库模块 —— 后端直接使用 DBX(vendored dbx-core)。
+//! linop-dbx:数据库模块 —— DBX 内核(dbx-core)作为**驱动执行层**。
 //!
-//! 集成形态(对应 DBX 的模块边界,见 vendor/dbx/crates/ARCHITECTURE.md):
-//! - **共享连接库**:读写 DBX 的 `dbx.db`(桌面 / Web / CLI / MCP 与本模块
-//!   看到的是同一份连接配置,`DBX_DATA_DIR` 可重定向,默认
-//!   `$XDG_DATA_HOME/com.dbx.app/`);
-//! - **查询执行**:`dbx_mcp::LocalBackend` —— 与 DBX CLI/MCP 同一条
-//!   dbx-core 执行路径(驱动、超时、风控、结果截断全部复用);
-//! - **UI 拉起**:`launch_web()` 启动 DBX 自带 Web UI(dbx-web,浏览器访问,
-//!   与桌面版功能一致),实现"一个入口,两套界面"。
+//! 设计(用户决策:DBX 原始前端/存储不要,改 GPUI 原生):
+//! - 连接配置归 Linop 自己管(`databases.toml`,见 linop-core::DbProfile);
+//! - `AppState` 仅作技术性运行时(连接池/超时/风控/取消 —— DBX 的执行
+//!   路径全部复用),放在 Linop 数据目录下的空 `dbx.db` 上,不承载
+//!   DBX 的任何业务数据;连接在会话内以内存方式注入 `configs`;
+//! - 查询走 `dbx_core::query::execute_sql_statement`,表元数据走
+//!   `list_tables_core` —— 与 DBX 桌面版同一条执行代码。
 
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 
-use dbx_mcp::{DbxBackend, LocalBackend};
+use dbx_core::connection::AppState;
+use dbx_core::persistence::storage::Storage;
+use dbx_types::models::connection::ConnectionConfig;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DbxError {
@@ -20,137 +20,157 @@ pub enum DbxError {
     Dbx(String),
     #[error("io: {0}")]
     Io(#[from] std::io::Error),
-    #[error("DBX 数据目录无法解析(设置 DBX_DATA_DIR)")]
+    #[error("json: {0}")]
+    Json(#[from] serde_json::Error),
+    #[error("unknown connection: {0}")]
+    UnknownConnection(String),
+    #[error("unsupported driver: {0}")]
+    UnsupportedDriver(String),
+    #[error("无法解析 HOME 目录(设置 HOME 环境变量)")]
     NoDataDir,
 }
 
 pub type Result<T> = std::result::Result<T, DbxError>;
 
-/// 连接摘要(picker 展示用;完整配置留在 dbx.db 里)。
+/// 连接摘要。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct DbxConnectionSummary {
-    pub id: String,
     pub name: String,
-    /// 数据库类型标识(如 "postgres"、"mysql"、"redis")。
-    pub db_type: String,
+    /// 驱动标识字符串(如 "postgres"、"mysql";DbDriver 未实现 Serialize)。
+    pub driver: String,
     pub host: String,
     pub port: u16,
     pub database: Option<String>,
 }
 
-/// DBX 后端句柄:包装 LocalBackend,与 DBX 各形态共享 dbx.db。
+/// DBX 执行运行时。**非 Send 友好**:AppState 持 tokio 资源,
+/// 使用时保持在创建它的 runtime 上(或 Arc 化后跨 await 共享)。
 pub struct Dbx {
-    backend: LocalBackend,
-    /// dbx.db 路径(诊断/展示)。
-    pub db_path: PathBuf,
+    state: AppState,
+    /// 连接配置(Linop databases.toml 注入的镜像)。
+    profiles: Vec<linop_core::DbProfile>,
+    data_dir: PathBuf,
 }
 
-/// 解析 DBX 数据目录(与 dbx-mcp paths.rs 同规则,独立实现避免私有依赖)。
-pub fn data_dir() -> Result<PathBuf> {
-    if let Some(dir) = std::env::var_os("DBX_DATA_DIR").filter(|v| !v.is_empty()) {
-        return Ok(PathBuf::from(dir));
-    }
-    let base = dirs_or_err()?;
-    Ok(base.join("com.dbx.app"))
-}
-
-fn dirs_or_err() -> Result<PathBuf> {
-    std::env::var_os("XDG_DATA_HOME")
-        .filter(|v| !v.is_empty())
+/// Linop 数据目录下的 DBX 技术存储路径。
+pub fn default_store_path() -> Result<PathBuf> {
+    let home = std::env::var_os("HOME")
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
-        .ok_or(DbxError::NoDataDir)
+        .ok_or(DbxError::NoDataDir)?;
+    Ok(home.join(".linop-dev").join("dbx-data").join("dbx.db"))
 }
 
 impl Dbx {
-    /// 打开默认数据目录下的 dbx.db(不存在时创建空库)。
-    pub async fn open_default() -> Result<Self> {
-        let dir = data_dir()?;
-        Self::open_at(&dir.join("dbx.db")).await
-    }
-
-    /// 打开指定 dbx.db(测试用 DBX_DATA_DIR 临时目录隔离)。
-    pub async fn open_at(path: &Path) -> Result<Self> {
-        if let Some(parent) = path.parent() {
+    /// 打开运行时:`store_path` 是技术性 dbx.db(空库即可);
+    /// `profiles` 来自 linop-core 的 databases.toml,会话内注入。
+    pub async fn open(store_path: &Path, profiles: Vec<linop_core::DbProfile>) -> Result<Self> {
+        if let Some(parent) = store_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let backend = LocalBackend::open(path).await.map_err(DbxError::Dbx)?;
+        let storage = Storage::open_unmigrated(store_path)
+            .await
+            .map_err(DbxError::Dbx)?;
+        let state = AppState::new(storage);
+        // 核心方言注册(dbx-web 同款全局初始化)。
+        dbx_core::sql_dialect::dialect_loader::register_core_dialects();
+        for profile in &profiles {
+            Self::inject(&state, profile).await?;
+        }
         Ok(Self {
-            backend,
-            db_path: path.to_path_buf(),
+            state,
+            profiles,
+            data_dir: store_path.to_path_buf(),
         })
     }
 
-    /// 全部连接摘要(按名称排序)。
-    pub async fn connections(&self) -> Result<Vec<DbxConnectionSummary>> {
-        let mut list: Vec<DbxConnectionSummary> = self
-            .backend
-            .load_connections()
+    /// 把 Linop profile 构造成 DBX ConnectionConfig 并注入运行时。
+    async fn inject(state: &AppState, profile: &linop_core::DbProfile) -> Result<()> {
+        let config: ConnectionConfig = serde_json::from_value(serde_json::json!({
+            "id": format!("linop:{}", profile.name),
+            "name": profile.name,
+            "db_type": profile.driver.as_str(),
+            "host": profile.host.clone().unwrap_or_default(),
+            "port": profile.port.unwrap_or(match profile.driver {
+                linop_core::DbDriver::Postgres => 5432,
+                linop_core::DbDriver::MySql => 3306,
+                linop_core::DbDriver::Redis => 6379,
+                linop_core::DbDriver::Sqlite => 0,
+            }),
+            "username": profile.user.clone().unwrap_or_default(),
+            "password": profile.password.clone().unwrap_or_default(),
+            "database": profile.database.clone().unwrap_or_default(),
+            "ssl": false,
+        }))?;
+        state
+            .configs
+            .write()
             .await
-            .map_err(DbxError::Dbx)?
-            .into_iter()
-            .map(|c| DbxConnectionSummary {
-                id: c.id.clone(),
-                name: c.name.clone(),
-                db_type: c.db_type.as_str().to_string(),
-                host: c.host.clone(),
-                port: c.port,
-                database: c.database.clone(),
-            })
-            .collect();
-        list.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(list)
+            .insert(config.id.clone(), config);
+        Ok(())
     }
 
-    /// 按名称查找连接(浏览/查询入口)。
-    pub async fn connection_by_name(
-        &self,
-        name: &str,
-    ) -> Result<dbx_types::models::connection::ConnectionConfig> {
-        self.backend
-            .load_connections()
-            .await
-            .map_err(DbxError::Dbx)?
-            .into_iter()
-            .find(|c| c.name == name)
-            .ok_or_else(|| {
-                DbxError::Dbx(format!("连接 {name} 不存在(在 DBX 中创建后此处立即可见)"))
-            })
+    fn connection_id(&self, name: &str) -> Result<String> {
+        let profile = self
+            .profiles
+            .iter()
+            .find(|p| p.name == name)
+            .ok_or_else(|| DbxError::UnknownConnection(name.to_string()))?;
+        Ok(format!("linop:{}", profile.name))
     }
 
-    /// 列出连接的表。
+    fn database_of(&self, name: &str) -> String {
+        self.profiles
+            .iter()
+            .find(|p| p.name == name)
+            .and_then(|p| p.database.clone())
+            .unwrap_or_default()
+    }
+
+    /// 连接摘要。
+    pub fn connections(&self) -> Vec<DbxConnectionSummary> {
+        self.profiles
+            .iter()
+            .map(|p| DbxConnectionSummary {
+                name: p.name.clone(),
+                driver: p.driver.as_str().to_string(),
+                host: p.host.clone().unwrap_or_default(),
+                port: p.port.unwrap_or_default(),
+                database: p.database.clone(),
+            })
+            .collect()
+    }
+
+    /// 表列表(走 DBX 驱动的元数据路径)。
     pub async fn list_tables(&self, name: &str) -> Result<Vec<dbx_core::types::TableInfo>> {
-        let conn = self.connection_by_name(name).await?;
-        let database = conn.database.clone().unwrap_or_default();
-        self.backend
-            .list_tables(&conn, &database, "")
+        let id = self.connection_id(name)?;
+        let database = self.database_of(name);
+        dbx_core::schema::list_tables_core(
+            &self.state,
+            &id,
+            &database,
+            "",
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+        .map_err(DbxError::Dbx)
+    }
+
+    /// 执行 SQL(默认只读风控、超时与取消都来自 DBX 执行路径)。
+    pub async fn query(&self, name: &str, sql: &str) -> Result<dbx_core::db::QueryResult> {
+        let id = self.connection_id(name)?;
+        let database = self.database_of(name);
+        dbx_core::query::execute_sql_statement(&self.state, &id, &database, sql, None, None)
             .await
             .map_err(DbxError::Dbx)
     }
 
-    /// 执行 SQL(与 DBX CLI 同一条执行路径;默认只读风控、行数上限)。
-    pub async fn query(
-        &self,
-        name: &str,
-        sql: &str,
-        max_rows: usize,
-    ) -> Result<dbx_core::db::QueryResult> {
-        let conn = self.connection_by_name(name).await?;
-        let database = conn.database.clone().unwrap_or_default();
-        self.backend
-            .execute_query(&conn, &database, sql, Some(max_rows), None)
-            .await
-            .map_err(DbxError::Dbx)
-    }
-
-    /// 启动 DBX Web UI(dbx-web 二进制),返回子进程。
-    /// UI 与本模块共享 dbx.db —— TUI 建的连接浏览器里立即可用,反之亦然。
-    pub fn launch_web(bin: &Path) -> std::io::Result<std::process::Child> {
-        std::process::Command::new(bin)
-            .env("DBX_DATA_DIR", data_dir().ok().unwrap_or_default())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
+    /// 技术存储路径(诊断)。
+    pub fn store_path(&self) -> &Path {
+        &self.data_dir
     }
 }
 
@@ -158,37 +178,35 @@ impl Dbx {
 mod tests {
     use super::*;
 
-    /// 空库冒烟:open 创建 dbx.db,connections 返回空表。
-    /// (写入真实连接需要 ConnectionConfig 全量字段,见 e2e 层。)
+    /// 空技术库冒烟:open 创建 dbx.db,连接列表来自注入的 profiles。
     #[tokio::test]
-    async fn open_creates_and_lists_empty() {
+    async fn open_empty_store_lists_injected_profiles() {
         let dir = tempfile::tempdir().unwrap();
-        let dbx = Dbx::open_at(&dir.path().join("dbx.db")).await.unwrap();
-        assert!(dbx.db_path.exists(), "open 应创建 dbx.db");
-        let conns = dbx.connections().await.unwrap();
-        assert!(conns.is_empty());
+        let store = dir.path().join("dbx.db");
+        let profiles = vec![linop_core::DbProfile::postgres(
+            "pg",
+            "127.0.0.1",
+            5433,
+            "app",
+            Some("pw".into()),
+            Some("orders".into()),
+        )];
+        let dbx = Dbx::open(&store, profiles).await.unwrap();
+        assert!(store.exists(), "open 应创建技术性 dbx.db");
+        let conns = dbx.connections();
+        assert_eq!(conns.len(), 1);
+        assert_eq!(conns[0].name, "pg");
+        assert_eq!(conns[0].driver, "postgres");
+        assert_eq!(conns[0].database.as_deref(), Some("orders"));
     }
 
     #[tokio::test]
-    async fn missing_connection_reports_friendly() {
+    async fn unknown_connection_is_reported() {
         let dir = tempfile::tempdir().unwrap();
-        let dbx = Dbx::open_at(&dir.path().join("dbx.db")).await.unwrap();
-        let err = dbx.connection_by_name("nope").await.unwrap_err();
-        assert!(err.to_string().contains("在 DBX 中创建"), "{err}");
-    }
-
-    #[test]
-    fn data_dir_respects_env() {
-        let dir = tempfile::tempdir().unwrap();
-        let key = "DBX_DATA_DIR";
-        let old = std::env::var_os(key);
-        unsafe { std::env::set_var(key, dir.path()) };
-        assert_eq!(data_dir().unwrap(), dir.path());
-        unsafe {
-            match old {
-                Some(v) => std::env::set_var(key, v),
-                None => std::env::remove_var(key),
-            }
-        }
+        let dbx = Dbx::open(&dir.path().join("dbx.db"), Vec::new())
+            .await
+            .unwrap();
+        let err = dbx.connection_id("nope").unwrap_err();
+        assert!(err.to_string().contains("nope"));
     }
 }

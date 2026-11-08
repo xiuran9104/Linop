@@ -10,9 +10,9 @@ tokio = { workspace = true }
 thiserror = { workspace = true }
 serde_json = { workspace = true }
 serde = { workspace = true }
-dbx-mcp = { path = "../../vendor/dbx/crates/dbx-mcp" }
-dbx-types = { path = "../../vendor/dbx/crates/dbx-types" }
 dbx-core = { path = "../../vendor/dbx/crates/dbx-core" }
+dbx-types = { path = "../../vendor/dbx/crates/dbx-types" }
+linop-core = { path = "../linop-core" }
 
 [[bin]]
 name = "linop-dbx"

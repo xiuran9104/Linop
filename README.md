@@ -142,11 +142,15 @@ vendored 于 `vendor/dbx/`,与 navop 同法本地化(gaussdb/mysql_async fork
   runtime_redis/data_domain 共 12 个 crate 及 feature 门控 —— 壳按域注册表渲染,
   域删除后数据库入口自然消失);russh fork 同步 bare 化;数据目录变为
   `~/.linop-dev`(原 `~/.navop-dev` 不自动迁移)
-- **`crates/linop-dbx`** —— Linop 的数据库模块,后端直接编译 DBX 的
-  `dbx-core`/`dbx-mcp`(与 DBX 桌面/CLI/MCP 共享同一 `dbx.db` 连接库,
-  `DBX_DATA_DIR` 可重定向):`connections` / `list_tables` / `query`
-  (风控与截断复用 DBX 执行路径)+ `launch-web` 拉起 DBX Web UI;
-  CLI 桥 `linop-dbx connections|tables|query|launch-web`。
+- **`crates/linop-dbx`** —— 数据库模块,**DBX 仅作驱动执行层**(用户决策:
+  DBX 的 Web 前端与其 dbx.db 业务存储不采用):`AppState` 挂在 Linop 数据
+  目录下的空技术库上,连接配置完全归 Linop 自己管(`databases.toml` →
+  会话内注入),`query`/`list_tables` 直调 `dbx_core` 的执行路径
+  (连接池/超时/风控/取消全部复用);CLI 桥 `linop-dbx connections|tables|query`;
+  Postgres 真实容器 e2e(表元数据/查询/非法 SQL)验证
+- **连接配置**:`~/.linop-dev/databases.toml`(驱动:sqlite/redis/
+  postgres/mysql,支持 `via` 跳板;GUI 数据库面板用 GPUI 原生实现,
+  开发中)
 - **russh 已统一**:dbx 侧升级 0.60→0.65(与 navop 侧同版本,
   ed25519-dalek 3 冲突消失),为 navop+dbx 合并清障;移植面仅
   `check_server_key` 回调签名一处。
