@@ -3153,7 +3153,8 @@ mod tests {
 
     #[test]
     fn check_read_only_only_treats_executable_comments_as_writes_for_mysql_compatible_connections() {
-        let mysql_executable_comment = "SELECT 3156 /*!50000 INTO OUTFILE '/var/lib/mysql-files/linop_db_ro_probe.txt' */";
+        let mysql_executable_comment =
+            "SELECT 3156 /*!50000 INTO OUTFILE '/var/lib/mysql-files/linop_db_ro_probe.txt' */";
         let mariadb_executable_comment =
             "SELECT 3156 /*M!100100 INTO OUTFILE '/var/lib/mysql-files/linop_db_ro_probe.txt' */";
 

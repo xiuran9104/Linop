@@ -1051,13 +1051,13 @@ async fn native_mysql_fixed_sessions_preserve_identity_and_real_contention() {
 
         let fixture_open = tokio::time::timeout(
             Duration::from_secs(10),
-            fixture_client.peer().call_tool(CallToolRequestParams::new("linop_db_open_session").with_arguments(arguments(
-                json!({
+            fixture_client.peer().call_tool(CallToolRequestParams::new("linop_db_open_session").with_arguments(
+                arguments(json!({
                     "connection_id": "mcp-session-transaction-fixture",
                     "database": database,
                     "enable_transactions": true
-                }),
-            ))),
+                })),
+            )),
         )
         .await
         .map_err(|_| "fixture capability probe timed out".to_string())?

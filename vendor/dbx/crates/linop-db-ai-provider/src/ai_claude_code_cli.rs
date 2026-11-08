@@ -1,8 +1,9 @@
 use crate::agent_events::AgentEvent;
 use crate::ai::{AiCapabilitySource, AiConfig, AiEffortCapability, AiEffortLevel, AiModelInfo, AiTestConnectionResult};
 use crate::ai_cli_agent::{
-    build_cli_agent_prompt, cli_command, linop_db_mcp_enabled_tools, linop_db_mcp_scope_env, model_infos, parse_cli_jsonl_event,
-    run_cli_jsonl_agent, CliAgentCommandSpec, CliAgentJsonlDialect, CliAgentProcessSpec, CliAgentRunOptions,
+    build_cli_agent_prompt, cli_command, linop_db_mcp_enabled_tools, linop_db_mcp_scope_env, model_infos,
+    parse_cli_jsonl_event, run_cli_jsonl_agent, CliAgentCommandSpec, CliAgentJsonlDialect, CliAgentProcessSpec,
+    CliAgentRunOptions,
 };
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet};

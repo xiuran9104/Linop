@@ -135,7 +135,9 @@ pub async fn txn(
 ) -> Result<Json<linop_db_core::consul::ConsulTxnResult>, AppError> {
     ensure_writable(&state.app, &req.connection_id, "Execute Consul transaction").await?;
     Ok(Json(
-        linop_db_core::consul::consul_txn_core(&state.app, &req.connection_id, req.request).await.map_err(AppError::from)?,
+        linop_db_core::consul::consul_txn_core(&state.app, &req.connection_id, req.request)
+            .await
+            .map_err(AppError::from)?,
     ))
 }
 
@@ -192,8 +194,9 @@ pub async fn capabilities(
     State(state): State<Arc<WebState>>,
     Json(req): Json<ConsulConnectionRequest>,
 ) -> Result<Json<linop_db_core::consul::ConsulCapabilities>, AppError> {
-    let result =
-        linop_db_core::consul::consul_capabilities_core(&state.app, &req.connection_id).await.map_err(AppError::from)?;
+    let result = linop_db_core::consul::consul_capabilities_core(&state.app, &req.connection_id)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -332,8 +335,9 @@ pub async fn get(
     State(state): State<Arc<WebState>>,
     Json(req): Json<ConsulKeyRequest>,
 ) -> Result<Json<linop_db_core::agent_kv::KvGetResponse>, AppError> {
-    let result =
-        linop_db_core::consul::consul_get_core(&state.app, &req.connection_id, &req.key).await.map_err(AppError::from)?;
+    let result = linop_db_core::consul::consul_get_core(&state.app, &req.connection_id, &req.key)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -359,10 +363,14 @@ pub async fn delete(
     Json(req): Json<ConsulKeyRequest>,
 ) -> Result<Json<linop_db_core::agent_kv::KvDeleteResponse>, AppError> {
     ensure_writable(&state.app, &req.connection_id, "Delete Consul KV key").await?;
-    let result =
-        linop_db_core::consul::consul_delete_core(&state.app, &req.connection_id, &req.key, req.options.unwrap_or_default())
-            .await
-            .map_err(AppError::from)?;
+    let result = linop_db_core::consul::consul_delete_core(
+        &state.app,
+        &req.connection_id,
+        &req.key,
+        req.options.unwrap_or_default(),
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -547,7 +555,9 @@ pub async fn coordinate_nodes(
     Json(req): Json<ConsulConnectionRequest>,
 ) -> Result<Json<Vec<linop_db_core::consul::ConsulCoordinate>>, AppError> {
     Ok(Json(
-        linop_db_core::consul::consul_coordinate_nodes_core(&state.app, &req.connection_id).await.map_err(AppError::from)?,
+        linop_db_core::consul::consul_coordinate_nodes_core(&state.app, &req.connection_id)
+            .await
+            .map_err(AppError::from)?,
     ))
 }
 pub async fn operator_read(
@@ -652,21 +662,31 @@ pub async fn status_leader(
     State(state): State<Arc<WebState>>,
     Json(req): Json<ConsulConnectionRequest>,
 ) -> Result<Json<String>, AppError> {
-    Ok(Json(linop_db_core::consul::consul_status_leader_core(&state.app, &req.connection_id).await.map_err(AppError::from)?))
+    Ok(Json(
+        linop_db_core::consul::consul_status_leader_core(&state.app, &req.connection_id)
+            .await
+            .map_err(AppError::from)?,
+    ))
 }
 
 pub async fn status_peers(
     State(state): State<Arc<WebState>>,
     Json(req): Json<ConsulConnectionRequest>,
 ) -> Result<Json<Vec<String>>, AppError> {
-    Ok(Json(linop_db_core::consul::consul_status_peers_core(&state.app, &req.connection_id).await.map_err(AppError::from)?))
+    Ok(Json(
+        linop_db_core::consul::consul_status_peers_core(&state.app, &req.connection_id)
+            .await
+            .map_err(AppError::from)?,
+    ))
 }
 
 pub async fn agent_self(
     State(state): State<Arc<WebState>>,
     Json(req): Json<ConsulConnectionRequest>,
 ) -> Result<Json<linop_db_core::consul::ConsulAgentIdentity>, AppError> {
-    Ok(Json(linop_db_core::consul::consul_agent_self_core(&state.app, &req.connection_id).await.map_err(AppError::from)?))
+    Ok(Json(
+        linop_db_core::consul::consul_agent_self_core(&state.app, &req.connection_id).await.map_err(AppError::from)?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -683,9 +703,14 @@ pub async fn agent_members(
     Json(req): Json<ConsulAgentMembersRequest>,
 ) -> Result<Json<Vec<linop_db_core::consul::ConsulAgentMember>>, AppError> {
     Ok(Json(
-        linop_db_core::consul::consul_agent_members_core(&state.app, &req.connection_id, req.wan, req.segment.as_deref())
-            .await
-            .map_err(AppError::from)?,
+        linop_db_core::consul::consul_agent_members_core(
+            &state.app,
+            &req.connection_id,
+            req.wan,
+            req.segment.as_deref(),
+        )
+        .await
+        .map_err(AppError::from)?,
     ))
 }
 
@@ -693,7 +718,11 @@ pub async fn agent_metrics(
     State(state): State<Arc<WebState>>,
     Json(req): Json<ConsulConnectionRequest>,
 ) -> Result<Json<linop_db_core::consul::ConsulAgentMetrics>, AppError> {
-    Ok(Json(linop_db_core::consul::consul_agent_metrics_core(&state.app, &req.connection_id).await.map_err(AppError::from)?))
+    Ok(Json(
+        linop_db_core::consul::consul_agent_metrics_core(&state.app, &req.connection_id)
+            .await
+            .map_err(AppError::from)?,
+    ))
 }
 
 pub async fn catalog_datacenters(
@@ -721,7 +750,8 @@ pub async fn catalog_nodes(
 pub async fn catalog_services(
     State(state): State<Arc<WebState>>,
     Json(req): Json<ConsulReadOptionsRequest>,
-) -> Result<Json<linop_db_core::consul::ConsulListResponse<std::collections::BTreeMap<String, Vec<String>>>>, AppError> {
+) -> Result<Json<linop_db_core::consul::ConsulListResponse<std::collections::BTreeMap<String, Vec<String>>>>, AppError>
+{
     Ok(Json(
         linop_db_core::consul::consul_catalog_services_core(&state.app, &req.connection_id, req.options)
             .await
@@ -732,11 +762,19 @@ pub async fn catalog_services(
 pub async fn catalog_service_nodes(
     State(state): State<Arc<WebState>>,
     Json(req): Json<ConsulNamedReadRequest>,
-) -> Result<Json<linop_db_core::consul::ConsulListResponse<Vec<linop_db_core::consul::ConsulCatalogServiceNode>>>, AppError> {
+) -> Result<
+    Json<linop_db_core::consul::ConsulListResponse<Vec<linop_db_core::consul::ConsulCatalogServiceNode>>>,
+    AppError,
+> {
     Ok(Json(
-        linop_db_core::consul::consul_catalog_service_nodes_core(&state.app, &req.connection_id, &req.name, req.options)
-            .await
-            .map_err(AppError::from)?,
+        linop_db_core::consul::consul_catalog_service_nodes_core(
+            &state.app,
+            &req.connection_id,
+            &req.name,
+            req.options,
+        )
+        .await
+        .map_err(AppError::from)?,
     ))
 }
 
@@ -745,9 +783,14 @@ pub async fn catalog_node_services(
     Json(req): Json<ConsulNamedReadRequest>,
 ) -> Result<Json<linop_db_core::consul::ConsulListResponse<linop_db_core::consul::ConsulNodeServices>>, AppError> {
     Ok(Json(
-        linop_db_core::consul::consul_catalog_node_services_core(&state.app, &req.connection_id, &req.name, req.options)
-            .await
-            .map_err(AppError::from)?,
+        linop_db_core::consul::consul_catalog_node_services_core(
+            &state.app,
+            &req.connection_id,
+            &req.name,
+            req.options,
+        )
+        .await
+        .map_err(AppError::from)?,
     ))
 }
 
@@ -786,7 +829,8 @@ pub struct ConsulHealthServiceRequest {
 pub async fn health_service(
     State(state): State<Arc<WebState>>,
     Json(req): Json<ConsulHealthServiceRequest>,
-) -> Result<Json<linop_db_core::consul::ConsulListResponse<Vec<linop_db_core::consul::ConsulServiceInstance>>>, AppError> {
+) -> Result<Json<linop_db_core::consul::ConsulListResponse<Vec<linop_db_core::consul::ConsulServiceInstance>>>, AppError>
+{
     Ok(Json(
         linop_db_core::consul::consul_health_service_core(
             &state.app,
@@ -816,7 +860,9 @@ pub async fn agent_services(
     Json(req): Json<ConsulConnectionRequest>,
 ) -> Result<Json<std::collections::BTreeMap<String, linop_db_core::consul::ConsulAgentService>>, AppError> {
     Ok(Json(
-        linop_db_core::consul::consul_agent_services_core(&state.app, &req.connection_id).await.map_err(AppError::from)?,
+        linop_db_core::consul::consul_agent_services_core(&state.app, &req.connection_id)
+            .await
+            .map_err(AppError::from)?,
     ))
 }
 
@@ -842,7 +888,11 @@ pub async fn agent_checks(
     State(state): State<Arc<WebState>>,
     Json(req): Json<ConsulConnectionRequest>,
 ) -> Result<Json<std::collections::BTreeMap<String, linop_db_core::consul::ConsulHealthCheck>>, AppError> {
-    Ok(Json(linop_db_core::consul::consul_agent_checks_core(&state.app, &req.connection_id).await.map_err(AppError::from)?))
+    Ok(Json(
+        linop_db_core::consul::consul_agent_checks_core(&state.app, &req.connection_id)
+            .await
+            .map_err(AppError::from)?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -988,7 +1038,9 @@ pub async fn session(
     Json(req): Json<ConsulIdRequest>,
 ) -> Result<Json<Option<linop_db_core::consul::ConsulSession>>, AppError> {
     Ok(Json(
-        linop_db_core::consul::consul_session_core(&state.app, &req.connection_id, &req.id).await.map_err(AppError::from)?,
+        linop_db_core::consul::consul_session_core(&state.app, &req.connection_id, &req.id)
+            .await
+            .map_err(AppError::from)?,
     ))
 }
 
@@ -1118,7 +1170,9 @@ pub async fn acl_token_self(
     Json(req): Json<ConsulConnectionRequest>,
 ) -> Result<Json<linop_db_core::consul::ConsulAclToken>, AppError> {
     Ok(Json(
-        linop_db_core::consul::consul_acl_token_self_core(&state.app, &req.connection_id).await.map_err(AppError::from)?,
+        linop_db_core::consul::consul_acl_token_self_core(&state.app, &req.connection_id)
+            .await
+            .map_err(AppError::from)?,
     ))
 }
 pub async fn acl_token_clone(
@@ -1141,7 +1195,9 @@ pub async fn acl_list(
 ) -> Result<Json<linop_db_core::consul::ConsulAclList>, AppError> {
     let kind = req.kind.ok_or_else(|| AppError::from("ACL kind is required".to_string()))?;
     Ok(Json(
-        linop_db_core::consul::consul_acl_list_core(&state.app, &req.connection_id, kind).await.map_err(AppError::from)?,
+        linop_db_core::consul::consul_acl_list_core(&state.app, &req.connection_id, kind)
+            .await
+            .map_err(AppError::from)?,
     ))
 }
 pub async fn acl_get(
@@ -1324,9 +1380,15 @@ pub async fn mesh_config_delete(
     let index =
         req.expected_modify_index.ok_or_else(|| AppError::from("Expected ModifyIndex is required".to_string()))?;
     Ok(Json(
-        linop_db_core::consul::mesh::consul_mesh_config_delete_core(&state.app, &req.connection_id, &kind, &name, index)
-            .await
-            .map_err(AppError::from)?,
+        linop_db_core::consul::mesh::consul_mesh_config_delete_core(
+            &state.app,
+            &req.connection_id,
+            &kind,
+            &name,
+            index,
+        )
+        .await
+        .map_err(AppError::from)?,
     ))
 }
 

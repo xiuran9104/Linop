@@ -135,7 +135,8 @@ pub async fn redis_get_stream_entries(
     key_raw: String,
     cursor: Option<String>,
 ) -> Result<RedisStreamPage, String> {
-    linop_db_core::redis_ops::redis_stream_entries_in_db_core(&state, &connection_id, db, &key_raw, cursor.as_deref()).await
+    linop_db_core::redis_ops::redis_stream_entries_in_db_core(&state, &connection_id, db, &key_raw, cursor.as_deref())
+        .await
 }
 
 #[tauri::command]
@@ -276,7 +277,8 @@ pub async fn redis_hash_field_set_ttl(
     ttl: i64,
 ) -> Result<(), String> {
     ensure_connection_writable(&state, &connection_id, "HEXPIRE").await?;
-    linop_db_core::redis_ops::redis_hash_field_set_ttl_in_db_core(&state, &connection_id, db, &key_raw, &field, ttl).await
+    linop_db_core::redis_ops::redis_hash_field_set_ttl_in_db_core(&state, &connection_id, db, &key_raw, &field, ttl)
+        .await
 }
 
 #[tauri::command]
@@ -427,7 +429,8 @@ pub async fn redis_stream_add(
     ttl: Option<i64>,
 ) -> Result<(), String> {
     ensure_connection_writable(&state, &connection_id, "XADD").await?;
-    linop_db_core::redis_ops::redis_stream_add_in_db_core(&state, &connection_id, db, &key_raw, &entry_id, fields, ttl).await
+    linop_db_core::redis_ops::redis_stream_add_in_db_core(&state, &connection_id, db, &key_raw, &entry_id, fields, ttl)
+        .await
 }
 
 #[tauri::command]
@@ -497,7 +500,8 @@ pub async fn redis_set_keys_expire_at(
     expire_at: i64,
 ) -> Result<RedisKeysExpiryResult, String> {
     ensure_connection_writable(&state, &connection_id, "EXPIREAT").await?;
-    linop_db_core::redis_ops::redis_set_keys_expire_at_in_db_core(&state, &connection_id, db, &key_raws, expire_at).await
+    linop_db_core::redis_ops::redis_set_keys_expire_at_in_db_core(&state, &connection_id, db, &key_raws, expire_at)
+        .await
 }
 
 #[tauri::command]

@@ -413,7 +413,11 @@ pub async fn prepare_schema_sync_oracle_ddl_core(
                     .table_ddl
                     .as_deref()
                     .map(|ddl| {
-                        linop_db_sql::object_source_sql::extract_oracle_table_triggers(ddl, &captured.owner, &captured.table)
+                        linop_db_sql::object_source_sql::extract_oracle_table_triggers(
+                            ddl,
+                            &captured.owner,
+                            &captured.table,
+                        )
                     })
                     .transpose();
                 match trigger_sources {

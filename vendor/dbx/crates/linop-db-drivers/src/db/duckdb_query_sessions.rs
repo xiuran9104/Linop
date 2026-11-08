@@ -87,7 +87,8 @@ impl DuckDbWorkerClient {
             }
             let table = format!("__linop_db_result_{id}");
             let row_limit = max_rows.unwrap_or(10_000).max(1);
-            let aliases = (0..columns.len()).map(|i| format!("\"__linop_db_column_{i}\"")).collect::<Vec<_>>().join(", ");
+            let aliases =
+                (0..columns.len()).map(|i| format!("\"__linop_db_column_{i}\"")).collect::<Vec<_>>().join(", ");
             let create = format!(
                 "CREATE TEMP TABLE \"{table}\" (\"__linop_db_row_number\", {aliases}) AS \
                  SELECT row_number() OVER (), * FROM (\n{sql}\n) AS \"__linop_db_source\" LIMIT {}",

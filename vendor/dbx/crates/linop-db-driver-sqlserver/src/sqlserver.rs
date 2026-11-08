@@ -7110,7 +7110,9 @@ mod tests {
         // SQL Server rejects ORDER BY inside the derived table subquery, so the
         // inner statement must stay bare while the outer rewrite re-applies the
         // original sort so row order survives the wrap.
-        assert!(rewritten.sql.contains("FROM (SELECT landId, polygon FROM dbo.tLandPolygon) AS [linop_db_unsafe_source]"));
+        assert!(rewritten
+            .sql
+            .contains("FROM (SELECT landId, polygon FROM dbo.tLandPolygon) AS [linop_db_unsafe_source]"));
         assert!(rewritten.sql.ends_with("ORDER BY [landId] DESC"));
         assert!(rewritten.sql.contains(".AsTextZM()"));
     }
@@ -7943,7 +7945,8 @@ mod tests {
         let issue_rows = client.query(issue_sql, &[]).await.unwrap().into_first_result().await.unwrap();
         assert_eq!(issue_rows.len(), 1);
 
-        let pure_wildcard_variant_sql = "SELECT * FROM #linop_db_issue_4002 AS a CROSS JOIN #linop_db_issue_5606_extra AS b";
+        let pure_wildcard_variant_sql =
+            "SELECT * FROM #linop_db_issue_4002 AS a CROSS JOIN #linop_db_issue_5606_extra AS b";
         let pure_wildcard_variant_probe = super::sqlserver_legacy_probe(pure_wildcard_variant_sql).unwrap();
         let pure_wildcard_variant_columns = super::describe_sqlserver_result_set_with_mode(
             &mut client,
@@ -8082,9 +8085,10 @@ mod tests {
 
         // The derived-table rewrite must not lose ORDER BY: rows come back in id
         // order even though the table was inserted out of order.
-        let ordered = super::execute_query(&mut client, "SELECT id, name, geom FROM #linop_db_geometry_order ORDER BY id")
-            .await
-            .unwrap();
+        let ordered =
+            super::execute_query(&mut client, "SELECT id, name, geom FROM #linop_db_geometry_order ORDER BY id")
+                .await
+                .unwrap();
         assert_eq!(ids(&ordered), vec![1, 2, 3]);
 
         // OFFSET/FETCH pagination must survive the rewrite: second page = id 2.
@@ -8114,9 +8118,10 @@ mod tests {
 
         // TOP + ORDER BY keeps the sort inside the derived table (it drives row
         // selection) and re-applies it outside for the guaranteed final order.
-        let top = super::execute_query(&mut client, "SELECT TOP 2 id, name, geom FROM #linop_db_geometry_order ORDER BY id")
-            .await
-            .unwrap();
+        let top =
+            super::execute_query(&mut client, "SELECT TOP 2 id, name, geom FROM #linop_db_geometry_order ORDER BY id")
+                .await
+                .unwrap();
         assert_eq!(ids(&top), vec![1, 2]);
 
         client.simple_query("DROP TABLE #linop_db_geometry_order").await.unwrap().into_results().await.unwrap();
@@ -8146,9 +8151,10 @@ mod tests {
             (2, geometry::STGeomFromText('POINT (2 2)', 3857), geometry::STGeomFromText('POINT (12 12)', 4326))";
         client.simple_query(setup).await.unwrap().into_results().await.unwrap();
 
-        let result = super::execute_query(&mut client, "SELECT id, geom_a, geom_b FROM #linop_db_mixed_srid ORDER BY id")
-            .await
-            .unwrap();
+        let result =
+            super::execute_query(&mut client, "SELECT id, geom_a, geom_b FROM #linop_db_mixed_srid ORDER BY id")
+                .await
+                .unwrap();
         // Every cell keeps its own SRID: row 1 is (4326, 3857), row 2 is (3857,
         // 4326) — the same column mixes SRIDs across rows without collapsing.
         assert_eq!(

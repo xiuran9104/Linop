@@ -44,8 +44,9 @@ async fn live_postgres_export_creates_views_after_the_views_they_read() {
     let source_connection_id = format!("postgres-view-order-source-{suffix}");
     let target_connection_id = format!("postgres-view-order-target-{suffix}");
     let dir = tempfile::tempdir().expect("create export temp directory");
-    let storage =
-        linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.expect("open temp storage");
+    let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db"))
+        .await
+        .expect("open temp storage");
     let state = Arc::new(AppState::new_with_plugin_and_agent_dir_and_app_version(
         storage,
         dir.path().join("plugins"),

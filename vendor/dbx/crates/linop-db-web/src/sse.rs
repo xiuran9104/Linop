@@ -1,7 +1,7 @@
 use axum::response::sse::{Event, KeepAlive, Sse};
+use futures::stream::Stream;
 use linop_db_core::persistence::task_history::TransferTaskJournal;
 use linop_db_core::transfer::TransferProgress;
-use futures::stream::Stream;
 use serde_json::Value;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};

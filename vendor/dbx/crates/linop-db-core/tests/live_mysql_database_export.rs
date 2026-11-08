@@ -1,5 +1,7 @@
 use linop_db_core::connection::AppState;
-use linop_db_core::database_export::{export_database_sql_core, record_export_destination_identity, DatabaseExportRequest};
+use linop_db_core::database_export::{
+    export_database_sql_core, record_export_destination_identity, DatabaseExportRequest,
+};
 use linop_db_core::models::connection::{ConnectionConfig, DatabaseType};
 use linop_db_core::query::execute_sql_statement;
 use linop_db_core::sql::SqlFileRequest;
@@ -41,8 +43,8 @@ fn live_mysql_config(id: &str) -> ConnectionConfig {
 #[tokio::test]
 #[ignore = "requires a disposable MySQL endpoint"]
 async fn live_mysql_selected_table_restore_preserves_unselected_tables() {
-    use linop_db_core::sql_file_import::{inspect_sql_file_tables, SqlFileTable};
     use futures::FutureExt;
+    use linop_db_core::sql_file_import::{inspect_sql_file_tables, SqlFileTable};
     use std::io::Write;
 
     let suffix = uuid::Uuid::new_v4().simple().to_string();

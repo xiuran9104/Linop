@@ -12,7 +12,8 @@ pub async fn nacos_test_connection(
     connection_id: String,
     force_refresh: Option<bool>,
 ) -> Result<linop_db_core::nacos::NacosConnectionInfo, String> {
-    linop_db_core::nacos::service::nacos_test_connection_core(&state, &connection_id, force_refresh.unwrap_or(false)).await
+    linop_db_core::nacos::service::nacos_test_connection_core(&state, &connection_id, force_refresh.unwrap_or(false))
+        .await
 }
 
 #[tauri::command]
@@ -370,9 +371,14 @@ pub async fn nacos_export_configs(
     selector: linop_db_core::nacos::NacosConfigSelector,
     destination: String,
 ) -> Result<(), String> {
-    linop_db_core::nacos::batch::nacos_export_config_archive_core(&state, &connection_id, selector, Path::new(&destination))
-        .await
-        .map(|_| ())
+    linop_db_core::nacos::batch::nacos_export_config_archive_core(
+        &state,
+        &connection_id,
+        selector,
+        Path::new(&destination),
+    )
+    .await
+    .map(|_| ())
 }
 
 #[tauri::command]

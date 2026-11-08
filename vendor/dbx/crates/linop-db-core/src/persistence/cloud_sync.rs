@@ -4958,9 +4958,11 @@ mod tests {
         let storage = crate::persistence::test_storage::open(&temp_db_path("gitlab-wrong-password")).await.unwrap();
         let snapshot = build_sync_snapshot(&storage, "test-version", None, None).await.unwrap();
         let encrypted = serde_json::to_string(&encrypt_snippet_snapshot(&snapshot, "correct").unwrap()).unwrap();
-        let (base, server) =
-            spawn_gitlab_server(vec![serde_json::json!({"files": [{"path": "linop-db-sync.json"}]}).to_string(), encrypted])
-                .await;
+        let (base, server) = spawn_gitlab_server(vec![
+            serde_json::json!({"files": [{"path": "linop-db-sync.json"}]}).to_string(),
+            encrypted,
+        ])
+        .await;
         let client = SnippetSyncClient::with_api_base(
             SnippetSyncConfig {
                 provider: SnippetProvider::GitLab,

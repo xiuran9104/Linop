@@ -12348,7 +12348,8 @@ fn postgres_object_source_sql_inner(
             } else {
                 ""
             };
-            let search_path_join = if isolate_view_search_path { " CROSS JOIN linop_db_search_path path_guard" } else { "" };
+            let search_path_join =
+                if isolate_view_search_path { " CROSS JOIN linop_db_search_path path_guard" } else { "" };
             let search_path_guard = if isolate_view_search_path { " AND path_guard.applied IS NOT NULL" } else { "" };
             format!(
                 "{search_path_cte}SELECT CASE WHEN c.relkind = 'm' THEN {} \
@@ -14560,8 +14561,9 @@ mod object_source_tests {
     fn builds_postgres_object_source_sql_for_views_and_functions() {
         let view_sql = postgres_object_source_sql("public", "active_users", &ObjectSourceKind::View, None);
 
-        assert!(view_sql
-            .starts_with("WITH linop_db_search_path AS (SELECT pg_catalog.set_config('search_path', '', true) AS applied)"));
+        assert!(view_sql.starts_with(
+            "WITH linop_db_search_path AS (SELECT pg_catalog.set_config('search_path', '', true) AS applied)"
+        ));
         assert!(view_sql.contains("pg_catalog.pg_get_viewdef(c.oid, 0)"));
         assert!(view_sql.contains("CROSS JOIN linop_db_search_path path_guard"));
         assert!(view_sql.contains("path_guard.applied IS NOT NULL"));
@@ -16965,7 +16967,10 @@ mod ddl_tests {
         assert_eq!(ddl, "CREATE MATERIALIZED VIEW `mv_daily` (id);");
         assert_eq!(
             executor.executed,
-            ["SHOW CREATE TABLE `linop_db_test`.`mv_daily`", "SHOW CREATE MATERIALIZED VIEW `linop_db_test`.`mv_daily`"]
+            [
+                "SHOW CREATE TABLE `linop_db_test`.`mv_daily`",
+                "SHOW CREATE MATERIALIZED VIEW `linop_db_test`.`mv_daily`"
+            ]
         );
     }
 

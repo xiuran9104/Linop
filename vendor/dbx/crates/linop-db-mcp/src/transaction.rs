@@ -127,7 +127,9 @@ impl TransactionIo for MysqlTransactionIo {
     }
 
     async fn ping_in_transaction(&mut self) -> Result<bool, TransactionIoError> {
-        linop_db_core::db::mysql::ping_transaction_status_on_conn(self.conn()?).await.map_err(map_mysql_transaction_error)
+        linop_db_core::db::mysql::ping_transaction_status_on_conn(self.conn()?)
+            .await
+            .map_err(map_mysql_transaction_error)
     }
 
     async fn disconnect(&mut self) {

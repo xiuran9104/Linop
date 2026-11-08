@@ -1117,8 +1117,9 @@ mod tests {
             .expect_err("read-only user create should fail");
         assert!(err.contains("Read-only mode"));
 
-        let err =
-            mq_delete_user_core(&state, "readonly-mq", "linop-db-app").await.expect_err("read-only user delete should fail");
+        let err = mq_delete_user_core(&state, "readonly-mq", "linop-db-app")
+            .await
+            .expect_err("read-only user delete should fail");
         assert!(err.contains("Read-only mode"));
 
         let err = mq_grant_user_permission_core(&state, "readonly-mq", ns.clone(), "linop-db-app", ".*", ".*", ".*")
@@ -1138,8 +1139,11 @@ mod tests {
     async fn mutating_policy_calls_block_read_only_connections_before_adapter_build() {
         let (state, dir) = test_state_with(mq_connection(true)).await;
         let ns = NamespaceRef { tenant: "_rabbitmq".to_string(), namespace: "orders".to_string() };
-        let policy =
-            MqPolicyInfo { name: "linop-db-ttl".to_string(), pattern: "^linop-db-".to_string(), ..MqPolicyInfo::default() };
+        let policy = MqPolicyInfo {
+            name: "linop-db-ttl".to_string(),
+            pattern: "^linop-db-".to_string(),
+            ..MqPolicyInfo::default()
+        };
 
         let err = mq_set_policy_core(&state, "readonly-mq", ns.clone(), policy)
             .await

@@ -2419,7 +2419,8 @@ for line in sys.stdin:
 
     #[test]
     fn policy_params_omit_empty_apply_to_so_agent_default_applies() {
-        let policy = MqPolicyInfo { name: "linop-db-ha".to_string(), pattern: ".*".to_string(), ..MqPolicyInfo::default() };
+        let policy =
+            MqPolicyInfo { name: "linop-db-ha".to_string(), pattern: ".*".to_string(), ..MqPolicyInfo::default() };
 
         let params = policy_params(&policy, "_rabbitmq").expect("policy params");
         assert!(params.get("applyTo").is_none());
@@ -2431,8 +2432,11 @@ for line in sys.stdin:
 
     #[test]
     fn policy_params_reject_all_vhosts_context() {
-        let policy =
-            MqPolicyInfo { name: "linop-db-ttl".to_string(), pattern: "^linop-db-".to_string(), ..MqPolicyInfo::default() };
+        let policy = MqPolicyInfo {
+            name: "linop-db-ttl".to_string(),
+            pattern: "^linop-db-".to_string(),
+            ..MqPolicyInfo::default()
+        };
 
         let err = policy_params(&policy, "*").expect_err("all-vhosts policy write must fail");
         assert_eq!(err, "operation requires a specific virtual host (all-vhosts context)");

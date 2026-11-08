@@ -313,8 +313,11 @@ mod tests {
 
     #[test]
     fn rejects_non_get_methods() {
-        let response =
-            serve_plugin_ui_asset(&test_registry(), &Method::POST, &uri("linop-db-plugin://localhost/sample/ui/index.html"));
+        let response = serve_plugin_ui_asset(
+            &test_registry(),
+            &Method::POST,
+            &uri("linop-db-plugin://localhost/sample/ui/index.html"),
+        );
         assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
     }
 
@@ -325,9 +328,10 @@ mod tests {
 
     #[test]
     fn rejects_paths_that_escape_the_plugin() {
-        for path in
-            ["linop-db-plugin://localhost/sample/../secret.txt", "linop-db-plugin://localhost/sample/ui/../../manifest.json"]
-        {
+        for path in [
+            "linop-db-plugin://localhost/sample/../secret.txt",
+            "linop-db-plugin://localhost/sample/ui/../../manifest.json",
+        ] {
             let response = get(path);
             assert_eq!(response.status(), StatusCode::NOT_FOUND, "path should be rejected: {path}");
         }
@@ -356,8 +360,9 @@ mod tests {
 
     #[test]
     fn media_urls_require_scoped_uuid_tokens() {
-        let parsed =
-            parse_plugin_media_uri(&uri("linop-db-plugin://localhost/sample/__media/550e8400-e29b-41d4-a716-446655440000"));
+        let parsed = parse_plugin_media_uri(&uri(
+            "linop-db-plugin://localhost/sample/__media/550e8400-e29b-41d4-a716-446655440000",
+        ));
         assert_eq!(parsed, Some(("sample".to_string(), "550e8400-e29b-41d4-a716-446655440000".to_string())));
         let nested = parse_plugin_media_uri(&uri(
             "linop-db-plugin://localhost/sample/ui/__media/550e8400-e29b-41d4-a716-446655440000",

@@ -1352,7 +1352,12 @@ fn effective_database_execution_policy_with_groups(
     connection_id: &str,
     database: &str,
 ) -> (bool, bool) {
-    linop_db_core::mcp_policy::effective_database_execution_policy_with_groups(policy, group_ids, connection_id, database)
+    linop_db_core::mcp_policy::effective_database_execution_policy_with_groups(
+        policy,
+        group_ids,
+        connection_id,
+        database,
+    )
 }
 
 async fn ensure_mcp_write_allowed(
@@ -2482,7 +2487,8 @@ async fn handle_list_tables_data(state: &Arc<AppState>, body: &str, stream: &mut
         respond_error(stream, "403 Forbidden", &e).await;
         return;
     }
-    match linop_db_core::schema::list_tables_core(state, &config.id, &database, &schema, None, None, None, None, None).await
+    match linop_db_core::schema::list_tables_core(state, &config.id, &database, &schema, None, None, None, None, None)
+        .await
     {
         Ok(tables) => respond_json(stream, &tables).await,
         Err(e) => respond_error(stream, "500 Internal Server Error", &e).await,
@@ -2627,8 +2633,14 @@ async fn handle_mongo_collection_stats_data(state: &Arc<AppState>, body: &str, s
     else {
         return;
     };
-    match linop_db_core::mongo_ops::mongo_collection_stats_core(state, &connection_id, &database, &req.collection, req.scale)
-        .await
+    match linop_db_core::mongo_ops::mongo_collection_stats_core(
+        state,
+        &connection_id,
+        &database,
+        &req.collection,
+        req.scale,
+    )
+    .await
     {
         Ok(result) => respond_json(stream, &result).await,
         Err(e) => respond_error(stream, "500 Internal Server Error", &e).await,
@@ -2779,7 +2791,8 @@ async fn handle_mongo_drop_collection_data(state: &Arc<AppState>, body: &str, st
         respond_error(stream, "403 Forbidden", &e).await;
         return;
     }
-    match linop_db_core::mongo_ops::mongo_drop_collection_core(state, &connection_id, &database, &req.collection).await {
+    match linop_db_core::mongo_ops::mongo_drop_collection_core(state, &connection_id, &database, &req.collection).await
+    {
         Ok(()) => respond_json(stream, &serde_json::json!({ "ok": true })).await,
         Err(e) => respond_error(stream, "500 Internal Server Error", &e).await,
     }

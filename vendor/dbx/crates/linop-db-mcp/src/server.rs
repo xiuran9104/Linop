@@ -2058,7 +2058,8 @@ impl DbxMcpServer {
         use crate::products::Product::Consul;
         use linop_db_core::mcp_access::McpAccessLevel::Full;
         let args = json!({ "key": request.key, "cas": request.cas });
-        self.run_product_tool("linop_db_consul_kv_delete", &request.selector, Consul, "kv_delete", Full, None, args).await
+        self.run_product_tool("linop_db_consul_kv_delete", &request.selector, Consul, "kv_delete", Full, None, args)
+            .await
     }
 
     #[tool(
@@ -2204,14 +2205,18 @@ impl DbxMcpServer {
         if let Err(error) = self.ensure_tool_allowed("linop_db_plugin_tools").await {
             return error;
         }
-        if let Err(error) =
-            self.ensure_global_mcp_access(linop_db_core::mcp_access::McpAccessLevel::Read, "linop_db_plugin_tools").await
+        if let Err(error) = self
+            .ensure_global_mcp_access(linop_db_core::mcp_access::McpAccessLevel::Read, "linop_db_plugin_tools")
+            .await
         {
             return error;
         }
         let plugin_id = request.plugin_id.trim();
         if plugin_id.is_empty() {
-            return tool_error("PLUGIN_ID_REQUIRED", "plugin_id is required; use linop_db_plugin_list to find plugin ids.");
+            return tool_error(
+                "PLUGIN_ID_REQUIRED",
+                "plugin_id is required; use linop_db_plugin_list to find plugin ids.",
+            );
         }
         let providers = match self.backend.list_plugin_mcp_tools().await {
             Ok(providers) => providers,
@@ -2349,7 +2354,10 @@ impl DbxMcpServer {
         }
         let plugin_id = request.plugin_id.trim();
         if plugin_id.is_empty() {
-            return tool_error("PLUGIN_ID_REQUIRED", "plugin_id is required; use linop_db_plugin_list to find plugin ids.");
+            return tool_error(
+                "PLUGIN_ID_REQUIRED",
+                "plugin_id is required; use linop_db_plugin_list to find plugin ids.",
+            );
         }
         let tool = request.tool.trim();
         if tool.is_empty() {
@@ -2362,7 +2370,8 @@ impl DbxMcpServer {
         if !arguments.is_object() {
             return tool_error("INVALID_ARGUMENTS", "arguments must be a JSON object.");
         }
-        if let Some(selector) = request.linop_db_connection.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+        if let Some(selector) = request.linop_db_connection.as_deref().map(str::trim).filter(|value| !value.is_empty())
+        {
             if let Some(object) = arguments.as_object_mut() {
                 object.insert(crate::plugin_tools::PLUGIN_CONNECTION_ARGUMENT.to_string(), json!(selector));
             }
@@ -2386,8 +2395,9 @@ impl DbxMcpServer {
         if let Err(error) = self.ensure_tool_allowed("linop_db_list_connections").await {
             return error;
         }
-        if let Err(error) =
-            self.ensure_global_mcp_access(linop_db_core::mcp_access::McpAccessLevel::Read, "linop_db_list_connections").await
+        if let Err(error) = self
+            .ensure_global_mcp_access(linop_db_core::mcp_access::McpAccessLevel::Read, "linop_db_list_connections")
+            .await
         {
             return error;
         }
@@ -4140,8 +4150,9 @@ impl DbxMcpServer {
         if let Err(error) = self.ensure_tool_allowed("linop_db_add_connection").await {
             return error;
         }
-        if let Err(error) =
-            self.ensure_global_mcp_access(linop_db_core::mcp_access::McpAccessLevel::Write, "linop_db_add_connection").await
+        if let Err(error) = self
+            .ensure_global_mcp_access(linop_db_core::mcp_access::McpAccessLevel::Write, "linop_db_add_connection")
+            .await
         {
             return error;
         }
@@ -4204,8 +4215,9 @@ impl DbxMcpServer {
         if let Err(error) = self.ensure_tool_allowed("linop_db_duplicate_connection").await {
             return error;
         }
-        if let Err(error) =
-            self.ensure_global_mcp_access(linop_db_core::mcp_access::McpAccessLevel::Write, "linop_db_duplicate_connection").await
+        if let Err(error) = self
+            .ensure_global_mcp_access(linop_db_core::mcp_access::McpAccessLevel::Write, "linop_db_duplicate_connection")
+            .await
         {
             return error;
         }
@@ -4328,8 +4340,9 @@ impl DbxMcpServer {
                 format!("Connection \"{}\" is not allowed by DBX MCP settings.", target.id),
             );
         }
-        if let Err(error) =
-            self.ensure_global_mcp_access(linop_db_core::mcp_access::McpAccessLevel::Full, "linop_db_remove_connection").await
+        if let Err(error) = self
+            .ensure_global_mcp_access(linop_db_core::mcp_access::McpAccessLevel::Full, "linop_db_remove_connection")
+            .await
         {
             return error;
         }
@@ -4349,7 +4362,8 @@ impl DbxMcpServer {
             if let Err(error) = self.ensure_tool_allowed("linop_db_remove_connection").await {
                 return error;
             }
-            if let Err(error) = self.ensure_global_mcp_access(McpAccessLevel::Full, "linop_db_remove_connection").await {
+            if let Err(error) = self.ensure_global_mcp_access(McpAccessLevel::Full, "linop_db_remove_connection").await
+            {
                 return error;
             }
             let refreshed = match self
@@ -4779,7 +4793,9 @@ impl DbxMcpServer {
         }
     }
 
-    async fn load_scoped_connections(&self) -> Result<Vec<linop_db_core::models::connection::ConnectionConfig>, String> {
+    async fn load_scoped_connections(
+        &self,
+    ) -> Result<Vec<linop_db_core::models::connection::ConnectionConfig>, String> {
         let policy = self.backend.load_mcp_global_policy().await?;
         let access = self.backend.load_mcp_access_policy().await?;
         let connections = self.backend.load_connections().await?;
@@ -5140,7 +5156,10 @@ impl DbxMcpServer {
                 .list_all()
                 .into_iter()
                 .filter(|tool| {
-                    if matches!(tool.name.as_ref(), "linop_db_plugin_list" | "linop_db_plugin_tools" | "linop_db_plugin_call") {
+                    if matches!(
+                        tool.name.as_ref(),
+                        "linop_db_plugin_list" | "linop_db_plugin_tools" | "linop_db_plugin_call"
+                    ) {
                         plugin_mode.advertise_meta()
                     } else {
                         true
@@ -5187,10 +5206,14 @@ impl DbxMcpServer {
                 _ => descriptor.toolset,
             };
             let required = match descriptor.access_mode {
-                linop_db_core::mcp_catalog::McpAccessMode::Classified => linop_db_core::mcp_access::McpAccessLevel::Read,
+                linop_db_core::mcp_catalog::McpAccessMode::Classified => {
+                    linop_db_core::mcp_access::McpAccessLevel::Read
+                }
                 linop_db_core::mcp_catalog::McpAccessMode::Static => match descriptor.access {
                     linop_db_core::mcp_catalog::McpAccessLevel::Read => linop_db_core::mcp_access::McpAccessLevel::Read,
-                    linop_db_core::mcp_catalog::McpAccessLevel::Write => linop_db_core::mcp_access::McpAccessLevel::Write,
+                    linop_db_core::mcp_catalog::McpAccessLevel::Write => {
+                        linop_db_core::mcp_access::McpAccessLevel::Write
+                    }
                     linop_db_core::mcp_catalog::McpAccessLevel::Full => linop_db_core::mcp_access::McpAccessLevel::Full,
                 },
             };
@@ -6366,7 +6389,9 @@ fn catalog_advertised_access(
     }
 }
 
-fn catalog_access_level(level: linop_db_core::mcp_catalog::McpAccessLevel) -> linop_db_core::mcp_access::McpAccessLevel {
+fn catalog_access_level(
+    level: linop_db_core::mcp_catalog::McpAccessLevel,
+) -> linop_db_core::mcp_access::McpAccessLevel {
     match level {
         linop_db_core::mcp_catalog::McpAccessLevel::Read => linop_db_core::mcp_access::McpAccessLevel::Read,
         linop_db_core::mcp_catalog::McpAccessLevel::Write => linop_db_core::mcp_access::McpAccessLevel::Write,
@@ -6432,7 +6457,9 @@ fn plugin_connection_level_allowed(
     )
 }
 
-fn plugin_tool_required_access(entry: &crate::plugin_tools::PluginToolEntry) -> linop_db_core::mcp_access::McpAccessLevel {
+fn plugin_tool_required_access(
+    entry: &crate::plugin_tools::PluginToolEntry,
+) -> linop_db_core::mcp_access::McpAccessLevel {
     if entry.tool.read_only {
         linop_db_core::mcp_access::McpAccessLevel::Read
     } else {
@@ -7280,15 +7307,18 @@ fn validate_mongo_command_with_groups(
         ));
     }
     if let MongoCommand::Aggregate { pipeline, .. } = command_to_validate {
-        linop_db_core::mcp_policy::ensure_mongo_database_execution_scope(policy, &connection.id, target_database, pipeline)
-            .map_err(|error| {
-                let (code, message) = error
-                    .strip_prefix("QUERY_ERROR: ")
-                    .map_or(("DATABASE_EXECUTION_POLICY_OUT_OF_SCOPE", error.as_str()), |message| {
-                        ("QUERY_ERROR", message)
-                    });
-                tool_error(code, message)
-            })?;
+        linop_db_core::mcp_policy::ensure_mongo_database_execution_scope(
+            policy,
+            &connection.id,
+            target_database,
+            pipeline,
+        )
+        .map_err(|error| {
+            let (code, message) = error
+                .strip_prefix("QUERY_ERROR: ")
+                .map_or(("DATABASE_EXECUTION_POLICY_OUT_OF_SCOPE", error.as_str()), |message| ("QUERY_ERROR", message));
+            tool_error(code, message)
+        })?;
         for output_database in mongo_aggregate_target_databases(pipeline, target_database)? {
             ensure_database_in_scope(database_scope, &output_database)?;
         }
@@ -8839,7 +8869,10 @@ mod tests {
         // flat 模式（默认构造走 env；此处直接构造 Lazy 验证过滤）——先验证 policy。
         let restricted = Arc::new(FakeBackend {
             policy: McpGlobalPolicy {
-                allowed_tool_names: Some(vec!["linop_db_plugin_list".to_string(), "linop_db_list_connections".to_string()]),
+                allowed_tool_names: Some(vec![
+                    "linop_db_plugin_list".to_string(),
+                    "linop_db_list_connections".to_string(),
+                ]),
                 ..Default::default()
             },
             plugin_providers: vec![plugin_provider("io.dbx.kafka", "Kafka Studio", kafka_plugin_listing())],
@@ -8929,7 +8962,10 @@ mod tests {
         };
         assert!(policy_allows_tool(&every_plugin, "linop_db_kafka__kafka_topics_delete"));
         assert!(policy_allows_tool(&every_plugin, "linop_db_ssh__sftp_list_dir"));
-        assert!(policy_allows_tool(&every_plugin, "linop_db_plugin_list"), "exact entries keep working beside the wildcard");
+        assert!(
+            policy_allows_tool(&every_plugin, "linop_db_plugin_list"),
+            "exact entries keep working beside the wildcard"
+        );
         assert!(!policy_allows_tool(&every_plugin, "linop_db_execute_query"));
 
         let explicit = McpGlobalPolicy {
@@ -9050,8 +9086,10 @@ mod tests {
             ..Default::default()
         });
         let flat = DbxMcpServer::with_runtime_options(backend.clone(), McpScope::default(), false);
-        let flat =
-            flat.call_plugin_tool_dispatch("linop_db_kafka__kafka_topics_delete", json!({ "topics": ["t"] })).await.unwrap();
+        let flat = flat
+            .call_plugin_tool_dispatch("linop_db_kafka__kafka_topics_delete", json!({ "topics": ["t"] }))
+            .await
+            .unwrap();
         assert!(result_text(&flat).contains("MCP_READ_ONLY"), "{}", result_text(&flat));
 
         let lazy =
@@ -9299,7 +9337,9 @@ mod tests {
 
     #[tokio::test]
     async fn nacos_public_alias_and_nested_target_share_the_authorized_namespace() {
-        use linop_db_core::mcp_access::{McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode};
+        use linop_db_core::mcp_access::{
+            McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode,
+        };
         let mut access = McpAccessPolicy { default_access: McpAccessLevel::Write, ..Default::default() };
         access.rules.insert(
             McpRuleTarget::Connection { id: "nacos".into() },
@@ -9338,7 +9378,9 @@ mod tests {
 
     #[tokio::test]
     async fn nacos_namespace_listing_filters_selected_sub_scope() {
-        use linop_db_core::mcp_access::{McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode};
+        use linop_db_core::mcp_access::{
+            McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode,
+        };
 
         let mut access = McpAccessPolicy { default_access: McpAccessLevel::Write, ..Default::default() };
         access.rules.insert(
@@ -9550,7 +9592,9 @@ mod tests {
         let confirm = McpGlobalPolicy { prompt_high_risk_sql: true, ..safe_write.clone() };
         let call = |server: &DbxMcpServer| {
             let server = server.clone();
-            async move { server.call_plugin_tool_dispatch("linop_db_ssh__ssh_exec", json!({ "command": "rm x" })).await.unwrap() }
+            async move {
+                server.call_plugin_tool_dispatch("linop_db_ssh__ssh_exec", json!({ "command": "rm x" })).await.unwrap()
+            }
         };
 
         // Safe-write without the confirm switch refuses outright, without asking.
@@ -9590,7 +9634,9 @@ mod tests {
 
     #[tokio::test]
     async fn scoped_access_overrides_keep_builtin_and_plugin_tools_discoverable() {
-        use linop_db_core::mcp_access::{McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode};
+        use linop_db_core::mcp_access::{
+            McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode,
+        };
 
         for (visible, mode, ceiling, expected) in [
             (true, McpSubScopeMode::Selected, None, true),
@@ -9651,8 +9697,10 @@ mod tests {
             let lazy = server.plugin_tools(Parameters(PluginToolsRequest { plugin_id: "io.dbx.k8s".into() })).await;
             assert_eq!(lazy.is_error, Some(!expected), "{}", result_text(&lazy));
             if expected {
-                let call =
-                    server.call_plugin_tool_dispatch("linop_db_k8s__scale", json!({ "namespace": "dev" })).await.unwrap();
+                let call = server
+                    .call_plugin_tool_dispatch("linop_db_k8s__scale", json!({ "namespace": "dev" }))
+                    .await
+                    .unwrap();
                 assert_eq!(call.is_error, Some(false), "{}", result_text(&call));
             }
         }
@@ -9660,7 +9708,9 @@ mod tests {
 
     #[tokio::test]
     async fn plugin_scope_values_follow_the_access_policy() {
-        use linop_db_core::mcp_access::{McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode};
+        use linop_db_core::mcp_access::{
+            McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode,
+        };
         let mut access = McpAccessPolicy { default_access: McpAccessLevel::Write, ..Default::default() };
         access.rules.insert(
             McpRuleTarget::Connection { id: "k1".into() },
@@ -9862,7 +9912,9 @@ mod tests {
 
     #[tokio::test]
     async fn product_tools_follow_scope_level_and_protections() {
-        use linop_db_core::mcp_access::{McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode};
+        use linop_db_core::mcp_access::{
+            McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode,
+        };
         let mut access = McpAccessPolicy { default_access: McpAccessLevel::Write, ..Default::default() };
         access.rules.insert(
             McpRuleTarget::Connection { id: "nacos".into() },
@@ -9952,7 +10004,9 @@ mod tests {
 
     #[tokio::test]
     async fn nacos_all_namespace_search_requires_unrestricted_scope_access() {
-        use linop_db_core::mcp_access::{McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode};
+        use linop_db_core::mcp_access::{
+            McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode,
+        };
 
         let mut access = McpAccessPolicy { default_access: McpAccessLevel::Read, ..Default::default() };
         access.rules.insert(
@@ -10387,7 +10441,10 @@ mod tests {
     #[tokio::test]
     async fn tools_list_hides_tools_the_policy_disallows() {
         let policy = McpGlobalPolicy {
-            allowed_tool_names: Some(vec!["linop_db_list_connections".to_string(), "linop_db_execute_query".to_string()]),
+            allowed_tool_names: Some(vec![
+                "linop_db_list_connections".to_string(),
+                "linop_db_execute_query".to_string(),
+            ]),
             ..Default::default()
         };
         let server = DbxMcpServer::with_runtime_options(
@@ -10427,7 +10484,9 @@ mod tests {
         let names =
             server.policy_filtered_tools().await.into_iter().map(|tool| tool.name.to_string()).collect::<HashSet<_>>();
 
-        for name in ["linop_db_list_databases", "linop_db_list_tables", "linop_db_execute_query", "linop_db_nacos_list_configs"] {
+        for name in
+            ["linop_db_list_databases", "linop_db_list_tables", "linop_db_execute_query", "linop_db_nacos_list_configs"]
+        {
             assert!(!names.contains(name), "{name} requires a visible connection");
         }
         for name in ["linop_db_list_connections", "linop_db_add_connection", "linop_db_duplicate_connection"] {
@@ -11033,7 +11092,9 @@ mod tests {
 
     #[tokio::test]
     async fn redis_confirmation_honors_v2_ceiling_and_rechecks_all_gates() {
-        use linop_db_core::mcp_access::{McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode};
+        use linop_db_core::mcp_access::{
+            McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode,
+        };
         for revocation in ["none", "tool", "scope", "ceiling"] {
             let policy = McpGlobalPolicy {
                 read_only: false,
@@ -11147,7 +11208,9 @@ mod tests {
 
     #[test]
     fn redis_scope_aliases_preserve_selected_visibility_and_strictest_level() {
-        use linop_db_core::mcp_access::{McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode};
+        use linop_db_core::mcp_access::{
+            McpAccessLevel, McpAccessPolicy, McpAccessRule, McpRuleTarget, McpSubScopeMode,
+        };
         let mut access = McpAccessPolicy { default_access: McpAccessLevel::Full, ..Default::default() };
         access.rules.insert(
             McpRuleTarget::Connection { id: "redis".into() },
@@ -12372,12 +12435,14 @@ mod tests {
 
         let follow_up = tokio::time::timeout(
             std::time::Duration::from_millis(250),
-            client.peer().call_tool(CallToolRequestParams::new("linop_db_execute_query").with_arguments(arguments(json!({
-                "connection_id": "mysql",
-                "database": "app",
-                "session_id": session_id,
-                "sql": "SELECT 2"
-            })))),
+            client.peer().call_tool(CallToolRequestParams::new("linop_db_execute_query").with_arguments(arguments(
+                json!({
+                    "connection_id": "mysql",
+                    "database": "app",
+                    "session_id": session_id,
+                    "sql": "SELECT 2"
+                }),
+            ))),
         )
         .await
         .expect("protocol cancellation must release the transaction operation slot")
@@ -13792,7 +13857,8 @@ mod tests {
 
         let mut access = McpAccessPolicy { default_access: McpAccessLevel::Full, ..Default::default() };
         let mut rule = McpAccessRule::default();
-        rule.toolset_ceilings.insert(linop_db_core::mcp_access::SALESFORCE_WRITE_TOOLSET.to_string(), McpAccessLevel::Read);
+        rule.toolset_ceilings
+            .insert(linop_db_core::mcp_access::SALESFORCE_WRITE_TOOLSET.to_string(), McpAccessLevel::Read);
         access.rules.insert(McpRuleTarget::Connection { id: "sfdc".into() }, rule);
         let backend = Arc::new(FakeBackend {
             connections: vec![salesforce_connection()],

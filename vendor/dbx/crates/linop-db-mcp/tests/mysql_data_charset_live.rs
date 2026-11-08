@@ -5,7 +5,9 @@
 //! copied into this test's connection configs. DBX storage and its managed key
 //! are isolated in a temporary directory; no OS keychain is required.
 //! Rejected writes must produce a local policy error, not a MySQL grant error.
-use linop_db_core::{models::connection::ConnectionConfig, persistence::secret_codec::SecretKeyPolicy, storage::Storage};
+use linop_db_core::{
+    models::connection::ConnectionConfig, persistence::secret_codec::SecretKeyPolicy, storage::Storage,
+};
 use linop_db_mcp::{transaction::TransactionState, DbxBackend, LocalBackend};
 use serde_json::json;
 

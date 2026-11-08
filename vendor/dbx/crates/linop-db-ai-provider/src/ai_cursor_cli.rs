@@ -64,8 +64,10 @@ impl CursorIsolatedRuntime {
     }
 
     fn write_permission_config(cursor_dir: &Path, agent_mode: bool) -> Result<(), String> {
-        let allow =
-            linop_db_mcp_enabled_tools(agent_mode).into_iter().map(|tool| format!("Mcp(dbx:{tool})")).collect::<Vec<_>>();
+        let allow = linop_db_mcp_enabled_tools(agent_mode)
+            .into_iter()
+            .map(|tool| format!("Mcp(dbx:{tool})"))
+            .collect::<Vec<_>>();
         let config = json!({
             "permissions": {
                 "allow": allow,

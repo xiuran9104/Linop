@@ -77,7 +77,9 @@ pub async fn supports_ttl(
     State(state): State<Arc<WebState>>,
     Json(req): Json<EtcdConnectionRequest>,
 ) -> Result<Json<bool>, AppError> {
-    Ok(Json(linop_db_core::agent_kv::kv_supports_ttl_core(&state.app, &req.connection_id).await.map_err(AppError::from)?))
+    Ok(Json(
+        linop_db_core::agent_kv::kv_supports_ttl_core(&state.app, &req.connection_id).await.map_err(AppError::from)?,
+    ))
 }
 
 #[derive(Deserialize)]
@@ -205,7 +207,8 @@ pub async fn status(
     State(state): State<Arc<WebState>>,
     Json(req): Json<EtcdStatusRequest>,
 ) -> Result<Json<linop_db_core::agent_kv::KvStatusResponse>, AppError> {
-    let result = linop_db_core::agent_kv::kv_status_core(&state.app, &req.connection_id).await.map_err(AppError::from)?;
+    let result =
+        linop_db_core::agent_kv::kv_status_core(&state.app, &req.connection_id).await.map_err(AppError::from)?;
     Ok(Json(result))
 }
 

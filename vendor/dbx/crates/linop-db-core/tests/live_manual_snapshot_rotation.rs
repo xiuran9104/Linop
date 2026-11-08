@@ -27,7 +27,8 @@ fn live_config(prefix: &str, database_type: DatabaseType, default_port: u16) -> 
 }
 
 async fn setup(config: ConnectionConfig) -> (Arc<AppState>, std::path::PathBuf, String) {
-    let storage_path = std::env::temp_dir().join(format!("linop-db-snapshot-rotation-{}.db", uuid::Uuid::new_v4().simple()));
+    let storage_path =
+        std::env::temp_dir().join(format!("linop-db-snapshot-rotation-{}.db", uuid::Uuid::new_v4().simple()));
     let state = Arc::new(AppState::new(
         linop_db_core::persistence::test_storage::open(&storage_path).await.expect("temporary storage"),
     ));

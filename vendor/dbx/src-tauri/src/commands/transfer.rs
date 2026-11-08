@@ -162,6 +162,13 @@ pub async fn sort_tables_by_fk_dependency(
     tables: Vec<String>,
     parents_first: bool,
 ) -> Result<Vec<String>, String> {
-    linop_db_core::transfer::sort_tables_by_fk_dependency(&state, &connection_id, &database, &schema, &tables, parents_first)
-        .await
+    linop_db_core::transfer::sort_tables_by_fk_dependency(
+        &state,
+        &connection_id,
+        &database,
+        &schema,
+        &tables,
+        parents_first,
+    )
+    .await
 }

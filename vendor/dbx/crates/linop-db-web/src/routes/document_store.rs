@@ -321,8 +321,9 @@ pub async fn list_databases(
     State(state): State<Arc<WebState>>,
     Json(req): Json<DocumentListDatabasesRequest>,
 ) -> Result<Json<Vec<String>>, AppError> {
-    let result =
-        linop_db_core::document_ops::list_databases_core(&state.app, &req.connection_id).await.map_err(AppError::from)?;
+    let result = linop_db_core::document_ops::list_databases_core(&state.app, &req.connection_id)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -429,10 +430,13 @@ pub async fn elasticsearch_delete_all_documents(
     Json(req): Json<ElasticsearchIndexRequest>,
 ) -> Result<Json<linop_db_core::db::elasticsearch_driver::ElasticsearchDeleteByQueryResult>, AppError> {
     ensure_writable(&state.app, &req.connection_id, "Delete all documents").await?;
-    let result =
-        linop_db_core::document_ops::elasticsearch_delete_all_documents_core(&state.app, &req.connection_id, &req.index)
-            .await
-            .map_err(AppError::from)?;
+    let result = linop_db_core::document_ops::elasticsearch_delete_all_documents_core(
+        &state.app,
+        &req.connection_id,
+        &req.index,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -605,9 +609,10 @@ pub async fn meilisearch_get_stats(
     State(state): State<Arc<WebState>>,
     Json(req): Json<MeilisearchIndexRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let result = linop_db_core::document_ops::meilisearch_get_index_stats_core(&state.app, &req.connection_id, &req.index)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::document_ops::meilisearch_get_index_stats_core(&state.app, &req.connection_id, &req.index)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -760,9 +765,10 @@ pub async fn meilisearch_cancel_tasks(
     Json(req): Json<MeilisearchTaskMutationRequest>,
 ) -> Result<Json<linop_db_core::db::meilisearch_driver::MeilisearchEnqueuedTaskSummary>, AppError> {
     ensure_writable(&state.app, &req.connection_id, "Cancel tasks").await?;
-    let result = linop_db_core::document_ops::meilisearch_cancel_tasks_core(&state.app, &req.connection_id, &req.selector)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::document_ops::meilisearch_cancel_tasks_core(&state.app, &req.connection_id, &req.selector)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -771,9 +777,10 @@ pub async fn meilisearch_delete_tasks(
     Json(req): Json<MeilisearchTaskMutationRequest>,
 ) -> Result<Json<linop_db_core::db::meilisearch_driver::MeilisearchEnqueuedTaskSummary>, AppError> {
     ensure_writable(&state.app, &req.connection_id, "Delete tasks").await?;
-    let result = linop_db_core::document_ops::meilisearch_delete_tasks_core(&state.app, &req.connection_id, &req.selector)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::document_ops::meilisearch_delete_tasks_core(&state.app, &req.connection_id, &req.selector)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(result))
 }
 

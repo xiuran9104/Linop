@@ -218,7 +218,8 @@ mod tests {
         let lines = ["CREATE view v_Test as", "\tselect 'quoted' as value", "-- \"keep quotes\""];
         let request = request(DataGridExtractorId::Raw, lines.iter().map(|line| vec![json!(line)]).collect());
         let guarded = neutralize_spreadsheet_formulas(request);
-        let result = linop_db_sql::data_grid_extractors::extract_data_grid_selection(guarded).expect("raw SQL extraction");
+        let result =
+            linop_db_sql::data_grid_extractors::extract_data_grid_selection(guarded).expect("raw SQL extraction");
         assert_eq!(result.text, lines.join("\n"));
     }
 
@@ -340,7 +341,10 @@ mod tests {
         request.options.dsv.header_format = DataGridHeaderFormat::Description;
         let guarded = neutralize_spreadsheet_formulas(request.clone());
         assert_eq!(guarded.columns[0].description.as_deref(), Some("'=SUM(A1)"));
-        assert_eq!(linop_db_sql::data_grid_extractors::extract_data_grid_selection(guarded).unwrap().text, "'=SUM(A1)\n1");
+        assert_eq!(
+            linop_db_sql::data_grid_extractors::extract_data_grid_selection(guarded).unwrap().text,
+            "'=SUM(A1)\n1"
+        );
 
         request.options.dsv.header_format = DataGridHeaderFormat::Both;
         let guarded = neutralize_spreadsheet_formulas(request);

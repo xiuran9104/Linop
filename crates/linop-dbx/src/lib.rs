@@ -84,7 +84,10 @@ impl Dbx {
     }
 
     /// 把 Linop profile 构造成 DBX ConnectionConfig 并注入运行时。
-    async fn inject(state: &std::sync::Arc<tokio::sync::Mutex<AppState>>, profile: &linop_core::DbProfile) -> Result<()> {
+    async fn inject(
+        state: &std::sync::Arc<tokio::sync::Mutex<AppState>>,
+        profile: &linop_core::DbProfile,
+    ) -> Result<()> {
         let config: ConnectionConfig = serde_json::from_value(serde_json::json!({
             "id": format!("linop:{}", profile.name),
             "name": profile.name,
@@ -159,15 +162,7 @@ impl Dbx {
         let database = self.database_of(name).await;
         let guard = self.state.lock().await;
         linop_db_core::schema::list_tables_core(
-            &guard,
-            &id,
-            &database,
-            "",
-            None,
-            None,
-            None,
-            None,
-            None,
+            &guard, &id, &database, "", None, None, None, None, None,
         )
         .await
         .map_err(DbxError::Dbx)

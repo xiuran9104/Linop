@@ -2,7 +2,9 @@
 
 use linop_db_core::connection::{AppState, PoolKind};
 use linop_db_core::models::connection::ConnectionConfig;
-use linop_db_core::plugins::{InstalledPlugin, PluginCompatibility, PluginDriverSession, PluginManifest, PluginRuntimeEnv};
+use linop_db_core::plugins::{
+    InstalledPlugin, PluginCompatibility, PluginDriverSession, PluginManifest, PluginRuntimeEnv,
+};
 use linop_db_core::query::{request_large_value, LargeValueRequest};
 use serde_json::json;
 use std::{os::unix::fs::PermissionsExt, sync::Arc, time::Duration};
@@ -50,8 +52,9 @@ for line in sys.stdin:
         .await
         .unwrap(),
     );
-    let state =
-        AppState::new(linop_db_core::persistence::test_storage::open(&directory.path().join("state.db")).await.unwrap());
+    let state = AppState::new(
+        linop_db_core::persistence::test_storage::open(&directory.path().join("state.db")).await.unwrap(),
+    );
     let config: ConnectionConfig = serde_json::from_value(json!({
         "id":"jdbc-lob", "name":"fixture", "db_type":"jdbc", "host":"127.0.0.1", "port":1,
         "username":"fixture", "password":"", "connection_string":"jdbc:fixture"

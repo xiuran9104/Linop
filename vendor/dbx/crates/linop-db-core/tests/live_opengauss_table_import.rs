@@ -129,8 +129,9 @@ fn database_name() -> String {
 
 async fn live_state() -> (Arc<AppState>, tempfile::TempDir, String) {
     let dir = tempfile::tempdir().expect("create temp storage directory");
-    let storage =
-        linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.expect("open temp storage");
+    let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db"))
+        .await
+        .expect("open temp storage");
     let state = Arc::new(AppState::new(storage));
     let connection_id = "live-opengauss-import".to_string();
     let database = database_name();
@@ -139,7 +140,12 @@ async fn live_state() -> (Arc<AppState>, tempfile::TempDir, String) {
     (state, dir, connection_id)
 }
 
-async fn run_sql(state: &AppState, connection_id: &str, database: &str, sql: &str) -> linop_db_core::types::QueryResult {
+async fn run_sql(
+    state: &AppState,
+    connection_id: &str,
+    database: &str,
+    sql: &str,
+) -> linop_db_core::types::QueryResult {
     execute_sql_statement(state, connection_id, database, sql, Some(SCHEMA), None)
         .await
         .unwrap_or_else(|error| panic!("SQL failed: {error}\nSQL: {sql}"))

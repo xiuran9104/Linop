@@ -491,9 +491,11 @@ fn uninstall_npm_mcp_server_sync() -> Result<String, String> {
 }
 
 async fn fetch_latest_mcp_version() -> Result<String, String> {
-    let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(10)).user_agent("linop-db-mcp-status-checker");
-    let proxy_url =
-        tauri::async_runtime::spawn_blocking(linop_db_core::update::system_proxy_url).await.map_err(|e| e.to_string())?;
+    let mut builder =
+        reqwest::Client::builder().timeout(Duration::from_secs(10)).user_agent("linop-db-mcp-status-checker");
+    let proxy_url = tauri::async_runtime::spawn_blocking(linop_db_core::update::system_proxy_url)
+        .await
+        .map_err(|e| e.to_string())?;
     if let Some(proxy_url) = proxy_url {
         let proxy = reqwest::Proxy::all(&proxy_url).map_err(|e| format!("Invalid system proxy URL: {e}"))?;
         builder = builder.proxy(proxy);
@@ -2111,7 +2113,9 @@ mod tests {
         let installation = McpInstallation {
             package_root: PathBuf::from("/bun/install/global/node_modules/@linop-db-app/mcp-server"),
             launcher_path: None,
-            script_path: PathBuf::from("/bun/install/global/node_modules/@linop-db-app/mcp-server/bin/linop-db-mcp-server.js"),
+            script_path: PathBuf::from(
+                "/bun/install/global/node_modules/@linop-db-app/mcp-server/bin/linop-db-mcp-server.js",
+            ),
             node_path: PathBuf::from("/node"),
             node_version: "v24.16.0".to_string(),
             package_version: "0.4.71".to_string(),
@@ -2131,7 +2135,9 @@ mod tests {
         let installation = McpInstallation {
             package_root: PathBuf::from("/bun/install/global/node_modules/@linop-db-app/mcp-server"),
             launcher_path: None,
-            script_path: PathBuf::from("/bun/install/global/node_modules/@linop-db-app/mcp-server/bin/linop-db-mcp-server.js"),
+            script_path: PathBuf::from(
+                "/bun/install/global/node_modules/@linop-db-app/mcp-server/bin/linop-db-mcp-server.js",
+            ),
             node_path: PathBuf::from("/node"),
             node_version: "v24.16.0".to_string(),
             package_version: "0.4.71".to_string(),

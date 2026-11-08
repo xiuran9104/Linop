@@ -358,7 +358,8 @@ pub(super) async fn run_configure(
             if value.len() != 1
                 || !value[0].get("DBX_NEXT_DATE").and_then(Value::as_str).is_some_and(|date| {
                     let date = date.trim_start_matches(' ').strip_prefix('+').unwrap_or(date.trim_start_matches(' '));
-                    linop_db_sql::native_job_changes::native_job_dameng_civil_time(date).as_deref() == Ok(expected.as_str())
+                    linop_db_sql::native_job_changes::native_job_dameng_civil_time(date).as_deref()
+                        == Ok(expected.as_str())
                 })
             {
                 return Err(("native_job_attribute_value_invalid", NativeJobOperationOutcome::NotApplied));

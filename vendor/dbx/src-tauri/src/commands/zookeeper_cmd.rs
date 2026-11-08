@@ -3,7 +3,9 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::commands::connection::{ensure_connection_writable, AppState};
-use linop_db_core::agent_kv::{KvDeleteResponse, KvGetResponse, KvListPrefixResponse, KvPutOptions, KvPutResponse, KvValue};
+use linop_db_core::agent_kv::{
+    KvDeleteResponse, KvGetResponse, KvListPrefixResponse, KvPutOptions, KvPutResponse, KvValue,
+};
 
 #[tauri::command]
 pub async fn zookeeper_list_prefix(
@@ -43,7 +45,8 @@ pub async fn zookeeper_put(
     options: Option<KvPutOptions>,
 ) -> Result<KvPutResponse, String> {
     ensure_connection_writable(&state, &connection_id, "Put").await?;
-    linop_db_core::agent_kv::kv_put_core_with_options(&state, &connection_id, &key, value, options.unwrap_or_default()).await
+    linop_db_core::agent_kv::kv_put_core_with_options(&state, &connection_id, &key, value, options.unwrap_or_default())
+        .await
 }
 
 #[tauri::command]

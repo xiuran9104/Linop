@@ -3,7 +3,9 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::connection::AppState;
 
-pub use linop_db_core::dameng_dump::{resolve_damp_tool_path, DamengDumpKindArg, DamengDumpProgress, DamengDumpTaskRequest};
+pub use linop_db_core::dameng_dump::{
+    resolve_damp_tool_path, DamengDumpKindArg, DamengDumpProgress, DamengDumpTaskRequest,
+};
 
 fn emit_progress(app: &AppHandle, progress: DamengDumpProgress) {
     let _ = app.emit("dameng-dump-progress", progress);
@@ -21,8 +23,10 @@ pub async fn start_dameng_dump(
     let state = state.inner().clone();
     let task_id = request.task_id.clone();
     linop_db_core::export_runtime::spawn_export_task(async move {
-        let _ = linop_db_core::dameng_dump::run_dameng_dump_task(&state, &request, |progress| emit_progress(&app, progress))
-            .await;
+        let _ = linop_db_core::dameng_dump::run_dameng_dump_task(&state, &request, |progress| {
+            emit_progress(&app, progress)
+        })
+        .await;
         linop_db_core::dameng_dump::finish_dameng_dump_task(&task_id).await;
     });
     Ok(())

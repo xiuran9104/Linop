@@ -15,9 +15,9 @@ pub mod transaction;
 pub mod transport;
 
 pub use backend::{ConnectionSummary, DbxBackend, LocalBackend, UnavailableBackend, WebBackend};
-pub use linop_db_core::mongo_shell as mongo;
 pub use http::{serve_streamable_http_on_listener, serve_streamable_http_with_shutdown, streamable_http_router};
 pub use http_auth::HttpAuth;
+pub use linop_db_core::mongo_shell as mongo;
 pub use runtime::{HttpRuntimeConfig, McpTransport, RuntimeConfig};
 pub use server::{DbxMcpServer, McpScope};
 pub use session::McpSessionStore;

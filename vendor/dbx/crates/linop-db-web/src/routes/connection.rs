@@ -1518,7 +1518,8 @@ mod tests {
             connect_timeout_secs: linop_db_core::models::connection::default_connect_timeout_secs(),
             query_timeout_secs: linop_db_core::models::connection::default_query_timeout_secs(),
             idle_timeout_secs: linop_db_core::models::connection::default_idle_timeout_secs(),
-            manual_transaction_timeout_secs: linop_db_core::models::connection::default_manual_transaction_timeout_secs(),
+            manual_transaction_timeout_secs: linop_db_core::models::connection::default_manual_transaction_timeout_secs(
+            ),
             idle_disconnect_secs: linop_db_core::models::connection::default_idle_disconnect_secs(),
             keepalive_interval_secs: linop_db_core::models::connection::default_keepalive_interval_secs(),
             ssl: false,
@@ -2613,15 +2614,16 @@ done
 
         // 会话 A 以输入的密码连接（在 A 的 owner 作用域内，模拟中间件注入）。
         let connect_guard = state.clone();
-        let result = linop_db_core::session_credentials::with_credential_owner(Some("token-a".to_string()), async move {
-            connect_db(
-                State(connect_guard),
-                headers_a,
-                Json(ConnectRequest { config: config.clone(), client_attempt: None }),
-            )
-            .await
-        })
-        .await;
+        let result =
+            linop_db_core::session_credentials::with_credential_owner(Some("token-a".to_string()), async move {
+                connect_db(
+                    State(connect_guard),
+                    headers_a,
+                    Json(ConnectRequest { config: config.clone(), client_attempt: None }),
+                )
+                .await
+            })
+            .await;
         // Another workspace member may enable encryption on linop-db-core even when
         // this crate's feature is off. In that case retain the positive checks.
         // Explicit SQLCipher builds always require success; never swallow their errors.

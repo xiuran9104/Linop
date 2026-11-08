@@ -1,7 +1,7 @@
+use deadpool_postgres::Pool;
 use linop_db_driver_postgres::{
     connect_with_max_connections, execute_query_with_schema, set_postgres_search_path, PostgresSearchPathContext,
 };
-use deadpool_postgres::Pool;
 use percent_encoding::{percent_decode_str, utf8_percent_encode, NON_ALPHANUMERIC};
 use std::time::Duration;
 
@@ -117,7 +117,10 @@ async fn postgres_search_path_identifiers_support_queries_comments_and_connectio
                 check_baseline(&pool, configured, backend_pid).await?;
             }
 
-            if execute_query_with_schema(&pool, &other, "SELECT linop_db_missing_search_path_regression()").await.is_ok() {
+            if execute_query_with_schema(&pool, &other, "SELECT linop_db_missing_search_path_regression()")
+                .await
+                .is_ok()
+            {
                 return Err("the deliberately invalid query unexpectedly succeeded".to_string());
             }
             check_baseline(&pool, configured, backend_pid).await?;

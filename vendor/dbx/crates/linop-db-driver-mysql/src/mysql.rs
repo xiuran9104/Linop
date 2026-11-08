@@ -12569,8 +12569,9 @@ mod tests {
         let opts = mysql_async::Opts::from_url(&url).expect("valid MySQL proxy URL");
         let pool = mysql_async::Pool::new(opts);
 
-        let columns =
-            get_columns(&pool, "linop_db_sharding_proxy_test", "binary_samples").await.expect("load proxy column metadata");
+        let columns = get_columns(&pool, "linop_db_sharding_proxy_test", "binary_samples")
+            .await
+            .expect("load proxy column metadata");
         let result = execute_query_with_max_rows(
             &pool,
             "SELECT id, fixed_value, variable_value, char_value, text_value, binary_collated \

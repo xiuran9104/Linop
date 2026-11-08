@@ -269,19 +269,23 @@ impl OracleSchemaSyncTableDdl {
                 )? {
                     return Err("Trigger source metadata conflicts with snapshot".into());
                 }
-                if Some(linop_db_sql_core::object_source_sql::oracle_trigger_enabled(&original[0])?) != snapshot.enabled {
+                if Some(linop_db_sql_core::object_source_sql::oracle_trigger_enabled(&original[0])?) != snapshot.enabled
+                {
                     return Err("Trigger source firing state conflicts with snapshot".into());
                 }
                 let mapped =
                     rebase_oracle_trigger_ddl(&source, &self.table_mapping(target_owner, target_table), &mappings)?;
                 let (_, triggers) = extract_oracle_table_triggers(&mapped, target_owner, target_table)?;
                 Ok(triggers)
-            })();
+            })(
+            );
             match result {
                 Ok(triggers) => {
                     if let Some(existing) = &existing {
-                        match linop_db_sql_core::object_source_sql::oracle_trigger_definitions_match(existing, &triggers[0])
-                        {
+                        match linop_db_sql_core::object_source_sql::oracle_trigger_definitions_match(
+                            existing,
+                            &triggers[0],
+                        ) {
                             Ok(true) => {}
                             result => issues.push(MissingRollbackObject {
                                 kind: "trigger".into(),

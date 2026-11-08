@@ -1243,7 +1243,11 @@ pub fn build_data_grid_column_distinct_values_sql(options: DataGridColumnDistinc
         format!("{column} AS linop_db_value")
     };
     let group_by = format!(" GROUP BY {column}");
-    let order_by = if options.include_counts { " ORDER BY linop_db_count DESC, linop_db_value" } else { " ORDER BY linop_db_value" };
+    let order_by = if options.include_counts {
+        " ORDER BY linop_db_count DESC, linop_db_value"
+    } else {
+        " ORDER BY linop_db_value"
+    };
     let from_clause = format!(" FROM {table}{where_clause}{group_by}{order_by}");
 
     match table_pagination_strategy(options.database_type) {
@@ -4324,7 +4328,11 @@ fn oceanbase_blob_literals(sql: &str, positional: bool) -> (String, Vec<&str>) {
             if let Some(end) = hex_start.find("'))") {
                 let hex = &hex_start[..end];
                 if hex.len() > 4000 && hex.len() % 2 == 0 && hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-                    rewritten.push_str(&if positional { "?".to_string() } else { format!(":linop_db_lob_{}", blobs.len()) });
+                    rewritten.push_str(&if positional {
+                        "?".to_string()
+                    } else {
+                        format!(":linop_db_lob_{}", blobs.len())
+                    });
                     blobs.push(hex);
                     index += PREFIX.len() + end + 3;
                     continue;

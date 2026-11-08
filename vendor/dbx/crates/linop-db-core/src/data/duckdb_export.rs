@@ -168,7 +168,8 @@ impl DuckDbExportSnapshot {
         if self.columns.is_empty() {
             return Err("DuckDB export query returned no columns".to_string());
         }
-        let aliases = (0..self.columns.len()).map(|i| format!("\"__linop_db_column_{i}\"")).collect::<Vec<_>>().join(", ");
+        let aliases =
+            (0..self.columns.len()).map(|i| format!("\"__linop_db_column_{i}\"")).collect::<Vec<_>>().join(", ");
         let limit = row_limit.map(|limit| format!(" LIMIT {limit}")).unwrap_or_default();
         // Capture output order before materialization, independently of how
         // DuckDB subsequently stores temporary-table blocks in parallel.

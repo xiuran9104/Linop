@@ -374,9 +374,10 @@ pub async fn list_config_history(
     State(state): State<Arc<WebState>>,
     Json(req): Json<ConfigHistoryListReq>,
 ) -> Result<Json<linop_db_core::nacos::NacosConfigHistoryList>, AppError> {
-    let result = linop_db_core::nacos::service::nacos_list_config_history_core(&state.app, &req.connection_id, req.query)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::nacos::service::nacos_list_config_history_core(&state.app, &req.connection_id, req.query)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -464,9 +465,10 @@ pub async fn list_role_bindings(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RoleListReq>,
 ) -> Result<Json<linop_db_core::nacos::NacosRoleList>, AppError> {
-    let result = linop_db_core::nacos::service::nacos_list_role_bindings_core(&state.app, &req.connection_id, req.query)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::nacos::service::nacos_list_role_bindings_core(&state.app, &req.connection_id, req.query)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -504,9 +506,10 @@ pub async fn start_access_operation(
     State(state): State<Arc<WebState>>,
     Json(req): Json<AccessOperationReq>,
 ) -> Result<Json<linop_db_core::nacos::NacosAccessOperationResult>, AppError> {
-    let result = linop_db_core::nacos::service::nacos_start_access_operation_core(&state.app, &req.connection_id, req.req)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::nacos::service::nacos_start_access_operation_core(&state.app, &req.connection_id, req.req)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -514,10 +517,13 @@ pub async fn get_access_operation(
     State(state): State<Arc<WebState>>,
     Json(req): Json<AccessOperationIdReq>,
 ) -> Result<Json<linop_db_core::nacos::NacosAccessOperationResult>, AppError> {
-    let result =
-        linop_db_core::nacos::service::nacos_get_access_operation_core(&state.app, &req.connection_id, &req.operation_id)
-            .await
-            .map_err(AppError::from)?;
+    let result = linop_db_core::nacos::service::nacos_get_access_operation_core(
+        &state.app,
+        &req.connection_id,
+        &req.operation_id,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -525,9 +531,10 @@ pub async fn retry_access_operation(
     State(state): State<Arc<WebState>>,
     Json(req): Json<AccessOperationRetryReq>,
 ) -> Result<Json<linop_db_core::nacos::NacosAccessOperationResult>, AppError> {
-    let result = linop_db_core::nacos::service::nacos_retry_access_operation_core(&state.app, &req.connection_id, req.retry)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::nacos::service::nacos_retry_access_operation_core(&state.app, &req.connection_id, req.retry)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -535,10 +542,13 @@ pub async fn undo_access_operation(
     State(state): State<Arc<WebState>>,
     Json(req): Json<AccessOperationIdReq>,
 ) -> Result<Json<linop_db_core::nacos::NacosAccessOperationResult>, AppError> {
-    let result =
-        linop_db_core::nacos::service::nacos_undo_access_operation_core(&state.app, &req.connection_id, &req.operation_id)
-            .await
-            .map_err(AppError::from)?;
+    let result = linop_db_core::nacos::service::nacos_undo_access_operation_core(
+        &state.app,
+        &req.connection_id,
+        &req.operation_id,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(result))
 }
 

@@ -2,7 +2,9 @@
 use std::collections::HashMap;
 
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use linop_db_core::models::connection::{jdbc_dialect_hint, ConnectionConfig, ConnectionResponse, TransportLayerConfig};
+use linop_db_core::models::connection::{
+    jdbc_dialect_hint, ConnectionConfig, ConnectionResponse, TransportLayerConfig,
+};
 use serde_json::Value;
 
 use crate::{error::AppError, state::WebState};
@@ -389,7 +391,8 @@ mod tests {
     async fn web_state() -> (Arc<WebState>, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
         let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("dbx.db")).await.unwrap();
-        let app = Arc::new(linop_db_core::connection::AppState::new_with_plugin_dir(storage, dir.path().join("plugins")));
+        let app =
+            Arc::new(linop_db_core::connection::AppState::new_with_plugin_dir(storage, dir.path().join("plugins")));
         let mut state = WebState::for_tests(app, dir.path().to_path_buf());
         state.password_viewer_enabled = false;
         (Arc::new(state), dir)
@@ -681,8 +684,9 @@ mod tests {
     async fn connect_and_test_use_server_held_password_including_temporary_drafts() {
         let (state, dir) = web_state().await;
         let path = dir.path().join("encrypted.sqlite").to_string_lossy().into_owned();
-        let handle =
-            linop_db_core::db::sqlite::connect_path_create_if_missing_with_cipher_key(&path, "stored-key").await.unwrap();
+        let handle = linop_db_core::db::sqlite::connect_path_create_if_missing_with_cipher_key(&path, "stored-key")
+            .await
+            .unwrap();
         handle
             .with_connection(|db| db.execute_batch("CREATE TABLE proof (id INTEGER)").map_err(|e| e.to_string()))
             .unwrap();

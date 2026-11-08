@@ -71,7 +71,11 @@ fn scan_ssh_directory(ssh_dir: &Path) -> Vec<PathBuf> {
 }
 
 fn ssh_config_identity_files() -> Vec<String> {
-    linop_db_core::ssh_config::list_hosts().unwrap_or_default().into_iter().filter_map(|entry| entry.identity_file).collect()
+    linop_db_core::ssh_config::list_hosts()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|entry| entry.identity_file)
+        .collect()
 }
 
 /// Expands `~`-prefixed and absolute paths as-is; relative `IdentityFile`

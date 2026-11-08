@@ -45,8 +45,9 @@ async fn live_postgres_all_schema_export_restores_one_sql_file() {
     let source_connection_id = format!("postgres-all-schema-source-{suffix}");
     let target_connection_id = format!("postgres-all-schema-target-{suffix}");
     let dir = tempfile::tempdir().expect("create export temp directory");
-    let storage =
-        linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.expect("open temp storage");
+    let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db"))
+        .await
+        .expect("open temp storage");
     let state = Arc::new(AppState::new_with_plugin_and_agent_dir_and_app_version(
         storage,
         dir.path().join("plugins"),

@@ -129,7 +129,12 @@ pub async fn elasticsearch_count_documents(
     run_cancellable(
         &app,
         execution_id,
-        linop_db_core::document_ops::count_elasticsearch_documents_core(&app, &connection_id, &index, filter.as_deref()),
+        linop_db_core::document_ops::count_elasticsearch_documents_core(
+            &app,
+            &connection_id,
+            &index,
+            filter.as_deref(),
+        ),
     )
     .await
 }
@@ -470,7 +475,8 @@ pub async fn meilisearch_get_task(
     uid: u64,
     expected_index_uid: Option<String>,
 ) -> Result<linop_db_core::db::meilisearch_driver::MeilisearchTask, String> {
-    linop_db_core::document_ops::meilisearch_get_task_core(&state, &connection_id, uid, expected_index_uid.as_deref()).await
+    linop_db_core::document_ops::meilisearch_get_task_core(&state, &connection_id, uid, expected_index_uid.as_deref())
+        .await
 }
 
 #[tauri::command]

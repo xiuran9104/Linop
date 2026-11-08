@@ -1,4 +1,6 @@
-use linop_db_core::connection::{connection_configs_pool_equivalent, connection_configs_session_credentials_compatible};
+use linop_db_core::connection::{
+    connection_configs_pool_equivalent, connection_configs_session_credentials_compatible,
+};
 use linop_db_core::models::connection::ConnectionConfig;
 
 #[test]

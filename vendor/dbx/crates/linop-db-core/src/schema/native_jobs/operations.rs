@@ -1040,8 +1040,12 @@ fn verify_effect_with_extra(
                         !value.contains_key(&change.position)
                     }
                     _ => value.get(&change.position).is_some_and(|row| match expected {
-                        Some(expected) => expected.matches(&linop_db_sql::native_job_arguments::decode_argument(row, false)),
-                        None => linop_db_sql::native_job_arguments::oracle_argument_matches(row, &change.value, "UNKNOWN"),
+                        Some(expected) => {
+                            expected.matches(&linop_db_sql::native_job_arguments::decode_argument(row, false))
+                        }
+                        None => {
+                            linop_db_sql::native_job_arguments::oracle_argument_matches(row, &change.value, "UNKNOWN")
+                        }
                     }),
                 },
                 _ => false,

@@ -7,8 +7,9 @@ async fn live_mysql_mtls_connection_succeeds() {
     let pool = linop_db_core::db::mysql::connect_with_ca_cert(&url, ca.as_deref(), std::time::Duration::from_secs(5))
         .await
         .unwrap();
-    let result =
-        linop_db_core::db::mysql::execute_query(&pool, "SELECT label FROM mtls_smoke WHERE id = 1", false).await.unwrap();
+    let result = linop_db_core::db::mysql::execute_query(&pool, "SELECT label FROM mtls_smoke WHERE id = 1", false)
+        .await
+        .unwrap();
 
     assert_eq!(result.rows[0][0], serde_json::json!("mysql mtls ok"));
 }

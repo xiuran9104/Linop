@@ -1,11 +1,11 @@
 //! Opt-in regression for MySQL tables whose columns are all generated (#10201).
 //! Creates UUID-named databases and keeps all DBX state in a temporary directory.
+use futures::FutureExt;
 use linop_db_core::connection::AppState;
 use linop_db_core::db::mysql;
 use linop_db_core::models::connection::{ConnectionConfig, DatabaseType};
 use linop_db_core::storage::Storage;
 use linop_db_core::transfer::{transfer_table, TransferContent, TransferMode, TransferProgress, TransferRequest};
-use futures::FutureExt;
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;

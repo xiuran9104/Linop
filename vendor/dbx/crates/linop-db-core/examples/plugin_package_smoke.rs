@@ -3,7 +3,9 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use linop_db_core::models::connection::ConnectionConfig;
-use linop_db_core::plugins::{PluginHost, PluginInstallPolicy, PluginPackageInstaller, PluginRegistry, PluginTrustStore};
+use linop_db_core::plugins::{
+    PluginHost, PluginInstallPolicy, PluginPackageInstaller, PluginRegistry, PluginTrustStore,
+};
 use serde_json::{json, Value};
 
 const PLUGIN_ID: &str = "dbx.example.hello";

@@ -24,8 +24,15 @@ pub async fn hbase_scan_rows(
     row_key_prefix: Option<String>,
     limit: usize,
 ) -> Result<HBaseScanResult, String> {
-    linop_db_core::hbase_ops::scan_rows_core(&state, &connection_id, &namespace, &table, row_key_prefix.as_deref(), limit)
-        .await
+    linop_db_core::hbase_ops::scan_rows_core(
+        &state,
+        &connection_id,
+        &namespace,
+        &table,
+        row_key_prefix.as_deref(),
+        limit,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -37,8 +44,15 @@ pub async fn hbase_get_row(
     row_key: String,
     row_key_encoding: Option<String>,
 ) -> Result<Option<HBaseRow>, String> {
-    linop_db_core::hbase_ops::get_row_core(&state, &connection_id, &namespace, &table, &row_key, row_key_encoding.as_deref())
-        .await
+    linop_db_core::hbase_ops::get_row_core(
+        &state,
+        &connection_id,
+        &namespace,
+        &table,
+        &row_key,
+        row_key_encoding.as_deref(),
+    )
+    .await
 }
 
 #[tauri::command]

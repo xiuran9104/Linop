@@ -99,7 +99,11 @@ impl NativeJobRegistry {
         Ok(bound)
     }
 
-    pub(super) fn remember(&self, engine: NativeJobEngine, details: &mut linop_db_types::native_jobs::NativeJobDetails) {
+    pub(super) fn remember(
+        &self,
+        engine: NativeJobEngine,
+        details: &mut linop_db_types::native_jobs::NativeJobDetails,
+    ) {
         let identity = match (&details.native_identity, &details.consistency) {
             (NativeJobMetadata::Available { value }, NativeJobMetadata::Available { .. }) => Some(value.clone()),
             _ => None,
@@ -183,7 +187,8 @@ impl NativeJobRegistry {
                                 super::details::integer(row.get("ARGUMENT_POSITION")) == Some(argument.position as i64)
                             }) {
                                 argument.default_value = Some(NativeJobMetadata::Available {
-                                    value: linop_db_sql::native_job_arguments::decode_argument(row, true).editable_value(),
+                                    value: linop_db_sql::native_job_arguments::decode_argument(row, true)
+                                        .editable_value(),
                                 });
                             }
                         }

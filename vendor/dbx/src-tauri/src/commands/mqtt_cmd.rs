@@ -310,7 +310,8 @@ mod tests {
     #[tokio::test]
     async fn clear_waits_for_poll_reconciliation_and_prevents_snapshot_writeback() {
         let directory = tempfile::tempdir().unwrap();
-        let storage = linop_db_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
+        let storage =
+            linop_db_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new(storage));
         let message = MqttMessage {
             topic: "devices/race".to_string(),

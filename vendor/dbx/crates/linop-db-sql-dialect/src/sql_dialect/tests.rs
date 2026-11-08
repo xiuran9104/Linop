@@ -212,7 +212,10 @@ fn qualifies_schema_only_for_schema_aware_databases() {
     assert_eq!(qualified_table_name(Some(DatabaseType::Goldendb), Some("public"), "users"), "`public`.`users`");
     assert_eq!(qualified_table_name(Some(DatabaseType::StarRocks), Some("warehouse"), "users"), "`warehouse`.`users`");
     assert_eq!(qualified_table_name(Some(DatabaseType::Doris), Some("warehouse"), "users"), "`warehouse`.`users`");
-    assert_eq!(qualified_table_name(Some(DatabaseType::Databend), Some("linop_db_test"), "users"), "`linop_db_test`.`users`");
+    assert_eq!(
+        qualified_table_name(Some(DatabaseType::Databend), Some("linop_db_test"), "users"),
+        "`linop_db_test`.`users`"
+    );
     assert_eq!(
         qualified_table_name(Some(DatabaseType::Xugu), Some("DBX_TEST"), "PRODUCTS"),
         "\"DBX_TEST\".\"PRODUCTS\""

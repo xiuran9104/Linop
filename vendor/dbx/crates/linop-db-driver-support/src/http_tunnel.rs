@@ -329,7 +329,9 @@ fn script_url(
     let mut url = validate_script_url(tunnel_url)?;
     url.query_pairs_mut().append_pair("linop_db_action", action).append_pair("linop_db_session", session);
     if let Some((host, port)) = target {
-        url.query_pairs_mut().append_pair("linop_db_target_host", host).append_pair("linop_db_target_port", &port.to_string());
+        url.query_pairs_mut()
+            .append_pair("linop_db_target_host", host)
+            .append_pair("linop_db_target_port", &port.to_string());
     }
     if let Some(connect_timeout_secs) = connect_timeout_secs {
         url.query_pairs_mut()

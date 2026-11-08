@@ -34,7 +34,8 @@ pub async fn consul_list_prefix(
     limit: usize,
     continuation: Option<String>,
 ) -> Result<KvListPrefixResponse, String> {
-    linop_db_core::consul::consul_list_prefix_core(&state, &connection_id, &prefix, limit, continuation.as_deref()).await
+    linop_db_core::consul::consul_list_prefix_core(&state, &connection_id, &prefix, limit, continuation.as_deref())
+        .await
 }
 
 #[tauri::command]
@@ -45,7 +46,8 @@ pub async fn consul_list_recursive(
     max_entries: usize,
     max_value_bytes: usize,
 ) -> Result<linop_db_core::consul::ConsulRecursiveListResponse, String> {
-    linop_db_core::consul::consul_list_recursive_core(&state, &connection_id, &prefix, max_entries, max_value_bytes).await
+    linop_db_core::consul::consul_list_recursive_core(&state, &connection_id, &prefix, max_entries, max_value_bytes)
+        .await
 }
 
 #[tauri::command]
@@ -881,8 +883,14 @@ pub async fn consul_mesh_config_delete(
     expected_modify_index: u64,
 ) -> Result<bool, String> {
     ensure_connection_writable(&state, &connection_id, "Delete Consul Service Mesh config entry").await?;
-    linop_db_core::consul::mesh::consul_mesh_config_delete_core(&state, &connection_id, &kind, &name, expected_modify_index)
-        .await
+    linop_db_core::consul::mesh::consul_mesh_config_delete_core(
+        &state,
+        &connection_id,
+        &kind,
+        &name,
+        expected_modify_index,
+    )
+    .await
 }
 #[tauri::command]
 pub async fn consul_mesh_intentions_list(

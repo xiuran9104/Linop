@@ -5092,7 +5092,8 @@ mod agent_registry_install_tests {
             "https://example.invalid/linop-db-agent-oracle-oci-legacy-placeholder.jar",
             0,
         );
-        registry.jres = registry_with_jre(DEFAULT_JRE_KEY, "21.0.12", "https://example.invalid/linop-db-jre.tar.gz", 8).jres;
+        registry.jres =
+            registry_with_jre(DEFAULT_JRE_KEY, "21.0.12", "https://example.invalid/linop-db-jre.tar.gz", 8).jres;
         registry.drivers.get_mut(db_type).unwrap().native.insert(
             foreign_platform.to_string(),
             ArtifactInfo {

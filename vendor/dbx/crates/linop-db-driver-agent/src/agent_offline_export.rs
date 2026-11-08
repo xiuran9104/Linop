@@ -399,8 +399,12 @@ fn export_agents_offline_unlocked(
             .cloned()
             .ok_or_else(|| format!("Managed JRE {key} installation state is missing"))?;
         validate_managed_jre_tree(am, &key)?;
-        let filename =
-            format!("linop-db-jre-{}-{}-{}.tar.zst", key, safe_filename_token(&version), AgentManager::current_platform());
+        let filename = format!(
+            "linop-db-jre-{}-{}-{}.tar.zst",
+            key,
+            safe_filename_token(&version),
+            AgentManager::current_platform()
+        );
         let archive = staging_dir.path().join(&filename);
         archive_managed_jre(am, &key, &archive)?;
         let size =

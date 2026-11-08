@@ -126,10 +126,19 @@ async fn live_postgres_export_selected_objects_matches_type_and_signature() {
     }
 
     // The object browser sends the signature it listed, so use the listed one.
-    let objects =
-        linop_db_core::schema::list_objects_core(&state, &connection_id, &database, "public", None, None, None, None, None)
-            .await
-            .expect("list fixture objects");
+    let objects = linop_db_core::schema::list_objects_core(
+        &state,
+        &connection_id,
+        &database,
+        "public",
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .expect("list fixture objects");
     let one_argument_signature = objects
         .iter()
         .filter(|object| object.name == "orders" && object.object_type.to_uppercase().contains("FUNCTION"))

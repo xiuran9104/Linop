@@ -46,10 +46,15 @@ pub async fn collection_detail(
     State(state): State<Arc<WebState>>,
     Json(req): Json<VectorCollectionRequest>,
 ) -> Result<Json<linop_db_core::db::vector_driver::CollectionInfo>, AppError> {
-    linop_db_core::schema::get_vector_collection_detail_core(&state.app, &req.connection_id, &req.database, &req.collection)
-        .await
-        .map(Json)
-        .map_err(AppError::from)
+    linop_db_core::schema::get_vector_collection_detail_core(
+        &state.app,
+        &req.connection_id,
+        &req.database,
+        &req.collection,
+    )
+    .await
+    .map(Json)
+    .map_err(AppError::from)
 }
 
 pub async fn drop_database(

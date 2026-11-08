@@ -100,8 +100,9 @@ async fn live_sqlserver_import_state(
 ) -> (AppState, String, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!("linop-db-live-sqlserver-import-{suffix}"));
     std::fs::create_dir_all(&dir).expect("create live import directory");
-    let storage =
-        linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.expect("open live import storage");
+    let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db"))
+        .await
+        .expect("open live import storage");
     let state = AppState::new(storage);
     let config = live_sqlserver_config(connection_id, database);
     state.configs.write().await.insert(connection_id.to_string(), config);
@@ -271,9 +272,10 @@ async fn live_sqlserver_matrix_rows(
 }
 
 async fn live_sqlserver_table_count(client: &mut linop_db_core::db::sqlserver::SqlServerClient, table: &str) -> i64 {
-    let result = linop_db_core::db::sqlserver::execute_query(client, &format!("SELECT COUNT_BIG(*) FROM [dbo].[{table}]"))
-        .await
-        .expect("count SQL Server matrix rows");
+    let result =
+        linop_db_core::db::sqlserver::execute_query(client, &format!("SELECT COUNT_BIG(*) FROM [dbo].[{table}]"))
+            .await
+            .expect("count SQL Server matrix rows");
     result.rows[0][0].as_i64().expect("SQL Server COUNT_BIG result")
 }
 
@@ -557,7 +559,8 @@ async fn live_sqlserver_bulk_imports_zero_fraction_xlsx_numbers_into_bigint() {
             .await
             .expect("query SQL Server XLSX integer row");
 
-    let _ = linop_db_core::db::sqlserver::execute_batch(&mut client, &format!("DROP TABLE IF EXISTS [dbo].[{table}]")).await;
+    let _ = linop_db_core::db::sqlserver::execute_batch(&mut client, &format!("DROP TABLE IF EXISTS [dbo].[{table}]"))
+        .await;
     state.remove_connection_pools_detached(&connection_id).await;
     let _ = std::fs::remove_dir_all(&dir);
 
@@ -822,8 +825,11 @@ async fn live_sqlserver_table_import_bulk_cancels_before_target_write_and_rolls_
     )
     .await
     .expect("verify cancellation leaves target unchanged");
-    let _ = linop_db_core::db::sqlserver::execute_batch(&mut setup_client, &format!("DROP TABLE IF EXISTS [dbo].[{table}]"))
-        .await;
+    let _ = linop_db_core::db::sqlserver::execute_batch(
+        &mut setup_client,
+        &format!("DROP TABLE IF EXISTS [dbo].[{table}]"),
+    )
+    .await;
     state.remove_connection_pools_detached(&connection_id).await;
     let _ = std::fs::remove_dir_all(&dir);
 
@@ -843,10 +849,17 @@ async fn live_sqlserver_column_metadata_marks_non_positional_insert_columns() {
     let port = std::env::var("DBX_LIVE_SQLSERVER_PORT").ok().and_then(|value| value.parse().ok()).unwrap_or(1433);
     let user = std::env::var("DBX_LIVE_SQLSERVER_USER").unwrap_or_else(|_| "sa".to_string());
     let password = std::env::var("DBX_LIVE_SQLSERVER_PASSWORD").expect("DBX_LIVE_SQLSERVER_PASSWORD");
-    let mut client =
-        linop_db_core::db::sqlserver::connect(&host, port, &user, &password, Some(&database), None, Duration::from_secs(10))
-            .await
-            .expect("connect SQL Server");
+    let mut client = linop_db_core::db::sqlserver::connect(
+        &host,
+        port,
+        &user,
+        &password,
+        Some(&database),
+        None,
+        Duration::from_secs(10),
+    )
+    .await
+    .expect("connect SQL Server");
 
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let computed_table = format!("linop_db_insert_computed_{suffix}");
@@ -921,10 +934,17 @@ async fn live_sqlserver_execute_query_creates_schema() {
     let port = std::env::var("DBX_LIVE_SQLSERVER_PORT").ok().and_then(|value| value.parse().ok()).unwrap_or(1433);
     let user = std::env::var("DBX_LIVE_SQLSERVER_USER").unwrap_or_else(|_| "sa".to_string());
     let password = std::env::var("DBX_LIVE_SQLSERVER_PASSWORD").expect("DBX_LIVE_SQLSERVER_PASSWORD");
-    let mut client =
-        linop_db_core::db::sqlserver::connect(&host, port, &user, &password, Some(&database), None, Duration::from_secs(10))
-            .await
-            .expect("connect SQL Server");
+    let mut client = linop_db_core::db::sqlserver::connect(
+        &host,
+        port,
+        &user,
+        &password,
+        Some(&database),
+        None,
+        Duration::from_secs(10),
+    )
+    .await
+    .expect("connect SQL Server");
 
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let schema = format!("linop_db_schema_{suffix}");
@@ -952,10 +972,17 @@ async fn live_sqlserver_explicit_transaction_batch_can_rollback() {
     let port = std::env::var("DBX_LIVE_SQLSERVER_PORT").ok().and_then(|value| value.parse().ok()).unwrap_or(1433);
     let user = std::env::var("DBX_LIVE_SQLSERVER_USER").unwrap_or_else(|_| "sa".to_string());
     let password = std::env::var("DBX_LIVE_SQLSERVER_PASSWORD").expect("DBX_LIVE_SQLSERVER_PASSWORD");
-    let mut client =
-        linop_db_core::db::sqlserver::connect(&host, port, &user, &password, Some(&database), None, Duration::from_secs(10))
-            .await
-            .expect("connect SQL Server");
+    let mut client = linop_db_core::db::sqlserver::connect(
+        &host,
+        port,
+        &user,
+        &password,
+        Some(&database),
+        None,
+        Duration::from_secs(10),
+    )
+    .await
+    .expect("connect SQL Server");
 
     let table = format!("linop_db_txn_{}", uuid::Uuid::new_v4().simple());
     linop_db_core::db::sqlserver::execute_query(
@@ -973,9 +1000,11 @@ async fn live_sqlserver_explicit_transaction_batch_can_rollback() {
     let transaction_count =
         linop_db_core::db::sqlserver::execute_query(&mut client, "SELECT @@TRANCOUNT AS transaction_count").await;
     let rollback = linop_db_core::db::sqlserver::execute_batch(&mut client, "ROLLBACK TRANSACTION").await;
-    let verify =
-        linop_db_core::db::sqlserver::execute_query(&mut client, &format!("SELECT name FROM dbo.[{table}] WHERE id = 50"))
-            .await;
+    let verify = linop_db_core::db::sqlserver::execute_query(
+        &mut client,
+        &format!("SELECT name FROM dbo.[{table}] WHERE id = 50"),
+    )
+    .await;
     let cleanup = linop_db_core::db::sqlserver::execute_query(&mut client, &format!("DROP TABLE dbo.[{table}]")).await;
 
     execution.expect("execute explicit transaction batch without error 266");
@@ -995,10 +1024,17 @@ async fn live_sqlserver_table_structure_default_changes_drop_existing_constraint
     let port = std::env::var("DBX_LIVE_SQLSERVER_PORT").ok().and_then(|value| value.parse().ok()).unwrap_or(1433);
     let user = std::env::var("DBX_LIVE_SQLSERVER_USER").unwrap_or_else(|_| "sa".to_string());
     let password = std::env::var("DBX_LIVE_SQLSERVER_PASSWORD").expect("DBX_LIVE_SQLSERVER_PASSWORD");
-    let mut client =
-        linop_db_core::db::sqlserver::connect(&host, port, &user, &password, Some(&database), None, Duration::from_secs(10))
-            .await
-            .expect("connect SQL Server");
+    let mut client = linop_db_core::db::sqlserver::connect(
+        &host,
+        port,
+        &user,
+        &password,
+        Some(&database),
+        None,
+        Duration::from_secs(10),
+    )
+    .await
+    .expect("connect SQL Server");
 
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let schema = format!("linop_db_default_{suffix}");
@@ -1114,10 +1150,17 @@ async fn live_sqlserver_stream_first_result_set_exports_cte_query_rows() {
     let port = std::env::var("DBX_LIVE_SQLSERVER_PORT").ok().and_then(|value| value.parse().ok()).unwrap_or(1433);
     let user = std::env::var("DBX_LIVE_SQLSERVER_USER").unwrap_or_else(|_| "sa".to_string());
     let password = std::env::var("DBX_LIVE_SQLSERVER_PASSWORD").expect("DBX_LIVE_SQLSERVER_PASSWORD");
-    let mut client =
-        linop_db_core::db::sqlserver::connect(&host, port, &user, &password, Some(&database), None, Duration::from_secs(10))
-            .await
-            .expect("connect SQL Server");
+    let mut client = linop_db_core::db::sqlserver::connect(
+        &host,
+        port,
+        &user,
+        &password,
+        Some(&database),
+        None,
+        Duration::from_secs(10),
+    )
+    .await
+    .expect("connect SQL Server");
 
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let table = format!("linop_db_stream_export_{suffix}");
@@ -1172,14 +1215,28 @@ async fn live_sqlserver_query_result_export_streams_cte_query_to_csv() {
     let port = std::env::var("DBX_LIVE_SQLSERVER_PORT").ok().and_then(|value| value.parse().ok()).unwrap_or(1433);
     let user = std::env::var("DBX_LIVE_SQLSERVER_USER").unwrap_or_else(|_| "sa".to_string());
     let password = std::env::var("DBX_LIVE_SQLSERVER_PASSWORD").expect("DBX_LIVE_SQLSERVER_PASSWORD");
-    let mut setup_client =
-        linop_db_core::db::sqlserver::connect(&host, port, &user, &password, Some(&database), None, Duration::from_secs(10))
-            .await
-            .expect("connect SQL Server");
-    let export_client =
-        linop_db_core::db::sqlserver::connect(&host, port, &user, &password, Some(&database), None, Duration::from_secs(10))
-            .await
-            .expect("connect export SQL Server");
+    let mut setup_client = linop_db_core::db::sqlserver::connect(
+        &host,
+        port,
+        &user,
+        &password,
+        Some(&database),
+        None,
+        Duration::from_secs(10),
+    )
+    .await
+    .expect("connect SQL Server");
+    let export_client = linop_db_core::db::sqlserver::connect(
+        &host,
+        port,
+        &user,
+        &password,
+        Some(&database),
+        None,
+        Duration::from_secs(10),
+    )
+    .await
+    .expect("connect export SQL Server");
 
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let table = format!("linop_db_query_export_{suffix}");
@@ -1281,10 +1338,17 @@ async fn live_sqlserver_sql_file_import_executes_go_batches() {
     let port = std::env::var("DBX_LIVE_SQLSERVER_PORT").ok().and_then(|value| value.parse().ok()).unwrap_or(1433);
     let user = std::env::var("DBX_LIVE_SQLSERVER_USER").unwrap_or_else(|_| "sa".to_string());
     let password = std::env::var("DBX_LIVE_SQLSERVER_PASSWORD").expect("DBX_LIVE_SQLSERVER_PASSWORD");
-    let client =
-        linop_db_core::db::sqlserver::connect(&host, port, &user, &password, Some(&database), None, Duration::from_secs(10))
-            .await
-            .expect("connect SQL Server");
+    let client = linop_db_core::db::sqlserver::connect(
+        &host,
+        port,
+        &user,
+        &password,
+        Some(&database),
+        None,
+        Duration::from_secs(10),
+    )
+    .await
+    .expect("connect SQL Server");
 
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let table = format!("linop_db_sql_file_{suffix}");
@@ -1370,10 +1434,17 @@ async fn live_sqlserver_transfer_table_skips_rowversion_insert_column() {
     let port = std::env::var("DBX_LIVE_SQLSERVER_PORT").ok().and_then(|value| value.parse().ok()).unwrap_or(1433);
     let user = std::env::var("DBX_LIVE_SQLSERVER_USER").unwrap_or_else(|_| "sa".to_string());
     let password = std::env::var("DBX_LIVE_SQLSERVER_PASSWORD").expect("DBX_LIVE_SQLSERVER_PASSWORD");
-    let mut setup_client =
-        linop_db_core::db::sqlserver::connect(&host, port, &user, &password, Some(&database), None, Duration::from_secs(10))
-            .await
-            .expect("connect SQL Server");
+    let mut setup_client = linop_db_core::db::sqlserver::connect(
+        &host,
+        port,
+        &user,
+        &password,
+        Some(&database),
+        None,
+        Duration::from_secs(10),
+    )
+    .await
+    .expect("connect SQL Server");
     let mut target_client = linop_db_core::db::sqlserver::connect(
         &host,
         port,
@@ -1398,7 +1469,9 @@ async fn live_sqlserver_transfer_table_skips_rowversion_insert_column() {
         "CREATE TABLE [dbo].[{source_table}] (id INT NOT NULL PRIMARY KEY, name NVARCHAR(64) NULL, TimeSpan timestamp NOT NULL);\
          INSERT INTO [dbo].[{source_table}] (id, name) VALUES (1, N'alpha'), (2, N'beta');"
     );
-    linop_db_core::db::sqlserver::execute_batch(&mut setup_client, &setup).await.expect("create rowversion source table");
+    linop_db_core::db::sqlserver::execute_batch(&mut setup_client, &setup)
+        .await
+        .expect("create rowversion source table");
 
     let dir = std::env::temp_dir().join(format!("linop-db-live-sqlserver-rowversion-{suffix}"));
     std::fs::create_dir_all(&dir).unwrap();
@@ -1474,10 +1547,17 @@ async fn live_sqlserver_completion_assistant_searches_metadata_before_limiting()
     let port = std::env::var("DBX_LIVE_SQLSERVER_PORT").ok().and_then(|value| value.parse().ok()).unwrap_or(1433);
     let user = std::env::var("DBX_LIVE_SQLSERVER_USER").unwrap_or_else(|_| "sa".to_string());
     let password = std::env::var("DBX_LIVE_SQLSERVER_PASSWORD").expect("DBX_LIVE_SQLSERVER_PASSWORD");
-    let mut client =
-        linop_db_core::db::sqlserver::connect(&host, port, &user, &password, Some(&database), None, Duration::from_secs(10))
-            .await
-            .expect("connect SQL Server");
+    let mut client = linop_db_core::db::sqlserver::connect(
+        &host,
+        port,
+        &user,
+        &password,
+        Some(&database),
+        None,
+        Duration::from_secs(10),
+    )
+    .await
+    .expect("connect SQL Server");
 
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let schema = "dbo".to_string();
@@ -1542,10 +1622,17 @@ async fn live_sqlserver_cross_database_metadata_and_query() {
     let database_a = format!("linop_db_completion_a_{}", &suffix[..8]);
     let database_b = format!("linop_db_completion_b_{}", &suffix[..8]);
 
-    let mut master =
-        linop_db_core::db::sqlserver::connect(&host, port, &user, &password, Some("master"), None, Duration::from_secs(10))
-            .await
-            .expect("connect SQL Server master");
+    let mut master = linop_db_core::db::sqlserver::connect(
+        &host,
+        port,
+        &user,
+        &password,
+        Some("master"),
+        None,
+        Duration::from_secs(10),
+    )
+    .await
+    .expect("connect SQL Server master");
     linop_db_core::db::sqlserver::execute_batch(
         &mut master,
         &format!("CREATE DATABASE [{database_a}]; CREATE DATABASE [{database_b}];"),
@@ -1652,10 +1739,16 @@ async fn live_sqlserver_cross_database_metadata_and_query() {
     assert!(!columns_b.iter().any(|column| column.name == "source_marker"));
 
     let query = format!("SELECT a.source_marker, b.target_marker FROM [{database_a}].[OUT].[orders] a JOIN [{database_b}].[OUT].[orders] b ON a.id = b.id");
-    let result =
-        linop_db_core::query::execute_sql_statement(&state, connection_id, &default_database, &query, Some("dbo"), None)
-            .await
-            .expect("execute cross-database join");
+    let result = linop_db_core::query::execute_sql_statement(
+        &state,
+        connection_id,
+        &default_database,
+        &query,
+        Some("dbo"),
+        None,
+    )
+    .await
+    .expect("execute cross-database join");
     assert_eq!(result.rows, vec![vec![serde_json::json!("A"), serde_json::json!("B")]]);
 
     state.remove_connection_pools_detached(connection_id).await;

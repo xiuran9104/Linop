@@ -1161,7 +1161,8 @@ mod tests {
 
     #[cfg(unix)]
     fn isolated_cli_test_config() -> (AiConfig, std::path::PathBuf, std::path::PathBuf) {
-        let project_dir = std::env::temp_dir().join(format!("linop-db-codebuddy-project-test-{}", uuid::Uuid::new_v4()));
+        let project_dir =
+            std::env::temp_dir().join(format!("linop-db-codebuddy-project-test-{}", uuid::Uuid::new_v4()));
         let project_settings = project_dir.join(".codebuddy");
         let auth_dir = project_dir.join("user-config");
         let hook_marker = project_dir.join("project-hook-loaded");
@@ -1295,7 +1296,8 @@ esac
     #[cfg(unix)]
     #[tokio::test]
     async fn null_account_allows_discovery_but_connection_probe_rejects_signed_out() {
-        let project_dir = std::env::temp_dir().join(format!("linop-db-codebuddy-signed-out-test-{}", uuid::Uuid::new_v4()));
+        let project_dir =
+            std::env::temp_dir().join(format!("linop-db-codebuddy-signed-out-test-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&project_dir).unwrap();
         let executable = project_dir.join("codebuddy");
         std::fs::write(

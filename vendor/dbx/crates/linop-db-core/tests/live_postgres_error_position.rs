@@ -19,7 +19,9 @@ use linop_db_core::connection::AppState;
 use linop_db_core::db::postgres;
 use linop_db_core::models::connection::{ConnectionConfig, DatabaseType};
 use linop_db_core::query::{execute_multi_core_with_options_for_client_and_progress_typed, QueryExecutionOptions};
-use linop_db_core::sql_error_position::{encode_marker, take_message_position, SqlErrorPosition, SQL_ERROR_POSITION_MARKER};
+use linop_db_core::sql_error_position::{
+    encode_marker, take_message_position, SqlErrorPosition, SQL_ERROR_POSITION_MARKER,
+};
 
 fn live_env() -> (String, u16, String, String, String) {
     let host = std::env::var("DBX_LIVE_POSTGRES_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());

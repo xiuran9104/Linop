@@ -95,7 +95,8 @@ pub async fn delete(
     Json(req): Json<ZooKeeperKeyRequest>,
 ) -> Result<Json<linop_db_core::agent_kv::KvDeleteResponse>, AppError> {
     ensure_writable(&state.app, &req.connection_id, "Delete").await?;
-    let result =
-        linop_db_core::agent_kv::kv_delete_core(&state.app, &req.connection_id, &req.key).await.map_err(AppError::from)?;
+    let result = linop_db_core::agent_kv::kv_delete_core(&state.app, &req.connection_id, &req.key)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(result))
 }

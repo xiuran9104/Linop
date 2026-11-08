@@ -294,7 +294,12 @@ fn effective_database_execution_policy_with_groups(
     connection_id: &str,
     database: &str,
 ) -> (bool, bool) {
-    linop_db_core::mcp_policy::effective_database_execution_policy_with_groups(policy, group_ids, connection_id, database)
+    linop_db_core::mcp_policy::effective_database_execution_policy_with_groups(
+        policy,
+        group_ids,
+        connection_id,
+        database,
+    )
 }
 
 fn ensure_sql_database_execution_scope(
@@ -317,8 +322,13 @@ fn ensure_mongo_database_execution_scope(
     active_database: &str,
     pipeline_json: &str,
 ) -> Result<(), AppError> {
-    linop_db_core::mcp_policy::ensure_mongo_database_execution_scope(policy, connection_id, active_database, pipeline_json)
-        .map_err(AppError::from)
+    linop_db_core::mcp_policy::ensure_mongo_database_execution_scope(
+        policy,
+        connection_id,
+        active_database,
+        pipeline_json,
+    )
+    .map_err(AppError::from)
 }
 
 fn connection_read_only_error(message: impl Into<String>) -> AppError {

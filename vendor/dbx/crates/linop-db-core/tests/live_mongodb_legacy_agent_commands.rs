@@ -14,7 +14,8 @@ use mongodb::bson::{doc, Document};
 async fn command(state: &AppState, id: &str, database: &str, command: Document) -> Document {
     let json = mongodb::bson::Bson::Document(command).into_canonical_extjson().to_string();
     let result = mongo_run_command_core(state, id, database, &json).await.unwrap();
-    linop_db_core::db::mongo_driver::json_object_to_document_extended_json(&result.extended_documents.unwrap()[0]).unwrap()
+    linop_db_core::db::mongo_driver::json_object_to_document_extended_json(&result.extended_documents.unwrap()[0])
+        .unwrap()
 }
 
 /// `runCommand` replies come back through the agent as relaxed Extended JSON, so integers lose
@@ -40,7 +41,12 @@ async fn find_all(state: &AppState, id: &str, database: &str, collection: &str) 
         .collect()
 }
 
-async fn shell(state: &AppState, id: &str, database: &str, text: &str) -> Result<linop_db_core::types::QueryResult, String> {
+async fn shell(
+    state: &AppState,
+    id: &str,
+    database: &str,
+    text: &str,
+) -> Result<linop_db_core::types::QueryResult, String> {
     let parsed = mongo_shell::parse(text)?;
     execute_mongo_command_core(state, id, database, &parsed, 100).await
 }

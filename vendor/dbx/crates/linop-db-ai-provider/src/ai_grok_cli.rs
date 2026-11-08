@@ -4,8 +4,8 @@ use crate::ai::{
     AiTestConnectionResult,
 };
 use crate::ai_cli_agent::{
-    build_cli_agent_prompt, cli_command, linop_db_mcp_enabled_tools, linop_db_mcp_scope_env, run_cli_jsonl_agent, toml_string,
-    toml_string_array, CliAgentCommandSpec, CliAgentJsonlDialect, CliAgentProcessSpec, CliAgentRunOptions,
+    build_cli_agent_prompt, cli_command, linop_db_mcp_enabled_tools, linop_db_mcp_scope_env, run_cli_jsonl_agent,
+    toml_string, toml_string_array, CliAgentCommandSpec, CliAgentJsonlDialect, CliAgentProcessSpec, CliAgentRunOptions,
 };
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -721,7 +721,9 @@ fn classify_grok_run_error(stderr: &str) -> String {
     {
         format!("[grokCliNotAuthenticated] Grok CLI is not authenticated. Run `grok login` and try again. {stderr}")
     } else if lower.contains("linop-db-mcp-server") || lower.contains("enoent") {
-        format!("[dbxMcpMissing] DBX MCP server was not found. Install @linop-db-app/mcp-server and try again. {stderr}")
+        format!(
+            "[dbxMcpMissing] DBX MCP server was not found. Install @linop-db-app/mcp-server and try again. {stderr}"
+        )
     } else if lower.contains("mcp") && (lower.contains("dbx") || lower.contains("server")) {
         format!("[grokCliMcpStartupFailed] Grok could not start the DBX MCP server. {stderr}")
     } else {

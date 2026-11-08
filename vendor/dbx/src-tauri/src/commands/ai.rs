@@ -336,8 +336,10 @@ pub async fn ai_resolve_tool_approval(session_id: String, approval_id: String, a
 /// Center.
 #[tauri::command]
 pub async fn get_ai_plugin_tool_plugins(state: State<'_, Arc<AppState>>) -> Result<Vec<String>, String> {
-    let mut ids =
-        linop_db_core::ai::plugin_tools::effective_ai_tool_plugin_ids(state.inner()).await.into_iter().collect::<Vec<_>>();
+    let mut ids = linop_db_core::ai::plugin_tools::effective_ai_tool_plugin_ids(state.inner())
+        .await
+        .into_iter()
+        .collect::<Vec<_>>();
     ids.sort();
     Ok(ids)
 }

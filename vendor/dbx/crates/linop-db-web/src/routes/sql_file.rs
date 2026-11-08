@@ -9,6 +9,7 @@ use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::sse::{Event, Sse};
 use axum::response::Response;
 use axum::Json;
+use futures::stream::Stream;
 use linop_db_core::sql::{SqlFileEncoding, SqlFileProgress, SqlFileRequest, SqlFileStatus};
 use linop_db_core::sql_file_import::{
     execute_sql_file_paths, execute_sql_file_zip_package_paths, export_sql_file_failure_log as derive_failure_log_file,
@@ -18,7 +19,6 @@ use linop_db_core::sql_file_import::{
     SqlFileFailureLogRunCounters, SqlFileProgressEmitter, SQL_FILE_FAILURE_LOG_CLIPBOARD_MAX_BYTES,
     SQL_FILE_FAILURE_LOG_DIR,
 };
-use futures::stream::Stream;
 use serde::Deserialize;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
@@ -286,10 +286,13 @@ async fn preview_uploaded_sql_file_with_encoding(
             .into_iter()
             .map(|path| path.to_string_lossy().to_string())
             .collect::<Vec<_>>();
-        let content =
-            linop_db_core::sql_file_import::read_sql_file_preview_with_encoding(Path::new(&paths[0]), 1_000_000, encoding)
-                .await
-                .map_err(AppError::from)?;
+        let content = linop_db_core::sql_file_import::read_sql_file_preview_with_encoding(
+            Path::new(&paths[0]),
+            1_000_000,
+            encoding,
+        )
+        .await
+        .map_err(AppError::from)?;
         let preview: String = content.chars().take(20_000).collect();
         let bootstrap_analysis = linop_db_core::sql_file_import::mysql_like_sql_file_bootstrap_analysis(&content);
         return Ok(serde_json::json!({

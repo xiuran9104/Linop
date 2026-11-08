@@ -16,10 +16,17 @@ async fn live_sqlserver_foreign_key_referential_actions_are_read_from_tinyint_co
     let password = std::env::var("DBX_LIVE_SQLSERVER_PASSWORD").expect("DBX_LIVE_SQLSERVER_PASSWORD");
     let database = std::env::var("DBX_LIVE_SQLSERVER_DATABASE").unwrap_or_else(|_| "tempdb".to_string());
 
-    let mut client =
-        linop_db_core::db::sqlserver::connect(&host, port, &user, &password, Some(&database), None, Duration::from_secs(15))
-            .await
-            .expect("connect SQL Server");
+    let mut client = linop_db_core::db::sqlserver::connect(
+        &host,
+        port,
+        &user,
+        &password,
+        Some(&database),
+        None,
+        Duration::from_secs(15),
+    )
+    .await
+    .expect("connect SQL Server");
 
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let parent_table = format!("linop_db_fk_parent_{suffix}");
@@ -61,7 +68,8 @@ async fn live_sqlserver_foreign_key_referential_actions_are_read_from_tinyint_co
         assert_eq!(cascade[0].on_delete.as_deref(), Some("CASCADE"));
         assert_eq!(cascade[0].on_update, None, "ON UPDATE NO ACTION is the default and stays unset");
 
-        let set_null = linop_db_core::db::sqlserver::list_foreign_keys(&mut client, "dbo", &set_null_child_table).await?;
+        let set_null =
+            linop_db_core::db::sqlserver::list_foreign_keys(&mut client, "dbo", &set_null_child_table).await?;
         assert_eq!(set_null.len(), 1, "expected one foreign key on the set-null child table");
         assert_eq!(set_null[0].on_delete.as_deref(), Some("SET NULL"));
         assert_eq!(set_null[0].on_update.as_deref(), Some("SET DEFAULT"));

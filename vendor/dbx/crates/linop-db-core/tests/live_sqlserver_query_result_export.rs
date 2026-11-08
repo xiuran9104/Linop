@@ -90,10 +90,17 @@ async fn live_sqlserver_xlsx_export_can_outlive_query_timeout_while_rows_keep_ar
     let port = std::env::var("DBX_LIVE_SQLSERVER_PORT").ok().and_then(|value| value.parse().ok()).unwrap_or(1433);
     let user = std::env::var("DBX_LIVE_SQLSERVER_USER").unwrap_or_else(|_| "sa".to_string());
     let password = std::env::var("DBX_LIVE_SQLSERVER_PASSWORD").expect("DBX_LIVE_SQLSERVER_PASSWORD");
-    let client =
-        linop_db_core::db::sqlserver::connect(&host, port, &user, &password, Some(&database), None, Duration::from_secs(10))
-            .await
-            .expect("connect SQL Server");
+    let client = linop_db_core::db::sqlserver::connect(
+        &host,
+        port,
+        &user,
+        &password,
+        Some(&database),
+        None,
+        Duration::from_secs(10),
+    )
+    .await
+    .expect("connect SQL Server");
 
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let dir = std::env::temp_dir().join(format!("linop-db-live-sqlserver-xlsx-{suffix}"));

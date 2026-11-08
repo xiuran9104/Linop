@@ -531,22 +531,35 @@ fn jre_needs_install_when_managed_runtime_version_differs() {
 fn local_agent_jar_candidates_include_monorepo_and_legacy_build_output() {
     let candidates = local_agent_jar_candidates("tdengine");
 
-    assert!(candidates.iter().any(|path| path.ends_with("agents/drivers/tdengine/build/libs/linop-db-agent-tdengine.jar")));
-    assert!(candidates.iter().any(|path| path.ends_with("linop-db-agents/tdengine/build/libs/linop-db-agent-tdengine.jar")));
+    assert!(candidates
+        .iter()
+        .any(|path| path.ends_with("agents/drivers/tdengine/build/libs/linop-db-agent-tdengine.jar")));
+    assert!(candidates
+        .iter()
+        .any(|path| path.ends_with("linop-db-agents/tdengine/build/libs/linop-db-agent-tdengine.jar")));
 }
 
 #[test]
 fn github_agent_asset_urls_map_to_r2_paths_by_category() {
     assert_eq!(
-        github_url_to_r2_path("https://github.com/t8y2/linop-db-agents/releases/download/v1/linop-db-jre-21.tar.gz", "jre"),
+        github_url_to_r2_path(
+            "https://github.com/t8y2/linop-db-agents/releases/download/v1/linop-db-jre-21.tar.gz",
+            "jre"
+        ),
         "agents/jre/linop-db-jre-21.tar.gz"
     );
     assert_eq!(
-        github_url_to_r2_path("https://github.com/t8y2/linop-db-agents/releases/download/v1/linop-db-agent-h2.jar", "driver"),
+        github_url_to_r2_path(
+            "https://github.com/t8y2/linop-db-agents/releases/download/v1/linop-db-agent-h2.jar",
+            "driver"
+        ),
         "agents/drivers/linop-db-agent-h2.jar"
     );
     assert_eq!(
-        github_url_to_r2_path("https://github.com/t8y2/dbx/releases/download/agents-v0.3.0/linop-db-agent-h2.jar", "driver"),
+        github_url_to_r2_path(
+            "https://github.com/t8y2/dbx/releases/download/agents-v0.3.0/linop-db-agent-h2.jar",
+            "driver"
+        ),
         "agents/drivers/linop-db-agent-h2.jar"
     );
 }

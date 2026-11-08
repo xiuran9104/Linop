@@ -11938,7 +11938,8 @@ mod tests {
     async fn explicitly_recording_a_macos_destination_replaces_legacy_device_state() {
         use std::os::unix::fs::MetadataExt;
 
-        let scratch = std::env::temp_dir().join(format!("linop-db-export-dest-macos-migration-{}", uuid::Uuid::new_v4()));
+        let scratch =
+            std::env::temp_dir().join(format!("linop-db-export-dest-macos-migration-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&scratch).unwrap();
         let state = test_app_state(&scratch).await;
         let destination = scratch.join("backups");

@@ -590,7 +590,8 @@ pub async fn mq_create_user(
     tags: Option<Vec<String>>,
 ) -> Result<(), String> {
     ensure_connection_writable(&state, &connection_id, "Create user").await?;
-    linop_db_core::mq::service::mq_create_user_core(&state, &connection_id, &name, &password, tags.unwrap_or_default()).await
+    linop_db_core::mq::service::mq_create_user_core(&state, &connection_id, &name, &password, tags.unwrap_or_default())
+        .await
 }
 
 #[tauri::command]
@@ -823,7 +824,8 @@ pub async fn mq_query_messages_by_key(
     end: i64,
     max_num: u32,
 ) -> Result<serde_json::Value, String> {
-    linop_db_core::mq::service::mq_query_messages_by_key_core(&state, &connection_id, topic, key, begin, end, max_num).await
+    linop_db_core::mq::service::mq_query_messages_by_key_core(&state, &connection_id, topic, key, begin, end, max_num)
+        .await
 }
 
 #[tauri::command]
@@ -835,7 +837,8 @@ pub async fn mq_query_messages_by_topic(
     end: i64,
     max_num: u32,
 ) -> Result<serde_json::Value, String> {
-    linop_db_core::mq::service::mq_query_messages_by_topic_core(&state, &connection_id, topic, begin, end, max_num).await
+    linop_db_core::mq::service::mq_query_messages_by_topic_core(&state, &connection_id, topic, begin, end, max_num)
+        .await
 }
 
 #[tauri::command]

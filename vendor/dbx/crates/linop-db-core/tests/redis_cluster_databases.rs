@@ -34,7 +34,8 @@ impl Fixture {
         );
         assert!([PRIMARY, 17479, 18379].contains(&port));
         let directory = tempfile::tempdir().unwrap();
-        let storage = linop_db_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
+        let storage =
+            linop_db_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new_with_plugin_and_agent_dir_and_app_version(
             storage,
             directory.path().join("plugins"),

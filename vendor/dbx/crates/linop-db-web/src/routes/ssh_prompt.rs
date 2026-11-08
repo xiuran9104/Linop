@@ -1,8 +1,8 @@
 use axum::extract::State;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::Json;
-use linop_db_core::db::ssh_prompt::{SshPromptAnswer, SshPromptRequest};
 use futures::Stream;
+use linop_db_core::db::ssh_prompt::{SshPromptAnswer, SshPromptRequest};
 use serde::Deserialize;
 use std::convert::Infallible;
 use std::sync::Arc;

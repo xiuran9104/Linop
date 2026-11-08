@@ -358,7 +358,9 @@ async fn execute_sql(
     schema: &str,
     sql: &str,
 ) -> Result<(), String> {
-    linop_db_core::query::execute_sql_statement(state, connection_id, database, sql, Some(schema), None).await.map(|_| ())
+    linop_db_core::query::execute_sql_statement(state, connection_id, database, sql, Some(schema), None)
+        .await
+        .map(|_| ())
 }
 
 fn create_table_sql(database: BenchDatabase, schema: &str, table: &str, column_count: usize) -> Vec<String> {

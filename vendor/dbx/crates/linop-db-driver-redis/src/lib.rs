@@ -12572,7 +12572,8 @@ mod tests {
             connect_timeout_secs: linop_db_types::models::connection::default_connect_timeout_secs(),
             query_timeout_secs: linop_db_types::models::connection::default_query_timeout_secs(),
             idle_timeout_secs: linop_db_types::models::connection::default_idle_timeout_secs(),
-            manual_transaction_timeout_secs: linop_db_types::models::connection::default_manual_transaction_timeout_secs(),
+            manual_transaction_timeout_secs:
+                linop_db_types::models::connection::default_manual_transaction_timeout_secs(),
             idle_disconnect_secs: linop_db_types::models::connection::default_idle_disconnect_secs(),
             keepalive_interval_secs: linop_db_types::models::connection::default_keepalive_interval_secs(),
             ssl: false,

@@ -348,8 +348,9 @@ pub async fn list_databases(
     Json(req): Json<MongoConnectionRequest>,
 ) -> Result<Json<Vec<String>>, AppError> {
     super::mcp_policy::ensure_scope(&state, &headers, &req.connection_id).await?;
-    let result =
-        linop_db_core::mongo_ops::mongo_list_databases_core(&state.app, &req.connection_id).await.map_err(AppError::from)?;
+    let result = linop_db_core::mongo_ops::mongo_list_databases_core(&state.app, &req.connection_id)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -668,10 +669,14 @@ pub async fn list_index_specs(
 ) -> Result<Json<Vec<linop_db_core::db::mongo_driver::MongoIndexSpec>>, AppError> {
     super::mcp_policy::ensure_scope(&state, &headers, &req.connection_id).await?;
     let database = super::mcp_policy::resolve_database(&state, &headers, &req.connection_id, &req.database).await?;
-    let result =
-        linop_db_core::mongo_ops::mongo_list_index_specs_core(&state.app, &req.connection_id, &database, &req.collection)
-            .await
-            .map_err(AppError::from)?;
+    let result = linop_db_core::mongo_ops::mongo_list_index_specs_core(
+        &state.app,
+        &req.connection_id,
+        &database,
+        &req.collection,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(result))
 }
 

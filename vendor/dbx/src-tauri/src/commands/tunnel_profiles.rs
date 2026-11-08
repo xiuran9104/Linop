@@ -103,7 +103,8 @@ mod tests {
     #[tokio::test]
     async fn desktop_profile_save_without_debugger_keeps_the_existing_entry_usable() {
         let directory = tempfile::tempdir().unwrap();
-        let storage = linop_db_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
+        let storage =
+            linop_db_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new_with_plugin_dir(storage, directory.path().join("plugins")));
         let app = tauri::test::mock_builder()
             .manage(state.clone())

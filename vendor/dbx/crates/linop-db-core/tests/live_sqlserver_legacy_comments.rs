@@ -34,9 +34,13 @@ async fn sqlserver_legacy_comments_round_trip_on_non_dbo_schema() {
         "0.6.38",
     );
     let jar = std::env::var("DBX_TEST_SQLSERVER_AGENT_JAR").expect("rebuilt SQL Server Agent JAR");
-    linop_db_core::agent_service::import_agent_jar(&state.agent_manager, "sqlserver-legacy", std::path::Path::new(&jar))
-        .await
-        .unwrap();
+    linop_db_core::agent_service::import_agent_jar(
+        &state.agent_manager,
+        "sqlserver-legacy",
+        std::path::Path::new(&jar),
+    )
+    .await
+    .unwrap();
     state
         .agent_manager
         .mutate_state(|manager| {

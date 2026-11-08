@@ -369,7 +369,9 @@ pub async fn forget_snippet_saved_passphrase(
     State(state): State<Arc<WebState>>,
     Json(req): Json<SnippetConfigRequest>,
 ) -> Result<Json<()>, AppError> {
-    linop_db_core::cloud_sync::forget_snippet_passphrase(&state.app.storage, &req.config).await.map_err(AppError::from)?;
+    linop_db_core::cloud_sync::forget_snippet_passphrase(&state.app.storage, &req.config)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(()))
 }
 

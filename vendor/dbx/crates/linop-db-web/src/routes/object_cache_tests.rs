@@ -56,7 +56,8 @@ async fn run_object_cache_regression(postgres: bool) {
     let local = LocalBackend::from_app_state(app.clone(), dir.clone());
     let web = WebBackend::new(base.clone(), String::new()).unwrap();
     let client = reqwest::Client::new();
-    let schema_name = if postgres { format!("linop_db_cache_{}", uuid::Uuid::new_v4().simple()) } else { "main".into() };
+    let schema_name =
+        if postgres { format!("linop_db_cache_{}", uuid::Uuid::new_v4().simple()) } else { "main".into() };
     if postgres {
         local.execute_query(&config, &database, &format!("CREATE SCHEMA {schema_name}"), None, None).await.unwrap();
     }

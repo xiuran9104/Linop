@@ -1693,7 +1693,8 @@ for line in sys.stdin:
 
     #[tokio::test]
     async fn topic_listing_does_not_preempt_agent_timeout_fallback() {
-        let script_path = std::env::temp_dir().join(format!("linop-db-kafka-topic-timeout-{}.py", uuid::Uuid::new_v4()));
+        let script_path =
+            std::env::temp_dir().join(format!("linop-db-kafka-topic-timeout-{}.py", uuid::Uuid::new_v4()));
         std::fs::write(
             &script_path,
             r#"import json

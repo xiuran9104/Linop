@@ -117,7 +117,10 @@ pub async fn load_plugin_mcp_view(
     State(state): State<Arc<WebState>>,
     Json(body): Json<PluginMcpViewRequest>,
 ) -> Result<Json<linop_db_core::plugin_mcp::PluginMcpView>, AppError> {
-    linop_db_core::plugin_mcp::plugin_view_for(&state.app, &body.plugin_id).await.map(Json).map_err(AppError::bad_request)
+    linop_db_core::plugin_mcp::plugin_view_for(&state.app, &body.plugin_id)
+        .await
+        .map(Json)
+        .map_err(AppError::bad_request)
 }
 
 #[derive(serde::Deserialize)]

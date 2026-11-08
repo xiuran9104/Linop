@@ -1,5 +1,5 @@
-use linop_db_sql_core::sql_risk::{classify_sql_risk_for_database, SqlRisk};
 use futures::StreamExt;
+use linop_db_sql_core::sql_risk::{classify_sql_risk_for_database, SqlRisk};
 use reqwest::{Certificate, Client as HttpClient};
 use serde::Deserialize;
 use std::fs;

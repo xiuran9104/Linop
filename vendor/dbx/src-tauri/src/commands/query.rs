@@ -498,7 +498,8 @@ async fn write_reported_snapshot(
     let parent = path.parent().filter(|parent| !parent.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
     let mut temporary = tempfile::NamedTempFile::new_in(parent).map_err(|error| error.to_string())?;
     if let Err(error) =
-        linop_db_core::query::snapshot_export::write_snapshot_export_reported(state, request, temporary.as_file_mut()).await
+        linop_db_core::query::snapshot_export::write_snapshot_export_reported(state, request, temporary.as_file_mut())
+            .await
     {
         return match temporary.close() {
             Ok(()) => Err(error),
@@ -681,9 +682,15 @@ pub async fn begin_manual_transaction(
     schema: Option<String>,
     catalog: Option<String>,
 ) -> Result<String, ManualTransactionCommandError> {
-    linop_db_core::query::begin_manual_transaction(&state, &connection_id, &database, schema.as_deref(), catalog.as_deref())
-        .await
-        .map_err(manual_transaction_command_error)
+    linop_db_core::query::begin_manual_transaction(
+        &state,
+        &connection_id,
+        &database,
+        schema.as_deref(),
+        catalog.as_deref(),
+    )
+    .await
+    .map_err(manual_transaction_command_error)
 }
 
 #[tauri::command]
@@ -738,7 +745,9 @@ pub async fn commit_manual_transaction(
     state: State<'_, Arc<AppState>>,
     txn_session_id: String,
 ) -> Result<db::QueryResult, ManualTransactionCommandError> {
-    linop_db_core::query::commit_manual_transaction(&state, &txn_session_id).await.map_err(manual_transaction_command_error)
+    linop_db_core::query::commit_manual_transaction(&state, &txn_session_id)
+        .await
+        .map_err(manual_transaction_command_error)
 }
 
 #[tauri::command]
@@ -879,7 +888,9 @@ pub fn build_rename_database_preflight_sql(
 }
 
 #[tauri::command]
-pub fn build_create_database_sql(options: linop_db_core::db_admin_sql::CreateDatabaseSqlOptions) -> Result<String, String> {
+pub fn build_create_database_sql(
+    options: linop_db_core::db_admin_sql::CreateDatabaseSqlOptions,
+) -> Result<String, String> {
     linop_db_core::db_admin_sql::build_create_database_sql(options)
 }
 
@@ -967,7 +978,9 @@ pub fn build_duplicate_table_structure_sql(
 }
 
 #[tauri::command]
-pub fn build_copy_table_data_sql(options: linop_db_core::db_admin_sql::CopyTableDataSqlOptions) -> Result<String, String> {
+pub fn build_copy_table_data_sql(
+    options: linop_db_core::db_admin_sql::CopyTableDataSqlOptions,
+) -> Result<String, String> {
     Ok(linop_db_core::db_admin_sql::build_copy_table_data_sql(options))
 }
 
@@ -1088,8 +1101,13 @@ pub async fn preview_sqlite_table_structure_change(
     database: String,
     options: linop_db_core::table_structure_sql::TableStructureSqlOptions,
 ) -> Result<linop_db_core::table_structure_sql::SqliteTableStructurePreview, String> {
-    linop_db_core::table_structure_sql::preview_sqlite_table_structure_change(&state, &connection_id, &database, options)
-        .await
+    linop_db_core::table_structure_sql::preview_sqlite_table_structure_change(
+        &state,
+        &connection_id,
+        &database,
+        options,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -1146,7 +1164,9 @@ pub fn build_single_column_alter_sql(
 }
 
 #[tauri::command]
-pub fn analyze_editable_query_editability(sql: String) -> Result<linop_db_core::sql_editability::QueryEditability, String> {
+pub fn analyze_editable_query_editability(
+    sql: String,
+) -> Result<linop_db_core::sql_editability::QueryEditability, String> {
     Ok(linop_db_core::sql_editability::analyze_editable_query_editability(&sql))
 }
 
@@ -1161,8 +1181,10 @@ pub fn prepare_data_grid_save(
 #[tauri::command]
 pub async fn extract_data_grid_selection(
     request: linop_db_core::data_grid_extractors::DataGridExtractRequest,
-) -> Result<linop_db_core::data_grid_extractors::DataGridExtractResult, linop_db_core::data_grid_extractors::DataGridExtractError>
-{
+) -> Result<
+    linop_db_core::data_grid_extractors::DataGridExtractResult,
+    linop_db_core::data_grid_extractors::DataGridExtractError,
+> {
     tauri::async_runtime::spawn_blocking(move || {
         // Cells pasted from the grid land in a spreadsheet, so formula-triggering text
         // is neutralized before the extractor renders it (see linop_db_core::data::grid_clipboard_guard).
@@ -1228,7 +1250,9 @@ pub fn build_data_grid_column_distinct_values_sql(
 }
 
 #[tauri::command]
-pub fn build_data_grid_count_sql(options: linop_db_core::data_grid_sql::DataGridCountSqlOptions) -> Result<String, String> {
+pub fn build_data_grid_count_sql(
+    options: linop_db_core::data_grid_sql::DataGridCountSqlOptions,
+) -> Result<String, String> {
     Ok(linop_db_core::data_grid_sql::build_data_grid_count_sql(options))
 }
 

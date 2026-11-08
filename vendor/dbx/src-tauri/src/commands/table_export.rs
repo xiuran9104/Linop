@@ -68,7 +68,8 @@ pub async fn start_table_export(
     state: State<'_, Arc<AppState>>,
     request: TableExportRequest,
 ) -> Result<(), String> {
-    linop_db_core::query::mysql_data_charset_policy::check_export(&state, &request.connection_id, &request.format).await?;
+    linop_db_core::query::mysql_data_charset_policy::check_export(&state, &request.connection_id, &request.format)
+        .await?;
     let state = state.inner().clone();
     let export_id = request.export_id.clone();
     let file_path = request.file_path.clone();
@@ -77,10 +78,11 @@ pub async fn start_table_export(
     // buffered disk writes; run them off the async workers (see spawn_export_task).
     linop_db_core::export_runtime::spawn_export_task(async move {
         let terminal = Mutex::new(None);
-        let completion = linop_db_core::table_export::export_table_data_core_with_completion(&state, &request, |progress| {
-            route_core_progress(progress, &terminal, |progress| emit_progress(&app, progress));
-        })
-        .await;
+        let completion =
+            linop_db_core::table_export::export_table_data_core_with_completion(&state, &request, |progress| {
+                route_core_progress(progress, &terminal, |progress| emit_progress(&app, progress));
+            })
+            .await;
 
         let terminal = terminal.into_inner().unwrap_or_else(|poisoned| poisoned.into_inner());
         let completion = finalize_export(

@@ -10,8 +10,8 @@ use linop_db_core::query::{
 use std::time::Duration;
 #[path = "support/sqlserver_fault_proxy.rs"]
 mod fault_proxy;
-use linop_db_core::query::sqlserver_manual_transaction::live_test_hooks::{self, Phase};
 use fault_proxy::FaultProxy;
+use linop_db_core::query::sqlserver_manual_transaction::live_test_hooks::{self, Phase};
 use std::sync::atomic::Ordering;
 
 async fn setup() -> (AppState, ConnectionConfig, sqlserver::SqlServerClient, tempfile::TempDir) {
@@ -52,9 +52,13 @@ async fn setup() -> (AppState, ConnectionConfig, sqlserver::SqlServerClient, tem
     if config.driver_profile.as_deref() == Some("sqlserver-legacy") {
         let jar = std::env::var("DBX_TEST_SQLSERVER_AGENT_JAR").expect("built SQL Server Agent JAR");
         let java = std::env::var("DBX_TEST_SQLSERVER_JAVA").expect("Java 21 executable");
-        linop_db_core::agent_service::import_agent_jar(&state.agent_manager, "sqlserver-legacy", std::path::Path::new(&jar))
-            .await
-            .unwrap();
+        linop_db_core::agent_service::import_agent_jar(
+            &state.agent_manager,
+            "sqlserver-legacy",
+            std::path::Path::new(&jar),
+        )
+        .await
+        .unwrap();
         state
             .agent_manager
             .mutate_state(|agent| {
@@ -498,7 +502,9 @@ async fn response_loss(commit: bool) {
             let sessions = state.transaction_sessions.read().await;
             let connection = sessions[&session].connection.lock().await;
             match &*connection {
-                linop_db_core::connection::TxnConnection::SqlServer { client_session_id, .. } => client_session_id.clone(),
+                linop_db_core::connection::TxnConnection::SqlServer { client_session_id, .. } => {
+                    client_session_id.clone()
+                }
                 _ => panic!("expected fixed native connection"),
             }
         };

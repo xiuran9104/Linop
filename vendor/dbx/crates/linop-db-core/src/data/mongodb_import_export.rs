@@ -4704,7 +4704,8 @@ def handle(request):
     #[cfg(unix)]
     #[tokio::test]
     async fn legacy_agent_export_falls_back_to_paged_find_without_cursor_capability() {
-        let target = std::env::temp_dir().join(format!("linop-db-mongo-legacy-export-page-{}.ndjson", uuid::Uuid::new_v4()));
+        let target =
+            std::env::temp_dir().join(format!("linop-db-mongo-legacy-export-page-{}.ndjson", uuid::Uuid::new_v4()));
         let (state, _directory) = legacy_mongo_import_export_state(
             r#"
 def handle(request):
@@ -4986,7 +4987,8 @@ def handle(request):
     #[cfg(unix)]
     #[tokio::test]
     async fn legacy_agent_import_records_partial_insert_errors_when_skipping_rows() {
-        let source_dir = std::env::temp_dir().join(format!("linop-db-mongo-legacy-import-errors-{}", uuid::Uuid::new_v4()));
+        let source_dir =
+            std::env::temp_dir().join(format!("linop-db-mongo-legacy-import-errors-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&source_dir).unwrap();
         let path = source_dir.join("data.ndjson");
         std::fs::write(

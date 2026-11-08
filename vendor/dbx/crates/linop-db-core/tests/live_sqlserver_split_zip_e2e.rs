@@ -12,7 +12,9 @@
 //   cargo test -p linop-db-core --test live_sqlserver_split_zip_e2e -- --nocapture --test-threads=1
 
 use linop_db_core::connection::AppState;
-use linop_db_core::database_export::{export_database_sql_core, DatabaseExportOutputCompression, DatabaseExportRequest};
+use linop_db_core::database_export::{
+    export_database_sql_core, DatabaseExportOutputCompression, DatabaseExportRequest,
+};
 use linop_db_core::models::connection::DatabaseType;
 use linop_db_core::sql::SqlFileRequest;
 use linop_db_core::sql_file_import::execute_sql_file_zip_package_paths;
@@ -186,7 +188,10 @@ async fn manual_e2e_sqlserver_default_split_zip_export_then_import_skip_relation
     };
     let manifest: serde_json::Value = serde_json::from_slice(&manifest_bytes).expect("parse manifest.json");
     eprintln!("=== MANIFEST ===\n{}", serde_json::to_string_pretty(&manifest).unwrap());
-    assert_eq!(manifest["format"], "linop-db-sql-export-parts-v1", "manifest format must match the documented contract");
+    assert_eq!(
+        manifest["format"], "linop-db-sql-export-parts-v1",
+        "manifest format must match the documented contract"
+    );
     let manifest_parts = manifest["parts"].as_array().expect("manifest.parts array").len();
     assert_eq!(manifest_parts, sql_part_count, "manifest part count must match actual .sql entries in the zip");
 

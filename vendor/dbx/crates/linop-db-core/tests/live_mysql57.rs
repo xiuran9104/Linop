@@ -412,9 +412,10 @@ async fn live_mysql_compatible_limited_text_protocol_query_succeeds() {
     let sql = std::env::var("DBX_LIVE_MYSQL_COMPAT_SQL").expect("DBX_LIVE_MYSQL_COMPAT_SQL");
 
     let pool = linop_db_core::db::mysql::connect(&url, std::time::Duration::from_secs(10)).await.unwrap();
-    let result = linop_db_core::db::mysql::execute_query_with_max_rows(&pool, &sql, false, Some(100), Default::default())
-        .await
-        .unwrap();
+    let result =
+        linop_db_core::db::mysql::execute_query_with_max_rows(&pool, &sql, false, Some(100), Default::default())
+            .await
+            .unwrap();
 
     assert!(!result.columns.is_empty());
     assert!(!result.rows.is_empty());
@@ -827,8 +828,14 @@ DROP PROCEDURE IF EXISTS {procedure};"
 
     let execution = async {
         for statement in &statements[..3] {
-            linop_db_core::db::mysql::execute_query_with_max_rows(&pool, statement, false, Some(10), Default::default())
-                .await?;
+            linop_db_core::db::mysql::execute_query_with_max_rows(
+                &pool,
+                statement,
+                false,
+                Some(10),
+                Default::default(),
+            )
+            .await?;
         }
         Ok::<(), String>(())
     }
@@ -939,10 +946,14 @@ async fn live_oceanbase_mysql_setup_applies_query_timeout() {
 async fn live_mysql_query_cancel_kills_running_sleep() {
     let url = std::env::var("DBX_LIVE_MYSQL_CANCEL_URL").expect("DBX_LIVE_MYSQL_CANCEL_URL");
 
-    let pool =
-        linop_db_core::db::mysql::connect_bare_with_pool_limit_and_setup(&url, std::time::Duration::from_secs(10), 1, &[])
-            .await
-            .unwrap();
+    let pool = linop_db_core::db::mysql::connect_bare_with_pool_limit_and_setup(
+        &url,
+        std::time::Duration::from_secs(10),
+        1,
+        &[],
+    )
+    .await
+    .unwrap();
     let mut conn = linop_db_core::db::mysql::get_conn_with_health_check(&pool).await.unwrap();
     let connection_id = mysql_async::Conn::id(&conn);
     let kill_opts = conn.opts().clone();
@@ -1533,7 +1544,8 @@ async fn live_sql_file_import_preserves_raw_mysql_binary_literal_bytes() {
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let config = live_mysql_sql_file_config(&format!("sql-file-binary-{suffix}"));
     let (state, db_path) = app_state_with_config(config.clone()).await;
-    let database_name = std::env::var("DBX_LIVE_SQL_FILE_MYSQL_DATABASE").unwrap_or_else(|_| "linop_db_test".to_string());
+    let database_name =
+        std::env::var("DBX_LIVE_SQL_FILE_MYSQL_DATABASE").unwrap_or_else(|_| "linop_db_test".to_string());
     let table_name = format!("binary_dump_{suffix}");
     let mut script = format!(
         "USE `{database_name}`;\nCREATE TABLE `{table_name}` (id INT PRIMARY KEY, value LONGBLOB);\nINSERT INTO `{table_name}` VALUES (1, _binary '"

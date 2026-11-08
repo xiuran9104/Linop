@@ -419,9 +419,8 @@ fn desired_value_matches(
 ) -> bool {
     match desired {
         NativeJobArgumentValue::Inherit | NativeJobArgumentValue::Unset => actual.is_none(),
-        _ if engine == NativeJobEngine::Oracle => {
-            actual.is_some_and(|row| linop_db_sql::native_job_arguments::oracle_argument_matches(row, desired, data_type))
-        }
+        _ if engine == NativeJobEngine::Oracle => actual
+            .is_some_and(|row| linop_db_sql::native_job_arguments::oracle_argument_matches(row, desired, data_type)),
         _ => actual.is_some_and(|row| inventory_value(engine, row) == *desired),
     }
 }

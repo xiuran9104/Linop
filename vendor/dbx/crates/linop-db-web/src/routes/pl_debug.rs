@@ -256,7 +256,8 @@ mod tests {
 
     async fn fixture(disabled: bool) -> (tempfile::TempDir, Arc<WebState>, TestServer) {
         let directory = tempfile::tempdir().unwrap();
-        let storage = linop_db_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
+        let storage =
+            linop_db_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
         let app = Arc::new(linop_db_core::connection::AppState::new_with_plugin_and_agent_dir_and_app_version(
             storage,
             directory.path().join("plugins"),
@@ -498,8 +499,12 @@ for line in sys.stdin:
         request["expectedRevision"] = status["revision"].clone();
         state.app.configs.write().await.get_mut("conn").unwrap().read_only = true;
         let protected: Value = routes.post("/pl-debug/operate", cookie, request.clone()).await.json().await.unwrap();
-        let foreign: Value =
-            routes.post("/pl-debug/operate", Some("linop_db_session=second"), request.clone()).await.json().await.unwrap();
+        let foreign: Value = routes
+            .post("/pl-debug/operate", Some("linop_db_session=second"), request.clone())
+            .await
+            .json()
+            .await
+            .unwrap();
         request["serverEpoch"] = json!(Uuid::new_v4());
         let epoch: Value = routes.post("/pl-debug/operate", cookie, request).await.json().await.unwrap();
         let controls = events(&state, "pl_debug_step_over");
@@ -728,11 +733,12 @@ for line in sys.stdin:
     async fn profile_save_preserves_unrelated_and_display_changes_but_cleans_up_its_owners_source() {
         let (_directory, state, routes) = fixture(false).await;
         configure_agent(&state, &routes).await;
-        let profile: linop_db_core::models::connection::TransportLayerConfig = serde_json::from_value(serde_json::json!({
-            "type":"proxy","id":"shared","name":"Shared","enabled":true,"proxy_type":"socks5",
-            "host":"127.0.0.1","port":65000,"username":"","password":"original-secret"
-        }))
-        .unwrap();
+        let profile: linop_db_core::models::connection::TransportLayerConfig =
+            serde_json::from_value(serde_json::json!({
+                "type":"proxy","id":"shared","name":"Shared","enabled":true,"proxy_type":"socks5",
+                "host":"127.0.0.1","port":65000,"username":"","password":"original-secret"
+            }))
+            .unwrap();
         let mut other = serde_json::to_value(&profile).unwrap();
         other["id"] = serde_json::json!("other");
         state
@@ -753,7 +759,11 @@ for line in sys.stdin:
         renamed["enabled"] = serde_json::json!(false);
         other["password"] = serde_json::json!("other-changed");
         let allowed = routes
-            .post("/tunnel-profiles/save", Some("linop_db_session=second"), serde_json::json!({"profiles":[renamed,other]}))
+            .post(
+                "/tunnel-profiles/save",
+                Some("linop_db_session=second"),
+                serde_json::json!({"profiles":[renamed,other]}),
+            )
             .await;
         let allowed_status = allowed.status();
         let closes_after_unrelated = events(&state, "pl_debug_close");
@@ -835,7 +845,11 @@ for line in sys.stdin:
                 "host":"127.0.0.1","port":65000,"username":"","password":"","profile_id":""
             }]);
             let initial = routes
-                .post("/connection/final-proxy-port", Some("linop_db_session=first"), serde_json::json!({"config":config}))
+                .post(
+                    "/connection/final-proxy-port",
+                    Some("linop_db_session=first"),
+                    serde_json::json!({"config":config}),
+                )
                 .await;
             assert_eq!(initial.status(), StatusCode::OK);
             let port: u16 = initial.json().await.unwrap();
@@ -866,7 +880,11 @@ for line in sys.stdin:
                 "host":"127.0.0.1","port":65000,"username":"","password":"","profile_id":""
             }]);
             let response = routes
-                .post("/connection/final-proxy-port", Some("linop_db_session=first"), serde_json::json!({"config":config}))
+                .post(
+                    "/connection/final-proxy-port",
+                    Some("linop_db_session=first"),
+                    serde_json::json!({"config":config}),
+                )
                 .await;
             let status = response.status();
             let port: Value = response.json().await.unwrap();
@@ -1328,7 +1346,11 @@ for line in sys.stdin:
                 );
             }
             let own = routes
-                .post("/connection/disconnect", Some("linop_db_session=first"), serde_json::json!({"connectionId":"conn"}))
+                .post(
+                    "/connection/disconnect",
+                    Some("linop_db_session=first"),
+                    serde_json::json!({"connectionId":"conn"}),
+                )
                 .await;
             state.app.shutdown(std::time::Duration::from_secs(1)).await;
             assert_eq!(own.status(), StatusCode::OK);
@@ -1554,8 +1576,9 @@ for line in sys.stdin:
             let reference = compile_reference(&body);
             let result = tokio::time::timeout(std::time::Duration::from_secs(10), async {
                 loop {
-                    let response =
-                        routes.post("/pl-debug/compile-status", Some("linop_db_session=first"), reference.clone()).await;
+                    let response = routes
+                        .post("/pl-debug/compile-status", Some("linop_db_session=first"), reference.clone())
+                        .await;
                     assert_eq!(response.status(), StatusCode::OK);
                     let value: Value = response.json().await.unwrap();
                     if value["finished"] == true {
@@ -1569,10 +1592,15 @@ for line in sys.stdin:
             assert_eq!(result["ddlState"], "executed");
             assert_eq!(result["releaseState"], "released");
             assert_eq!(result["result"]["readback"]["status"], "INVALID");
-            let duplicate: Value =
-                routes.post("/pl-debug/compile", Some("linop_db_session=first"), body.clone()).await.json().await.unwrap();
+            let duplicate: Value = routes
+                .post("/pl-debug/compile", Some("linop_db_session=first"), body.clone())
+                .await
+                .json()
+                .await
+                .unwrap();
             assert_eq!(duplicate, result);
-            let denied = routes.post("/pl-debug/compile-status", Some("linop_db_session=second"), reference.clone()).await;
+            let denied =
+                routes.post("/pl-debug/compile-status", Some("linop_db_session=second"), reference.clone()).await;
             assert!(!denied.status().is_success());
             let mut wrong_client = reference.clone();
             wrong_client["clientSessionId"] = json!("another-client");
@@ -1587,7 +1615,11 @@ for line in sys.stdin:
             );
             let mut changed = body;
             changed["preview"]["sql"] = json!("different SQL");
-            assert!(!routes.post("/pl-debug/compile", Some("linop_db_session=first"), changed).await.status().is_success());
+            assert!(!routes
+                .post("/pl-debug/compile", Some("linop_db_session=first"), changed)
+                .await
+                .status()
+                .is_success());
             assert_eq!(events(&state, "pl_debug_compile"), 1);
             assert_eq!(events(&state, "open_session"), 2);
             assert_eq!(events(&state, "credential_wrong"), 0);
@@ -1642,8 +1674,12 @@ for line in sys.stdin:
             let (_directory, state, routes) = fixture(disabled).await;
             configure_agent(&state, &routes).await;
             state.sessions.write().await.insert("first".into());
-            let bootstrap: Value =
-                routes.post("/pl-debug/bootstrap", Some("linop_db_session=first"), json!({})).await.json().await.unwrap();
+            let bootstrap: Value = routes
+                .post("/pl-debug/bootstrap", Some("linop_db_session=first"), json!({}))
+                .await
+                .json()
+                .await
+                .unwrap();
             let response =
                 routes.post("/pl-debug/inspect", Some("linop_db_session=first"), registered_inspection_body()).await;
             assert_eq!(response.status(), StatusCode::OK);
@@ -1670,8 +1706,9 @@ for line in sys.stdin:
                 .await
                 .unwrap();
             assert_eq!(list, json!([]));
-            let denied =
-                routes.post("/pl-debug/inspect", Some("linop_db_session=untrusted"), registered_inspection_body()).await;
+            let denied = routes
+                .post("/pl-debug/inspect", Some("linop_db_session=untrusted"), registered_inspection_body())
+                .await;
             assert!(!denied.status().is_success());
             assert_eq!(events(&state, "pl_debug_inspect"), 1);
         }
@@ -1702,7 +1739,8 @@ for line in sys.stdin:
                 StatusCode::OK
             );
             assert!(!pending.is_finished());
-            let other = routes.post("/pl-debug/status", Some("linop_db_session=second"), json!({"reference":second})).await;
+            let other =
+                routes.post("/pl-debug/status", Some("linop_db_session=second"), json!({"reference":second})).await;
             assert_eq!(other.status(), StatusCode::OK);
             assert_eq!(other.json::<Value>().await.unwrap()["state"], "paused");
             assert_eq!(events(&state, "pl_debug_close"), 0);

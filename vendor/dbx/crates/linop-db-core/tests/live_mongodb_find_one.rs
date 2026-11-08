@@ -1,7 +1,7 @@
 use std::time::Duration;
 
-use linop_db_core::db::mongo_driver;
 use futures::TryStreamExt;
+use linop_db_core::db::mongo_driver;
 use mongodb::{
     bson::{doc, Bson, DateTime, Document},
     options::IndexOptions,

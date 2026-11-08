@@ -1667,7 +1667,8 @@ mod tests {
         let installer = PluginPackageInstaller::new(root.path().to_path_buf(), "0.5.67").unwrap();
         let forged_key = SigningKey::from_bytes(&[11u8; 32]);
         let package_path = root.path().join("forged.dbxp");
-        std::fs::write(&package_path, package("1.0.0", Some((&forged_key, "linop-db-store-release-2026")), false)).unwrap();
+        std::fs::write(&package_path, package("1.0.0", Some((&forged_key, "linop-db-store-release-2026")), false))
+            .unwrap();
 
         for policy in [PluginInstallPolicy::LocalSigned, PluginInstallPolicy::LocalDevelopment] {
             let error = installer.install_file(&package_path, policy).unwrap_err();

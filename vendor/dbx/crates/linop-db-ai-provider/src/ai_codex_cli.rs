@@ -1023,7 +1023,9 @@ fn classify_codex_run_error(stderr: &str) -> String {
     if lower.contains("not authenticated") || lower.contains("login") || lower.contains("auth") {
         format!("[codexNotAuthenticated] Codex CLI is not authenticated. Run `codex login` and try again. {stderr}")
     } else if lower.contains("linop-db-mcp-server") || lower.contains("enoent") {
-        format!("[dbxMcpMissing] DBX MCP server was not found. Install @linop-db-app/mcp-server and try again. {stderr}")
+        format!(
+            "[dbxMcpMissing] DBX MCP server was not found. Install @linop-db-app/mcp-server and try again. {stderr}"
+        )
     } else if lower.contains("mcp") && (lower.contains("dbx") || lower.contains("server")) {
         format!("[codexMcpStartupFailed] Codex could not start the DBX MCP server. {stderr}")
     } else {
@@ -1808,7 +1810,9 @@ mod tests {
             r#"{"type":"item.started","item":{"id":"tool-1","type":"mcp_tool_call","tool_name":"linop_db_list_tables","arguments":{"schema":"public"}}}"#,
         )
         .unwrap();
-        assert!(matches!(&started[0], AgentEvent::ToolCallStart { tool_name, .. } if tool_name == "linop_db_list_tables"));
+        assert!(
+            matches!(&started[0], AgentEvent::ToolCallStart { tool_name, .. } if tool_name == "linop_db_list_tables")
+        );
 
         let completed = parse_codex_jsonl_event(
             r#"{"type":"item.completed","item":{"id":"msg-1","type":"agent_message","text":"Done"}}"#,

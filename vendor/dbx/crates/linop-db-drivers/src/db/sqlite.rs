@@ -923,13 +923,16 @@ mod tests {
     #[cfg(not(any(feature = "sqlite-sqlcipher", feature = "sqlite-multiple-ciphers")))]
     #[tokio::test]
     async fn sqlcipher_key_requires_sqlcipher_feature() {
-        let err =
-            match connect_path_with_cipher_key_and_extensions("/tmp/linop-db-missing-sqlcipher.db", "secret", Vec::new())
-                .await
-            {
-                Ok(_) => panic!("SQLCipher key should require feature support"),
-                Err(err) => err,
-            };
+        let err = match connect_path_with_cipher_key_and_extensions(
+            "/tmp/linop-db-missing-sqlcipher.db",
+            "secret",
+            Vec::new(),
+        )
+        .await
+        {
+            Ok(_) => panic!("SQLCipher key should require feature support"),
+            Err(err) => err,
+        };
 
         assert!(err.contains("Encrypted SQLite support is not compiled"));
     }

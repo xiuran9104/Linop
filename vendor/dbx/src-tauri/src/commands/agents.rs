@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use tauri::{Emitter, State};
 
-use linop_db_core::agent_manager::{AgentDriverInfo, DriverStoreUsage, JavaRuntimeConfig, JavaRuntimeMode, DEFAULT_JRE_KEY};
+use linop_db_core::agent_manager::{
+    AgentDriverInfo, DriverStoreUsage, JavaRuntimeConfig, JavaRuntimeMode, DEFAULT_JRE_KEY,
+};
 use linop_db_core::agent_offline_export::{
     export_agents_offline as export_agents_offline_core,
     preview_agent_offline_export as preview_agent_offline_export_core, AgentOfflineExportPreview,
@@ -188,7 +190,8 @@ pub async fn set_agent_java_runtime_config(
 ) -> Result<JavaRuntimeConfig, String> {
     let am = &state.agent_manager;
     if config.mode == JavaRuntimeMode::Custom || config.mode == JavaRuntimeMode::System {
-        let candidate_state = linop_db_core::agent_manager::AgentState { java_runtime: config.clone(), ..am.load_state() };
+        let candidate_state =
+            linop_db_core::agent_manager::AgentState { java_runtime: config.clone(), ..am.load_state() };
         let resolved = am.resolve_java_runtime(&candidate_state, DEFAULT_JRE_KEY)?;
         if config.mode == JavaRuntimeMode::Custom {
             config.custom_java_path = Some(resolved.to_string_lossy().to_string());

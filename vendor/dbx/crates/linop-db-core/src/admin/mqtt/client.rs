@@ -1737,7 +1737,8 @@ mod tests {
 
     #[test]
     fn verified_tls_does_not_depend_on_platform_certificate_store() {
-        let missing_cert_file = std::env::temp_dir().join(format!("linop-db-mqtt-missing-ca-{}.pem", uuid::Uuid::new_v4()));
+        let missing_cert_file =
+            std::env::temp_dir().join(format!("linop-db-mqtt-missing-ca-{}.pem", uuid::Uuid::new_v4()));
         let output = std::process::Command::new(std::env::current_exe().unwrap())
             .arg("verified_tls_platform_store_child")
             .arg("--ignored")

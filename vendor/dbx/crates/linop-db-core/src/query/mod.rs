@@ -11490,7 +11490,9 @@ for line in sys.stdin:
     fn postgres_server_error_preserves_sql_catalog_identity_and_detail() {
         let error = classify_query_error(
             Some(DatabaseType::Postgres),
-            QueryExecutionError::Legacy("ERROR: relation \"linop_db_table_that_does_not_exist\" does not exist".to_string()),
+            QueryExecutionError::Legacy(
+                "ERROR: relation \"linop_db_table_that_does_not_exist\" does not exist".to_string(),
+            ),
         )
         .with_omitted_sql_context("SELECT * FROM linop_db_table_that_does_not_exist");
         let backend_error = error.into_backend_error();
@@ -11537,7 +11539,9 @@ for line in sys.stdin:
     fn single_statement_multi_result_preserves_sql_error_type() {
         let error = classify_query_error(
             Some(DatabaseType::Postgres),
-            QueryExecutionError::Legacy("ERROR: relation \"linop_db_table_that_does_not_exist\" does not exist".to_string()),
+            QueryExecutionError::Legacy(
+                "ERROR: relation \"linop_db_table_that_does_not_exist\" does not exist".to_string(),
+            ),
         )
         .with_omitted_sql_context("SELECT * FROM linop_db_table_that_does_not_exist");
 
@@ -12007,8 +12011,10 @@ done
                 );
             })
             .await;
-        let cleanup_guard =
-            state.workload_session_pool_cleanup_guard("jdbc-conn", Some("linop_db_test"), client_session_id).await.unwrap();
+        let cleanup_guard = state
+            .workload_session_pool_cleanup_guard("jdbc-conn", Some("linop_db_test"), client_session_id)
+            .await
+            .unwrap();
         state.transaction_sessions.write().await.insert(
             "txn-test".to_string(),
             TransactionSession {
@@ -12032,8 +12038,9 @@ done
             },
         );
 
-        let results =
-            execute_in_manual_transaction(&state, "txn-test", "SELECT 42", "linop_db_test", None, Some(10)).await.unwrap();
+        let results = execute_in_manual_transaction(&state, "txn-test", "SELECT 42", "linop_db_test", None, Some(10))
+            .await
+            .unwrap();
         assert_eq!(results[0].rows, vec![vec![serde_json::json!(42)]]);
         let request: LargeValueRequest = serde_json::from_value(serde_json::json!({
             "connectionId":"jdbc-conn", "database":"linop_db_test", "txnSessionId":"txn-test",

@@ -44,5 +44,6 @@ pub async fn vector_rename_collection(
     new_name: String,
 ) -> Result<(), String> {
     ensure_connection_writable(&state, &connection_id, "Rename collection").await?;
-    linop_db_core::schema::rename_vector_collection_core(&state, &connection_id, &database, &collection, &new_name).await
+    linop_db_core::schema::rename_vector_collection_core(&state, &connection_id, &database, &collection, &new_name)
+        .await
 }

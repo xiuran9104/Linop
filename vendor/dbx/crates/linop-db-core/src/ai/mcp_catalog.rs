@@ -528,7 +528,10 @@ mod tests {
         assert!(!batch.contains(&DatabaseType::Redis) && !batch.contains(&DatabaseType::MongoDb));
         assert!(!batch.contains(&DatabaseType::Salesforce));
 
-        assert_eq!(descriptor("linop_db_begin_transaction").unwrap().coverage.database_types(), vec![DatabaseType::Mysql]);
+        assert_eq!(
+            descriptor("linop_db_begin_transaction").unwrap().coverage.database_types(),
+            vec![DatabaseType::Mysql]
+        );
         assert!(descriptor("linop_db_add_connection").unwrap().coverage.database_types().is_empty());
     }
 
@@ -605,8 +608,10 @@ mod tests {
 
     #[test]
     fn router_descriptions_include_bounded_coverage_suffix() {
-        let description =
-            append_coverage_description("Execute a query.", descriptor("linop_db_execute_query").map(|tool| tool.coverage));
+        let description = append_coverage_description(
+            "Execute a query.",
+            descriptor("linop_db_execute_query").map(|tool| tool.coverage),
+        );
         assert!(description.starts_with("Execute a query. "));
         assert!(description.contains("Supported on"));
         assert!(description.len() <= 200);

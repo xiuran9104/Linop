@@ -519,7 +519,10 @@ async fn initializes_lists_tools_and_calls_a_tool() {
 
     let templates = client.peer().list_resource_templates(None).await.expect("list resource templates");
     let template_names = templates.resource_templates.iter().map(|template| template.name.as_str()).collect::<Vec<_>>();
-    assert_eq!(template_names, vec!["linop_db_connection_databases", "linop_db_connection_tables", "linop_db_table_schema"]);
+    assert_eq!(
+        template_names,
+        vec!["linop_db_connection_databases", "linop_db_connection_tables", "linop_db_table_schema"]
+    );
 
     let resource = client
         .peer()
@@ -532,7 +535,8 @@ async fn initializes_lists_tools_and_calls_a_tool() {
     assert_eq!(mime_type.as_deref(), Some("text/markdown"));
     assert!(text.contains("catalog-"), "{text}");
 
-    let result = client.peer().call_tool(CallToolRequestParams::new("linop_db_list_connections")).await.expect("call tool");
+    let result =
+        client.peer().call_tool(CallToolRequestParams::new("linop_db_list_connections")).await.expect("call tool");
     let response = result.content[0].as_text().expect("text response");
     assert!(response.text.contains("catalog-"), "{}", response.text);
 
@@ -759,8 +763,11 @@ async fn enforces_global_connection_scope_and_read_only_policy() {
     let server_task = tokio::spawn(async move { server.serve(server_transport).await });
     let client = ().serve(client_transport).await.expect("initialize MCP client");
 
-    let listed =
-        client.peer().call_tool(CallToolRequestParams::new("linop_db_list_connections")).await.expect("list connections");
+    let listed = client
+        .peer()
+        .call_tool(CallToolRequestParams::new("linop_db_list_connections"))
+        .await
+        .expect("list connections");
     let listed_text = listed.content[0].as_text().expect("list result").text.clone();
     assert_eq!(listed_text.matches("shared-db").count(), 2);
     assert!(!listed_text.contains("blocked-db"));
@@ -933,8 +940,11 @@ async fn connection_group_path_failure_preserves_connection_listing() {
     let server_task = tokio::spawn(async move { server.serve(server_transport).await });
     let client = ().serve(client_transport).await.expect("initialize MCP client");
 
-    let listed =
-        client.peer().call_tool(CallToolRequestParams::new("linop_db_list_connections")).await.expect("list connections");
+    let listed = client
+        .peer()
+        .call_tool(CallToolRequestParams::new("linop_db_list_connections"))
+        .await
+        .expect("list connections");
     let listed_text = listed.content[0].as_text().expect("list result").text.clone();
     assert_ne!(listed.is_error, Some(true));
     assert!(listed_text.contains("| ID | Name | Group Path |"));
@@ -969,8 +979,11 @@ async fn runtime_connection_scope_preserves_group_paths() {
     let server_task = tokio::spawn(async move { server.serve(server_transport).await });
     let client = ().serve(client_transport).await.expect("initialize MCP client");
 
-    let listed =
-        client.peer().call_tool(CallToolRequestParams::new("linop_db_list_connections")).await.expect("list connections");
+    let listed = client
+        .peer()
+        .call_tool(CallToolRequestParams::new("linop_db_list_connections"))
+        .await
+        .expect("list connections");
     let listed_text = listed.content[0].as_text().expect("list result").text.clone();
     assert!(listed_text.contains("| scoped | shared-db | Project / Production |"));
     assert!(!listed_text.contains("outside"));

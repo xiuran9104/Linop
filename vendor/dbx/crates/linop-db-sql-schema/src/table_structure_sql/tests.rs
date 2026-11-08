@@ -684,7 +684,8 @@ fn starrocks_create_table_preserves_native_column_types() {
 
 #[test]
 fn mysql_create_table_includes_engine_before_comment() {
-    let mut options = structure_change_options(DatabaseType::Mysql, Some("linop_db_test"), "archive", vec![column("id")]);
+    let mut options =
+        structure_change_options(DatabaseType::Mysql, Some("linop_db_test"), "archive", vec![column("id")]);
     options.mysql_engine = Some("MyISAM".to_string());
     options.table_comment = Some("remote archive".to_string());
 
@@ -5663,7 +5664,8 @@ fn mysql_primary_key_replacement_stays_anonymous_even_with_primary_key_name() {
     old_pk.id = "old_id".to_string();
     let mut new_pk = existing_pk_column("new_id", "int", false, true);
     new_pk.id = "new_id".to_string();
-    let mut options = structure_change_options(DatabaseType::Mysql, Some("linop_db_test"), "users", vec![old_pk, new_pk]);
+    let mut options =
+        structure_change_options(DatabaseType::Mysql, Some("linop_db_test"), "users", vec![old_pk, new_pk]);
     options.primary_key_name = Some("users_pk".to_string());
 
     let result = build_table_structure_change_sql(options);

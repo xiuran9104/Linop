@@ -142,8 +142,11 @@ pub async fn database_export_destination_needs_confirmation(
     state: State<'_, Arc<AppState>>,
     directory: String,
 ) -> Result<bool, String> {
-    linop_db_core::database_export::export_destination_identity_needs_confirmation(&state, std::path::Path::new(&directory))
-        .await
+    linop_db_core::database_export::export_destination_identity_needs_confirmation(
+        &state,
+        std::path::Path::new(&directory),
+    )
+    .await
 }
 
 /// Records a scheduled backup destination's filesystem identity as soon as

@@ -570,37 +570,38 @@ pub(crate) fn oracle_snapshot_trigger_source(
         .ok_or("Trigger statement/body is missing from schema snapshot")?;
     let enabled = trigger.enabled.ok_or("Trigger firing state is unavailable")?;
     let statement = statement.trim();
-    let mut ddl = if let Some(source) = linop_db_sql_core::object_source_sql::oracle_trigger_source_with_create(statement)? {
-        source
-    } else {
-        if trigger.condition.as_deref().is_some_and(|condition| !condition.trim().is_empty()) {
-            return Err("Trigger condition requires its complete source definition".into());
-        }
-        let mut warnings = Vec::new();
-        let timing = match trigger.level.as_deref().map(str::to_ascii_uppercase).as_deref() {
-            Some("ROW" | "EACH ROW") if !trigger.timing.to_ascii_uppercase().contains("ROW") => {
-                format!("{} EACH ROW", trigger.timing)
+    let mut ddl =
+        if let Some(source) = linop_db_sql_core::object_source_sql::oracle_trigger_source_with_create(statement)? {
+            source
+        } else {
+            if trigger.condition.as_deref().is_some_and(|condition| !condition.trim().is_empty()) {
+                return Err("Trigger condition requires its complete source definition".into());
             }
-            Some("STATEMENT") if trigger.timing.to_ascii_uppercase().contains("ROW") => {
-                return Err("Trigger timing and level conflict".into())
-            }
-            Some("ROW" | "EACH ROW" | "STATEMENT") | None => trigger.timing.clone(),
-            Some(_) => return Err("Trigger level is unavailable or unsupported".into()),
+            let mut warnings = Vec::new();
+            let timing = match trigger.level.as_deref().map(str::to_ascii_uppercase).as_deref() {
+                Some("ROW" | "EACH ROW") if !trigger.timing.to_ascii_uppercase().contains("ROW") => {
+                    format!("{} EACH ROW", trigger.timing)
+                }
+                Some("STATEMENT") if trigger.timing.to_ascii_uppercase().contains("ROW") => {
+                    return Err("Trigger timing and level conflict".into())
+                }
+                Some("ROW" | "EACH ROW" | "STATEMENT") | None => trigger.timing.clone(),
+                Some(_) => return Err("Trigger level is unavailable or unsupported".into()),
+            };
+            create_oracle_trigger_sql(
+                Some(crate::models::connection::DatabaseType::Oracle),
+                StructureDialect::Oracle,
+                Some(owner),
+                &qualified_table(StructureDialect::Oracle, Some(owner), table),
+                &trigger.name,
+                &timing,
+                &trigger.event,
+                statement,
+                &mut warnings,
+                false,
+            )
+            .ok_or_else(|| warnings.join("; "))?
         };
-        create_oracle_trigger_sql(
-            Some(crate::models::connection::DatabaseType::Oracle),
-            StructureDialect::Oracle,
-            Some(owner),
-            &qualified_table(StructureDialect::Oracle, Some(owner), table),
-            &trigger.name,
-            &timing,
-            &trigger.event,
-            statement,
-            &mut warnings,
-            false,
-        )
-        .ok_or_else(|| warnings.join("; "))?
-    };
     if !enabled {
         ddl.push_str(&format!(
             "\nALTER TRIGGER {} DISABLE;",

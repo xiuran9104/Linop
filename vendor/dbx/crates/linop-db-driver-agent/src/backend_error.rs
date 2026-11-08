@@ -1589,7 +1589,8 @@ mod tests {
     fn legacy_agent_envelope_keeps_multiline_database_detail() {
         let legacy = AgentCallError::Legacy {
             rpc_code: Some(-1),
-            message: "ERROR: relation \"linop_db_table_that_does_not_exist\" does not exist\n  Position: 15".to_string(),
+            message: "ERROR: relation \"linop_db_table_that_does_not_exist\" does not exist\n  Position: 15"
+                .to_string(),
             hints: Default::default(),
         }
         .into_legacy_string();

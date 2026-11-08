@@ -78,7 +78,8 @@ pub async fn preview_sql_file(file_path: String, encoding: Option<SqlFileEncodin
             let path = path.clone();
             let extraction_dir = extraction_dir.clone();
             move || {
-                let package = linop_db_core::sql_file_zip_package::extract_sql_file_zip_package(&path, &extraction_dir)?;
+                let package =
+                    linop_db_core::sql_file_zip_package::extract_sql_file_zip_package(&path, &extraction_dir)?;
                 let paths = linop_db_core::sql_file_zip_package::extracted_sql_zip_paths(&extraction_dir, &package)
                     .into_iter()
                     .map(|part| part.to_string_lossy().to_string())

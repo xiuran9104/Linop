@@ -1826,7 +1826,9 @@ fn build_sampling_union_sql(parts: &[String]) -> String {
     parts
         .iter()
         .enumerate()
-        .map(|(branch, sql)| format!("SELECT linop_db_sample.*, '{branch}' AS linop_db_sample_branch FROM ({sql}) linop_db_sample"))
+        .map(|(branch, sql)| {
+            format!("SELECT linop_db_sample.*, '{branch}' AS linop_db_sample_branch FROM ({sql}) linop_db_sample")
+        })
         .collect::<Vec<_>>()
         .join(" UNION ALL ")
 }

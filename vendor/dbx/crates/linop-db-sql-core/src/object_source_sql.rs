@@ -3146,7 +3146,10 @@ mod tests {
         })
         .unwrap();
 
-        assert_eq!(sql, "CREATE OR REPLACE VIEW linop_db_issue3895_repro.edited_view AS SELECT id, label FROM source_rows;");
+        assert_eq!(
+            sql,
+            "CREATE OR REPLACE VIEW linop_db_issue3895_repro.edited_view AS SELECT id, label FROM source_rows;"
+        );
     }
 
     #[test]

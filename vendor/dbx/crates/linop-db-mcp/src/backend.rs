@@ -907,8 +907,8 @@ impl LocalBackend {
         let data_dir = path.parent().unwrap_or_else(|| Path::new("."));
         let mut storage = Storage::open_unmigrated(path).await?.with_secret_key_creation(false);
         if linop_db_core::persistence::secret_codec::managed_key_path(data_dir).is_file() {
-            storage =
-                storage.with_secret_key_policy(linop_db_core::persistence::secret_codec::SecretKeyPolicy::ManagedDataDir);
+            storage = storage
+                .with_secret_key_policy(linop_db_core::persistence::secret_codec::SecretKeyPolicy::ManagedDataDir);
         }
         let migration = storage.inspect_data_migration().await?;
         if !migration.is_ready() {
@@ -1379,8 +1379,10 @@ impl DbxBackend for LocalBackend {
             if self.state.pool_handle(&connection.id).await.is_none() {
                 self.state.get_or_create_pool(&connection.id, None).await?;
             }
-            if matches!(self.state.pool_handle(&connection.id).await, Some(linop_db_core::connection::PoolKind::MongoDb(_)))
-            {
+            if matches!(
+                self.state.pool_handle(&connection.id).await,
+                Some(linop_db_core::connection::PoolKind::MongoDb(_))
+            ) {
                 return linop_db_core::mongo_ops::mongo_list_databases_core(&self.state, &connection.id).await;
             }
             // Keep the existing metadata retry path for MongoDB agent pools.
@@ -1477,8 +1479,11 @@ impl DbxBackend for LocalBackend {
                 .to_string());
         }
         let lifecycle = self.state.connection_lifecycle_snapshot(&connection.id);
-        let resource_permit =
-            self.state.shared_resource_budget("linop-db-mcp-transaction-owners", 32)?.try_acquire_owned().map_err(|_| {
+        let resource_permit = self
+            .state
+            .shared_resource_budget("linop-db-mcp-transaction-owners", 32)?
+            .try_acquire_owned()
+            .map_err(|_| {
                 "Too many open transaction-enabled MCP sessions (max 32). Close an existing transaction session first."
                     .to_string()
             })?;
@@ -1486,7 +1491,9 @@ impl DbxBackend for LocalBackend {
         let pool_key =
             self.state.get_or_create_pool_for_session(&connection.id, pool_database, Some(client_session_id)).await?;
         let pool = match self.state.pool_handle(&pool_key).await {
-            Some(linop_db_core::connection::PoolKind::Mysql(pool, linop_db_core::connection::MysqlMode::Normal)) => pool,
+            Some(linop_db_core::connection::PoolKind::Mysql(pool, linop_db_core::connection::MysqlMode::Normal)) => {
+                pool
+            }
             _ => {
                 let _ = self.state.close_client_session_pool(&connection.id, pool_database, client_session_id).await;
                 return Err(
@@ -1570,7 +1577,8 @@ impl DbxBackend for LocalBackend {
         sql: &str,
     ) -> linop_db_core::sql::SqlExecutionPlan {
         let is_sqlserver_agent =
-            linop_db_core::query::connection_pool_is_sqlserver_agent(self.state.as_ref(), &connection.id, database).await;
+            linop_db_core::query::connection_pool_is_sqlserver_agent(self.state.as_ref(), &connection.id, database)
+                .await;
         // Split with the connection's statement-splitting dialect, not its
         // routing `db_type`: a JDBC SQL Server connection keeps control-flow
         // batches whole (#13514), a JDBC Oracle connection keeps PL/SQL units
@@ -1618,8 +1626,18 @@ impl DbxBackend for LocalBackend {
         database: &str,
         schema: &str,
     ) -> Result<Vec<TableInfo>, String> {
-        linop_db_core::schema::list_tables_core(&self.state, &connection.id, database, schema, None, None, None, None, None)
-            .await
+        linop_db_core::schema::list_tables_core(
+            &self.state,
+            &connection.id,
+            database,
+            schema,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
     }
 
     async fn get_columns(
@@ -5495,7 +5513,9 @@ mod tests {
 #[cfg(test)]
 mod nacos_external_config_tests {
     use super::*;
-    use linop_db_core::admin::nacos::config::{NacosAdminConfig, NacosAuthConfig, NacosImplementation, NacosVersionMode};
+    use linop_db_core::admin::nacos::config::{
+        NacosAdminConfig, NacosAuthConfig, NacosImplementation, NacosVersionMode,
+    };
 
     fn nacos_connection(external_config: Option<Value>) -> ConnectionConfig {
         new_connection_config_with_external_config(

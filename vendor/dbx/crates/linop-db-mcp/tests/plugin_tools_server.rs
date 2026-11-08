@@ -37,8 +37,11 @@ async fn ssh_package_tools_are_detected_listed_and_dispatched() {
             linop_db_core::storage::PluginMcpGrant {
                 external: true,
                 ceiling: linop_db_core::storage::PluginMcpAccessLevel::Full,
-                approved_tools: [("ssh_list_known_hosts".to_string(), linop_db_core::storage::PluginMcpAccessLevel::Full)]
-                    .into(),
+                approved_tools: [(
+                    "ssh_list_known_hosts".to_string(),
+                    linop_db_core::storage::PluginMcpAccessLevel::Full,
+                )]
+                .into(),
                 disabled_tools: Vec::new(),
             },
         )

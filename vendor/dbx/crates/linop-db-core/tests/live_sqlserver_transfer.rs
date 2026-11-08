@@ -305,7 +305,8 @@ async fn live_sqlserver_transfer_rebuild_releases_constraint_and_index_names() {
 #[tokio::test]
 #[ignore = "requires DBX_LIVE_SQLSERVER_HOST/PORT/USER/PASSWORD pointing at SQL Server"]
 async fn live_sqlserver_transfer_overwrite_handles_existing_identity_target() {
-    let database = std::env::var("DBX_LIVE_SQLSERVER_DATABASE").unwrap_or_else(|_| "linop_db_sqlserver_demo".to_string());
+    let database =
+        std::env::var("DBX_LIVE_SQLSERVER_DATABASE").unwrap_or_else(|_| "linop_db_sqlserver_demo".to_string());
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let connection_id = format!("live-sqlserver-8690-{suffix}");
     let source_schema = format!("linop_db_8690_src_{}", &suffix[..12]);
@@ -332,8 +333,9 @@ async fn live_sqlserver_transfer_overwrite_handles_existing_identity_target() {
 
     let dir = std::env::temp_dir().join(format!("linop-db-live-sqlserver-8690-{suffix}"));
     std::fs::create_dir_all(&dir).expect("create issue #8690 directory");
-    let storage =
-        linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.expect("open issue #8690 storage");
+    let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db"))
+        .await
+        .expect("open issue #8690 storage");
     let state = Arc::new(AppState::new(storage));
     state.configs.write().await.insert(connection_id.clone(), live_sqlserver_config(&connection_id, &database));
     let pool_key = state.get_or_create_pool(&connection_id, Some(&database)).await.expect("create SQL Server pool");
@@ -502,9 +504,10 @@ async fn live_sqlserver_keyset_pagination_copies_every_row() {
         assert_eq!(transferred, 25, "keyset pagination must copy every row");
 
         let mut target_client = sqlserver_connect(&target_db).await;
-        let rows = linop_db_core::db::sqlserver::execute_query(&mut target_client, "SELECT id FROM dbo.big ORDER BY id")
-            .await
-            .expect("read target ids");
+        let rows =
+            linop_db_core::db::sqlserver::execute_query(&mut target_client, "SELECT id FROM dbo.big ORDER BY id")
+                .await
+                .expect("read target ids");
         let collected: Vec<i64> = rows.rows.iter().map(|row| row[0].as_i64().unwrap()).collect();
         assert_eq!(collected, (1..=25).collect::<Vec<i64>>(), "keyset pagination must not drop or duplicate rows");
         Ok::<_, String>(())
@@ -688,7 +691,8 @@ async fn live_sqlserver_keyset_uniqueidentifier_datetime2_composite_key() {
 
     let dir = std::env::temp_dir().join(format!("linop-db-live-sqlserver-typed-{suffix}"));
     std::fs::create_dir_all(&dir).expect("create typed directory");
-    let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.expect("open typed storage");
+    let storage =
+        linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.expect("open typed storage");
     let state = Arc::new(AppState::new(storage));
     state
         .configs
@@ -1033,7 +1037,8 @@ async fn live_sqlserver_database_export_replays_composite_foreign_keys() {
 #[tokio::test]
 #[ignore = "requires DBX_LIVE_SQLSERVER_HOST/PORT/USER/PASSWORD pointing at SQL Server"]
 async fn live_sqlserver_transfer_overwrite_replaces_tables_linked_by_foreign_keys() {
-    let database = std::env::var("DBX_LIVE_SQLSERVER_DATABASE").unwrap_or_else(|_| "linop_db_sqlserver_demo".to_string());
+    let database =
+        std::env::var("DBX_LIVE_SQLSERVER_DATABASE").unwrap_or_else(|_| "linop_db_sqlserver_demo".to_string());
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let connection_id = format!("live-sqlserver-11480-{suffix}");
     let source_schema = format!("linop_db_11480_src_{}", &suffix[..12]);
@@ -1057,13 +1062,16 @@ async fn live_sqlserver_transfer_overwrite_replaces_tables_linked_by_foreign_key
         format!("INSERT INTO [{target_schema}].[triggers] (id, job_id) VALUES (10, 1), (20, 2)"),
     ]);
     for statement in &fixtures {
-        linop_db_core::db::sqlserver::execute_batch(&mut client, statement).await.expect("create issue #11480 fixtures");
+        linop_db_core::db::sqlserver::execute_batch(&mut client, statement)
+            .await
+            .expect("create issue #11480 fixtures");
     }
 
     let dir = std::env::temp_dir().join(format!("linop-db-live-sqlserver-11480-{suffix}"));
     std::fs::create_dir_all(&dir).expect("create issue #11480 directory");
-    let storage =
-        linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.expect("open issue #11480 storage");
+    let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db"))
+        .await
+        .expect("open issue #11480 storage");
     let state = Arc::new(AppState::new(storage));
     state.configs.write().await.insert(connection_id.clone(), live_sqlserver_config(&connection_id, &database));
     let pool_key = state.get_or_create_pool(&connection_id, Some(&database)).await.expect("create SQL Server pool");

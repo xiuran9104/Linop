@@ -359,8 +359,9 @@ pub async fn list_databases(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisConnectionRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let result =
-        linop_db_core::redis_ops::redis_list_databases_core(&state.app, &req.connection_id).await.map_err(AppError::from)?;
+    let result = linop_db_core::redis_ops::redis_list_databases_core(&state.app, &req.connection_id)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(serde_json::to_value(result).map_err(|e| AppError::from(e.to_string()))?))
 }
 
@@ -608,9 +609,15 @@ pub async fn hash_del(
     Json(req): Json<RedisHashRequest>,
 ) -> Result<Json<()>, AppError> {
     ensure_writable(&state.app, &req.connection_id, "HDEL").await?;
-    linop_db_core::redis_ops::redis_hash_del_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raw, &req.field)
-        .await
-        .map_err(AppError::from)?;
+    linop_db_core::redis_ops::redis_hash_del_in_db_core(
+        &state.app,
+        &req.connection_id,
+        req.db,
+        &req.key_raw,
+        &req.field,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(()))
 }
 
@@ -697,9 +704,16 @@ pub async fn list_set(
     ensure_writable(&state.app, &req.connection_id, "LSET").await?;
     let index = req.index.unwrap_or(0);
     let value = req.value.as_deref().unwrap_or("");
-    linop_db_core::redis_ops::redis_list_set_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raw, index, value)
-        .await
-        .map_err(AppError::from)?;
+    linop_db_core::redis_ops::redis_list_set_in_db_core(
+        &state.app,
+        &req.connection_id,
+        req.db,
+        &req.key_raw,
+        index,
+        value,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(()))
 }
 
@@ -738,9 +752,15 @@ pub async fn set_remove(
     Json(req): Json<RedisSetRequest>,
 ) -> Result<Json<()>, AppError> {
     ensure_writable(&state.app, &req.connection_id, "SREM").await?;
-    linop_db_core::redis_ops::redis_set_remove_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raw, &req.member)
-        .await
-        .map_err(AppError::from)?;
+    linop_db_core::redis_ops::redis_set_remove_in_db_core(
+        &state.app,
+        &req.connection_id,
+        req.db,
+        &req.key_raw,
+        &req.member,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(()))
 }
 
@@ -859,10 +879,14 @@ pub async fn key_metadata_batch(
     State(state): State<Arc<WebState>>,
     Json(req): Json<RedisKeyMetadataBatchRequest>,
 ) -> Result<Json<Vec<RedisKeyMetadata>>, AppError> {
-    let result =
-        linop_db_core::redis_ops::redis_key_metadata_batch_in_db_core(&state.app, &req.connection_id, req.db, &req.key_raws)
-            .await
-            .map_err(AppError::from)?;
+    let result = linop_db_core::redis_ops::redis_key_metadata_batch_in_db_core(
+        &state.app,
+        &req.connection_id,
+        req.db,
+        &req.key_raws,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -933,7 +957,9 @@ pub async fn flush_db(
     Json(req): Json<RedisDbRequest>,
 ) -> Result<Json<()>, AppError> {
     ensure_writable(&state.app, &req.connection_id, "FLUSHDB").await?;
-    linop_db_core::redis_ops::redis_flush_db_core(&state.app, &req.connection_id, req.db).await.map_err(AppError::from)?;
+    linop_db_core::redis_ops::redis_flush_db_core(&state.app, &req.connection_id, req.db)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(()))
 }
 
@@ -997,10 +1023,15 @@ pub async fn publish_message(
     Json(req): Json<RedisPubSubPublishRequest>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     ensure_writable(&state.app, &req.connection_id, "PUBLISH").await?;
-    let count =
-        linop_db_core::redis_ops::redis_publish_core(&state.app, &req.connection_id, req.db, &req.channel, &req.message)
-            .await
-            .map_err(AppError::from)?;
+    let count = linop_db_core::redis_ops::redis_publish_core(
+        &state.app,
+        &req.connection_id,
+        req.db,
+        &req.channel,
+        &req.message,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(serde_json::json!({ "subscribers": count })))
 }
 

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use axum::extract::{Multipart, Path, State};
 use axum::response::sse::{Event, Sse};
 use axum::Json;
+use futures::Stream;
 use linop_db_core::agent_manager::{
     AgentDriverInfo, AgentState, DriverStoreUsage, JavaRuntimeConfig, JavaRuntimeMode, DEFAULT_JRE_KEY,
 };
@@ -15,7 +16,6 @@ use linop_db_core::agent_service::{
     OfflineImportPlan,
 };
 use linop_db_core::driver_runtime::DriverRuntimeSummary;
-use futures::Stream;
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast;
@@ -269,9 +269,12 @@ pub async fn set_agent_java_runtime_config(
         config.custom_java_path = None;
     }
 
-    let permit =
-        super::pl_debug::claim_mutation(&state, &headers, linop_db_core::query::pl_debug::PlDebugMutationScope::AllRuntimes)
-            .await?;
+    let permit = super::pl_debug::claim_mutation(
+        &state,
+        &headers,
+        linop_db_core::query::pl_debug::PlDebugMutationScope::AllRuntimes,
+    )
+    .await?;
     permit
         .after_debug_cleanup(async {
             am.mutate_state(|local_state| local_state.java_runtime = config.clone())?;
@@ -462,7 +465,10 @@ async fn ensure_no_agent_update_blockers(
     Err(format!("Close these database connections before updating drivers: {labels}"))
 }
 
-async fn agent_update_blockers(state: &linop_db_core::connection::AppState, db_types: &[String]) -> Vec<AgentUpdateBlocker> {
+async fn agent_update_blockers(
+    state: &linop_db_core::connection::AppState,
+    db_types: &[String],
+) -> Vec<AgentUpdateBlocker> {
     update_blockers_from_connections(state.active_agent_connection_driver_connections().await, db_types)
 }
 

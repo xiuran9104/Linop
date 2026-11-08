@@ -89,9 +89,12 @@ async fn live_postgres_export_preserves_foreign_key_actions_and_deferral() {
     let constraints =
         linop_db_core::schema::list_constraints_core(&state, "source", &source, "public", "child_table").await.unwrap();
     let foreign_keys =
-        linop_db_core::schema::list_foreign_keys_core(&state, "source", &source, "public", "child_table").await.unwrap();
-    let ddl =
-        linop_db_core::schema::get_table_ddl_core(&state, "source", &source, "public", "child_table", None).await.unwrap();
+        linop_db_core::schema::list_foreign_keys_core(&state, "source", &source, "public", "child_table")
+            .await
+            .unwrap();
+    let ddl = linop_db_core::schema::get_table_ddl_core(&state, "source", &source, "public", "child_table", None)
+        .await
+        .unwrap();
     std::fs::write(output.join("source-linop-db-ddl.sql"), &ddl).unwrap();
     let export_path = output.join("backup.sql");
     export_database_sql_core(

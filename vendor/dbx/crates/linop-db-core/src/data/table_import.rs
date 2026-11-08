@@ -10100,7 +10100,8 @@ mod tests {
     #[test]
     fn xlsx_stream_title_row_with_empty_leading_cell() {
         // Title row 1 only has cell B1; data row 2 has cells A2 and B2.
-        let path = std::env::temp_dir().join(format!("linop-db-excel-empty-leading-cell-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-excel-empty-leading-cell-{}.xlsx", uuid::Uuid::new_v4()));
         std::fs::write(&path, build_styled_test_xlsx(false, &[("B1", 0, 20.0), ("A2", 0, 1.0), ("B2", 0, 2.0)]))
             .unwrap();
         let options = TableImportParseOptions {
@@ -10163,7 +10164,8 @@ mod tests {
     fn xlsx_stream_custom_title_row_with_dimension() {
         // Covers initialize_range and preview when worksheet contains a <dimension> element.
         // Row 1 is a banner row, title_row is 2, data_start_row is 3.
-        let path = std::env::temp_dir().join(format!("linop-db-excel-dimension-custom-title-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-excel-dimension-custom-title-{}.xlsx", uuid::Uuid::new_v4()));
         std::fs::write(
             &path,
             build_styled_test_xlsx_with_dimension(
@@ -10225,8 +10227,8 @@ mod tests {
         // Dimension declares A1:C3, but column A is completely empty across all rows.
         // Data only occupies columns B and C.
         // Column equality prevents streaming start_column from being pulled to column A.
-        let path =
-            std::env::temp_dir().join(format!("linop-db-excel-dimension-empty-leading-col-{}.xlsx", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir()
+            .join(format!("linop-db-excel-dimension-empty-leading-col-{}.xlsx", uuid::Uuid::new_v4()));
         std::fs::write(
             &path,
             build_styled_test_xlsx_with_dimension(
@@ -10276,8 +10278,8 @@ mod tests {
     }
 
     fn assert_xlsx_empty_string_option(options: TableImportParseOptions, expected_row: Vec<serde_json::Value>) {
-        let path =
-            std::env::temp_dir().join(format!("linop-db-table-import-empty-string-option-{}.xlsx", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir()
+            .join(format!("linop-db-table-import-empty-string-option-{}.xlsx", uuid::Uuid::new_v4()));
         let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <dimension ref="A1:E2"/>
@@ -10402,7 +10404,8 @@ mod tests {
             r#"<c r="A3"/><c r="B3"/>"#,
         ];
         for blank_row in blank_rows {
-            let path = std::env::temp_dir().join(format!("linop-db-table-import-blank-rows-{}.xlsx", uuid::Uuid::new_v4()));
+            let path =
+                std::env::temp_dir().join(format!("linop-db-table-import-blank-rows-{}.xlsx", uuid::Uuid::new_v4()));
             let sheet_xml = format!(
                 r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
@@ -10841,7 +10844,8 @@ mod tests {
 
     #[test]
     fn explicit_encoding_validation_rejects_invalid_tail_before_import() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-invalid-tail-{}.csv", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-invalid-tail-{}.csv", uuid::Uuid::new_v4()));
         std::fs::write(&path, b"id\n1\n\xFF").unwrap();
 
         let error = validate_text_encoding_from_file_with_progress(
@@ -10858,7 +10862,8 @@ mod tests {
 
     #[test]
     fn bom_encoding_detection_reports_the_file_as_fully_detected() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-bom-progress-{}.csv", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-bom-progress-{}.csv", uuid::Uuid::new_v4()));
         let bytes = b"\xEF\xBB\xBFid,name\n1,Ada\n";
         std::fs::write(&path, bytes).unwrap();
         let mut progress = Vec::new();
@@ -11074,7 +11079,8 @@ mod tests {
 
     #[test]
     fn streaming_csv_uses_the_same_unique_duplicate_headers_as_preview() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-duplicate-stream-{}.csv", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-duplicate-stream-{}.csv", uuid::Uuid::new_v4()));
         std::fs::write(&path, b"name,name\nAda,Lovelace\n").unwrap();
         let options = TableImportParseOptions::default();
         let preview = parse_csv_bytes(b"name,name\nAda,Lovelace\n", 10).unwrap();
@@ -11802,7 +11808,8 @@ mod tests {
         drop(xlsm_file);
         ensure_non_streaming_file_size(&xlsm_path.to_string_lossy(), TableImportSourceFormat::Excel).unwrap();
 
-        let mislabeled_path = std::env::temp_dir().join(format!("linop-db-table-import-limit-{}.txt", uuid::Uuid::new_v4()));
+        let mislabeled_path =
+            std::env::temp_dir().join(format!("linop-db-table-import-limit-{}.txt", uuid::Uuid::new_v4()));
         let mislabeled_file = File::create(&mislabeled_path).unwrap();
         mislabeled_file.set_len(MAX_NON_STREAMING_IMPORT_BYTES + 1).unwrap();
         drop(mislabeled_file);
@@ -11953,7 +11960,8 @@ mod tests {
 
     #[test]
     fn xlsx_shared_strings_use_disk_index_above_memory_limit() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-shared-index-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-shared-index-{}.xlsx", uuid::Uuid::new_v4()));
         let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <dimension ref="A1:A2"/>
@@ -11977,7 +11985,8 @@ mod tests {
 
     #[tokio::test]
     async fn xlsx_shared_strings_validation_reports_progress_and_cancels_before_header() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-shared-cancel-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-shared-cancel-{}.xlsx", uuid::Uuid::new_v4()));
         let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <dimension ref="A1:A2"/>
@@ -12081,7 +12090,8 @@ mod tests {
     fn xlsx_disk_shared_strings_are_owner_only() {
         use std::os::unix::fs::PermissionsExt;
 
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-shared-perms-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-shared-perms-{}.xlsx", uuid::Uuid::new_v4()));
         let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <dimension ref="A1:A2"/>
@@ -12111,7 +12121,8 @@ mod tests {
 
     #[test]
     fn xlsx_disk_shared_strings_are_cleaned_up_after_parse_failure() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-shared-fail-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-shared-fail-{}.xlsx", uuid::Uuid::new_v4()));
         let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <dimension ref="A1:A1"/>
@@ -12464,7 +12475,8 @@ mod tests {
 
     #[test]
     fn streaming_excel_rows_preserve_offset_ranges_and_temporal_styles() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-stream-offset-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-stream-offset-{}.xlsx", uuid::Uuid::new_v4()));
         std::fs::write(&path, build_styled_test_xlsx(false, &[("C3", 1, 45996.0), ("D3", 2, 45996.0)])).unwrap();
         let options = TableImportParseOptions { has_header: Some(false), ..TableImportParseOptions::default() };
         let (sender, mut receiver) = tokio::sync::mpsc::channel(16);
@@ -12495,7 +12507,8 @@ mod tests {
 
     #[test]
     fn streaming_excel_rows_preserve_numeric_display_text_for_text_targets() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-stream-format-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-stream-format-{}.xlsx", uuid::Uuid::new_v4()));
         std::fs::write(&path, build_styled_test_xlsx(false, &[("A1", 5, 10.0)])).unwrap();
         let options = TableImportParseOptions { has_header: Some(false), ..TableImportParseOptions::default() };
         let (sender, mut receiver) = tokio::sync::mpsc::channel(16);
@@ -12523,7 +12536,8 @@ mod tests {
 
     #[test]
     fn streaming_excel_rows_preserve_custom_title_and_data_range() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-stream-range-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-stream-range-{}.xlsx", uuid::Uuid::new_v4()));
         let workbook = build_xlsx_workbook_multi(&[XlsxWorksheetData {
             sheet_name: Some("Rows".to_string()),
             columns: vec!["report".to_string(), "ignored".to_string()],
@@ -12574,7 +12588,8 @@ mod tests {
 
     #[test]
     fn streaming_excel_rows_reject_data_beyond_preview_columns() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-stream-wide-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-stream-wide-{}.xlsx", uuid::Uuid::new_v4()));
         let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <dimension ref="A1:B2"/>
@@ -12603,7 +12618,8 @@ mod tests {
 
     #[test]
     fn streaming_excel_rows_accept_sparse_empty_cells() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-stream-sparse-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-stream-sparse-{}.xlsx", uuid::Uuid::new_v4()));
         let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <dimension ref="A1:C2"/>
@@ -12664,8 +12680,8 @@ mod tests {
 
     #[test]
     fn fast_excel_preview_advances_past_empty_cells_with_implicit_references() {
-        let path =
-            std::env::temp_dir().join(format!("linop-db-table-import-preview-empty-cell-{}.xlsx", uuid::Uuid::new_v4()));
+        let path = std::env::temp_dir()
+            .join(format!("linop-db-table-import-preview-empty-cell-{}.xlsx", uuid::Uuid::new_v4()));
         let sheet_xml = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
   <dimension ref="A1:C2"/>
@@ -13122,7 +13138,8 @@ mod tests {
 
     #[test]
     fn formats_only_excel_columns_mapped_to_text_targets() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-display-formats-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-display-formats-{}.xlsx", uuid::Uuid::new_v4()));
         std::fs::write(
             &path,
             build_styled_test_xlsx(
@@ -13180,7 +13197,8 @@ mod tests {
 
     #[test]
     fn mysql_varchar_import_uses_excel_numeric_display_text() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-number-format-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-number-format-{}.xlsx", uuid::Uuid::new_v4()));
         std::fs::write(
             &path,
             build_styled_test_xlsx(false, &[("A1", 0, 10_401_029_008.0), ("A2", 5, 10.0), ("A3", 6, 10.0)]),
@@ -13298,7 +13316,8 @@ mod tests {
 
     #[test]
     fn parses_excel_temporal_styles_with_1904_date_system() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-temporal-1904-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-temporal-1904-{}.xlsx", uuid::Uuid::new_v4()));
         std::fs::write(&path, build_styled_test_xlsx(true, &[("A1", 1, 1.0)])).unwrap();
         let options = TableImportParseOptions { has_header: Some(false), ..TableImportParseOptions::default() };
 
@@ -13311,7 +13330,8 @@ mod tests {
 
     #[test]
     fn parses_excel_temporal_styles_from_non_a1_used_range() {
-        let path = std::env::temp_dir().join(format!("linop-db-table-import-temporal-offset-{}.xlsx", uuid::Uuid::new_v4()));
+        let path =
+            std::env::temp_dir().join(format!("linop-db-table-import-temporal-offset-{}.xlsx", uuid::Uuid::new_v4()));
         std::fs::write(&path, build_styled_test_xlsx(false, &[("C3", 1, 45996.0), ("D3", 2, 45996.0)])).unwrap();
         let options = TableImportParseOptions { has_header: Some(false), ..TableImportParseOptions::default() };
 

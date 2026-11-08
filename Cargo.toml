@@ -32,6 +32,7 @@ linop-term = { path = "crates/linop-term" }
 linop-monitor = { path = "crates/linop-monitor" }
 linop-cast = { path = "crates/linop-cast" }
 linop-telnet = { path = "crates/linop-telnet" }
+linop-dbx = { path = "crates/linop-dbx" }
 linop-i18n = { path = "crates/linop-i18n" }
 linop-theme = { path = "crates/linop-theme" }
 linop-sync = { path = "crates/linop-sync" }

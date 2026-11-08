@@ -329,7 +329,8 @@ pub async fn get_table_comment(
     exact_identity: Option<bool>,
 ) -> Result<Option<String>, String> {
     if exact_identity.unwrap_or(false) {
-        return linop_db_core::schema::exact_metadata::comment(&state, &connection_id, &database, &schema, &table).await;
+        return linop_db_core::schema::exact_metadata::comment(&state, &connection_id, &database, &schema, &table)
+            .await;
     }
     if let Some(catalog) = external_doris_catalog(&state, &connection_id, catalog.as_deref()).await {
         return linop_db_core::schema::get_doris_catalog_table_comment_core(
@@ -584,8 +585,14 @@ pub async fn get_columns(
         .await;
     }
     if let Some(catalog) = external_doris_catalog(&state, &connection_id, catalog.as_deref()).await {
-        return linop_db_core::schema::get_doris_catalog_columns_core(&state, &connection_id, &catalog, &database, &table)
-            .await;
+        return linop_db_core::schema::get_doris_catalog_columns_core(
+            &state,
+            &connection_id,
+            &catalog,
+            &database,
+            &table,
+        )
+        .await;
     }
     linop_db_core::schema::get_columns_core_for_session_in_context(
         &state,
@@ -641,11 +648,18 @@ pub async fn list_indexes(
     exact_identity: Option<bool>,
 ) -> Result<Vec<db::IndexInfo>, String> {
     if exact_identity.unwrap_or(false) {
-        return linop_db_core::schema::exact_metadata::indexes(&state, &connection_id, &database, &schema, &table).await;
+        return linop_db_core::schema::exact_metadata::indexes(&state, &connection_id, &database, &schema, &table)
+            .await;
     }
     if let Some(catalog) = external_doris_catalog(&state, &connection_id, catalog.as_deref()).await {
-        return linop_db_core::schema::list_doris_catalog_indexes_core(&state, &connection_id, &catalog, &database, &table)
-            .await;
+        return linop_db_core::schema::list_doris_catalog_indexes_core(
+            &state,
+            &connection_id,
+            &catalog,
+            &database,
+            &table,
+        )
+        .await;
     }
     linop_db_core::schema::list_indexes_core(&state, &connection_id, &database, &schema, &table).await
 }
@@ -728,7 +742,8 @@ pub async fn list_foreign_keys_for_database(
         if external_doris_catalog(&operation_app, &connection_id, catalog.as_deref()).await.is_some() {
             return Ok(std::collections::HashMap::new());
         }
-        linop_db_core::schema::list_foreign_keys_for_database_core(&operation_app, &connection_id, &database, &schema).await
+        linop_db_core::schema::list_foreign_keys_for_database_core(&operation_app, &connection_id, &database, &schema)
+            .await
     })
     .await
 }
@@ -745,11 +760,18 @@ pub async fn list_triggers(
     exact_identity: Option<bool>,
 ) -> Result<Vec<db::TriggerInfo>, String> {
     if exact_identity.unwrap_or(false) {
-        return linop_db_core::schema::exact_metadata::triggers(&state, &connection_id, &database, &schema, &table).await;
+        return linop_db_core::schema::exact_metadata::triggers(&state, &connection_id, &database, &schema, &table)
+            .await;
     }
     if let Some(catalog) = external_doris_catalog(&state, &connection_id, catalog.as_deref()).await {
-        return linop_db_core::schema::list_doris_catalog_triggers_core(&state, &connection_id, &catalog, &database, &table)
-            .await;
+        return linop_db_core::schema::list_doris_catalog_triggers_core(
+            &state,
+            &connection_id,
+            &catalog,
+            &database,
+            &table,
+        )
+        .await;
     }
     linop_db_core::schema::list_triggers_core_with_options(
         &state,
@@ -773,7 +795,8 @@ pub async fn list_constraints(
     exact_identity: Option<bool>,
 ) -> Result<Vec<linop_db_core::db::ConstraintInfo>, String> {
     if exact_identity.unwrap_or(false) {
-        return linop_db_core::schema::exact_metadata::constraints(&state, &connection_id, &database, &schema, &table).await;
+        return linop_db_core::schema::exact_metadata::constraints(&state, &connection_id, &database, &schema, &table)
+            .await;
     }
     let _ = catalog;
     linop_db_core::schema::list_constraints_core(&state, &connection_id, &database, &schema, &table).await
@@ -863,15 +886,31 @@ pub async fn get_table_ddl(
         )
         .await?
     } else if let Some(catalog) = external_doris_catalog(&state, &connection_id, catalog.as_deref()).await {
-        linop_db_core::schema::get_doris_catalog_table_ddl_core(&state, &connection_id, &catalog, &database, &table).await?
+        linop_db_core::schema::get_doris_catalog_table_ddl_core(&state, &connection_id, &catalog, &database, &table)
+            .await?
     } else if portable.unwrap_or(false) {
-        linop_db_core::schema::get_table_export_ddl_core(&state, &connection_id, &database, &schema, &table, object_type)
-            .await?
+        linop_db_core::schema::get_table_export_ddl_core(
+            &state,
+            &connection_id,
+            &database,
+            &schema,
+            &table,
+            object_type,
+        )
+        .await?
     } else if include_postgres_access.unwrap_or(false) {
-        linop_db_core::schema::get_table_display_ddl_core(&state, &connection_id, &database, &schema, &table, object_type)
-            .await?
+        linop_db_core::schema::get_table_display_ddl_core(
+            &state,
+            &connection_id,
+            &database,
+            &schema,
+            &table,
+            object_type,
+        )
+        .await?
     } else {
-        linop_db_core::schema::get_table_ddl_core(&state, &connection_id, &database, &schema, &table, object_type).await?
+        linop_db_core::schema::get_table_ddl_core(&state, &connection_id, &database, &schema, &table, object_type)
+            .await?
     };
     if separate_indexes {
         linop_db_core::schema::separate_table_ddl_indexes_core(
@@ -914,7 +953,11 @@ pub async fn load_schema_diff_routines(
         &connection_id,
         &database,
         &schema,
-        linop_db_core::schema::oracle_routines::RoutineReadOptions { object_kinds, selected_objects, selected_routines },
+        linop_db_core::schema::oracle_routines::RoutineReadOptions {
+            object_kinds,
+            selected_objects,
+            selected_routines,
+        },
     )
     .await
 }

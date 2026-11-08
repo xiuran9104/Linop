@@ -60,7 +60,8 @@ fn live_oracle_config(id: &str, port: u16, oracle_connection_type: Option<&str>)
 async fn app_state() -> Arc<AppState> {
     let dir = std::env::temp_dir().join(format!("linop-db-live-oracle-attempts-{}", uuid::Uuid::new_v4().simple()));
     std::fs::create_dir_all(&dir).expect("create temp dir");
-    let storage = linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.expect("open test storage");
+    let storage =
+        linop_db_core::persistence::test_storage::open(&dir.join("storage.db")).await.expect("open test storage");
     Arc::new(AppState::new(storage))
 }
 

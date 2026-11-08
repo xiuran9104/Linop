@@ -8,7 +8,7 @@ use ratatui::widgets::{
     Block, Borders, Clear, Gauge, List, ListItem, ListState, Paragraph, Sparkline, Tabs, Wrap,
 };
 
-use crate::app::{App, ConnectionForm, Dialog, Mode, Pane, SessionState, Tab};
+use crate::app::{App, ConnectionForm, DbxView, Dialog, Mode, Pane, SessionState, Tab};
 use linop_core::{Auth, endpoint};
 use linop_sftp::Entry;
 
@@ -34,6 +34,10 @@ pub fn draw(frame: &mut Frame, app: &mut App) {
         Mode::Telnet => {
             app.shell_area = None;
             draw_telnet(frame, app);
+        }
+        Mode::DbxBrowse => {
+            app.shell_area = None;
+            draw_dbx(frame, app);
         }
     }
     if let Some(form) = &app.form {
@@ -135,7 +139,7 @@ fn draw_picker(frame: &mut Frame, app: &mut App) {
     }
 
     let mut footer_lines = vec![Line::from(
-        "↑/↓ 选择 · Enter 连接 · x 断开 · p 回放 · n 新建 · r 重载 · q 退出",
+        "↑/↓ 选择 · Enter 连接 · d 数据库 · x 断开 · p 回放 · n 新建 · r 重载 · q 退出",
     )];
     if !app.notice.is_empty() {
         footer_lines.push(Line::from(Span::styled(
@@ -535,6 +539,107 @@ fn human_kb(kb: u64) -> String {
     } else {
         format!("{kb} KiB")
     }
+}
+
+/// 数据库浏览页(DBX 内核):连接 → 表 → 数据 三视图。
+fn draw_dbx(frame: &mut Frame, app: &App) {
+    let Some(browse) = app.dbx.as_ref() else {
+        return;
+    };
+    let area = frame.area();
+    let [body, status_bar] =
+        Layout::vertical([Constraint::Min(0), Constraint::Length(1)]).areas(area);
+
+    let (title, items, sel, hint): (&str, Vec<ListItem>, usize, &str) = match browse.view {
+        DbxView::Conns => (
+            "连接",
+            browse
+                .conns
+                .iter()
+                .map(|c| ListItem::new(Line::from(c.clone())))
+                .collect(),
+            browse.conn_sel,
+            "Enter 选择连接 · Esc 退出",
+        ),
+        DbxView::Tables => (
+            "表/视图",
+            browse
+                .tables
+                .iter()
+                .map(|t| ListItem::new(Line::from(t.clone())))
+                .collect(),
+            browse.table_sel,
+            "Enter 看数据 · s SQL · Backspace 返回",
+        ),
+        DbxView::Data => {
+            let _conn = browse.conn.clone().unwrap_or_default();
+            (
+                "数据",
+                browse
+                    .rows
+                    .iter()
+                    .map(|row| ListItem::new(Line::from(row.join("  |  "))))
+                    .collect(),
+                0,
+                "Backspace 返回表列表",
+            )
+        }
+    };
+
+    let kind_label = match browse.view {
+        DbxView::Conns => "连接".to_string(),
+        DbxView::Tables => browse.conn.clone().unwrap_or_default(),
+        DbxView::Data => browse.conn.clone().unwrap_or_default(),
+    };
+    let block = Block::default()
+        .title(format!(" 数据库 · {kind_label} · {title} "))
+        .borders(Borders::ALL)
+        .border_style(Style::new().fg(Color::Cyan));
+    let inner = block.inner(body);
+    frame.render_widget(block, body);
+
+    if browse.view == DbxView::Data {
+        let mut lines: Vec<ratatui::text::Line> = vec![ratatui::text::Line::styled(
+            browse.columns.join("  |  "),
+            Style::new().add_modifier(Modifier::BOLD),
+        )];
+        lines.extend(
+            browse
+                .rows
+                .iter()
+                .map(|row| ratatui::text::Line::from(row.join("  |  "))),
+        );
+        frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
+    } else {
+        let mut state = ListState::default();
+        if !items.is_empty() {
+            state.select(Some(sel.min(items.len() - 1)));
+        }
+        frame.render_stateful_widget(
+            List::new(items)
+                .highlight_style(
+                    Style::new()
+                        .bg(Color::DarkGray)
+                        .add_modifier(Modifier::BOLD),
+                )
+                .highlight_symbol("▶ "),
+            inner,
+            &mut state,
+        );
+    }
+
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!(" {} ", browse.conn.clone().unwrap_or_else(|| "DBX".into())),
+                Style::new().bg(Color::Cyan).fg(Color::Black),
+            ),
+            Span::raw(" "),
+            Span::raw(browse.status.clone()),
+            Span::styled(hint, Style::new().fg(Color::DarkGray)),
+        ])),
+        status_bar,
+    );
 }
 
 /// Telnet 终端页:交互式 NVT 会话,F9 断开。

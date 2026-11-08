@@ -36,9 +36,8 @@ fn split_command_progress(
             progress.phase = linop_db_core::table_import::TableImportPhase::Finalizing;
             (Some(progress), Some(terminal))
         }
-        linop_db_core::table_import::TableImportStatus::Error | linop_db_core::table_import::TableImportStatus::Cancelled => {
-            (None, Some(progress))
-        }
+        linop_db_core::table_import::TableImportStatus::Error
+        | linop_db_core::table_import::TableImportStatus::Cancelled => (None, Some(progress)),
     }
 }
 

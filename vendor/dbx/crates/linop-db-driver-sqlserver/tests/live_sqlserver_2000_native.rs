@@ -1,6 +1,6 @@
 //! Opt-in native SQL Server 2000 compatibility acceptance; never routes through JDBC.
-use linop_db_driver_sqlserver as native;
 use futures::FutureExt;
+use linop_db_driver_sqlserver as native;
 use std::panic::AssertUnwindSafe;
 use std::time::Duration;
 

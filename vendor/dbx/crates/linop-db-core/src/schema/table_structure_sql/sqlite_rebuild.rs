@@ -1609,7 +1609,10 @@ mod tests {
         assert!(foreign_key_checks[0] < rename_position);
         assert!(foreign_key_checks[1] > copy_position);
         assert!(rename_position < create_position && create_position < copy_position);
-        assert!(preview.statements.iter().any(|sql| sql.starts_with("DROP TABLE") && sql.contains("__linop_db_source_")));
+        assert!(preview
+            .statements
+            .iter()
+            .any(|sql| sql.starts_with("DROP TABLE") && sql.contains("__linop_db_source_")));
         assert!(!preview.statements.iter().any(|sql| sql.starts_with("DROP TABLE") && sql.contains("\"items_")));
         assert!(preview.statements[copy_position].contains("CAST("));
         assert!(preview.statements[copy_position].contains(" AS INTEGER)"));

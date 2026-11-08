@@ -1803,14 +1803,19 @@ fn iotdb_tree_count_sql(statement: &str) -> Option<String> {
             return None;
         }
     }
-    let count_projection =
-        match Parser::parse_sql(&dialect, &format!("SELECT COUNT({measurement}) AS linop_db_total_rows")).ok()?.pop()? {
-            Statement::Query(query) => match query.body.as_ref() {
-                SetExpr::Select(select) => select.projection.clone(),
-                _ => return None,
-            },
+    let count_projection = match Parser::parse_sql(
+        &dialect,
+        &format!("SELECT COUNT({measurement}) AS linop_db_total_rows"),
+    )
+    .ok()?
+    .pop()?
+    {
+        Statement::Query(query) => match query.body.as_ref() {
+            SetExpr::Select(select) => select.projection.clone(),
             _ => return None,
-        };
+        },
+        _ => return None,
+    };
     select.projection = count_projection;
     query.order_by = None;
     Some(format!("{query};"))
@@ -1990,7 +1995,11 @@ fn sql_server_count_sql(statement: &str) -> Option<String> {
         } else {
             sql_server_statement_for_derived_table(statement)
         };
-        return Some(derived_table_sql("SELECT COUNT(*) AS linop_db_total_rows FROM", &wrapped_sql, &format!("{alias};")));
+        return Some(derived_table_sql(
+            "SELECT COUNT(*) AS linop_db_total_rows FROM",
+            &wrapped_sql,
+            &format!("{alias};"),
+        ));
     }
 
     let count_projection = match Parser::parse_sql(&dialect, "SELECT COUNT(*) AS linop_db_total_rows").ok()?.pop()? {
@@ -4442,7 +4451,10 @@ mod tests {
             });
             assert_eq!(
                 result.sql.as_deref(),
-                Some(format!("SELECT COUNT(*) AS linop_db_total_rows FROM ({sql}) [linop_db_count]({aliases});").as_str())
+                Some(
+                    format!("SELECT COUNT(*) AS linop_db_total_rows FROM ({sql}) [linop_db_count]({aliases});")
+                        .as_str()
+                )
             );
         }
     }
@@ -5171,7 +5183,10 @@ WHERE u.id = picked.id;
         assert_eq!(plan.page_offset, Some(0));
         assert_eq!(
             plan.count_sql,
-            Some("SELECT COUNT(*) AS linop_db_total_rows FROM (SELECT * FROM `test`\nwhere id=1) `linop_db_count`;".to_string())
+            Some(
+                "SELECT COUNT(*) AS linop_db_total_rows FROM (SELECT * FROM `test`\nwhere id=1) `linop_db_count`;"
+                    .to_string()
+            )
         );
         assert!(!plan.use_agent_result_session);
     }
@@ -5206,7 +5221,10 @@ WHERE u.id = picked.id;
 
         assert_eq!(
             result.sql,
-            Some("SELECT COUNT(*) AS linop_db_total_rows FROM (SELECT * FROM t WHERE deleted = 0) `linop_db_count`;".to_string())
+            Some(
+                "SELECT COUNT(*) AS linop_db_total_rows FROM (SELECT * FROM t WHERE deleted = 0) `linop_db_count`;"
+                    .to_string()
+            )
         );
     }
 
@@ -5945,7 +5963,10 @@ WHERE u.id = picked.id;
         });
 
         assert_eq!(page.sql.unwrap(), "SELECT id FROM users LIMIT 50;");
-        assert_eq!(count.sql.unwrap(), "SELECT COUNT(*) AS linop_db_total_rows FROM (SELECT id FROM users) \"linop_db_count\";");
+        assert_eq!(
+            count.sql.unwrap(),
+            "SELECT COUNT(*) AS linop_db_total_rows FROM (SELECT id FROM users) \"linop_db_count\";"
+        );
     }
 
     #[test]
@@ -6082,7 +6103,10 @@ WHERE u.id = picked.id;
             offset: 0,
         });
 
-        assert_eq!(result.sql.unwrap(), "SELECT t.id, t.* FROM linop_db_eval_t t ORDER BY t.id DESC LIMIT 100 OFFSET 0;");
+        assert_eq!(
+            result.sql.unwrap(),
+            "SELECT t.id, t.* FROM linop_db_eval_t t ORDER BY t.id DESC LIMIT 100 OFFSET 0;"
+        );
     }
 
     #[test]
@@ -6444,8 +6468,9 @@ WHERE u.id = picked.id;
     #[test]
     fn iotdb_tree_count_rewrites_single_series_without_derived_table() {
         let result = build_count_query_sql(CountQuerySqlOptions {
-            original_sql: "SELECT WGEN_GnTmpSta1 FROM root.linop_db_time_preview.device WHERE time >= 1 ORDER BY time DESC"
-                .to_string(),
+            original_sql:
+                "SELECT WGEN_GnTmpSta1 FROM root.linop_db_time_preview.device WHERE time >= 1 ORDER BY time DESC"
+                    .to_string(),
             database_type: Some(DatabaseType::Iotdb),
         });
 

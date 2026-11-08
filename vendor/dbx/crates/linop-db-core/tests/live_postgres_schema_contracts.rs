@@ -564,7 +564,8 @@ async fn postgres_partition_metadata_renders_replayable_children_and_subpartitio
     let parent_ddl = linop_db_core::schema::pg_ddl_with_partitions(&pool, &schema, "parent").await.expect("parent ddl");
     let child_ddl = linop_db_core::schema::pg_ddl(&pool, &schema, "child").await.expect("child ddl");
     let default_ddl = linop_db_core::schema::pg_ddl(&pool, &schema, "child_default").await.expect("default ddl");
-    let subpartition_ddl = linop_db_core::schema::pg_ddl(&pool, &schema, "subpartition").await.expect("subpartition ddl");
+    let subpartition_ddl =
+        linop_db_core::schema::pg_ddl(&pool, &schema, "subpartition").await.expect("subpartition ddl");
     let inherited_parent_ddl = linop_db_core::schema::pg_ddl_with_partitions(&pool, &schema, "inherited_parent")
         .await
         .expect("inherited parent ddl");

@@ -70,7 +70,8 @@ pub async fn list_databases(
     State(state): State<Arc<WebState>>,
     Query(q): Query<SchemaQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let result = linop_db_core::schema::list_databases_core(&state.app, &q.connection_id).await.map_err(AppError::from)?;
+    let result =
+        linop_db_core::schema::list_databases_core(&state.app, &q.connection_id).await.map_err(AppError::from)?;
     Ok(Json(serde_json::to_value(result).map_err(|e| AppError::from(e.to_string()))?))
 }
 
@@ -78,8 +79,9 @@ pub async fn list_database_metadata(
     State(state): State<Arc<WebState>>,
     Query(q): Query<SchemaQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let result =
-        linop_db_core::schema::list_database_metadata_core(&state.app, &q.connection_id).await.map_err(AppError::from)?;
+    let result = linop_db_core::schema::list_database_metadata_core(&state.app, &q.connection_id)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(serde_json::to_value(result).map_err(|e| AppError::from(e.to_string()))?))
 }
 
@@ -87,9 +89,10 @@ pub async fn list_database_storage(
     State(state): State<Arc<WebState>>,
     Json(request): Json<DatabaseStorageRequest>,
 ) -> Result<Json<Vec<linop_db_core::db::DatabaseStorageInfo>>, AppError> {
-    let result = linop_db_core::schema::list_database_storage_core(&state.app, &request.connection_id, &request.databases)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::schema::list_database_storage_core(&state.app, &request.connection_id, &request.databases)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -154,9 +157,10 @@ pub async fn list_sqlserver_linked_server_catalogs(
     Query(q): Query<SchemaQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let server = q.server.as_deref().unwrap_or("");
-    let result = linop_db_core::schema::list_sqlserver_linked_server_catalogs_core(&state.app, &q.connection_id, server)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::schema::list_sqlserver_linked_server_catalogs_core(&state.app, &q.connection_id, server)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(serde_json::to_value(result).map_err(|e| AppError::from(e.to_string()))?))
 }
 
@@ -202,10 +206,15 @@ pub async fn get_sqlserver_column_metadata(
     let database = q.database.as_deref().unwrap_or("");
     let schema = q.schema.as_deref().unwrap_or("");
     let table = q.table.as_deref().unwrap_or("");
-    let result =
-        linop_db_core::schema::get_sqlserver_column_metadata_core(&state.app, &q.connection_id, database, schema, table)
-            .await
-            .map_err(AppError::from)?;
+    let result = linop_db_core::schema::get_sqlserver_column_metadata_core(
+        &state.app,
+        &q.connection_id,
+        database,
+        schema,
+        table,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(serde_json::to_value(result).map_err(|e| AppError::from(e.to_string()))?))
 }
 
@@ -215,9 +224,10 @@ pub async fn get_mysql_table_auto_increment(
 ) -> Result<Json<Option<String>>, AppError> {
     let database = q.database.as_deref().unwrap_or("");
     let table = q.table.as_deref().unwrap_or("");
-    let result = linop_db_core::schema::get_mysql_table_auto_increment_core(&state.app, &q.connection_id, database, table)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::schema::get_mysql_table_auto_increment_core(&state.app, &q.connection_id, database, table)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -477,9 +487,10 @@ pub async fn get_custom_type_details(
     let database = q.database.as_deref().unwrap_or("");
     let schema = q.schema.as_deref().unwrap_or("");
     let name = q.table.as_deref().unwrap_or("");
-    let result = linop_db_core::schema::get_custom_type_details_core(&state.app, &q.connection_id, database, schema, name)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::schema::get_custom_type_details_core(&state.app, &q.connection_id, database, schema, name)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -595,8 +606,9 @@ pub async fn get_plugin_table_metadata(
     State(state): State<Arc<WebState>>,
     Json(request): Json<linop_db_core::schema::plugin_metadata::PluginTableContext>,
 ) -> Result<Json<linop_db_core::schema::plugin_metadata::PluginTableMetadata>, AppError> {
-    let result =
-        linop_db_core::schema::plugin_metadata::get_table_metadata(&state.app, request).await.map_err(AppError::from)?;
+    let result = linop_db_core::schema::plugin_metadata::get_table_metadata(&state.app, request)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -625,9 +637,15 @@ pub async fn list_columns(
     let catalog = external_doris_catalog(&state, &q.connection_id, q.catalog.as_deref()).await;
     let load_columns = || async {
         if let Some(catalog) = catalog.as_deref() {
-            linop_db_core::schema::get_doris_catalog_columns_core(&state.app, &q.connection_id, catalog, database, table)
-                .await
-                .map_err(AppError::from)
+            linop_db_core::schema::get_doris_catalog_columns_core(
+                &state.app,
+                &q.connection_id,
+                catalog,
+                database,
+                table,
+            )
+            .await
+            .map_err(AppError::from)
         } else {
             linop_db_core::schema::get_columns_core_for_session_in_context(
                 &state.app,
@@ -677,8 +695,9 @@ pub async fn list_data_types(
     Query(q): Query<SchemaQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let database = q.database.as_deref().unwrap_or("");
-    let result =
-        linop_db_core::schema::list_data_types_core(&state.app, &q.connection_id, database).await.map_err(AppError::from)?;
+    let result = linop_db_core::schema::list_data_types_core(&state.app, &q.connection_id, database)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(serde_json::to_value(result).map_err(|e| AppError::from(e.to_string()))?))
 }
 
@@ -690,9 +709,10 @@ pub async fn list_indexes(
     let schema = q.schema.as_deref().unwrap_or("");
     let table = q.table.as_deref().unwrap_or("");
     if q.exact_identity.unwrap_or(false) {
-        let result = linop_db_core::schema::exact_metadata::indexes(&state.app, &q.connection_id, database, schema, table)
-            .await
-            .map_err(AppError::from)?;
+        let result =
+            linop_db_core::schema::exact_metadata::indexes(&state.app, &q.connection_id, database, schema, table)
+                .await
+                .map_err(AppError::from)?;
         return Ok(Json(serde_json::to_value(result).map_err(|error| AppError::from(error.to_string()))?));
     }
     let catalog = external_doris_catalog(&state, &q.connection_id, q.catalog.as_deref()).await;
@@ -836,8 +856,14 @@ pub async fn get_table_comment(
     let result = if q.exact_identity.unwrap_or(false) {
         linop_db_core::schema::exact_metadata::comment(&state.app, &q.connection_id, database, schema, table).await
     } else if let Some(catalog) = external_doris_catalog(&state, &q.connection_id, q.catalog.as_deref()).await {
-        linop_db_core::schema::get_doris_catalog_table_comment_core(&state.app, &q.connection_id, &catalog, database, table)
-            .await
+        linop_db_core::schema::get_doris_catalog_table_comment_core(
+            &state.app,
+            &q.connection_id,
+            &catalog,
+            database,
+            table,
+        )
+        .await
     } else {
         linop_db_core::schema::get_table_comment_core(&state.app, &q.connection_id, database, schema, table).await
     }
@@ -1075,7 +1101,11 @@ pub async fn load_schema_diff_routines(
         &q.connection_id,
         q.database.as_deref().unwrap_or(""),
         q.schema.as_deref().unwrap_or(""),
-        linop_db_core::schema::oracle_routines::RoutineReadOptions { object_kinds, selected_objects, selected_routines },
+        linop_db_core::schema::oracle_routines::RoutineReadOptions {
+            object_kinds,
+            selected_objects,
+            selected_routines,
+        },
     )
     .await
     .map_err(AppError::from)?;
@@ -1266,9 +1296,10 @@ pub async fn list_extensions(
     Query(q): Query<SchemaQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     let database = q.database.as_deref().unwrap_or("");
-    let result = linop_db_core::schema::list_extensions_core(&state.app, &q.connection_id, database, q.schema.as_deref())
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::schema::list_extensions_core(&state.app, &q.connection_id, database, q.schema.as_deref())
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(serde_json::to_value(result).map_err(|e| AppError::from(e.to_string()))?))
 }
 

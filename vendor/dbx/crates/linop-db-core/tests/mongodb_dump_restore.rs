@@ -1,11 +1,11 @@
 use std::io::Write;
 use std::path::Path;
 
+use flate2::{write::GzEncoder, Compression};
 use linop_db_core::mongodb_import_export::{
     for_each_mongodb_import_document, preview_mongodb_import_file, MongoImportFormat, MongoImportIssue,
     MongoImportParseOptions, MongoImportPreviewRequest, ParsedMongoDocument,
 };
-use flate2::{write::GzEncoder, Compression};
 use mongodb::bson::{doc, Bson, Document};
 
 fn encode(documents: &[Document], gzip: bool) -> Vec<u8> {
@@ -960,7 +960,8 @@ async fn directory_preview_does_not_read_bson_and_source_identity_is_checked_bef
     .unwrap();
     assert_eq!(preview.catalog.collections[0].documents, None);
     assert_eq!(preview.catalog.collections[0].size_bytes, 16);
-    let state = AppState::new(linop_db_core::persistence::test_storage::open(&files.path().join("state.db")).await.unwrap());
+    let state =
+        AppState::new(linop_db_core::persistence::test_storage::open(&files.path().join("state.db")).await.unwrap());
     let request: MongoDatabaseRestoreRequest = serde_json::from_value(serde_json::json!({
         "taskId":"validation-test", "connectionId":"missing", "database":"target", "sourceDatabase":"source",
         "sourceRef":preview.source_ref, "dropExisting":true

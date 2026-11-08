@@ -3,9 +3,9 @@ use std::sync::Arc;
 use axum::extract::{Path, State};
 use axum::response::sse::{Event, Sse};
 use axum::Json;
+use futures::stream::Stream;
 use linop_db_core::persistence::task_history::{TaskHistoryStorageError, TaskLifecycleOwner, TransferTaskJournal};
 use linop_db_core::transfer::{self, TransferRequest, TransferStatus};
-use futures::stream::Stream;
 use serde::Deserialize;
 use tokio::time::{sleep, Duration};
 
@@ -96,10 +96,14 @@ pub async fn start_transfer(
     // carry the requested connections, and the spawned task reports failures as
     // terminal progress events instead of HTTP errors.
     let (source_db_type, target_db_type) = if state.demo_mode {
-        (linop_db_core::models::connection::DatabaseType::Sqlite, linop_db_core::models::connection::DatabaseType::Sqlite)
+        (
+            linop_db_core::models::connection::DatabaseType::Sqlite,
+            linop_db_core::models::connection::DatabaseType::Sqlite,
+        )
     } else {
         // Reject transfer early if the target connection is read-only
-        if let Some(name) = linop_db_core::query::connection_readonly_name(&state.app, &req.target_connection_id).await {
+        if let Some(name) = linop_db_core::query::connection_readonly_name(&state.app, &req.target_connection_id).await
+        {
             return Err(AppError::from(format!(
                 "Read-only mode: target connection '{}' has read-only protection enabled. Transfer blocked.",
                 name

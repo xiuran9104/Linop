@@ -8,13 +8,13 @@ use axum::http::{header, StatusCode};
 use axum::response::sse::Event;
 use axum::response::{Response, Sse};
 use axum::Json;
+use futures::stream::Stream;
+use futures::StreamExt;
 use linop_db_core::mongodb_import_export::{
     self, MongoExportFormat, MongoExportProgress, MongoExportRequest, MongoExportStatus, MongoImportParseOptions,
     MongoImportPhase, MongoImportPreviewRequest, MongoImportProgress, MongoImportRequest, MongoImportStatus,
 };
 use linop_db_core::transfer;
-use futures::stream::Stream;
-use futures::StreamExt;
 use serde::Deserialize;
 use tokio::io::AsyncWriteExt;
 use tokio_util::io::ReaderStream;
@@ -678,7 +678,8 @@ mod tests {
         use linop_db_core::connection::AppState;
 
         let directory = tempfile::tempdir().unwrap();
-        let storage = linop_db_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
+        let storage =
+            linop_db_core::persistence::test_storage::open(&directory.path().join("storage.db")).await.unwrap();
         let state = Arc::new(WebState::for_tests(Arc::new(AppState::new(storage)), directory.path().into()));
         let upload_dir = import_upload_dir(directory.path());
         std::fs::create_dir_all(&upload_dir).unwrap();

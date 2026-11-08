@@ -12,11 +12,13 @@ use std::time::Duration;
 use crossterm::event::{Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use linop_cast::{Cast, CastWriter};
 use linop_core::{Auth, Connection, Registry};
+use linop_dbx::Dbx as DbxKernel;
 use linop_monitor::ResourceSample;
 use linop_sftp::{Entry, Sftp};
 use linop_ssh::{KnownHosts, KnownHostsPolicy, LocalForward, Session, ShellReader, ShellWriter};
 use linop_telnet::{TelnetClient, TelnetEvent};
 use linop_term::Terminal;
+use serde_json;
 use tokio::sync::mpsc;
 
 use crate::keys;
@@ -116,6 +118,7 @@ pub enum DialogAction {
     OpenReplay,
     /// 删除一个 Telnet profile(picker 上执行,带确认)。
     DeleteTelnetProfile(String),
+    RunDbxSql,
 }
 
 impl DialogAction {
@@ -253,6 +256,8 @@ pub enum Mode {
     Replay,
     /// 交互式 Telnet 终端(单会话)。
     Telnet,
+    /// 数据库浏览(DBX 内核:连接 → 表 → 数据)。
+    DbxBrowse,
 }
 
 /// 会话内标签页。
@@ -371,6 +376,27 @@ pub struct ReplayState {
     pub task: Option<tokio::task::JoinHandle<()>>,
 }
 
+/// 数据库浏览(DBX 内核):连接 → 表 → 数据 三级视图。
+pub struct DbxBrowse {
+    pub dbx: std::sync::Arc<linop_dbx::Dbx>,
+    pub view: DbxView,
+    pub conns: Vec<String>,
+    pub conn_sel: usize,
+    pub conn: Option<String>,
+    pub tables: Vec<String>,
+    pub table_sel: usize,
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    pub status: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DbxView {
+    Conns,
+    Tables,
+    Data,
+}
+
 /// 一个活动的 Telnet 会话。读循环跑在 std 线程上(阻塞 poll +
 /// shutdown 标志),读写半边分离,读轮询不会饿死写侧。
 pub struct TelnetSession {
@@ -443,6 +469,7 @@ pub struct App {
     pub replay: Option<ReplayState>,
     /// 打开中的 Telnet 会话(与 Mode::Telnet 对应;单会话)。
     pub telnet: Option<TelnetSession>,
+    pub dbx: Option<DbxBrowse>,
 }
 
 impl App {
@@ -461,6 +488,7 @@ impl App {
             shell_area: None,
             replay: None,
             telnet: None,
+            dbx: None,
         }
     }
 
@@ -787,6 +815,8 @@ impl App {
                         DialogAction::ImportProfiles(fresh),
                     ));
                 }
+                // 数据库浏览(DBX 内核)。
+                KeyCode::Char('d') => self.open_dbx().await,
                 // 新建/编辑连接配置。
                 KeyCode::Char('n') => self.form = Some(ConnectionForm::blank()),
                 KeyCode::Char('e') => {
@@ -895,6 +925,7 @@ impl App {
             }
             Mode::Replay => self.replay_key(key, tx).await,
             Mode::Telnet => self.telnet_key(key, tx).await,
+            Mode::DbxBrowse => self.dbx_key(key).await,
             Mode::Session => {
                 if key.modifiers.contains(KeyModifiers::CONTROL)
                     && matches!(key.code, KeyCode::Char('q') | KeyCode::Char('Q'))
@@ -1121,6 +1152,20 @@ impl App {
             }
             return;
         }
+        // 数据库浏览里执行 SQL:作用于 DbxBrowse。
+        if let (KeyCode::Enter, DialogAction::RunDbxSql) = (&key.code, &dialog.action) {
+            let sql = dialog.input.trim().to_string();
+            if sql.is_empty() {
+                dialog.error = "SQL 不能为空,Esc 取消".into();
+                self.dialog = Some(dialog);
+            } else if self.mode == Mode::DbxBrowse && self.dbx.is_some() {
+                self.run_dbx_sql_dialog(sql).await;
+            } else {
+                dialog.error = "数据库浏览未打开".into();
+                self.dialog = Some(dialog);
+            }
+            return;
+        }
         // 删除 Telnet profile:作用于 picker。
         if let (KeyCode::Enter, DialogAction::DeleteTelnetProfile(name)) =
             (&key.code, &dialog.action)
@@ -1263,7 +1308,8 @@ impl App {
             | DialogAction::DeleteProfile(_)
             | DialogAction::ImportProfiles(_)
             | DialogAction::OpenReplay
-            | DialogAction::DeleteTelnetProfile(_) => {
+            | DialogAction::DeleteTelnetProfile(_)
+            | DialogAction::RunDbxSql => {
                 // 已在 handle_dialog_key 里先行处理,不会走到这里。
                 return Err("内部错误:picker 对话框不应进入会话执行".to_string());
             }
@@ -1551,6 +1597,275 @@ impl App {
                         s.recording = Some(Recording { writer, path });
                     }
                     Err(e) => s.status = format!("开始录制失败:{e}"),
+                }
+            }
+        }
+    }
+
+    /// 打开数据库浏览。
+    async fn open_dbx(&mut self) {
+        let profiles = linop_core::DbRegistry::load_default()
+            .unwrap_or_default()
+            .profiles()
+            .to_vec();
+        if profiles.is_empty() {
+            self.notice = format!(
+                "没有数据库连接:编辑 {} 添加(驱动 postgres/mysql/sqlite/redis)",
+                linop_core::default_databases_path().display()
+            );
+            return;
+        }
+        let store = std::env::var_os("HOME")
+            .map(|h| {
+                std::path::PathBuf::from(h)
+                    .join(".linop-dev")
+                    .join("dbx-data")
+                    .join("dbx.db")
+            })
+            .unwrap_or_else(|| std::path::PathBuf::from(".linop-dev/dbx-data/dbx.db"));
+        let outcome = match tokio::time::timeout(
+            Duration::from_secs(CONNECT_TIMEOUT_SECS),
+            DbxKernel::open(&store, profiles),
+        )
+        .await
+        {
+            Ok(Ok(dbx)) => dbx,
+            Ok(Err(e)) => {
+                self.notice = format!("打开数据库失败:{e}");
+                return;
+            }
+            Err(_) => {
+                self.notice = "打开数据库超时".into();
+                return;
+            }
+        };
+        let conns: Vec<String> = outcome
+            .connections()
+            .await
+            .into_iter()
+            .map(|c| c.name)
+            .collect();
+        self.dbx = Some(DbxBrowse {
+            dbx: std::sync::Arc::new(outcome),
+            view: DbxView::Conns,
+            conns,
+            conn_sel: 0,
+            conn: None,
+            tables: Vec::new(),
+            table_sel: 0,
+            columns: Vec::new(),
+            rows: Vec::new(),
+            status: "↑/↓ 选择连接 · Enter 列出表".into(),
+        });
+        self.mode = Mode::DbxBrowse;
+    }
+
+    /// 数据库浏览按键:连接 → 表 → 数据 三级视图。
+    async fn dbx_key(&mut self, key: KeyEvent) {
+        let Some(browse) = self.dbx.as_mut() else {
+            self.mode = Mode::Picker;
+            return;
+        };
+        match browse.view {
+            DbxView::Conns => match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => {
+                    self.dbx = None;
+                    self.mode = Mode::Picker;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if !browse.conns.is_empty() {
+                        let len = browse.conns.len();
+                        browse.conn_sel = (browse.conn_sel + len - 1) % len;
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if !browse.conns.is_empty() {
+                        let len = browse.conns.len();
+                        browse.conn_sel = (browse.conn_sel + 1) % len;
+                    }
+                }
+                KeyCode::Enter => {
+                    browse.conn = browse.conns.get(browse.conn_sel).cloned();
+                    browse.view = DbxView::Tables;
+                    browse.table_sel = 0;
+                    browse.status = "加载表列表…".into();
+                    let dbx = browse.dbx.clone();
+                    let conn = browse.conn.clone().unwrap_or_default();
+                    let q = tokio::spawn(async move {
+                        dbx.list_tables(&conn)
+                            .await
+                            .map(|v| v.into_iter().map(|t| t.name).collect::<Vec<_>>())
+                    });
+                    match tokio::time::timeout(Duration::from_secs(SFTP_META_TIMEOUT_SECS), q).await
+                    {
+                        Ok(Ok(Ok(names))) => {
+                            if let Some(browse) = self.dbx.as_mut() {
+                                browse.tables = names;
+                                browse.status = format!(
+                                    "{} 张表/视图 · Enter 看数据 · s SQL",
+                                    browse.tables.len()
+                                );
+                            }
+                        }
+                        Ok(Ok(Err(e))) => {
+                            if let Some(browse) = self.dbx.as_mut() {
+                                browse.status = format!("查询失败:{e}");
+                            }
+                        }
+                        Ok(Err(_)) | Err(_) => {
+                            if let Some(browse) = self.dbx.as_mut() {
+                                browse.status = "表列表加载超时".into();
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            },
+            DbxView::Tables => match key.code {
+                KeyCode::Backspace | KeyCode::Esc => {
+                    browse.view = DbxView::Conns;
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    if !browse.tables.is_empty() {
+                        let len = browse.tables.len();
+                        browse.table_sel = (browse.table_sel + len - 1) % len;
+                    }
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if !browse.tables.is_empty() {
+                        let len = browse.tables.len();
+                        browse.table_sel = (browse.table_sel + 1) % len;
+                    }
+                }
+                KeyCode::Enter => {
+                    let table = browse.tables.get(browse.table_sel).cloned();
+                    let Some(table) = table else { return };
+                    let conn = browse.conn.clone().unwrap_or_default();
+                    let quoted: Vec<String> = table
+                        .split('.')
+                        .map(|part| format!("\"{}\"", part.replace('"', "\"\"")))
+                        .collect();
+                    let sql = format!("SELECT * FROM {}", quoted.join("."));
+                    browse.status = "查询中…".into();
+                    let dbx = browse.dbx.clone();
+                    let q = tokio::spawn(async move {
+                        dbx.query(&conn, &sql).await.map(|r| {
+                            (
+                                r.columns,
+                                r.rows
+                                    .into_iter()
+                                    .map(|row| {
+                                        row.iter()
+                                            .map(|c| match c {
+                                                serde_json::Value::Null => "NULL".to_string(),
+                                                serde_json::Value::String(x) => x.clone(),
+                                                other => other.to_string(),
+                                            })
+                                            .collect()
+                                    })
+                                    .collect(),
+                            )
+                        })
+                    });
+                    match tokio::time::timeout(Duration::from_secs(SFTP_META_TIMEOUT_SECS), q).await
+                    {
+                        Ok(Ok(Ok((columns, rows)))) => {
+                            if let Some(browse) = self.dbx.as_mut() {
+                                browse.columns = columns;
+                                browse.rows = rows;
+                                browse.view = DbxView::Data;
+                                browse.status =
+                                    format!("{} 行 · Backspace 返回", browse.rows.len());
+                            }
+                        }
+                        Ok(Ok(Err(e))) => {
+                            if let Some(browse) = self.dbx.as_mut() {
+                                browse.status = format!("查询失败:{e}");
+                            }
+                        }
+                        Ok(Err(join)) => {
+                            if let Some(browse) = self.dbx.as_mut() {
+                                browse.status = format!("查询失败:{join}");
+                            }
+                        }
+                        Err(_) => {
+                            if let Some(browse) = self.dbx.as_mut() {
+                                browse.status = "查询超时".into();
+                            }
+                        }
+                    }
+                }
+                KeyCode::Char('s') => {
+                    self.dialog = Some(Dialog {
+                        title: "执行 SQL".to_string(),
+                        prompt: "SQL(单条语句,Enter 执行):".to_string(),
+                        input: String::new(),
+                        action: DialogAction::RunDbxSql,
+                        error: String::new(),
+                        status: String::new(),
+                        secret: false,
+                    });
+                }
+                _ => {}
+            },
+            DbxView::Data => match key.code {
+                KeyCode::Backspace | KeyCode::Esc => {
+                    browse.view = DbxView::Tables;
+                }
+                _ => {}
+            },
+        }
+    }
+
+    /// 在选中连接上执行 SQL(对话框入口)。
+    async fn run_dbx_sql_dialog(&mut self, sql: String) {
+        let Some(browse) = self.dbx.as_mut() else {
+            return;
+        };
+        let conn = browse.conn.clone().unwrap_or_default();
+        browse.status = "执行中…".into();
+        let dbx = browse.dbx.clone();
+        let q = tokio::spawn(async move {
+            dbx.query(&conn, &sql).await.map(|r| {
+                (
+                    r.columns,
+                    r.rows
+                        .into_iter()
+                        .map(|row| {
+                            row.iter()
+                                .map(|c| match c {
+                                    serde_json::Value::Null => "NULL".to_string(),
+                                    serde_json::Value::String(x) => x.clone(),
+                                    other => other.to_string(),
+                                })
+                                .collect()
+                        })
+                        .collect(),
+                )
+            })
+        });
+        match tokio::time::timeout(Duration::from_secs(SFTP_META_TIMEOUT_SECS), q).await {
+            Ok(Ok(Ok((columns, rows)))) => {
+                if let Some(browse) = self.dbx.as_mut() {
+                    browse.columns = columns;
+                    browse.rows = rows;
+                    browse.view = DbxView::Data;
+                    browse.status = format!("{} 行 · Backspace 返回", browse.rows.len());
+                }
+            }
+            Ok(Ok(Err(e))) => {
+                if let Some(browse) = self.dbx.as_mut() {
+                    browse.status = format!("SQL 失败:{e}");
+                }
+            }
+            Ok(Err(join)) => {
+                if let Some(browse) = self.dbx.as_mut() {
+                    browse.status = format!("执行失败:{join}");
+                }
+            }
+            Err(_) => {
+                if let Some(browse) = self.dbx.as_mut() {
+                    browse.status = "执行超时".into();
                 }
             }
         }

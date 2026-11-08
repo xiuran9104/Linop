@@ -222,10 +222,14 @@ mod tests {
         let control_character =
             if cfg!(windows) { "C:/tmp/before\n-migration.sql" } else { "/tmp/before\n-migration.sql" };
         assert!(validate_database_backup_file(control_character, &[]).is_err());
-        let valid = if cfg!(windows) { "C:/tmp/linop-db-backup__nightly.SQL" } else { "/tmp/linop-db-backup__nightly.SQL" };
+        let valid =
+            if cfg!(windows) { "C:/tmp/linop-db-backup__nightly.SQL" } else { "/tmp/linop-db-backup__nightly.SQL" };
         assert!(validate_database_backup_file(valid, &[]).is_ok());
-        let valid_gzip =
-            if cfg!(windows) { "C:/tmp/linop-db-backup__nightly.SQL.GZ" } else { "/tmp/linop-db-backup__nightly.SQL.GZ" };
+        let valid_gzip = if cfg!(windows) {
+            "C:/tmp/linop-db-backup__nightly.SQL.GZ"
+        } else {
+            "/tmp/linop-db-backup__nightly.SQL.GZ"
+        };
         assert!(validate_database_backup_file(valid_gzip, &[]).is_ok());
     }
 

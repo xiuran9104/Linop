@@ -452,8 +452,11 @@ fn postgres_insert_can_omit_schema_namespace() {
             });
             request.options.sql.include_database_name = include_database_name;
             let result = extract_data_grid_selection(request).unwrap();
-            let table =
-                if include_database_name && schema.is_some() { r#""linop_db_dst_ccfebf6b"."users""# } else { r#""users""# };
+            let table = if include_database_name && schema.is_some() {
+                r#""linop_db_dst_ccfebf6b"."users""#
+            } else {
+                r#""users""#
+            };
             assert!(result.text.starts_with(&format!("INSERT INTO {table} (")), "{}", result.text);
         }
     }

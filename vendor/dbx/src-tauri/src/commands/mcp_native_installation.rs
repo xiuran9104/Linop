@@ -93,8 +93,9 @@ fn discover(directory: &Path) -> Option<NativeInstallation> {
     let version = None;
     let mut installation = discover_binary(binary, version, NativeInstallationKind::Installer)?;
     if installation.version.is_none() {
-        installation.version =
-            std::fs::read_to_string(directory.join(".linop-db-mcp-version")).ok().and_then(|value| parse_version(&value));
+        installation.version = std::fs::read_to_string(directory.join(".linop-db-mcp-version"))
+            .ok()
+            .and_then(|value| parse_version(&value));
     }
     Some(installation)
 }
@@ -280,7 +281,9 @@ impl NativeInstallation {
 
     fn uninstall_standalone(&self) -> Result<String, String> {
         let expected = home_directory()
-            .map(|home| standalone_bin_directory(&home).join(if cfg!(windows) { "linop-db-mcp.exe" } else { "linop-db-mcp" }))
+            .map(|home| {
+                standalone_bin_directory(&home).join(if cfg!(windows) { "linop-db-mcp.exe" } else { "linop-db-mcp" })
+            })
             .ok_or_else(|| "Unable to resolve the user home directory.".to_string())?;
         if self.binary != expected {
             return Err(format!("Refusing to remove unexpected native MCP path: {}", self.binary.display()));
@@ -337,8 +340,9 @@ pub(super) fn install_or_update(existing: Option<&NativeInstallation>, npm_insta
     }
 
     run_embedded_installer()?;
-    let installation = discover_standalone()
-        .ok_or_else(|| "The native installer completed, but ~/.dbx/bin/linop-db-mcp could not be validated.".to_string())?;
+    let installation = discover_standalone().ok_or_else(|| {
+        "The native installer completed, but ~/.dbx/bin/linop-db-mcp could not be validated.".to_string()
+    })?;
     let action = if existing.is_some() { "Updated" } else { "Installed" };
     let mut message = format!(
         "{action} native DBX MCP{} at {}",

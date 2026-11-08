@@ -12,7 +12,9 @@
 //! `DBX_LIVE_DORIS_USER`, `DBX_LIVE_DORIS_PASSWORD`, `DBX_LIVE_DORIS_DATABASE`.
 
 use linop_db_core::connection::AppState;
-use linop_db_core::database_export::{begin_database_backup_snapshot_core, export_database_sql_core, DatabaseExportRequest};
+use linop_db_core::database_export::{
+    begin_database_backup_snapshot_core, export_database_sql_core, DatabaseExportRequest,
+};
 use linop_db_core::models::connection::{ConnectionConfig, DatabaseType};
 use linop_db_core::query::{
     begin_database_backup_snapshot, execute_in_manual_transaction, execute_sql_statement, rollback_manual_transaction,
@@ -139,7 +141,8 @@ fn live_doris_database_export_writes_all_rows() {
 async fn live_doris_database_export_writes_all_rows_inner() {
     let (state, storage_path, config, table_name) = setup().await;
     let database = config.database.clone().expect("database");
-    let export_path = std::env::temp_dir().join(format!("linop-db-live-doris-export-{}.sql", uuid::Uuid::new_v4().simple()));
+    let export_path =
+        std::env::temp_dir().join(format!("linop-db-live-doris-export-{}.sql", uuid::Uuid::new_v4().simple()));
 
     let snapshot =
         begin_database_backup_snapshot_core(&state, &config.id, &database).await.expect("Doris export snapshot");

@@ -464,7 +464,11 @@ pub(crate) struct DeletePolicyReq {
 
 // ---- Helper: writable check ----
 
-async fn ensure_writable(app: &linop_db_core::connection::AppState, conn_id: &str, action: &str) -> Result<(), AppError> {
+async fn ensure_writable(
+    app: &linop_db_core::connection::AppState,
+    conn_id: &str,
+    action: &str,
+) -> Result<(), AppError> {
     if let Some(name) = linop_db_core::query::connection_readonly_name(app, conn_id).await {
         return Err(AppError::from(format!("Read-only connection '{name}'. {action} is blocked.")));
     }
@@ -479,8 +483,9 @@ pub async fn test_connection(
     Json(req): Json<ConnReq>,
 ) -> Result<Json<linop_db_core::mq::MqClusterInfo>, AppError> {
     super::mcp_policy::ensure_scope(&state, &headers, &req.connection_id).await?;
-    let result =
-        linop_db_core::mq::service::mq_test_connection_core(&state.app, &req.connection_id).await.map_err(AppError::from)?;
+    let result = linop_db_core::mq::service::mq_test_connection_core(&state.app, &req.connection_id)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -490,8 +495,9 @@ pub async fn list_tenants(
     Json(req): Json<ConnReq>,
 ) -> Result<Json<Vec<linop_db_core::mq::TenantInfo>>, AppError> {
     super::mcp_policy::ensure_scope(&state, &headers, &req.connection_id).await?;
-    let result =
-        linop_db_core::mq::service::mq_list_tenants_core(&state.app, &req.connection_id).await.map_err(AppError::from)?;
+    let result = linop_db_core::mq::service::mq_list_tenants_core(&state.app, &req.connection_id)
+        .await
+        .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -683,9 +689,10 @@ pub async fn get_topic_internal_stats(
     Json(req): Json<TopicReq>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     super::mcp_policy::ensure_scope(&state, &headers, &req.connection_id).await?;
-    let result = linop_db_core::mq::service::mq_get_topic_internal_stats_core(&state.app, &req.connection_id, req.topic)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::mq::service::mq_get_topic_internal_stats_core(&state.app, &req.connection_id, req.topic)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -754,10 +761,15 @@ pub async fn list_bindings(
     Json(req): Json<ListBindingsReq>,
 ) -> Result<Json<Vec<linop_db_core::mq::MqBindingInfo>>, AppError> {
     super::mcp_policy::ensure_scope(&state, &headers, &req.connection_id).await?;
-    let result =
-        linop_db_core::mq::service::mq_list_bindings_core(&state.app, &req.connection_id, req.ns, req.exchange, req.queue)
-            .await
-            .map_err(AppError::internal)?;
+    let result = linop_db_core::mq::service::mq_list_bindings_core(
+        &state.app,
+        &req.connection_id,
+        req.ns,
+        req.exchange,
+        req.queue,
+    )
+    .await
+    .map_err(AppError::internal)?;
     Ok(Json(result))
 }
 
@@ -830,9 +842,15 @@ pub async fn create_subscription(
 ) -> Result<Json<()>, AppError> {
     super::mcp_policy::ensure_write(&state, &headers, &req.connection_id, "", "Create subscription").await?;
     ensure_writable(&state.app, &req.connection_id, "Create subscription").await?;
-    linop_db_core::mq::service::mq_create_subscription_core(&state.app, &req.connection_id, req.topic, req.sub, req.pos)
-        .await
-        .map_err(AppError::from)?;
+    linop_db_core::mq::service::mq_create_subscription_core(
+        &state.app,
+        &req.connection_id,
+        req.topic,
+        req.sub,
+        req.pos,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(()))
 }
 
@@ -843,9 +861,15 @@ pub async fn delete_subscription(
 ) -> Result<Json<()>, AppError> {
     super::mcp_policy::ensure_dangerous_write(&state, &headers, &req.connection_id, "", "Delete subscription").await?;
     ensure_writable(&state.app, &req.connection_id, "Delete subscription").await?;
-    linop_db_core::mq::service::mq_delete_subscription_core(&state.app, &req.connection_id, req.topic, req.sub, req.force)
-        .await
-        .map_err(AppError::from)?;
+    linop_db_core::mq::service::mq_delete_subscription_core(
+        &state.app,
+        &req.connection_id,
+        req.topic,
+        req.sub,
+        req.force,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(()))
 }
 
@@ -894,9 +918,10 @@ pub async fn get_consumer_group_config(
     Json(req): Json<ConsumerGroupConfigReq>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     super::mcp_policy::ensure_scope(&state, &headers, &req.connection_id).await?;
-    let result = linop_db_core::mq::service::mq_get_consumer_group_config_core(&state.app, &req.connection_id, req.group_id)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::mq::service::mq_get_consumer_group_config_core(&state.app, &req.connection_id, req.group_id)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -1011,10 +1036,14 @@ pub async fn list_client_channels(
     Json(req): Json<ListClientChannelsReq>,
 ) -> Result<Json<Vec<linop_db_core::mq::MqChannelInfo>>, AppError> {
     super::mcp_policy::ensure_scope(&state, &headers, &req.connection_id).await?;
-    let result =
-        linop_db_core::mq::service::mq_list_client_channels_core(&state.app, &req.connection_id, req.ns, req.connection)
-            .await
-            .map_err(AppError::internal)?;
+    let result = linop_db_core::mq::service::mq_list_client_channels_core(
+        &state.app,
+        &req.connection_id,
+        req.ns,
+        req.connection,
+    )
+    .await
+    .map_err(AppError::internal)?;
     Ok(Json(result))
 }
 
@@ -1116,9 +1145,15 @@ pub async fn grant_permission(
 ) -> Result<Json<()>, AppError> {
     super::mcp_policy::ensure_write(&state, &headers, &req.connection_id, "", "Grant permission").await?;
     ensure_writable(&state.app, &req.connection_id, "Grant permission").await?;
-    linop_db_core::mq::service::mq_grant_permission_core(&state.app, &req.connection_id, req.scope, req.role, req.actions)
-        .await
-        .map_err(AppError::from)?;
+    linop_db_core::mq::service::mq_grant_permission_core(
+        &state.app,
+        &req.connection_id,
+        req.scope,
+        req.role,
+        req.actions,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(()))
 }
 
@@ -1153,8 +1188,9 @@ pub async fn list_users(
     Json(req): Json<ConnReq>,
 ) -> Result<Json<Vec<linop_db_core::mq::MqUserInfo>>, AppError> {
     super::mcp_policy::ensure_scope(&state, &headers, &req.connection_id).await?;
-    let result =
-        linop_db_core::mq::service::mq_list_users_core(&state.app, &req.connection_id).await.map_err(AppError::internal)?;
+    let result = linop_db_core::mq::service::mq_list_users_core(&state.app, &req.connection_id)
+        .await
+        .map_err(AppError::internal)?;
     Ok(Json(result))
 }
 
@@ -1323,8 +1359,9 @@ pub async fn list_nodes(
     Json(req): Json<ConnReq>,
 ) -> Result<Json<Vec<linop_db_core::mq::MqNodeInfo>>, AppError> {
     super::mcp_policy::ensure_scope(&state, &headers, &req.connection_id).await?;
-    let result =
-        linop_db_core::mq::service::mq_list_nodes_core(&state.app, &req.connection_id).await.map_err(AppError::internal)?;
+    let result = linop_db_core::mq::service::mq_list_nodes_core(&state.app, &req.connection_id)
+        .await
+        .map_err(AppError::internal)?;
     Ok(Json(result))
 }
 
@@ -1444,9 +1481,10 @@ pub async fn view_message(
     Json(req): Json<ViewMessageReq>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     super::mcp_policy::ensure_scope(&state, &headers, &req.connection_id).await?;
-    let result = linop_db_core::mq::service::mq_view_message_core(&state.app, &req.connection_id, req.topic, req.msg_id)
-        .await
-        .map_err(AppError::from)?;
+    let result =
+        linop_db_core::mq::service::mq_view_message_core(&state.app, &req.connection_id, req.topic, req.msg_id)
+            .await
+            .map_err(AppError::from)?;
     Ok(Json(result))
 }
 
@@ -1524,10 +1562,14 @@ pub async fn query_message_trace(
     Json(req): Json<QueryMessageTraceReq>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     super::mcp_policy::ensure_scope(&state, &headers, &req.connection_id).await?;
-    let result =
-        linop_db_core::mq::service::mq_query_message_trace_core(&state.app, &req.connection_id, req.msg_id, req.trace_topic)
-            .await
-            .map_err(AppError::from)?;
+    let result = linop_db_core::mq::service::mq_query_message_trace_core(
+        &state.app,
+        &req.connection_id,
+        req.msg_id,
+        req.trace_topic,
+    )
+    .await
+    .map_err(AppError::from)?;
     Ok(Json(result))
 }
 

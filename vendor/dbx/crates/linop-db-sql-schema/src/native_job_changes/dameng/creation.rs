@@ -48,7 +48,9 @@ pub fn native_job_dameng_create_plan(
     let mut steps = vec![NativeJobSqlStep {
         id: "create".into(),
         label: "native_job_step_create_disabled".into(),
-        sql: format!("DECLARE linop_db_email_operator VARCHAR(128); linop_db_netsend_operator VARCHAR(128); BEGIN {call} END;"),
+        sql: format!(
+            "DECLARE linop_db_email_operator VARCHAR(128); linop_db_netsend_operator VARCHAR(128); BEGIN {call} END;"
+        ),
         effect: NativeJobStepEffect::Created,
     }];
     let mut push = |id: &str, label: &str, call: String, effect| {

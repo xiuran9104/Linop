@@ -407,7 +407,9 @@ async fn live_mysql_transfer_keeps_columns_whose_comment_mentions_foreign_key() 
         );
         assert_eq!(pending_fk_alters.len(), 1, "alters: {pending_fk_alters:?}");
         for (_, statement) in &pending_fk_alters {
-            linop_db_core::transfer::execute_on_pool_with_max_rows(&state, &target_pool_key, statement, None).await.unwrap();
+            linop_db_core::transfer::execute_on_pool_with_max_rows(&state, &target_pool_key, statement, None)
+                .await
+                .unwrap();
         }
 
         let ddl_result = mysql::execute_query(

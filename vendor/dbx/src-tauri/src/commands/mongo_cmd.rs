@@ -85,7 +85,8 @@ pub async fn mongo_rename_collection(
     new_name: String,
 ) -> Result<(), String> {
     ensure_connection_writable(&state, &connection_id, "Rename collection").await?;
-    linop_db_core::mongo_ops::mongo_rename_collection_core(&state, &connection_id, &database, &collection, &new_name).await
+    linop_db_core::mongo_ops::mongo_rename_collection_core(&state, &connection_id, &database, &collection, &new_name)
+        .await
 }
 
 #[tauri::command]
@@ -148,8 +149,13 @@ pub async fn mongo_find_documents(
     // mongo shell command path, so surface the missing-collection error here on
     // empty results just like the read cores do (#6032).
     if result.documents.is_empty() {
-        linop_db_core::mongo_ops::ensure_collection_exists_for_query(&app_state, &connection_id, &database, &collection)
-            .await?;
+        linop_db_core::mongo_ops::ensure_collection_exists_for_query(
+            &app_state,
+            &connection_id,
+            &database,
+            &collection,
+        )
+        .await?;
     }
     Ok(result)
 }
@@ -270,8 +276,12 @@ pub async fn mongo_server_version(
     if mcp_request == Some(true) {
         crate::commands::mcp_bridge::ensure_mcp_read_allowed_by_id(&app, &connection_id, &database).await?;
     }
-    run_cancellable(&app, execution_id, linop_db_core::mongo_ops::mongo_server_version_core(&app, &connection_id, &database))
-        .await
+    run_cancellable(
+        &app,
+        execution_id,
+        linop_db_core::mongo_ops::mongo_server_version_core(&app, &connection_id, &database),
+    )
+    .await
 }
 
 #[tauri::command]
@@ -531,7 +541,8 @@ pub async fn mongo_insert_documents(
             .await?;
     }
     ensure_connection_writable(&state, &connection_id, "Insert").await?;
-    linop_db_core::mongo_ops::mongo_insert_documents_core(&state, &connection_id, &database, &collection, &docs_json).await
+    linop_db_core::mongo_ops::mongo_insert_documents_core(&state, &connection_id, &database, &collection, &docs_json)
+        .await
 }
 
 #[tauri::command]
@@ -699,8 +710,15 @@ pub async fn mongo_delete_documents(
         .await?;
     }
     ensure_connection_writable(&state, &connection_id, "Delete").await?;
-    linop_db_core::mongo_ops::mongo_delete_documents_core(&state, &connection_id, &database, &collection, &filter_json, many)
-        .await
+    linop_db_core::mongo_ops::mongo_delete_documents_core(
+        &state,
+        &connection_id,
+        &database,
+        &collection,
+        &filter_json,
+        many,
+    )
+    .await
 }
 
 #[tauri::command]

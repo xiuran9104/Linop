@@ -1,7 +1,9 @@
 use linop_db_core::connection::{AppState, PoolKind, TransactionSession, TxnConnection};
 use linop_db_core::db::agent_driver::{AgentDriverClient, AgentLaunchSpec, AgentRuntimeClient};
 use linop_db_core::models::connection::ConnectionConfig;
-use linop_db_core::query::{request_large_value, request_large_value_reported, LargeValueCompletion, LargeValueRequest};
+use linop_db_core::query::{
+    request_large_value, request_large_value_reported, LargeValueCompletion, LargeValueRequest,
+};
 use serde_json::json;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -106,7 +108,9 @@ async fn public_lob_request_cancels_while_waiting_for_transaction_connection() {
                 connection: connection.clone(),
                 pool_key: "lob".into(),
                 last_activity: Instant::now(),
-                idle_timeout: std::time::Duration::from_secs(linop_db_core::query::MANUAL_TRANSACTION_IDLE_TIMEOUT_SECS),
+                idle_timeout: std::time::Duration::from_secs(
+                    linop_db_core::query::MANUAL_TRANSACTION_IDLE_TIMEOUT_SECS,
+                ),
                 busy: false,
                 snapshot_rotation_safe: false,
                 connection_id: "lob".into(),

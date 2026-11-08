@@ -64,7 +64,12 @@ pub fn toml_string_array(values: &[&str]) -> String {
 }
 
 pub fn linop_db_mcp_enabled_tools(agent_mode: bool) -> Vec<&'static str> {
-    let mut tools = vec!["linop_db_list_connections", "linop_db_list_tables", "linop_db_describe_table", "linop_db_get_schema_context"];
+    let mut tools = vec![
+        "linop_db_list_connections",
+        "linop_db_list_tables",
+        "linop_db_describe_table",
+        "linop_db_get_schema_context",
+    ];
     if agent_mode {
         tools.push("linop_db_execute_query");
         tools.push("linop_db_execute_redis_command");

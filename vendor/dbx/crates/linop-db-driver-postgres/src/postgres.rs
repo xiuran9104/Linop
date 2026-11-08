@@ -11787,7 +11787,9 @@ mod tests {
         // Real shape captured from openGauss-lite 5.0.1 gs_package.pkgspecsrc.
         let fragment = " PACKAGE  DECLARE  g_version VARCHAR2(20) := '1.0';\n  PROCEDURE log_message(p_message IN VARCHAR2);\n  FUNCTION add_numbers(p_left IN INTEGER, p_right IN INTEGER) RETURN INTEGER;\nEND ";
         let ddl = opengauss_package_spec_source("public", "linop_db_test_pkg_math", fragment, false).unwrap();
-        assert!(ddl.starts_with("CREATE OR REPLACE PACKAGE \"public\".\"linop_db_test_pkg_math\" AUTHID CURRENT_USER AS\n"));
+        assert!(
+            ddl.starts_with("CREATE OR REPLACE PACKAGE \"public\".\"linop_db_test_pkg_math\" AUTHID CURRENT_USER AS\n")
+        );
         assert!(ddl.contains("AUTHID CURRENT_USER"));
         assert!(ddl.contains("g_version VARCHAR2(20) := '1.0';"));
         assert!(ddl.contains("PROCEDURE log_message(p_message IN VARCHAR2);"));
@@ -12670,7 +12672,11 @@ mod tests {
             has_explicit_pg_catalog: false,
         };
         assert_eq!(
-            postgres_set_preserved_search_path_sql("linop_db_test", PostgresSearchPathContext::Query, &explicit_baseline),
+            postgres_set_preserved_search_path_sql(
+                "linop_db_test",
+                PostgresSearchPathContext::Query,
+                &explicit_baseline
+            ),
             "SET search_path TO \"linop_db_test\", \"public\", pg_catalog"
         );
     }
@@ -13197,7 +13203,8 @@ mod tests {
             return None;
         }
 
-        let mut container = DockerPostgres { name: format!("linop-db-postgres-enum-{}", uuid::Uuid::new_v4()), port: 0 };
+        let mut container =
+            DockerPostgres { name: format!("linop-db-postgres-enum-{}", uuid::Uuid::new_v4()), port: 0 };
 
         let status = Command::new("docker")
             .args(["run", "-d", "--rm", "--name", &container.name])
@@ -17407,12 +17414,14 @@ mod tests {
         drop(client);
 
         let all_tables = list_tables(&pool, "public").await.expect("expand complete table list");
-        let first_page = list_tables_filtered(&pool, "public", Some("linop_db_issue_5584_live_page_"), Some(1), Some(0))
-            .await
-            .expect("list first table page");
-        let second_page = list_tables_filtered(&pool, "public", Some("linop_db_issue_5584_live_page_"), Some(1), Some(1))
-            .await
-            .expect("list second table page");
+        let first_page =
+            list_tables_filtered(&pool, "public", Some("linop_db_issue_5584_live_page_"), Some(1), Some(0))
+                .await
+                .expect("list first table page");
+        let second_page =
+            list_tables_filtered(&pool, "public", Some("linop_db_issue_5584_live_page_"), Some(1), Some(1))
+                .await
+                .expect("list second table page");
         let wildcard_match =
             list_tables_filtered(&pool, "public", Some("linop_db_issue_5584_live_order_100%"), Some(10), Some(0))
                 .await

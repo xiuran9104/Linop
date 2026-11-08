@@ -68,9 +68,9 @@ async fn spawn_mongo_legacy_fallback_agent(
                     "Agent mapping is unavailable",
                 )
             })?;
-    linop_db_core::agent_service::ensure_agent_driver_ready(&state.agent_manager, agent_key).await.map_err(|error| {
-        mongo_legacy_fallback_error(native_error, "Failed to prepare MongoDB (Legacy) fallback driver", &error)
-    })?;
+    linop_db_core::agent_service::ensure_agent_driver_ready(&state.agent_manager, agent_key).await.map_err(
+        |error| mongo_legacy_fallback_error(native_error, "Failed to prepare MongoDB (Legacy) fallback driver", &error),
+    )?;
     state.agent_manager.spawn(db_type, Some(MONGO_LEGACY_DRIVER_PROFILE)).await.map_err(|error| {
         mongo_legacy_fallback_error(
             native_error,
@@ -282,7 +282,9 @@ mod tests {
 
     #[tokio::test]
     async fn transport_desktop_proxy_rejects_foreign_pending_debug_before_changing_configs() {
-        use linop_db_core::query::pl_debug::{pl_debug_bootstrap_core, pl_debug_start_core, PlDebugAccess, PlDebugStart};
+        use linop_db_core::query::pl_debug::{
+            pl_debug_bootstrap_core, pl_debug_start_core, PlDebugAccess, PlDebugStart,
+        };
         let dir = tempfile::tempdir().unwrap();
         let storage = linop_db_core::persistence::test_storage::open(&dir.path().join("storage.db")).await.unwrap();
         let state = Arc::new(AppState::new_with_plugin_dir(storage, dir.path().join("plugins")));
@@ -501,7 +503,8 @@ mod tests {
             connect_timeout_secs: linop_db_core::models::connection::default_connect_timeout_secs(),
             query_timeout_secs: linop_db_core::models::connection::default_query_timeout_secs(),
             idle_timeout_secs: linop_db_core::models::connection::default_idle_timeout_secs(),
-            manual_transaction_timeout_secs: linop_db_core::models::connection::default_manual_transaction_timeout_secs(),
+            manual_transaction_timeout_secs: linop_db_core::models::connection::default_manual_transaction_timeout_secs(
+            ),
             idle_disconnect_secs: linop_db_core::models::connection::default_idle_disconnect_secs(),
             keepalive_interval_secs: linop_db_core::models::connection::default_keepalive_interval_secs(),
             ssl: false,
@@ -721,7 +724,9 @@ mod tests {
         drop(linop_db_core::db::sqlite::connect_path_create_if_missing(main_path.to_str().unwrap()).await.unwrap());
         let attached =
             linop_db_core::db::sqlite::connect_path_create_if_missing(attached_path.to_str().unwrap()).await.unwrap();
-        linop_db_core::db::sqlite::execute_query(&attached, "CREATE TABLE events(id INTEGER PRIMARY KEY);").await.unwrap();
+        linop_db_core::db::sqlite::execute_query(&attached, "CREATE TABLE events(id INTEGER PRIMARY KEY);")
+            .await
+            .unwrap();
         drop(attached);
 
         let mut config = sqlite_config(&main_path, "");
@@ -1601,7 +1606,8 @@ async fn test_connection_with_info_impl(
     let has_transport_layers = config.has_effective_transport_layers();
     let connection_id = if has_transport_layers { tunnel_id.as_str() } else { config.id.as_str() };
     let prepared = state.connection_endpoint_attempt(connection_id, &config).await?;
-    let mut cancellation = linop_db_core::connection::ZooKeeperTransportCancellation::new(state, connection_id, &prepared);
+    let mut cancellation =
+        linop_db_core::connection::ZooKeeperTransportCancellation::new(state, connection_id, &prepared);
     let result = async {
         let endpoint = prepared.endpoint?;
         let (host, port) = (endpoint.host.clone(), endpoint.port);
@@ -2299,7 +2305,8 @@ async fn connect_db_inner(
     }
     drop_nacos_adapters_for_connection_ids(state.inner(), std::slice::from_ref(&id)).await;
     let prepared = state.connection_endpoint_attempt(&id, &db_config).await?;
-    let mut cancellation = linop_db_core::connection::ZooKeeperTransportCancellation::new(state.inner(), &id, &prepared);
+    let mut cancellation =
+        linop_db_core::connection::ZooKeeperTransportCancellation::new(state.inner(), &id, &prepared);
     let result = async {
         let endpoint = prepared.endpoint?;
         let (host, port) = (endpoint.host, endpoint.port);
@@ -3065,7 +3072,8 @@ pub async fn unlock_connection_writes(
     connection_id: String,
     duration_secs: u64,
 ) -> Result<WriteUnlockState, String> {
-    let remaining_ms = linop_db_core::query::unlock_connection_writes_core(&state, &connection_id, duration_secs).await?;
+    let remaining_ms =
+        linop_db_core::query::unlock_connection_writes_core(&state, &connection_id, duration_secs).await?;
     Ok(WriteUnlockState { remaining_ms })
 }
 

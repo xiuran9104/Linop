@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use super::with_connection_timeout;
 use crate::models::connection::DatabaseConnectionInfo;
 use crate::types::{IndexInfo, ObjectStatistics};
-use linop_db_types::document::{MongoGridFsBucketInfo, MongoGridFsFileInfo};
 use futures::{io::AsyncReadExt, io::AsyncWriteExt, stream, StreamExt, TryStreamExt};
+use linop_db_types::document::{MongoGridFsBucketInfo, MongoGridFsFileInfo};
 use percent_encoding::percent_decode_str;
 use std::{collections::HashSet, time::Duration};
 

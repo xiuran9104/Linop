@@ -363,8 +363,9 @@ async fn cloudberry_native_ddl_still_includes_every_partition() {
     let url = format!("postgres://postgres:postgres@127.0.0.1:{}/postgres", container.port);
     let pool = linop_db_core::db::postgres::connect(&url, std::time::Duration::from_secs(5)).await.expect("connect");
 
-    let ddl =
-        linop_db_core::schema::cloudberry_ddl(&pool, "public", "t", true).await.expect("cloudberry ddl with partitions");
+    let ddl = linop_db_core::schema::cloudberry_ddl(&pool, "public", "t", true)
+        .await
+        .expect("cloudberry ddl with partitions");
     assert_eq!(
         ddl.matches("stub-native-ddl").count(),
         3,
@@ -374,8 +375,9 @@ async fn cloudberry_native_ddl_still_includes_every_partition() {
     assert!(ddl.contains("CREATE TABLE \"public\".\"t_p1\""));
     assert!(ddl.contains("CREATE TABLE \"public\".\"t_p2\""));
 
-    let single_ddl =
-        linop_db_core::schema::cloudberry_ddl(&pool, "public", "t", false).await.expect("cloudberry ddl without partitions");
+    let single_ddl = linop_db_core::schema::cloudberry_ddl(&pool, "public", "t", false)
+        .await
+        .expect("cloudberry ddl without partitions");
     assert_eq!(single_ddl.matches("stub-native-ddl").count(), 1, "expected only the root's own DDL: {single_ddl}");
 }
 
@@ -391,9 +393,10 @@ async fn cloudberry_native_ddl_still_includes_every_partition() {
 /// clause-insertion string logic around it.
 #[tokio::test]
 async fn opentenbase_tree_ddl_gives_every_partition_its_own_distribute_by() {
-    let Some(container) =
-        start_docker_postgres_with_server_args("linop-db-opentenbase-partition-ddl", &["-c", "allow_system_table_mods=on"])
-    else {
+    let Some(container) = start_docker_postgres_with_server_args(
+        "linop-db-opentenbase-partition-ddl",
+        &["-c", "allow_system_table_mods=on"],
+    ) else {
         return;
     };
 

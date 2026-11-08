@@ -324,7 +324,8 @@ async fn real_postgres_round_trip_quotes_columns_and_leaves_expressions_bare() {
         // Regenerate the index DDL through the exact same production function schema-diff
         // sync calls, then execute it back against the real database to prove it's valid.
         let ddl = create_index_sql("tankong_data", &index, DatabaseType::Highgo, Some(&schema));
-        linop_db_core::db::postgres::execute_query(&pool, &format!("DROP INDEX {schema}.uq_tankong_sta_type_time")).await?;
+        linop_db_core::db::postgres::execute_query(&pool, &format!("DROP INDEX {schema}.uq_tankong_sta_type_time"))
+            .await?;
         linop_db_core::db::postgres::execute_query(&pool, &ddl).await?;
 
         Ok::<_, String>((index, ddl))

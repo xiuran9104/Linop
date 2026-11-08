@@ -355,10 +355,9 @@ pub async fn auth_middleware(
             // 在下游处理器及其 await 到的池创建路径上注入当前登录会话的 owner 作用域，
             // 使 save_password=false 连接的临时密码按会话隔离（见 SessionCredentialStore）。
             let owner = token.clone();
-            return linop_db_core::session_credentials::with_credential_owner(
-                Some(owner),
-                async move { next.run(req).await },
-            )
+            return linop_db_core::session_credentials::with_credential_owner(Some(owner), async move {
+                next.run(req).await
+            })
             .await;
         }
     }

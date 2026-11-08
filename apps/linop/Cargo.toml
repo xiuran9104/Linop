@@ -17,10 +17,12 @@ linop-term = { workspace = true }
 linop-monitor = { workspace = true }
 linop-cast = { workspace = true }
 linop-telnet = { workspace = true }
+linop-dbx = { workspace = true }
 tokio = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
 anyhow = { workspace = true }
+serde_json = { workspace = true }
 dirs = { workspace = true }
 
 [dev-dependencies]

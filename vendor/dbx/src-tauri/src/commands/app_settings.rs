@@ -356,7 +356,8 @@ pub async fn set_mcp_plugin_scope_rule(
     sub_scope: Option<linop_db_core::mcp_access::McpSubScopeMode>,
 ) -> Result<linop_db_core::mcp_access::McpAccessPolicy, String> {
     let access =
-        linop_db_core::plugin_mcp::set_scope_rule(&state, &connection_id, &kind, value.as_deref(), rule, sub_scope).await?;
+        linop_db_core::plugin_mcp::set_scope_rule(&state, &connection_id, &kind, value.as_deref(), rule, sub_scope)
+            .await?;
     super::mcp_bridge::clear_mcp_sql_approvals();
     Ok(access)
 }

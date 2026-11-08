@@ -1064,7 +1064,9 @@ fn schema_diff_deploy_may_have_changed_schema(result: &linop_db_core::query::Sch
 pub async fn analyze_sql_references(
     Json(req): Json<AnalyzeSqlReferencesRequest>,
 ) -> Result<Json<linop_db_core::sql_analysis::SqlReferenceAnalysis>, AppError> {
-    linop_db_core::sql_analysis::analyze_sql_references(&req.sql, req.dialect.as_deref()).map(Json).map_err(AppError::from)
+    linop_db_core::sql_analysis::analyze_sql_references(&req.sql, req.dialect.as_deref())
+        .map(Json)
+        .map_err(AppError::from)
 }
 
 pub async fn find_statement_at_cursor(Json(req): Json<FindStatementAtCursorRequest>) -> Json<String> {
@@ -1366,7 +1368,9 @@ pub async fn build_copy_table_data_sql(Json(req): Json<BuildCopyTableDataSqlRequ
 pub async fn build_executable_object_source_statements(
     Json(req): Json<BuildExecutableObjectSourceRequest>,
 ) -> Result<Json<Vec<String>>, AppError> {
-    linop_db_core::object_source_sql::build_executable_object_source_statements(req.input).map(Json).map_err(AppError::from)
+    linop_db_core::object_source_sql::build_executable_object_source_statements(req.input)
+        .map(Json)
+        .map_err(AppError::from)
 }
 
 pub async fn build_oracle_type_management_sql(
@@ -1392,7 +1396,9 @@ pub async fn prepare_oracle_trigger_sql(
 pub async fn fingerprint_oracle_routine_object_source(
     Json(req): Json<BuildExecutableObjectSourceRequest>,
 ) -> Result<Json<String>, AppError> {
-    linop_db_core::object_source_sql::fingerprint_oracle_routine_object_source(req.input).map(Json).map_err(AppError::from)
+    linop_db_core::object_source_sql::fingerprint_oracle_routine_object_source(req.input)
+        .map(Json)
+        .map_err(AppError::from)
 }
 
 pub async fn build_executable_object_source_sql(
@@ -1451,7 +1457,8 @@ pub async fn build_table_structure_change_sql(
     let mysql_table_charset = req
         .mysql_table_charset
         .map(|change| linop_db_core::table_structure_sql::build_mysql_table_charset_change_sql(&req.options, change));
-    let mut result = linop_db_core::table_structure_sql::build_table_structure_change_sql_plan(req.options, req.starrocks);
+    let mut result =
+        linop_db_core::table_structure_sql::build_table_structure_change_sql_plan(req.options, req.starrocks);
     if let Some(extra) = mysql_table_charset {
         result.sql.statements.extend(extra.statements);
         result.sql.warnings.extend(extra.warnings);
@@ -1533,7 +1540,10 @@ pub async fn analyze_editable_query_editability(
 pub async fn prepare_data_grid_save(
     Json(req): Json<PrepareDataGridSaveRequest>,
 ) -> Json<linop_db_core::data_grid_sql::DataGridSavePreparation> {
-    Json(linop_db_core::data_grid_sql::prepare_data_grid_save_for_driver_profile(req.options, req.driver_profile.as_deref()))
+    Json(linop_db_core::data_grid_sql::prepare_data_grid_save_for_driver_profile(
+        req.options,
+        req.driver_profile.as_deref(),
+    ))
 }
 
 #[utoipa::path(
