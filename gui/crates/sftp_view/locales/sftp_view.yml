@@ -1,0 +1,944 @@
+_version: 2
+
+# 通用文本
+Common:
+  ok:
+    en: OK
+    zh-CN: 确定
+    zh-HK: 確定
+  cancel:
+    en: Cancel
+    zh-CN: 取消
+    zh-HK: 取消
+  delete:
+    en: Delete
+    zh-CN: 删除
+    zh-HK: 刪除
+  rename:
+    en: Rename
+    zh-CN: 重命名
+    zh-HK: 重命名
+  copy:
+    en: Copy
+    zh-CN: 复制
+    zh-HK: 複製
+  cut:
+    en: Cut
+    zh-CN: 剪切
+    zh-HK: 剪下
+  paste:
+    en: Paste
+    zh-CN: 粘贴
+    zh-HK: 貼上
+  properties:
+    en: Properties
+    zh-CN: 属性
+    zh-HK: 屬性
+  calculate:
+    en: Calculate
+    zh-CN: 计算
+    zh-HK: 計算
+  calculating:
+    en: Calculating…
+    zh-CN: 计算中…
+    zh-HK: 計算中…
+  property_name:
+    en: Name
+    zh-CN: 名称
+    zh-HK: 名稱
+  property_path:
+    en: Path
+    zh-CN: 路径
+    zh-HK: 路徑
+  property_type:
+    en: Type
+    zh-CN: 类型
+    zh-HK: 類型
+  property_file:
+    en: File
+    zh-CN: 文件
+    zh-HK: 文件
+  property_folder:
+    en: Folder
+    zh-CN: 文件夹
+    zh-HK: 文件夾
+  property_size:
+    en: Size
+    zh-CN: 大小
+    zh-HK: 大小
+  property_modified:
+    en: Modified
+    zh-CN: 修改时间
+    zh-HK: 修改時間
+  property_permissions:
+    en: Permissions
+    zh-CN: 权限
+    zh-HK: 權限
+  extract:
+    en: Extract
+    zh-CN: 解压
+    zh-HK: 解壓
+  create:
+    en: Create
+    zh-CN: 创建
+    zh-HK: 創建
+  modify:
+    en: Modify
+    zh-CN: 修改
+    zh-HK: 修改
+  refresh:
+    en: Refresh
+    zh-CN: 刷新
+    zh-HK: 刷新
+  download:
+    en: Download
+    zh-CN: 下载
+    zh-HK: 下載
+  upload:
+    en: Upload
+    zh-CN: 上传
+    zh-HK: 上傳
+  scanning:
+    en: "Scanning..."
+    zh-CN: "正在扫描..."
+    zh-HK: "正在掃描..."
+  reconnect:
+    en: Reconnect
+    zh-CN: 重新连接
+    zh-HK: 重新連接
+  close:
+    en: Close
+    zh-CN: 关闭
+    zh-HK: 關閉
+  edit:
+    en: Edit
+    zh-CN: 编辑
+    zh-HK: 編輯
+
+Navigation:
+  back:
+    en: Back
+    zh-CN: 后退
+    zh-HK: 後退
+  forward:
+    en: Forward
+    zh-CN: 前进
+    zh-HK: 前進
+
+Endpoint:
+  local:
+    en: Local
+    zh-CN: 本地
+    zh-HK: 本地
+  search:
+    en: Search servers
+    zh-CN: 搜索服务器
+    zh-HK: 搜尋伺服器
+  no_results:
+    en: No matching server
+    zh-CN: 没有匹配的服务器
+    zh-HK: 沒有符合的伺服器
+  switch_title:
+    en: Choose endpoint
+    zh-CN: 选择端点
+    zh-HK: 選擇端點
+  switch_tooltip:
+    en: "Switch endpoint (current: %{name})"
+    zh-CN: "切换端点（当前：%{name}）"
+    zh-HK: "切換端點（目前：%{name}）"
+  connection_missing:
+    en: The selected server no longer exists
+    zh-CN: 所选服务器已不存在
+    zh-HK: 所選伺服器已不存在
+  connection_invalid:
+    en: "Invalid server connection: %{error}"
+    zh-CN: "服务器连接配置无效：%{error}"
+    zh-HK: "伺服器連線設定無效：%{error}"
+  remote_edit_pending:
+    en: Remote editing actions for the left pane are not available yet
+    zh-CN: 左侧远程栏的修改操作暂不可用
+    zh-HK: 左側遠端欄的修改操作暫不可用
+
+# 本地磁盘下拉
+Volume:
+  open:
+    en: Choose drive
+    zh-CN: 选择硬盘
+    zh-HK: 選擇硬碟
+  empty:
+    en: No local drive found
+    zh-CN: 没有找到本地硬盘
+    zh-HK: 沒有找到本機硬碟
+
+# 文件操作
+File:
+  column_name:
+    en: Name
+    zh-CN: 名称
+    zh-HK: 名稱
+  column_modified:
+    en: Date Modified
+    zh-CN: 修改日期
+    zh-HK: 修改日期
+  column_size:
+    en: Size
+    zh-CN: 大小
+    zh-HK: 大小
+  column_kind:
+    en: Kind
+    zh-CN: 类型
+    zh-HK: 類型
+  column_owner:
+    en: Owner
+    zh-CN: 拥有者
+    zh-HK: 擁有者
+  configure_columns:
+    en: Configure columns
+    zh-CN: 设置显示列
+    zh-HK: 設定顯示欄
+  items_count:
+    en: "%{count} items"
+    zh-CN: "%{count} 个项目"
+    zh-HK: "%{count} 個項目"
+  empty_directory:
+    en: This folder is empty
+    zh-CN: 此文件夹为空
+    zh-HK: 此文件夾為空
+  empty_directory_detail:
+    en: Drop files here or create a new folder.
+    zh-CN: 将文件拖放到这里，或新建一个文件夹。
+    zh-HK: 將檔案拖放到這裡，或新建一個文件夾。
+  no_results:
+    en: No matching files
+    zh-CN: 没有匹配的文件
+    zh-HK: 沒有匹配的檔案
+  no_results_detail:
+    en: Try a different search.
+    zh-CN: 请尝试其他搜索内容。
+    zh-HK: 請嘗試其他搜尋內容。
+  no_visible_files:
+    en: No visible files
+    zh-CN: 没有可见文件
+    zh-HK: 沒有可見檔案
+  no_visible_files_detail:
+    en: Hidden files are excluded from this view.
+    zh-CN: 当前视图已隐藏隐藏文件。
+    zh-HK: 目前檢視已隱藏隱藏檔案。
+  drop_files_here:
+    en: Drop files here
+    zh-CN: 将文件拖放到这里
+    zh-HK: 將檔案拖放到這裡
+  copy:
+    en: Copy
+    zh-CN: 复制
+    zh-HK: 複製
+  cut:
+    en: Cut
+    zh-CN: 剪切
+    zh-HK: 剪下
+  paste:
+    en: Paste
+    zh-CN: 粘贴
+    zh-HK: 貼上
+  properties:
+    en: Properties
+    zh-CN: 属性
+    zh-HK: 屬性
+  actions:
+    en: File actions
+    zh-CN: 文件操作
+    zh-HK: 文件操作
+  calculate:
+    en: Calculate
+    zh-CN: 计算
+    zh-HK: 計算
+  calculating:
+    en: Calculating…
+    zh-CN: 计算中…
+    zh-HK: 計算中…
+  property_name:
+    en: Name
+    zh-CN: 名称
+    zh-HK: 名稱
+  property_path:
+    en: Path
+    zh-CN: 路径
+    zh-HK: 路徑
+  property_type:
+    en: Type
+    zh-CN: 类型
+    zh-HK: 類型
+  property_file:
+    en: File
+    zh-CN: 文件
+    zh-HK: 文件
+  property_folder:
+    en: Folder
+    zh-CN: 文件夹
+    zh-HK: 文件夾
+  property_size:
+    en: Size
+    zh-CN: 大小
+    zh-HK: 大小
+  property_modified:
+    en: Modified
+    zh-CN: 修改时间
+    zh-HK: 修改時間
+  property_permissions:
+    en: Permissions
+    zh-CN: 权限
+    zh-HK: 權限
+  property_owner:
+    en: Owner
+    zh-CN: 拥有者
+    zh-HK: 擁有者
+  copy_ready:
+    en: Files copied. Choose a destination and paste.
+    zh-CN: 已复制文件，请选择目标位置后粘贴
+    zh-HK: 已複製文件，請選擇目標位置後貼上
+  cut_ready:
+    en: Files cut. Choose a destination and paste.
+    zh-CN: 已剪切文件，请选择目标位置后粘贴
+    zh-HK: 已剪下文件，請選擇目標位置後貼上
+  new_file:
+    en: New File
+    zh-CN: 新建文件
+    zh-HK: 新建文件
+  new_folder:
+    en: New Folder
+    zh-CN: 新建文件夹
+    zh-HK: 新建文件夾
+  rename:
+    en: Rename
+    zh-CN: 重命名
+    zh-HK: 重命名
+  extract:
+    en: Extract
+    zh-CN: 解压
+    zh-HK: 解壓
+  copy_name:
+    en: Copy Filename
+    zh-CN: 复制文件名
+    zh-HK: 複製文件名
+  copy_path:
+    en: Copy Absolute Path
+    zh-CN: 复制绝对路径
+    zh-HK: 複製絕對路徑
+  change_permission:
+    en: Change Permission
+    zh-CN: 修改权限
+    zh-HK: 修改權限
+  upload_file:
+    en: Upload File
+    zh-CN: 上传文件
+    zh-HK: 上傳文件
+  upload_folder:
+    en: Upload Folder
+    zh-CN: 上传文件夹
+    zh-HK: 上傳文件夾
+  toggle_hidden:
+    en: Show/Hide Hidden Files
+    zh-CN: 显示/隐藏隐藏文件
+    zh-HK: 顯示/隱藏隱藏文件
+
+# 解压
+Extract:
+  running:
+    en: Extracting...
+    zh-CN: 正在解压...
+    zh-HK: 正在解壓...
+  conflict_title:
+    en: Extract Conflict
+    zh-CN: 解压冲突
+    zh-HK: 解壓衝突
+  conflict_message:
+    en: "Existing files may be overwritten while extracting %{name}. Choose how to continue."
+    zh-CN: "解压 %{name} 可能会影响已有文件，请选择处理方式。"
+    zh-HK: "解壓 %{name} 可能會影響已有文件，請選擇處理方式。"
+  skip_existing:
+    en: Skip Existing
+    zh-CN: 跳过已有
+    zh-HK: 跳過已有
+
+# 占位符
+Placeholder:
+  path:
+    en: Enter path...
+    zh-CN: 输入路径...
+    zh-HK: 輸入路徑...
+  search:
+    en: Search...
+    zh-CN: 搜索...
+    zh-HK: 搜尋...
+  filename:
+    en: Filename
+    zh-CN: 文件名
+    zh-HK: 文件名
+  new_name:
+    en: New name
+    zh-CN: 新名称
+    zh-HK: 新名稱
+  permission:
+    en: "Permission (e.g. 755)"
+    zh-CN: "权限 (如 755)"
+    zh-HK: "權限 (如 755)"
+
+# 对话框
+Dialog:
+  error:
+    en: Error
+    zh-CN: 错误
+    zh-HK: 錯誤
+  file_conflict:
+    en: File Conflict
+    zh-CN: 文件冲突
+    zh-HK: 文件衝突
+  confirm_delete:
+    en: Confirm Delete
+    zh-CN: 确认删除
+    zh-HK: 確認刪除
+  confirm_close:
+    en: Confirm Close
+    zh-CN: 确认关闭
+    zh-HK: 確認關閉
+  change_permission_title:
+    en: "Change permission of %{name}"
+    zh-CN: "修改 %{name} 的权限"
+    zh-HK: "修改 %{name} 的權限"
+
+# 冲突处理
+Conflict:
+  item_exists:
+    en: "An item with this name already exists at destination:"
+    zh-CN: "目标位置已存在同名项目："
+    zh-HK: "目標位置已存在同名項目："
+  progress:
+    en: "Conflict %{current} of %{total}"
+    zh-CN: "第 %{current} / %{total} 个冲突"
+    zh-HK: "第 %{current} / %{total} 個衝突"
+  apply_all:
+    en: "Apply to all similar conflicts"
+    zh-CN: "应用到所有同类冲突"
+    zh-HK: "套用到所有同類衝突"
+  files_exist:
+    en: "The following files already exist at destination:"
+    zh-CN: "以下文件在目标位置已存在："
+    zh-HK: "以下文件在目標位置已存在："
+  server_copy_type_mismatch_safe:
+    en: "For safety, a file and a directory cannot replace each other during server-to-server copy. Choose Keep Both or Skip."
+    zh-CN: "为避免误删目录或文件，服务器间复制不允许文件与目录互相覆盖。请选择“保留两者”或“跳过”。"
+    zh-HK: "為避免誤刪目錄或檔案，伺服器間複製不允許檔案與目錄互相覆蓋。請選擇「保留兩者」或「跳過」。"
+  choose_action:
+    en: "Choose how to proceed:"
+    zh-CN: "请选择处理方式："
+    zh-HK: "請選擇處理方式："
+  skip:
+    en: Skip
+    zh-CN: 跳过
+    zh-HK: 跳過
+  keep_both:
+    en: Keep Both
+    zh-CN: 保留两者
+    zh-HK: 保留兩者
+  merge:
+    en: Merge
+    zh-CN: 合并
+    zh-HK: 合併
+  overwrite:
+    en: Overwrite
+    zh-CN: 覆盖
+    zh-HK: 覆蓋
+  overwrite_warning_title:
+    en: Confirm Overwrite Folder
+    zh-CN: 确认覆盖文件夹
+    zh-HK: 確認覆蓋文件夾
+  overwrite_warning:
+    en: "Overwrite replaces the existing folder at the destination with the local folder as a whole. Files that exist only in the destination folder will be deleted. Choose Merge if you only want to replace files with the same name and keep the rest."
+    zh-CN: "覆盖会用本地文件夹的整体内容替换目标位置的同名文件夹，只存在于目标文件夹里的其它文件会被删除。如果只想替换同名文件、保留目标文件夹里的其它内容，请选择「合并」。"
+    zh-HK: "覆蓋會用本地文件夾的整體內容替換目標位置的同名文件夾，只存在於目標文件夾裡的其它檔案會被刪除。如果只想替換同名檔案、保留目標文件夾裡的其它內容，請選擇「合併」。"
+  overwrite_warning_apply_all:
+    en: "Note: 'Apply to all similar conflicts' is checked, so every similar folder conflict will use overwrite."
+    zh-CN: "注意：已勾选「应用到所有同类冲突」，确认后所有同类的文件夹冲突都会按覆盖处理。"
+    zh-HK: "注意：已勾選「套用到所有同類衝突」，確認後所有同類的文件夾衝突都會按覆蓋處理。"
+  overwrite_confirm:
+    en: Overwrite Anyway
+    zh-CN: 仍然覆盖
+    zh-HK: 仍然覆蓋
+  n_files:
+    en: "%{name} and %{count} other files"
+    zh-CN: "%{name} 等 %{count} 个文件"
+    zh-HK: "%{name} 等 %{count} 個文件"
+
+# 删除确认
+Delete:
+  confirm_folder:
+    en: Are you sure you want to delete this folder and all its contents?
+    zh-CN: 确定要删除这个文件夹及其所有内容吗？
+    zh-HK: 確定要刪除這個文件夾及其所有內容嗎？
+  confirm_folders:
+    en: "Are you sure you want to delete these %{count} folders and all their contents?"
+    zh-CN: "确定要删除这 %{count} 个文件夹及其所有内容吗？"
+    zh-HK: "確定要刪除這 %{count} 個文件夾及其所有內容嗎？"
+  confirm_file:
+    en: Are you sure you want to delete this file?
+    zh-CN: 确定要删除这个文件吗？
+    zh-HK: 確定要刪除這個文件嗎？
+  confirm_files:
+    en: "Are you sure you want to delete these %{count} files?"
+    zh-CN: "确定要删除这 %{count} 个文件吗？"
+    zh-HK: "確定要刪除這 %{count} 個文件嗎？"
+  confirm_mixed:
+    en: "Are you sure you want to delete %{files} files and %{dirs} folders?"
+    zh-CN: "确定要删除 %{files} 个文件和 %{dirs} 个文件夹吗？"
+    zh-HK: "確定要刪除 %{files} 個文件和 %{dirs} 個文件夾嗎？"
+  and_more:
+    en: "... and %{count} more items"
+    zh-CN: "... 还有 %{count} 项"
+    zh-HK: "... 還有 %{count} 項"
+  deleting:
+    en: "Deleting: %{name}"
+    zh-CN: "正在删除: %{name}"
+    zh-HK: "正在刪除: %{name}"
+  scanning:
+    en: "Scanning..."
+    zh-CN: "正在扫描..."
+    zh-HK: "正在掃描..."
+  delete_n_items:
+    en: "Delete %{count} items"
+    zh-CN: "删除 %{count} 项"
+    zh-HK: "刪除 %{count} 項"
+  items_count:
+    en: "%{count} items"
+    zh-CN: "%{count} 个项目"
+    zh-HK: "%{count} 個項目"
+
+# 连接状态
+Connection:
+  connecting:
+    en: "Connecting..."
+    zh-CN: "正在连接..."
+    zh-HK: "正在連接..."
+  disconnected:
+    en: Disconnected
+    zh-CN: 连接已断开
+    zh-HK: 連接已斷開
+  establishing:
+    en: "Establishing SFTP connection..."
+    zh-CN: "正在建立 SFTP 连接..."
+    zh-HK: "正在建立 SFTP 連接..."
+  session_disconnected:
+    en: SFTP session disconnected.
+    zh-CN: SFTP 会话已断开连接。
+    zh-HK: SFTP 會話已斷開連接。
+
+# SSH 凭据
+Credentials:
+  title:
+    en: SSH credentials required
+    zh-CN: 需要 SSH 凭据
+    zh-HK: 需要 SSH 憑據
+  hint:
+    en: Enter the credentials for this SFTP session. They will not be saved.
+    zh-CN: 请输入本次 SFTP 会话使用的凭据，这些内容不会被保存。
+    zh-HK: 請輸入本次 SFTP 工作階段使用的憑據，這些內容不會被儲存。
+  username:
+    en: Username
+    zh-CN: 用户名
+    zh-HK: 使用者名稱
+  password:
+    en: Password
+    zh-CN: 密码
+    zh-HK: 密碼
+  connect:
+    en: Connect
+    zh-CN: 连接
+    zh-HK: 連線
+  cancel:
+    en: Cancel
+    zh-CN: 取消
+    zh-HK: 取消
+  username_required:
+    en: Username is required.
+    zh-CN: 请输入用户名。
+    zh-HK: 請輸入使用者名稱。
+  password_required:
+    en: Password is required.
+    zh-CN: 请输入密码。
+    zh-HK: 請輸入密碼。
+
+# 终端
+Terminal:
+  open_here:
+    en: Open Terminal Here
+    zh-CN: 在此处打开终端
+    zh-HK: 在此處打開終端
+  open_in_current:
+    en: Open Terminal in Current Directory
+    zh-CN: 在当前目录打开终端
+    zh-HK: 在當前目錄打開終端
+
+# 常用路径
+FavoritePath:
+  add_current:
+    en: Add Current Path to Favorites
+    zh-CN: 收藏当前路径
+    zh-HK: 收藏當前路徑
+  add_path:
+    en: Add Path to Favorites
+    zh-CN: 收藏路径
+    zh-HK: 收藏路徑
+  remove_current:
+    en: Remove Current Path from Favorites
+    zh-CN: 取消收藏当前路径
+    zh-HK: 取消收藏當前路徑
+  open:
+    en: Favorite Paths
+    zh-CN: 常用路径
+    zh-HK: 常用路徑
+  added:
+    en: Favorite path added
+    zh-CN: 已收藏当前路径
+    zh-HK: 已收藏當前路徑
+  removed:
+    en: Favorite path removed
+    zh-CN: 已取消收藏当前路径
+    zh-HK: 已取消收藏當前路徑
+  updated:
+    en: Favorite path updated
+    zh-CN: 已更新收藏路径
+    zh-HK: 已更新收藏路徑
+  search_placeholder:
+    en: Search paths
+    zh-CN: 搜索路径
+    zh-HK: 搜索路徑
+  edit_placeholder:
+    en: Edit path
+    zh-CN: 修改路径
+    zh-HK: 修改路徑
+  no_results:
+    en: No matching paths
+    zh-CN: 没有匹配的路径
+    zh-HK: 沒有匹配的路徑
+  edit:
+    en: Edit path
+    zh-CN: 修改路径
+    zh-HK: 修改路徑
+  delete:
+    en: Delete path
+    zh-CN: 删除路径
+    zh-HK: 刪除路徑
+  save:
+    en: Save
+    zh-CN: 保存
+    zh-HK: 保存
+  cancel:
+    en: Cancel
+    zh-CN: 取消
+    zh-HK: 取消
+  save_failed:
+    en: "Failed to save favorite paths: %{error}"
+    zh-CN: "保存常用路径失败: %{error}"
+    zh-HK: "保存常用路徑失敗: %{error}"
+
+# 提示信息
+Notification:
+  clipboard_copied:
+    en: Files copied. Choose a destination and paste.
+    zh-CN: 已复制文件，请选择目标位置后粘贴
+    zh-HK: 已複製文件，請選擇目標位置後貼上
+  clipboard_cut:
+    en: Files cut. Choose a destination and paste.
+    zh-CN: 已剪切文件，请选择目标位置后粘贴
+    zh-HK: 已剪下文件，請選擇目標位置後貼上
+  paste_success:
+    en: Paste completed
+    zh-CN: 粘贴完成
+    zh-HK: 貼上完成
+  clipboard_upload_not_connected:
+    en: SFTP is not connected, so clipboard content cannot be uploaded
+    zh-CN: SFTP 未连接，无法上传剪贴板内容
+    zh-HK: SFTP 尚未連線，無法上傳剪貼簿內容
+  clipboard_read_failed:
+    en: "Failed to read clipboard: %{error}"
+    zh-CN: "读取剪贴板失败：%{error}"
+    zh-HK: "讀取剪貼簿失敗：%{error}"
+  clipboard_no_uploads:
+    en: The clipboard contains no files or images to upload
+    zh-CN: 剪贴板没有可上传的文件或图片
+    zh-HK: 剪貼簿沒有可上傳的檔案或圖片
+  copied_filename:
+    en: Filename copied
+    zh-CN: 已复制文件名
+    zh-HK: 已複製文件名
+  copied_path:
+    en: Path copied
+    zh-CN: 已复制绝对路径
+    zh-HK: 已複製絕對路徑
+  permission_success:
+    en: Permission changed successfully
+    zh-CN: 权限修改成功
+    zh-HK: 權限修改成功
+  extract_success:
+    en: Extract completed
+    zh-CN: 解压完成
+    zh-HK: 解壓完成
+  invalid_permission:
+    en: "Invalid permission value, please enter like 755 or 644"
+    zh-CN: "无效的权限值，请输入如 755 或 644"
+    zh-HK: "無效的權限值，請輸入如 755 或 644"
+  permission_hint:
+    en: "Enter octal permission value (e.g. 755, 644)"
+    zh-CN: "输入八进制权限值 (如 755, 644)"
+    zh-HK: "輸入八進制權限值 (如 755, 644)"
+
+# 错误信息
+Error:
+  clipboard_empty:
+    en: No files have been copied or cut
+    zh-CN: 尚未复制或剪切文件
+    zh-HK: 尚未複製或剪下文件
+  incompatible_paste_endpoint:
+    en: Pasting between different endpoints is not supported
+    zh-CN: 暂不支持在不同端点之间粘贴
+    zh-HK: 暫不支持在不同端點之間貼上
+  invalid_paste_target:
+    en: A folder cannot be pasted into itself or one of its descendants
+    zh-CN: 文件夹不能粘贴到自身或其子目录
+    zh-HK: 文件夾不能貼上到自身或其子目錄
+  paste_failed:
+    en: "Paste failed: %{error}"
+    zh-CN: "粘贴失败：%{error}"
+    zh-HK: "貼上失敗：%{error}"
+  ftp_not_supported:
+    en: This FTP operation is not supported
+    zh-CN: FTP 不支持此操作
+    zh-HK: FTP 不支援此操作
+  calculate_size_failed:
+    en: "Failed to calculate folder size: %{error}"
+    zh-CN: "计算文件夹大小失败：%{error}"
+    zh-HK: "計算文件夾大小失敗：%{error}"
+  sftp_not_connected:
+    en: SFTP client is not connected
+    zh-CN: SFTP 客户端未连接
+    zh-HK: SFTP 用戶端尚未連線
+  read_dir_failed:
+    en: "Failed to read directory: %{error}"
+    zh-CN: "读取目录失败: %{error}"
+    zh-HK: "讀取目錄失敗: %{error}"
+  invalid_name:
+    en: "Invalid name. Path separators and special names are not allowed."
+    zh-CN: "名称无效，不允许包含路径分隔符或特殊名称。"
+    zh-HK: "名稱無效，不允許包含路徑分隔符或特殊名稱。"
+  create_file_failed:
+    en: "Failed to create file: %{error}"
+    zh-CN: "创建文件失败: %{error}"
+    zh-HK: "創建文件失敗: %{error}"
+  create_folder_failed:
+    en: "Failed to create folder: %{error}"
+    zh-CN: "创建文件夹失败: %{error}"
+    zh-HK: "創建文件夾失敗: %{error}"
+  rename_failed:
+    en: "Failed to rename: %{error}"
+    zh-CN: "重命名失败: %{error}"
+    zh-HK: "重命名失敗: %{error}"
+  extract_failed:
+    en: "Failed to extract: %{error}"
+    zh-CN: "解压失败: %{error}"
+    zh-HK: "解壓失敗: %{error}"
+  extract_check_failed:
+    en: "Failed to check existing files before extract: %{error}"
+    zh-CN: "解压前检查已有文件失败: %{error}"
+    zh-HK: "解壓前檢查已有文件失敗: %{error}"
+  extract_unsupported:
+    en: Unsupported archive type
+    zh-CN: 不支持的压缩包类型
+    zh-HK: 不支持的壓縮包類型
+  permission_failed:
+    en: "Failed to change permission: %{error}"
+    zh-CN: "修改权限失败: %{error}"
+    zh-HK: "修改權限失敗: %{error}"
+  delete_failed:
+    en: "Delete failed: %{error}"
+    zh-CN: "删除失败: %{error}"
+    zh-HK: "刪除失敗: %{error}"
+  delete_n_failed:
+    en: "Delete failed: %{count} files"
+    zh-CN: "删除失败: %{count} 个文件"
+    zh-HK: "刪除失敗: %{count} 個文件"
+  copy_failed:
+    en: "Copy failed: %{error}"
+    zh-CN: "复制失败: %{error}"
+    zh-HK: "複製失敗: %{error}"
+  copy_n_failed:
+    en: "Copy failed: %{count} files"
+    zh-CN: "复制失败: %{count} 个文件"
+    zh-HK: "複製失敗: %{count} 個文件"
+
+# 文件选择器
+FilePicker:
+  select_upload_files:
+    en: Select files to upload
+    zh-CN: 选择要上传的文件
+    zh-HK: 選擇要上傳的文件
+  select_upload_folder:
+    en: Select folder to upload
+    zh-CN: 选择要上传的文件夹
+    zh-HK: 選擇要上傳的文件夾
+
+# 传输相关
+Transfer:
+  transfer_to_left:
+    en: Transfer to left server
+    zh-CN: 传输到左侧服务器
+    zh-HK: 傳輸到左側伺服器
+  transfer_to_right:
+    en: Transfer to right server
+    zh-CN: 传输到右侧服务器
+    zh-HK: 傳輸到右側伺服器
+  has_active_tasks:
+    en: "There are %{count} file operation(s) in progress (upload/download/delete)."
+    zh-CN: "有 %{count} 个文件操作正在进行中（上传/下载/删除）。"
+    zh-HK: "有 %{count} 個文件操作正在進行中（上傳/下載/刪除）。"
+  close_strategy_prompt:
+    en: Choose how the active file operations should be handled before closing.
+    zh-CN: 请选择关闭前如何处理正在进行的文件操作。
+    zh-HK: 請選擇關閉前如何處理正在進行的檔案操作。
+  wait_and_close:
+    en: Wait and Close
+    zh-CN: 等待完成后关闭
+    zh-HK: 等待完成後關閉
+  continue_in_background:
+    en: Continue in Background
+    zh-CN: 转到后台继续
+    zh-HK: 轉到背景繼續
+  view_in_background_tasks:
+    en: Uploads and downloads run in the background. View progress and speed in Background Tasks.
+    zh-CN: 上传和下载已转到后台运行，请前往“后台任务”查看进度和网速。
+    zh-HK: 上傳和下載已轉到背景執行，請前往「後台任務」查看進度和網速。
+  cancel_and_close:
+    en: Cancel Transfers and Close
+    zh-CN: 取消传输并关闭
+    zh-HK: 取消傳輸並關閉
+  confirm_close_warning:
+    en: "Closing now will cancel all operations. Are you sure you want to close?"
+    zh-CN: "现在关闭将取消所有操作。确定要关闭吗？"
+    zh-HK: "現在關閉將取消所有操作。確定要關閉嗎？"
+  server_copy_n_items:
+    en: "Server copy (%{count} items)"
+    zh-CN: "服务器间复制（%{count} 个项目）"
+    zh-HK: "伺服器間複製（%{count} 個項目）"
+  direct_copy_title:
+    en: Configure direct server transfer
+    zh-CN: 配置服务器间直接传输
+    zh-HK: 設定伺服器間直接傳輸
+  direct_copy_intro:
+    en: "Linop can configure direct server transfer for %{count} item(s)."
+    zh-CN: "Linop 可为 %{count} 个项目配置服务器间直接传输。"
+    zh-HK: "Linop 可為 %{count} 個項目設定伺服器間直接傳輸。"
+  direct_copy_route:
+    en: "Transfer route:"
+    zh-CN: "传输路径："
+    zh-HK: "傳輸路徑："
+  direct_copy_item_count:
+    en: "%{count} top-level item(s) will be copied."
+    zh-CN: "将复制 %{count} 个顶层项目。"
+    zh-HK: "將複製 %{count} 個頂層項目。"
+  direct_copy_server_auth_heading:
+    en: "Automatically configure direct transfer (%{strategy})"
+    zh-CN: "自动配置直接传输（%{strategy}）"
+    zh-HK: "自動設定直接傳輸（%{strategy}）"
+  direct_copy_auth_boundary:
+    en: "Linop creates a dedicated passwordless SSH key on the source server and adds its public key to the target server. Files then transfer directly between the servers without passing through this computer."
+    zh-CN: "Linop 会在源服务器创建专用的无口令 SSH 密钥，并将公钥添加到目标服务器。配置后，文件将直接在两台服务器之间传输，不经过本机。"
+    zh-HK: "Linop 會在來源伺服器建立專用的無密碼 SSH 金鑰，並將公鑰新增至目標伺服器。設定後，檔案將直接在兩台伺服器之間傳輸，不經過本機。"
+  direct_copy_security:
+    en: "The private key stays on the source server. Linop never sends the target server's password or private key to the source server."
+    zh-CN: "私钥仅保留在源服务器；Linop 不会向源服务器发送目标服务器的密码或私钥。"
+    zh-HK: "私鑰只保留在來源伺服器；Linop 不會向來源伺服器傳送目標伺服器的密碼或私鑰。"
+  direct_copy_use_direct:
+    en: Configure and transfer directly
+    zh-CN: 自动配置并直接传输
+    zh-HK: 自動設定並直接傳輸
+  direct_copy_authenticating:
+    en: Automatically configuring and verifying the source-to-target connection
+    zh-CN: 正在自动配置并验证源服务器到目标服务器的连接
+    zh-HK: 正在自動設定並驗證來源伺服器到目標伺服器的連線
+  relay_copy_starting:
+    en: Starting transfer through Linop
+    zh-CN: 正在启动 Linop 中转
+    zh-HK: 正在啟動 Linop 中轉
+  direct_copy_use_relay:
+    en: Relay through Linop
+    zh-CN: 通过 Linop 中转
+    zh-HK: 透過 Linop 中轉
+  direct_copy_cancel:
+    en: Cancel
+    zh-CN: 取消
+    zh-HK: 取消
+  strategy_rsync:
+    en: rsync
+    zh-CN: rsync
+    zh-HK: rsync
+  strategy_scp:
+    en: scp
+    zh-CN: scp
+    zh-HK: scp
+
+# SSH 主机密钥确认
+HostKey:
+  title:
+    en: Verify SSH Host Key
+    zh-CN: 验证 SSH 主机指纹
+    zh-HK: 驗證 SSH 主機指紋
+  message:
+    en: This server is not yet trusted. Verify the fingerprint before continuing.
+    zh-CN: 尚未信任此服务器。继续前请核对主机指纹。
+    zh-HK: 尚未信任此伺服器。繼續前請核對主機指紋。
+  changed_title:
+    en: SSH Host Key Changed
+    zh-CN: SSH 主机指纹已变更
+    zh-HK: SSH 主機指紋已變更
+  changed_message:
+    en: The server presented a different host key. This can happen after reinstalling the server or rotating its keys, but it may also indicate a man-in-the-middle attack. Verify the new fingerprint through a trusted channel before continuing.
+    zh-CN: 服务器提供了与之前不同的主机指纹。这可能由系统重装或密钥轮换引起，也可能意味着遭到中间人攻击。继续前请通过可信渠道核对新指纹。
+    zh-HK: 伺服器提供了與之前不同的主機指紋。這可能由系統重裝或金鑰輪換引起，也可能表示遭到中間人攻擊。繼續前請透過可信渠道核對新指紋。
+  identity:
+    en: Server
+    zh-CN: 服务器
+    zh-HK: 伺服器
+  presented:
+    en: New Host Key
+    zh-CN: 新主机指纹
+    zh-HK: 新主機指紋
+  expected:
+    en: Previously Trusted Host Keys
+    zh-CN: 之前信任的主机指纹
+    zh-HK: 之前信任的主機指紋
+  algorithm:
+    en: Algorithm
+    zh-CN: 算法
+    zh-HK: 演算法
+  fingerprint:
+    en: SHA-256 Fingerprint
+    zh-CN: SHA-256 指纹
+    zh-HK: SHA-256 指紋
+  accept_save:
+    en: Accept and Save
+    zh-CN: 接受并保存
+    zh-HK: 接受並儲存
+  update_save:
+    en: Update and Save
+    zh-CN: 更新并保存
+    zh-HK: 更新並儲存
+  accept_once:
+    en: Accept Once
+    zh-CN: 仅本次接受
+    zh-HK: 僅本次接受
+  reject:
+    en: Reject
+    zh-CN: 拒绝
+    zh-HK: 拒絕
+  rejected:
+    en: SSH host key was rejected.
+    zh-CN: 已拒绝 SSH 主机指纹。
+    zh-HK: 已拒絕 SSH 主機指紋。

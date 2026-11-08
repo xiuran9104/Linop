@@ -1,0 +1,27 @@
+name: 功能建议 / Feature Request
+description: 告诉我们你希望 Linop 增加或改进什么 / Suggest an addition or improvement
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        简单说说你的想法即可，不需要准备完整方案。
+
+        A short description is enough; you do not need a complete design.
+
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: 你的建议 / Your suggestion
+      description: 你遇到了什么不便，希望 Linop 如何改进？What is inconvenient today, and how could Linop improve it?
+      placeholder: 希望 Linop 可以……，这样就能…… / I wish Linop could ... so that ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 补充信息 / Additional context
+      description: 可选：截图、示例、参考产品或临时解决办法。Optional screenshots, examples, references, or workarounds.

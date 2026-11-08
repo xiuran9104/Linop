@@ -1,0 +1,1973 @@
+# Changelog
+
+Linop user-facing release notes. Generate and review each bilingual version entry before creating the release tag.
+
+<!-- NAVOP_RELEASES -->
+
+## [v0.23.0-beta.4] - 2026-11-02
+
+#### 更新内容
+
+- 桌面端正式拆成三个产品，同一个版本号一起发：**Linop**（数据库 + SSH/SFTP + 终端 + 远程桌面 + AI 全量版）、**Linop Shell**（SSH/SFTP、本地终端、端口转发、RDP/VNC）、**Linop Data**（PostgreSQL / MySQL / SQLite / SQL Server / Oracle / ClickHouse / Redis / MongoDB）。三个产品各有独立的安装包、数据目录与钥匙串条目，可以并排安装、互不干扰，托盘图标带产品角标，退出提示也会写明是哪个产品。
+- 更新机制分成稳定通道与 beta 测试通道：稳定版只收正式版本，测试通道只收预发布版本，两者清单完全分开，老版本不会被悄悄推到 beta。设置「关于 → 更新」新增通道下拉，切到测试版会先确认一次，版本号旁边会显示「测试版」徽标。
+- 检查更新可以选镜像源：自动 / Cloudflare / CNB / GitHub。选中的源排在最前，失败自动按顺序回退，切换后立即用新源检查一次。beta 通道不会回退到 GitHub 源——GitHub 的 latest 只认正式版本，回退过去会把测试通道悄悄降级成稳定版。
+- 扩展下载沿用同一份镜像偏好：扩展安装包、单扩展自己的清单、扩展市场清单都按这个顺序回退，CNB 侧从 Release 资产读快照，国内网络慢时不用再手动换源。
+- 扩展市场清单改由固定的 `manifest` Release 资产托管（GitHub 与 CNB 各一份快照），客户端优先读 R2，其次 GitHub 快照与 CNB 快照，raw 直链只作最后兜底，清单不再依赖 GitHub raw 的可用性。
+- 三个产品各自提供 Public MCP 宿主与独立的发现身份，外部工具按产品分别发现、分别授权；「设置 → MCP」新增工具集开关与逐项开关，可以只暴露需要的工具，数据库连接管理等工具集按产品能力注册。
+- 独立产品补齐了自己的主页与打包链路：Linop Shell 装配终端/SSH 主页，Linop Data 装配数据库/Redis/MongoDB 主页；macOS、Linux、Windows 安装包按产品生成独立身份，Windows 安装器身份可参数化。
+- Linop Data 首次启动会检查数据库驱动，缺驱动时在应用内提示并可直接安装，不用再去翻驱动下载页。
+
+#### 修复与优化
+
+- SFTP 上传/下载多个冲突项时，只有一个冲突项就不再显示「应用于全部」；目录覆盖改成对话框内红字二次确认，不再套三层弹窗。
+- 终端侧栏「移动到」选过的位置会记进设置，重启和新标签都沿用；多分屏下上传/下载完成提示按传输 id 去重，不再重复弹窗；左侧/底部侧栏拖动改用工作区根元素真实 bounds，不再出现拖不动或错位。
+- 修复跑测试或自测构建时可能覆盖生产配置的问题。
+- 数据库视图：SQL 编辑器滚动条常显，不再跟着光标时隐时现；表设计器的列列表直接显示并可以就地编辑默认值；复制为 UPDATE/DELETE 时，选区不含主键不再输出空字符串。
+- Redis 键名含非法 UTF-8 时，列表加载、读取和删除不再直接失败。
+- 内置 Agent 带工具调用时，gpt-6 系列不再返回 400。
+- 打开已存在的连接不会重复建连，直接复用已有标签。
+- 修复 Esc 快捷键在对话框里误关的问题，现在只在编辑器上下文生效；标签页空间不足时允许已被切走的标签收缩，不再挤掉当前标签。
+- 开发版彻底隔离 Public MCP 发现文件与主密钥钥匙串，和正式安装互不影响；Windows 上子进程 PATH 补上 GUI 应用看不到的工具链目录。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.23.0-beta.4) 下载桌面端安装包
+
+#### What's New
+
+- The desktop app is now three products shipped together under one version: **Linop** (databases + SSH/SFTP + terminal + remote desktop + AI), **Linop Shell** (SSH/SFTP, local terminal, port forwarding, RDP/VNC) and **Linop Data** (PostgreSQL / MySQL / SQLite / SQL Server / Oracle / ClickHouse / Redis / MongoDB). Each product has its own installers, data directory and keychain entry, so they can be installed side by side; tray icons carry a product badge and quit prompts name the product.
+- Updates are split into a stable channel and a beta channel. Stable builds only see stable releases and beta builds only see prereleases, with separate manifests, so existing installs are never silently moved to beta. Settings → About → Update gains a channel dropdown, switching to beta asks for confirmation, and prerelease builds show a "Beta" badge next to the version.
+- Update checks can pick a mirror: Auto / Cloudflare / CNB / GitHub. The chosen source goes first and failures fall back in order, with an immediate re-check after switching. The beta channel never falls back to GitHub, because GitHub's latest only points at stable releases and would silently downgrade the channel.
+- Extension downloads reuse the same mirror preference: installers, per-extension manifests and the marketplace manifest all fall back across these sources, with CNB served from release-asset snapshots.
+- The extension marketplace manifest is now hosted as a fixed `manifest` release asset (one snapshot on GitHub, one on CNB). The client reads R2 first, then the GitHub and CNB snapshots, with GitHub raw only as a last resort.
+- Each product exposes its own Public MCP host and discovery identity, so external tools discover and authorize them separately. Settings → MCP adds tool-set toggles with per-tool switches, and the connection-management tool set is registered per product capability.
+- Standalone products got their own home pages and packaging: Linop Shell assembles the terminal/SSH home, Linop Data the database/Redis/MongoDB home, and macOS, Linux and Windows installers now use per-product identities, with parameterized Windows installer identity.
+- Linop Data checks database drivers on first launch and can install a missing driver from inside the app.
+
+#### Fixes and Improvements
+
+- SFTP hides "apply to all" when only one conflict is queued, and directory overwrites now use an in-dialog confirmation instead of nested modals.
+- The terminal sidebar remembers the last "move to" position across restarts and new tabs; upload/download completion notices are de-duplicated by transfer id in split views; sidebar dragging uses the workspace root bounds.
+- Fixed a path where running tests or a self-test build could overwrite production configuration.
+- Database views: the SQL editor scrollbar stays visible; the table designer shows column defaults inline and allows editing them; copying as UPDATE/DELETE no longer emits an empty statement when no primary key is selected.
+- Redis no longer fails to list, read or delete keys whose names contain invalid UTF-8.
+- Built-in agent tool calls no longer return 400 on the gpt-6 family.
+- Opening an already-open connection reuses the existing tab instead of creating a duplicate.
+- Esc no longer dismisses dialogs globally; it only applies in editor contexts, and tabs that are not active may shrink instead of pushing the current tab out.
+- Development builds fully isolate their Public MCP discovery file and master key from production installs, and child processes on Windows now get the toolchain directories a GUI app cannot see.
+
+## [v0.23.0-beta.3] - 2026-11-02
+
+#### 更新内容
+
+- 桌面端正式拆成三个产品，同一个版本号一起发：**Linop**（数据库 + SSH/SFTP + 终端 + 远程桌面 + AI 全量版）、**Linop Shell**（SSH/SFTP、本地终端、端口转发、RDP/VNC）、**Linop Data**（PostgreSQL / MySQL / SQLite / SQL Server / Oracle / ClickHouse / Redis / MongoDB）。三个产品各有独立的安装包、数据目录与钥匙串条目，可以并排安装、互不干扰，托盘图标带产品角标，退出提示也会写明是哪个产品。
+- 更新机制分成稳定通道与 beta 测试通道：稳定版只收正式版本，测试通道只收预发布版本，两者清单完全分开，老版本不会被悄悄推到 beta。设置「关于 → 更新」新增通道下拉，切到测试版会先确认一次，版本号旁边会显示「测试版」徽标。
+- 检查更新可以选镜像源：自动 / Cloudflare / CNB / GitHub。选中的源排在最前，失败自动按顺序回退，切换后立即用新源检查一次。beta 通道不会回退到 GitHub 源——GitHub 的 latest 只认正式版本，回退过去会把测试通道悄悄降级成稳定版。
+- 扩展下载沿用同一份镜像偏好：扩展安装包、单扩展自己的清单、扩展市场清单都按这个顺序回退，CNB 侧从 Release 资产读快照，国内网络慢时不用再手动换源。
+- 扩展市场清单改由固定的 `manifest` Release 资产托管（GitHub 与 CNB 各一份快照），客户端优先读 R2，其次 GitHub 快照与 CNB 快照，raw 直链只作最后兜底，清单不再依赖 GitHub raw 的可用性。
+- 三个产品各自提供 Public MCP 宿主与独立的发现身份，外部工具按产品分别发现、分别授权；「设置 → MCP」新增工具集开关与逐项开关，可以只暴露需要的工具，数据库连接管理等工具集按产品能力注册。
+- 独立产品补齐了自己的主页与打包链路：Linop Shell 装配终端/SSH 主页，Linop Data 装配数据库/Redis/MongoDB 主页；macOS、Linux、Windows 安装包按产品生成独立身份，Windows 安装器身份可参数化。
+- Linop Data 首次启动会检查数据库驱动，缺驱动时在应用内提示并可直接安装，不用再去翻驱动下载页。
+
+#### 修复与优化
+
+- SFTP 上传/下载多个冲突项时，只有一个冲突项就不再显示「应用于全部」；目录覆盖改成对话框内红字二次确认，不再套三层弹窗。
+- 终端侧栏「移动到」选过的位置会记进设置，重启和新标签都沿用；多分屏下上传/下载完成提示按传输 id 去重，不再重复弹窗；左侧/底部侧栏拖动改用工作区根元素真实 bounds，不再出现拖不动或错位。
+- 修复跑测试或自测构建时可能覆盖生产配置的问题。
+- 数据库视图：SQL 编辑器滚动条常显，不再跟着光标时隐时现；表设计器的列列表直接显示并可以就地编辑默认值；复制为 UPDATE/DELETE 时，选区不含主键不再输出空字符串。
+- Redis 键名含非法 UTF-8 时，列表加载、读取和删除不再直接失败。
+- 内置 Agent 带工具调用时，gpt-6 系列不再返回 400。
+- 打开已存在的连接不会重复建连，直接复用已有标签。
+- 修复 Esc 快捷键在对话框里误关的问题，现在只在编辑器上下文生效；标签页空间不足时允许已被切走的标签收缩，不再挤掉当前标签。
+- 开发版彻底隔离 Public MCP 发现文件与主密钥钥匙串，和正式安装互不影响；Windows 上子进程 PATH 补上 GUI 应用看不到的工具链目录。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.23.0-beta.3) 下载桌面端安装包
+
+#### What's New
+
+- The desktop app is now three products shipped together under one version: **Linop** (databases + SSH/SFTP + terminal + remote desktop + AI), **Linop Shell** (SSH/SFTP, local terminal, port forwarding, RDP/VNC) and **Linop Data** (PostgreSQL / MySQL / SQLite / SQL Server / Oracle / ClickHouse / Redis / MongoDB). Each product has its own installers, data directory and keychain entry, so they can be installed side by side; tray icons carry a product badge and quit prompts name the product.
+- Updates are split into a stable channel and a beta channel. Stable builds only see stable releases and beta builds only see prereleases, with separate manifests, so existing installs are never silently moved to beta. Settings → About → Update gains a channel dropdown, switching to beta asks for confirmation, and prerelease builds show a "Beta" badge next to the version.
+- Update checks can pick a mirror: Auto / Cloudflare / CNB / GitHub. The chosen source goes first and failures fall back in order, with an immediate re-check after switching. The beta channel never falls back to GitHub, because GitHub's latest only points at stable releases and would silently downgrade the channel.
+- Extension downloads reuse the same mirror preference: installers, per-extension manifests and the marketplace manifest all fall back across these sources, with CNB served from release-asset snapshots.
+- The extension marketplace manifest is now hosted as a fixed `manifest` release asset (one snapshot on GitHub, one on CNB). The client reads R2 first, then the GitHub and CNB snapshots, with GitHub raw only as a last resort.
+- Each product exposes its own Public MCP host and discovery identity, so external tools discover and authorize them separately. Settings → MCP adds tool-set toggles with per-tool switches, and the connection-management tool set is registered per product capability.
+- Standalone products got their own home pages and packaging: Linop Shell assembles the terminal/SSH home, Linop Data the database/Redis/MongoDB home, and macOS, Linux and Windows installers now use per-product identities, with parameterized Windows installer identity.
+- Linop Data checks database drivers on first launch and can install a missing driver from inside the app.
+
+#### Fixes and Improvements
+
+- SFTP hides "apply to all" when only one conflict is queued, and directory overwrites now use an in-dialog confirmation instead of nested modals.
+- The terminal sidebar remembers the last "move to" position across restarts and new tabs; upload/download completion notices are de-duplicated by transfer id in split views; sidebar dragging uses the workspace root bounds.
+- Fixed a path where running tests or a self-test build could overwrite production configuration.
+- Database views: the SQL editor scrollbar stays visible; the table designer shows column defaults inline and allows editing them; copying as UPDATE/DELETE no longer emits an empty statement when no primary key is selected.
+- Redis no longer fails to list, read or delete keys whose names contain invalid UTF-8.
+- Built-in agent tool calls no longer return 400 on the gpt-6 family.
+- Opening an already-open connection reuses the existing tab instead of creating a duplicate.
+- Esc no longer dismisses dialogs globally; it only applies in editor contexts, and tabs that are not active may shrink instead of pushing the current tab out.
+- Development builds fully isolate their Public MCP discovery file and master key from production installs, and child processes on Windows now get the toolchain directories a GUI app cannot see.
+
+## [v0.23.0-beta.2] - 2026-11-02
+
+#### 更新内容
+
+- 桌面端正式拆成三个产品，同一个版本号一起发：**Linop**（数据库 + SSH/SFTP + 终端 + 远程桌面 + AI 全量版）、**Linop Shell**（SSH/SFTP、本地终端、端口转发、RDP/VNC）、**Linop Data**（PostgreSQL / MySQL / SQLite / SQL Server / Oracle / ClickHouse / Redis / MongoDB）。三个产品各有独立的安装包、数据目录与钥匙串条目，可以并排安装、互不干扰，托盘图标带产品角标，退出提示也会写明是哪个产品。
+- 更新机制分成稳定通道与 beta 测试通道：稳定版只收正式版本，测试通道只收预发布版本，两者清单完全分开，老版本不会被悄悄推到 beta。设置「关于 → 更新」新增通道下拉，切到测试版会先确认一次，版本号旁边会显示「测试版」徽标。
+- 检查更新可以选镜像源：自动 / Cloudflare / CNB / GitHub。选中的源排在最前，失败自动按顺序回退，切换后立即用新源检查一次。beta 通道不会回退到 GitHub 源——GitHub 的 latest 只认正式版本，回退过去会把测试通道悄悄降级成稳定版。
+- 扩展下载沿用同一份镜像偏好：扩展安装包、单扩展自己的清单、扩展市场清单都按这个顺序回退，CNB 侧从 Release 资产读快照，国内网络慢时不用再手动换源。
+- 扩展市场清单改由固定的 `manifest` Release 资产托管（GitHub 与 CNB 各一份快照），客户端优先读 R2，其次 GitHub 快照与 CNB 快照，raw 直链只作最后兜底，清单不再依赖 GitHub raw 的可用性。
+- 三个产品各自提供 Public MCP 宿主与独立的发现身份，外部工具按产品分别发现、分别授权；「设置 → MCP」新增工具集开关与逐项开关，可以只暴露需要的工具，数据库连接管理等工具集按产品能力注册。
+- 独立产品补齐了自己的主页与打包链路：Linop Shell 装配终端/SSH 主页，Linop Data 装配数据库/Redis/MongoDB 主页；macOS、Linux、Windows 安装包按产品生成独立身份，Windows 安装器身份可参数化。
+- Linop Data 首次启动会检查数据库驱动，缺驱动时在应用内提示并可直接安装，不用再去翻驱动下载页。
+
+#### 修复与优化
+
+- SFTP 上传/下载多个冲突项时，只有一个冲突项就不再显示「应用于全部」；目录覆盖改成对话框内红字二次确认，不再套三层弹窗。
+- 终端侧栏「移动到」选过的位置会记进设置，重启和新标签都沿用；多分屏下上传/下载完成提示按传输 id 去重，不再重复弹窗；左侧/底部侧栏拖动改用工作区根元素真实 bounds，不再出现拖不动或错位。
+- 修复跑测试或自测构建时可能覆盖生产配置的问题。
+- 数据库视图：SQL 编辑器滚动条常显，不再跟着光标时隐时现；表设计器的列列表直接显示并可以就地编辑默认值；复制为 UPDATE/DELETE 时，选区不含主键不再输出空字符串。
+- Redis 键名含非法 UTF-8 时，列表加载、读取和删除不再直接失败。
+- 内置 Agent 带工具调用时，gpt-6 系列不再返回 400。
+- 打开已存在的连接不会重复建连，直接复用已有标签。
+- 修复 Esc 快捷键在对话框里误关的问题，现在只在编辑器上下文生效；标签页空间不足时允许已被切走的标签收缩，不再挤掉当前标签。
+- 开发版彻底隔离 Public MCP 发现文件与主密钥钥匙串，和正式安装互不影响；Windows 上子进程 PATH 补上 GUI 应用看不到的工具链目录。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.23.0-beta.2) 下载桌面端安装包
+
+#### What's New
+
+- The desktop app is now three products shipped together under one version: **Linop** (databases + SSH/SFTP + terminal + remote desktop + AI), **Linop Shell** (SSH/SFTP, local terminal, port forwarding, RDP/VNC) and **Linop Data** (PostgreSQL / MySQL / SQLite / SQL Server / Oracle / ClickHouse / Redis / MongoDB). Each product has its own installers, data directory and keychain entry, so they can be installed side by side; tray icons carry a product badge and quit prompts name the product.
+- Updates are split into a stable channel and a beta channel. Stable builds only see stable releases and beta builds only see prereleases, with separate manifests, so existing installs are never silently moved to beta. Settings → About → Update gains a channel dropdown, switching to beta asks for confirmation, and prerelease builds show a "Beta" badge next to the version.
+- Update checks can pick a mirror: Auto / Cloudflare / CNB / GitHub. The chosen source goes first and failures fall back in order, with an immediate re-check after switching. The beta channel never falls back to GitHub, because GitHub's latest only points at stable releases and would silently downgrade the channel.
+- Extension downloads reuse the same mirror preference: installers, per-extension manifests and the marketplace manifest all fall back across these sources, with CNB served from release-asset snapshots.
+- The extension marketplace manifest is now hosted as a fixed `manifest` release asset (one snapshot on GitHub, one on CNB). The client reads R2 first, then the GitHub and CNB snapshots, with GitHub raw only as a last resort.
+- Each product exposes its own Public MCP host and discovery identity, so external tools discover and authorize them separately. Settings → MCP adds tool-set toggles with per-tool switches, and the connection-management tool set is registered per product capability.
+- Standalone products got their own home pages and packaging: Linop Shell assembles the terminal/SSH home, Linop Data the database/Redis/MongoDB home, and macOS, Linux and Windows installers now use per-product identities, with parameterized Windows installer identity.
+- Linop Data checks database drivers on first launch and can install a missing driver from inside the app.
+
+#### Fixes and Improvements
+
+- SFTP hides "apply to all" when only one conflict is queued, and directory overwrites now use an in-dialog confirmation instead of nested modals.
+- The terminal sidebar remembers the last "move to" position across restarts and new tabs; upload/download completion notices are de-duplicated by transfer id in split views; sidebar dragging uses the workspace root bounds.
+- Fixed a path where running tests or a self-test build could overwrite production configuration.
+- Database views: the SQL editor scrollbar stays visible; the table designer shows column defaults inline and allows editing them; copying as UPDATE/DELETE no longer emits an empty statement when no primary key is selected.
+- Redis no longer fails to list, read or delete keys whose names contain invalid UTF-8.
+- Built-in agent tool calls no longer return 400 on the gpt-6 family.
+- Opening an already-open connection reuses the existing tab instead of creating a duplicate.
+- Esc no longer dismisses dialogs globally; it only applies in editor contexts, and tabs that are not active may shrink instead of pushing the current tab out.
+- Development builds fully isolate their Public MCP discovery file and master key from production installs, and child processes on Windows now get the toolchain directories a GUI app cannot see.
+
+## [v0.23.0-beta.1] - 2026-11-02
+
+#### 更新内容
+
+- 桌面端正式拆成三个产品，同一个版本号一起发：**Linop**（数据库 + SSH/SFTP + 终端 + 远程桌面 + AI 全量版）、**Linop Shell**（SSH/SFTP、本地终端、端口转发、RDP/VNC）、**Linop Data**（PostgreSQL / MySQL / SQLite / SQL Server / Oracle / ClickHouse / Redis / MongoDB）。三个产品各有独立的安装包、数据目录与钥匙串条目，可以并排安装、互不干扰，托盘图标带产品角标，退出提示也会写明是哪个产品。
+- 更新机制分成稳定通道与 beta 测试通道：稳定版只收正式版本，测试通道只收预发布版本，两者清单完全分开，老版本不会被悄悄推到 beta。设置「关于 → 更新」新增通道下拉，切到测试版会先确认一次，版本号旁边会显示「测试版」徽标。
+- 检查更新可以选镜像源：自动 / Cloudflare / CNB / GitHub。选中的源排在最前，失败自动按顺序回退，切换后立即用新源检查一次。beta 通道不会回退到 GitHub 源——GitHub 的 latest 只认正式版本，回退过去会把测试通道悄悄降级成稳定版。
+- 扩展下载沿用同一份镜像偏好：扩展安装包、单扩展自己的清单、扩展市场清单都按这个顺序回退，CNB 侧从 Release 资产读快照，国内网络慢时不用再手动换源。
+- 扩展市场清单改由固定的 `manifest` Release 资产托管（GitHub 与 CNB 各一份快照），客户端优先读 R2，其次 GitHub 快照与 CNB 快照，raw 直链只作最后兜底，清单不再依赖 GitHub raw 的可用性。
+- 三个产品各自提供 Public MCP 宿主与独立的发现身份，外部工具按产品分别发现、分别授权；「设置 → MCP」新增工具集开关与逐项开关，可以只暴露需要的工具，数据库连接管理等工具集按产品能力注册。
+- 独立产品补齐了自己的主页与打包链路：Linop Shell 装配终端/SSH 主页，Linop Data 装配数据库/Redis/MongoDB 主页；macOS、Linux、Windows 安装包按产品生成独立身份，Windows 安装器身份可参数化。
+- Linop Data 首次启动会检查数据库驱动，缺驱动时在应用内提示并可直接安装，不用再去翻驱动下载页。
+
+#### 修复与优化
+
+- SFTP 上传/下载多个冲突项时，只有一个冲突项就不再显示「应用于全部」；目录覆盖改成对话框内红字二次确认，不再套三层弹窗。
+- 终端侧栏「移动到」选过的位置会记进设置，重启和新标签都沿用；多分屏下上传/下载完成提示按传输 id 去重，不再重复弹窗；左侧/底部侧栏拖动改用工作区根元素真实 bounds，不再出现拖不动或错位。
+- 修复跑测试或自测构建时可能覆盖生产配置的问题。
+- 数据库视图：SQL 编辑器滚动条常显，不再跟着光标时隐时现；表设计器的列列表直接显示并可以就地编辑默认值；复制为 UPDATE/DELETE 时，选区不含主键不再输出空字符串。
+- Redis 键名含非法 UTF-8 时，列表加载、读取和删除不再直接失败。
+- 内置 Agent 带工具调用时，gpt-6 系列不再返回 400。
+- 打开已存在的连接不会重复建连，直接复用已有标签。
+- 修复 Esc 快捷键在对话框里误关的问题，现在只在编辑器上下文生效；标签页空间不足时允许已被切走的标签收缩，不再挤掉当前标签。
+- 开发版彻底隔离 Public MCP 发现文件与主密钥钥匙串，和正式安装互不影响；Windows 上子进程 PATH 补上 GUI 应用看不到的工具链目录。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.23.0-beta.1) 下载桌面端安装包
+
+#### What's New
+
+- The desktop app is now three products shipped together under one version: **Linop** (databases + SSH/SFTP + terminal + remote desktop + AI), **Linop Shell** (SSH/SFTP, local terminal, port forwarding, RDP/VNC) and **Linop Data** (PostgreSQL / MySQL / SQLite / SQL Server / Oracle / ClickHouse / Redis / MongoDB). Each product has its own installers, data directory and keychain entry, so they can be installed side by side; tray icons carry a product badge and quit prompts name the product.
+- Updates are split into a stable channel and a beta channel. Stable builds only see stable releases and beta builds only see prereleases, with separate manifests, so existing installs are never silently moved to beta. Settings → About → Update gains a channel dropdown, switching to beta asks for confirmation, and prerelease builds show a "Beta" badge next to the version.
+- Update checks can pick a mirror: Auto / Cloudflare / CNB / GitHub. The chosen source goes first and failures fall back in order, with an immediate re-check after switching. The beta channel never falls back to GitHub, because GitHub's latest only points at stable releases and would silently downgrade the channel.
+- Extension downloads reuse the same mirror preference: installers, per-extension manifests and the marketplace manifest all fall back across these sources, with CNB served from release-asset snapshots.
+- The extension marketplace manifest is now hosted as a fixed `manifest` release asset (one snapshot on GitHub, one on CNB). The client reads R2 first, then the GitHub and CNB snapshots, with GitHub raw only as a last resort.
+- Each product exposes its own Public MCP host and discovery identity, so external tools discover and authorize them separately. Settings → MCP adds tool-set toggles with per-tool switches, and the connection-management tool set is registered per product capability.
+- Standalone products got their own home pages and packaging: Linop Shell assembles the terminal/SSH home, Linop Data the database/Redis/MongoDB home, and macOS, Linux and Windows installers now use per-product identities, with parameterized Windows installer identity.
+- Linop Data checks database drivers on first launch and can install a missing driver from inside the app.
+
+#### Fixes and Improvements
+
+- SFTP hides "apply to all" when only one conflict is queued, and directory overwrites now use an in-dialog confirmation instead of nested modals.
+- The terminal sidebar remembers the last "move to" position across restarts and new tabs; upload/download completion notices are de-duplicated by transfer id in split views; sidebar dragging uses the workspace root bounds.
+- Fixed a path where running tests or a self-test build could overwrite production configuration.
+- Database views: the SQL editor scrollbar stays visible; the table designer shows column defaults inline and allows editing them; copying as UPDATE/DELETE no longer emits an empty statement when no primary key is selected.
+- Redis no longer fails to list, read or delete keys whose names contain invalid UTF-8.
+- Built-in agent tool calls no longer return 400 on the gpt-6 family.
+- Opening an already-open connection reuses the existing tab instead of creating a duplicate.
+- Esc no longer dismisses dialogs globally; it only applies in editor contexts, and tabs that are not active may shrink instead of pushing the current tab out.
+- Development builds fully isolate their Public MCP discovery file and master key from production installs, and child processes on Windows now get the toolchain directories a GUI app cannot see.
+
+## [v0.22.0] - 2026-10-28
+
+#### 更新内容
+
+- 团队管理全部迁入桌面端原生「团队」页：建团队、改资料、邀请成员、改角色、移除成员与团队密钥都在应用内完成，不再把 access_token / refresh_token 拼进 URL 打开浏览器（网站 dashboard 可以下线了）；权限严格对齐线上 RPC，owner 不可被直接移除。
+- 侧边栏 AI 每轮都重新读一次终端现场：当前目录、是否在 vim 这类全屏程序里、选中了什么、窗口尺寸和前台进程都会随消息带过去，不用再让模型先调 `terminal.read` 才知道你在哪。SSH 终端保持「连接」为默认目标，连接级工具的行为不变。
+- 终端里选中一段内容后直接提问，选中的正文会随消息一起送进侧边栏 AI（超过 8000 字截断并标注），发送前就能在转录里看到自己送出了什么。
+- 读终端时可以省略 target：会话里只有一个终端时自动补上，返回结果新增全屏程序、滚动位置、光标行与选中区间。
+- 侧栏分组右键新增「移动到」：子分组可以换父级，也可以移回顶层；目标里会剔掉自己和自己的后代，不会移成环。
+- AI 输入框重新排版：能力入口（计划 / 子代理 / 上下文 / 技能）回到卡片顶部一行，底栏只留「怎么发出去」（模型、模式 / 权限、附件、发送），窄侧栏下标签不再被挤成省略号；ACP 与内置 Agent 两套输入框共用同一套尺寸。
+- ACP 客户端目录收全官方 registry：内置 27 个预设，默认只启用 Claude Code、Codex、OpenCode、DeepSeek Harness 与 Pi，其余在「设置 > ACP 客户端」里按需打开；新装机器不会因为探活把十几个 CLI 一起拉起来。
+
+#### 修复与优化
+
+- 修复侧栏 ACP 底栏缺分支与 Worktree 的问题：终端侧边栏现在和工作台一样注入工作区、分支与 Worktree，切换分支、勾选 Worktree 都可用，chip 与实际工作目录始终一致。
+- ACP 切换器选完立即关闭，不再盖住新视图；agent 变多时列表固定高度并可滚动，不会顶到窗口边缘点不到靠下的项。
+- 修掉执行过程每来一次工具调用就收起、再撑开的闪烁：过程按「段」折叠，当前段默认展开；正文写完后的新一段思考单独成段，不再挂到上一段正文上方。
+- 修掉深色侧栏里的白块与串色：输入区底色跟卡片形态走（卡片有框时不填色、无框的侧栏才用内嵌底色），弹层自己画浮层表面，按钮恢复手指光标。
+- 同一份待审批不再出现两处入口：去掉输入框上方的重复决策栏，审批只在时间线卡片里做，卡片里的入参与上下文更完整。
+- 首页与侧栏不再「丢连接」：未分组连接在分组过滤下也照常显示，分组被删除或尚未同步落地的连接会收进「未分组」，不会再两个视图都找不到。
+- 分组右键「新建连接」默认落在该分组；此前向导总是默认「未分组」，保存后连接跑到根目录。
+- 云同步不再清空或改回连接的分组归属：分组还没上传时宁可不传，也不会把「无分组」写进云端；云端没有分组引用时保留本地分组，收尾阶段按云端明确给出的引用对齐，不再来回覆盖。
+- 团队页补回滚动条并修掉左栏头部溢出：264px 窄栏下刷新按钮不再被右侧详情面板盖掉，成员行在窄窗口不再挤压角色徽标。
+- SFTP 上传文件夹冲突选「覆盖」前增加二次确认：明确说明这是整目录替换（只存在于远端的文件会被删掉），只需替换同名文件时应改用「合并」。
+- 数据库表格右键「删除记录」按选区批量删除：多选后右键删除不再只删掉第一行；右键落在选区外时仍只删那一行。
+- SQL Server 低兼容级别的库恢复分页能力：兼容级别低于 110 时回退 `ROW_NUMBER()` 分页，双击表预览不再整页空白。
+- 修复启动期两处运行态 panic：`secondary-s` 快捷键改为按宿主系统解析，ACP 就绪等待不再跨 await 持有 runtime guard。
+- 升级到 gpui-fast v0.1.12、gpui-kit v0.8.1 与 russh 0.65.0，并适配一批 API 变更（滚动事件、动态快捷键、键盘布局识别等）。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.22.0) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- Team management now lives in a native desktop "Team" page: create teams, edit profiles, invite members, change roles, remove members and manage team keys inside the app instead of opening the browser with access_token / refresh_token in the URL (the website dashboard can be retired). Permissions mirror the online RPC layer, and an owner can no longer be removed directly.
+- The sidebar AI re-reads the terminal on every turn: current directory, whether a full-screen program like vim is running, the current selection, window size and foreground process all travel with the message, so the model no longer has to call `terminal.read` first. SSH terminals keep the connection as their default target, so connection-scoped tools behave as before.
+- Select text in the terminal and ask a question: the selected body is attached to the message (truncated with a note above 8000 characters) and shows up in the transcript, so you can see what you sent.
+- `terminal.read` can omit its target: with a single terminal in the session it is filled in automatically, and results now include the alternate-screen state, display offset, cursor row and selection.
+- Sidebar groups gained a "Move to" action in the context menu: subgroups can change parents or move back to the top level, and the target list excludes the group itself and its descendants so no cycle can be created.
+- The AI composer was re-laid out: capability entries (plan / subagents / context / skills) sit on a row at the top of the card, the bottom row is only about sending (model, mode / permission, attachment, send), labels no longer collapse into ellipses in narrow sidebars, and the ACP and built-in agent composers share one set of measurements.
+- The ACP client catalog now covers the official registry: 27 built-in presets with only Claude Code, Codex, OpenCode, DeepSeek Harness and Pi enabled by default; the rest can be turned on in Settings > ACP clients, so a fresh machine no longer spawns a dozen CLIs just to probe them.
+
+#### Fixes and Improvements
+
+- Fixed the missing branch and Worktree controls in the sidebar ACP footer: the terminal sidebar now injects workspace, branches and Worktree just like the workbench, so switching branches and enabling Worktree work there, and the chip always matches the real working directory.
+- The ACP switcher closes as soon as a client is picked instead of covering the new view, and its list scrolls inside a fixed height so entries near the bottom stay reachable.
+- Fixed the flicker where the process block collapsed on every tool call and expanded again: the process collapses by segment with the current segment staying open, and a new reasoning segment after written text now starts its own block instead of appearing above the previous answer.
+- Fixed white patches and wrong colors in dark sidebars: the editor fill follows the card shape (no fill when the card has a border, an inset fill only in borderless sidebars), popovers paint their own surface, and buttons use the pointing-hand cursor again.
+- A pending approval no longer appears twice: the duplicate decision bar above the composer is gone, and approvals happen on the timeline card, which carries the full arguments and context.
+- The home page and sidebar no longer lose connections: ungrouped connections show up even while groups are filtered, and connections whose group was deleted or has not synced yet are collected under "Ungrouped" instead of disappearing from both views.
+- "New connection" from a group's context menu now lands in that group; the wizard used to default to "Ungrouped" and save the connection at the root.
+- Cloud sync no longer clears or reverts a connection's group: uploads wait until the group has a cloud ID instead of writing "no group", downloads keep the local group when the cloud record has no reference, and a final alignment pass applies the references the cloud does provide.
+- The team page scrolls again and no longer overflows its header: at 264px the refresh button is no longer hidden behind the detail panel, and member rows stop squeezing the role badge in narrow windows.
+- Overwriting an SFTP folder conflict now asks for confirmation first, spelling out that it replaces the whole directory (deleting files that only exist remotely) and pointing to "Merge" when only same-named files should be replaced.
+- "Delete record" in the database grid now deletes the whole selection: right-clicking inside a multi-row selection no longer removes only the first row, while right-clicking outside the selection still deletes a single row.
+- SQL Server databases at a lower compatibility level paginate again: below level 110 the grid falls back to `ROW_NUMBER()` paging, so previewing a table no longer shows a blank page.
+- Fixed two startup panics: the `secondary-s` shortcut is resolved against the host OS, and the ACP readiness wait no longer holds a runtime guard across an await.
+- Upgraded to gpui-fast v0.1.12, gpui-kit v0.8.1 and russh 0.65.0, adapting to a batch of API changes (scroll events, dynamic key bindings, keyboard layout detection).
+
+---
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.21.2...v0.22.0
+
+## [v0.21.2] - 2026-10-26
+
+#### 修复与优化
+
+- 个人同步：修复引用了钥匙串凭据的连接在多设备间持续产生假冲突的问题。连接载荷里的凭据引用导出时保留了源设备的本地整数 ID，而每台设备的行号各不相同，导致同一条连接跨设备的 checksum 永不相等，被判定为「双方都改过」而反复冲突、来回覆盖。现在导出载荷统一只保留跨设备稳定的 `credential_cloud_id`，整数 ID 置零（下载时仍按云端 ID 映射回本机行号，行为不变）。
+- 安全：个人主密钥的派生从「SHA-256 + 固定盐」升级为 Argon2id + 随机盐（64 MiB / 3 次迭代），验证数据改为版本化信封 `NAVOPKDF2:`。旧格式在解锁时自动迁移并重加密本地连接、凭据、团队密钥缓存与冲突快照，云端记录由既有 pending 机制补做；迁移中断可续，旧密文始终可读（#460）。
+- 安全：自动解锁用的主密钥不再默认用程序内置密钥加密写进 `data/state/key_storage`，改存系统凭据库（macOS 钥匙串 / Windows 凭据管理器）并自动迁移、删除旧文件；没有可用凭据库的平台改为每次启动手动输入，不再静默回退弱存储（#459）。
+- 设置：「记住主密码」新增「主密钥保存位置」选项，可在系统凭据库（macOS 显示「macOS 钥匙串」、Windows 显示「Windows 凭据管理器」）与「本机文件（数据目录）」之间切换，便携模式同样可选。切换时先把已记住的密钥写入新位置、成功后再删除旧副本；选择本机文件会显示内置密钥加密的风险提示（#459）。
+- 首页：从标签栏「+」打开的「打开连接」列表里点一次不再新建两个 SSH 会话。此前同一行既挂了行内的打开回调，又有列表内建的点击 → `confirm` 打开路径，一次点击先后走完两条路径（已有 2 个标签时点一次直接变成 4 个）；现在点击与键盘回车统一只走 `confirm`，并补源码级回归测试守住「行渲染不得直接打开连接」（#461）。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.21.2) 下载桌面端安装包
+
+---
+
+#### Fixes and Improvements
+
+- Personal sync: fixed constantly recurring false conflicts for connections that reference keychain credentials. The exported payload kept the source device's local integer credential ID, which differs on every device, so the same logical connection never produced an equal checksum across devices and was repeatedly flagged as "modified on both sides", overwriting back and forth. Exports now carry only the device-stable `credential_cloud_id` with the integer ID zeroed (downloads still map the cloud ID back to the local row, unchanged behavior).
+- Security: the personal master key is now derived with Argon2id and a random salt (64 MiB / 3 iterations) instead of SHA-256 with a fixed salt, and its verification data uses a versioned `NAVOPKDF2:` envelope. Legacy installs are migrated on unlock: local connections, credentials, team key caches and conflict snapshots are re-encrypted, cloud records are re-encrypted through the existing pending mechanism, interrupted migrations resume, and old ciphertext stays readable throughout (#460).
+- Security: the master key kept for automatic unlock is no longer encrypted into `data/state/key_storage` with an application-embedded key by default. It is stored in the system credential store (macOS Keychain / Windows Credential Manager), the legacy file is migrated and deleted, and platforms without an available credential store ask for the key on each start instead of silently falling back to the weak store (#459).
+- Settings: "remember master key" now has a storage location choice between the system credential store (shown as "macOS Keychain" on macOS and "Windows Credential Manager" on Windows) and a local file in the data directory, also in portable mode. Switching writes the remembered key to the new location first and only then deletes the old copy; the local file option shows the risk that it is encrypted with an application-embedded key (#459).
+- Home: clicking an entry in the “Open connection” list opened from the tab bar’s “+” no longer creates two SSH sessions. A row carried both its own open callback and the list’s built-in click → `confirm` open path, so a single click ran through both (going from 2 tabs to 4 in one click); clicks and the Enter key now share the single `confirm` path, guarded by a source-level regression test (#461).
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.21.1...v0.21.2
+
+## [v0.21.1] - 2026-10-22
+
+#### 修复与优化
+
+- 连接表单：SSH、MySQL、Redis、MongoDB 表单里的「AI 访问」一行不再显示成 `ConnectionForm.ai_access` 这样的原始键名。此前四个 crate 各自拼这个 i18n 键，而语言包里只有提供该组件的 crate 定义了它，rust-i18n 查不到就把键名原样渲染出来；现在统一走 `connection_form` 的共享文案，并新增全仓契约测试守住同类漏键（同时修掉另外 16 处失效键，包括保存失败提示、文件操作、锁屏提示与 FTP 弹窗标题）。
+- 数据库：Auto（粘性）会话的空闲断连自愈改为「执行前探活」，不再在收到 `connection closed` 后重放整段脚本——同一句文案既可能表示请求没发出去，也可能表示语句已被服务端执行，重放就有重复写入的风险。现在取连接先本地判死（PostgreSQL）或有界 `ping`（MySQL 走驱动级 `COM_PING`），判死即就地重连，语句只在重连后的新连接上发出一次；服务端尚未恢复时建连上限也收紧到 10 秒，不至于每次执行都等满默认超时（#433、#447）。
+- 数据库：粘性会话与手动事务不再被后台清理强拆——页签钉住的会话挂机 30 分钟后首次执行不再报 `Session not found`，手动事务也不会被静默回滚，页签关闭时仍照常释放。
+- 设置：`settings.json` 解析失败时不再静默回落默认值、再被下一次保存全量覆盖。坏文件会先改名保留为 `settings.json.corrupt-<时间戳>` 便于定位是哪个字段解析失败，保存改为「临时文件 + rename」原子写并在覆盖前留一份 `.bak`；同时先按磁盘上的日志路径装好日志再加载设置，让解析错误真正落进日志文件。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.21.1) 下载桌面端安装包
+
+---
+
+#### Fixes and Improvements
+
+- Connection forms: the "AI Access" row in the SSH, MySQL, Redis and MongoDB forms no longer renders as a raw key such as `ConnectionForm.ai_access`. Each of those four crates assembled the i18n key by itself while only the crate that provides the widget defines it, so rust-i18n returned the key verbatim; the row now uses the shared text from `connection_form`, and a repository-wide contract test guards against the same class of miss (16 other broken keys are fixed as well, including the save-failure notice, file actions, the session lock banners and the FTP dialog titles).
+- Database: Auto (sticky) sessions now self-heal by probing the connection before running instead of replaying the batch after a `connection closed`. That single message can mean either "the request never left the client" or "the statement already ran on the server", so replaying risked duplicate writes. A pooled connection is now checked locally (PostgreSQL) or with a bounded `ping` (MySQL uses the driver-level `COM_PING`) and replaced in place when dead, so the statement goes out exactly once on the new connection; the connect timeout is also clamped to 10 seconds while the server stays down, instead of letting every run wait out the default timeout (#433, #447).
+- Database: sticky sessions and manual transactions are no longer torn down by background cleanup — a tab-pinned session idle for 30 minutes no longer fails its first run with `Session not found` and a manual transaction is not silently rolled back, while closing the tab still releases it.
+- Settings: a `settings.json` that fails to parse is no longer silently replaced by defaults and then overwritten wholesale by the next save. The bad file is renamed to `settings.json.corrupt-<timestamp>` so the offending field can be identified, saving is atomic (temp file + rename) with a `.bak` copy of the previous version, and logging is configured from the on-disk log path before settings load so the parse error actually reaches the log file.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.21.0...v0.21.1
+
+## [v0.21.0] - 2026-10-22
+
+#### 更新内容
+
+- 连接新增「AI 访问」策略（允许 / 只读 / 禁止），决定 AI 能否操作这条连接。策略分三层生效：被禁止的连接不进 AI 的资源目录、`connections.list` / `find` 也不返回；只读连接只保留读类工具；真正执行时统一复核 `connection`、`connection_id`、`target`、`session_id`，内置对话与外部 MCP 客户端共用同一道闸门，写操作直接拒绝而不是静默放宽。策略属于连接内容，随连接一起云同步，换机器后限制依然生效；侧栏徽标与右键菜单可以直接切换（#437）。
+- 扩展连接支持自定义图标：连接表单可选内置图标或本地图片，未选择时回退到扩展 manifest 声明的图标，表单与 manifest 也新增了 `Icon` 字段类型供扩展自带图标选择器。连接列表、卡片与终端标签页改用同一套解析，标签页不再一律显示通用图标——SSH 连接设置过的自定义图标现在也会出现在标签上（#438）。
+- AI 对话的模型下拉在选项超过 15 个时（例如 OpenRouter 这类聚合供应商的数百个模型）顶部出现搜索框，按供应商、模型名与提示词做不区分大小写的模糊过滤，模型名以关键字开头的排在前面；列表限高滚动，无匹配时显示空态（#405）。
+- 首页的「最近连接」分组现在可以关掉：设置 → 通用 →「连接显示」新增开关，关闭后首页只显示各分组内的连接，重启也不会再自己冒出来（#388）。
+- SQL 查询结果可以按来源补全字段注释：开启「列头显示字段注释」时，会分析查询涉及的基表、连接与别名，把源字段的注释映射到结果列；分析不完整时退化为「列名在候选表中唯一」的保守匹配，无法唯一确定就不显示，避免张冠李戴（#428）。
+- SQL 执行多了明确的运行态：发起后结果面板立即切到「运行中」并强制可见，工具栏同步显示旋转指示与「运行中...」，运行时间从执行开始就持续走动，大查询期间不会再看着像「点了没反应」。建立 Auto 会话与手动事务的建连阶段同样计入运行中，在这一阶段点取消会真正作废本次执行（#427）。
+
+#### 修复与优化
+
+- ClickHouse 改为扩展驱动（升级需先安装驱动）：内置插件已移除，连接、打开与表单统一走扩展市场的 clickhouse 驱动。历史连接记录仍然保留，但需要先安装该驱动才能打开；未安装时按 DuckDB / TDengine 的同一策略提示安装，新建入口在驱动安装后才出现（#436）。
+- 数据库：Auto（粘性）会话在空闲期被服务端或防火墙掐断后，不必再关掉连接重开。此前驱动把断连包成正常结果，断连信号只在错误时置位，编辑器于是一直复用死连接，每条语句都在几毫秒内失败。现在若整批结果都表明「语句还没发出去就已断连」，会就地替换会话的物理连接并重试一次，会话 id、页签状态与记住的 schema 都保留；中途断连（broken pipe / unexpected EOF）与手动事务不重试，避免语句被重放成重复写入（#447）。
+- 数据库：修复 Auto 模式选中 schema 后未限定表名的查询仍落在 `public`。建会话时只传了 database、没把 search_path 对齐到下拉框选中的 schema，后续执行又不会重放切换，选择形同无效；现在会话建立后先切 schema 再执行，且只在建会话时切一次，不覆盖用户手动的 `SET search_path`（#433）。
+- 数据库：结果操作（复制为 INSERT / UPDATE / DELETE）不再把表名拼成 `schema.schema.table` 导致执行报错——查询分析给出的表名本身可能已带 schema 前缀（#400）。
+- 笔记：打开外部 Markdown 文件后，文中的相对路径图片现在能正常渲染。此前编辑器创建时没有绑定文件路径，图片基准目录退回进程工作目录；现在打开即绑定绝对路径，在笔记内重命名文档时也会同步更新（#448）。
+- 设置 → MCP：「安装 Linop Skill」不再在 macOS 上以 `No such file or directory (os error 2)` 失败。从 Finder / Dock 启动的 GUI 进程只继承最小 PATH，裸调 `npx` 找不到，而 `npx` 的 shebang 还需要 `node`；现在按 PATH 加上 Homebrew、`/usr/local`、nvm / fnm / volta / asdf 等兜底目录解析启动器，并把所在目录补进子进程 PATH。MCP 运行时的要求状态改为真实探测，找不到启动器时给出可操作提示，而不是无条件显示「已就绪」（#449）。
+- 连接树分成「最近连接 / 分组 / 未分组」三段，未分组的连接不再堆在文件夹列表末尾，分区标题带计数，「最近连接」与「未分组」分区可折叠；分组同级排序统一为「自定义顺序 + 名称自然序」，修掉新建分组后层级与顺序漂移的问题。
+- 删除分组改为「提升一层」：子分组与直属连接迁移到被删分组的父级，不再凭空消失或跳到根级；右键「移动到分组」改成按层级展开的子菜单，同名分组会补上父路径，分组过多时给出提示。
+- 终端：SSH / 串口断开或 shell 已退出后，`Ctrl+D` 可以关闭当前标签页（单窗格关闭整页、分屏只关当前窗格、独立窗口关闭窗口），会话存活时 `Ctrl+D` 仍照常透传 EOF。此前该分支只判断终端类型是否支持实时输入，SSH 断开后这个值仍为 true，按键根本命中不到关闭逻辑。
+- 终端：分屏窗格的尺寸在切到其它标签再切回来时保持原比例，不再重新均分——尺寸此前只存在窗口元素缓存里，标签切走就丢了。
+- 终端：macOS 上粘贴到远程 bash 偶尔冒出 `[200~` 字面文本的问题已修复。此前按渲染帧快照判断是否用 bracketed paste 包装，而 bash 5.1+ 每次执行命令都会翻转该模式，快照滞后就会拿过期状态去包装；现在读取终端的实时模式，只有锁被解析线程占用时才回退快照（#198）。
+- 表设计器：SQL 预览与 DDL 页签可以复制 SQL，按钮移到工具栏紧邻「保存」，内容为空时置灰；两个页签的编辑器由禁用改为只读，可以直接选中片段复制，顺带修掉提示文案直接显示字面 key 的问题。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.21.0) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- Connections now carry an "AI Access" policy (Allowed / Read only / Denied) that decides whether AI may operate them. It applies in three layers: denied connections stay out of the AI resource catalog and are not returned by `connections.list` / `find`; read-only connections keep only read tools; and one guard re-checks `connection`, `connection_id`, `target` and `session_id` at execution time, shared by the built-in chat and external MCP clients, so writes are rejected outright instead of silently allowed. The policy is part of the connection, so it syncs to the cloud with the connection and still holds on another machine; the sidebar badge and context menu switch it directly (#437).
+- Extension connections support custom icons: the connection form offers built-in icons or a local image, falling back to the icon declared in the extension manifest, and forms and manifests gain an `Icon` field type so extensions can ship their own picker. Connection lists, cards and terminal tabs now share one resolution path, so tabs no longer always show the generic icon — an SSH connection's custom icon now appears on its tab as well (#438).
+- The model dropdown in AI chat shows a search box once it has more than 15 entries (OpenRouter and similar aggregators carry hundreds of models), filtering case-insensitively on provider, model name and hint and ranking model names that start with the query first; the list scrolls within a fixed height and shows an empty state when nothing matches (#405).
+- The home "Recent Connections" section can now be turned off: Settings → General → Connection display adds a switch, and with it off the home page lists only the connections inside their groups — it stays off after a restart (#388).
+- SQL results can now fill in column comments from their sources: with "show column comments in header" enabled, the query's base tables, joins and aliases are analyzed and source comments are mapped onto the result columns; when the analysis is incomplete it degrades to the conservative "column name is unique across the candidate tables" match and shows nothing rather than a comment it cannot attribute correctly (#428).
+- SQL execution now has a clear running state: the result panel switches to running and stays visible, the toolbar shows a spinner and "Running...", and the elapsed time starts ticking immediately, so a long query no longer looks like it was ignored. Establishing an Auto session or a manual transaction counts as running too, and cancelling during that phase really aborts the run (#427).
+
+#### Fixes and Improvements
+
+- ClickHouse now runs on an extension driver, and upgrading requires installing that driver: the built-in plugin is gone, so connecting, opening and forms go through the clickhouse driver from the extension market. Existing connection records are kept but need the driver installed before they can open; when it is missing the app offers to install it, following the same policy as DuckDB / TDengine, and the new-connection entry only appears once the driver is installed (#436).
+- Database: an Auto (sticky) session dropped while idle by the server or a firewall no longer requires closing and reopening the connection. The drivers report a disconnect as an ordinary result, the lost-connection signal was only raised on errors, and the editor kept reusing the dead connection so every statement failed within milliseconds. When an entire batch shows the statement never left the client, the session's physical connection is now replaced in place and the run retried once, keeping the session id, tab state and remembered schema; mid-flight disconnects (broken pipe / unexpected EOF) and manual transactions are not retried, so statements cannot be replayed into duplicate writes (#447).
+- Database: fixed unqualified queries landing in `public` even after a schema was picked in Auto mode. Session setup passed only the database and never aligned the search_path with the schema selected in the dropdown, and later runs do not replay the switch, so the choice had no effect; the schema is now switched before the run, once per session, without overriding a manual `SET search_path` (#433).
+- Database: result actions (copy as INSERT / UPDATE / DELETE) no longer build `schema.schema.table` and fail on execution — the table name coming from query analysis may already carry its schema prefix (#400).
+- Notes: images referenced by relative path now render when an external Markdown file is opened. The editor was created without a file path, so the image base directory fell back to the process working directory; it is now bound to the absolute path on open and updated when the document is renamed inside the app (#448).
+- Settings → MCP: "Install Linop Skill" no longer fails with `No such file or directory (os error 2)` on macOS. A GUI process launched from Finder or Dock inherits a minimal PATH, so a bare `npx` cannot be found — and `npx`'s shebang needs `node` — so the launcher is now resolved through PATH plus fallback directories (Homebrew, `/usr/local`, nvm / fnm / volta / asdf) and its directory is added to the child process PATH. The MCP runtime requirement status is probed for real now, with actionable guidance when the launcher is missing instead of an unconditional "ready" (#449).
+- The connection tree separates Recent connections / Groups / Unassigned, so ungrouped connections no longer pile up at the end of the folder list, and each section header shows a count, with the Recent and Unassigned sections collapsible. Sibling groups now sort consistently by custom order then natural name, fixing the hierarchy and order drifting after a new group was created.
+- Deleting a group now lifts its contents one level: child groups and direct connections move to the deleted group's parent instead of vanishing or jumping to the root. "Move to group" became a hierarchical submenu, with the parent path added to same-named groups and a hint when there are many of them.
+- Terminal: after an SSH or serial disconnect, or once the shell has exited, `Ctrl+D` closes the current tab (the whole tab for a single pane, only the focused pane in a split, and the window for a standalone terminal), while a live session still passes `Ctrl+D` through as EOF. The old branch only checked whether the terminal type accepts live input, which stays true after an SSH disconnect, so the key never reached the close logic.
+- Terminal: split pane sizes keep their proportions after switching to another tab and back instead of being reset to equal shares — the sizes only lived in the window element cache and were dropped when the tab was unmounted.
+- Terminal: pasting into a remote bash on macOS no longer occasionally leaks a literal `[200~`. The paste path used a rendering snapshot to decide whether to wrap the text in a bracketed-paste sequence, but bash 5.1+ toggles that mode around every command, so a stale snapshot wrapped when the remote had it off; the live terminal mode is now read directly, falling back to the snapshot only while the parser holds the lock (#198).
+- Table designer: the SQL preview and DDL tabs can copy their SQL, with the button moved to the toolbar next to Save and greyed out when there is nothing to copy; both editors became read-only rather than disabled so fragments can be selected, and the notice no longer displays a raw locale key.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.20.4...v0.21.0
+
+## [v0.20.4] - 2026-10-20
+
+#### 更新内容
+
+- 扩展连接新增「终端类型」：扩展只需在 `extension.json` 的 connection 贡献点里声明 `terminal`（command、args、env、title），不必再提供 provider 运行时，Linop 会直接用已保存的非敏感表单值解析模板并打开普通本地终端页签（例如 `tsh-ssh` 这类外部 CLI 工具，现在只要一个 `extension.json` 就够了）。出于安全考虑，模板参数若不以 `-` 开头，代入值也不允许以 `-` 开头，避免被同步或共享过来的连接数据注入命令行选项；空的可选参数与环境变量会被丢弃，控制字符一律拒绝。
+- 这类终端页签使用固定标题、支持复制，子进程退出后按回车即可重新启动。扩展连接表单对终端类型隐藏「测试」按钮。
+
+#### 修复与优化
+
+- Redis 集群：单键命令打到非所属 master 时自动按 `MOVED` 重定向到正确节点并重试一次（`GET` / `SET` / `DEL` / `EXPIRE` / `PERSIST` / `RENAME` / `HSET` / `HDEL` / `LPUSH` / `RPUSH` / `LSET` / `SADD` / `SREM` / `ZADD` / `ZREM` 以及键详情查看）。控制台里的原始命令仍保持直连，避免写命令被重放（#414 后续反馈）。
+- Redis：点刷新已加载的数据库不再闪退（#424）。行右侧的加载中 / 错误图标是条件插入的子元素，会让同排文本容器的布局序号漂移，导致布局测量缓存未命中并在预绘制阶段直接崩溃；现在这些容器使用稳定 ID。
+- 数据库：修复执行 SQL 成功后进程崩溃。缓存失效最终会走 `tokio::fs` 删目录，需要在 Tokio 运行时内轮询；此前它在前台任务里直接等待，release 构建（`panic = "abort"`）下只要有一条 DDL 成功就整进程退出。
+- 云同步：修复每次同步后连接总是掉回根目录、需要手动重新分组的问题。云端记录按更新时间倒序下发，连接常常先于所属分组落地而被写到根目录；收尾阶段新增连接层级对齐，在本地未被改动时把连接归位到云端所属分组。
+- 开发构建：debug 构建默认使用独立数据目录 `~/.linop-dev`，不再污染已安装的正式实例；`--data-dir`、`--portable`、`NAVOP_DATA_DIR`、`NAVOP_PORTABLE` 仍优先级更高。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.20.4) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- Extension connections can now declare a terminal instead of a provider runtime: a connection contribution in `extension.json` may specify `terminal` (command, args, env, title), and Linop resolves the templates against the saved non-secret form values and opens a regular local terminal tab — external CLI tools such as `tsh-ssh` need nothing but an `extension.json`. As a safety guard, an argument whose template does not start with `-` is rejected when the substituted value does, so shared or synced connection data cannot inject command-line options; empty optional arguments and env entries are dropped, and control characters are rejected.
+- Those terminal tabs get a fixed tab title, can be duplicated, and restart on Enter after the child process exits. The connection form hides its Test button for terminal connections.
+
+#### Fixes and Improvements
+
+- Redis cluster: single-key commands sent to a master that does not own the key now follow the `MOVED` redirection to the right node and retry once (`GET` / `SET` / `DEL` / `EXPIRE` / `PERSIST` / `RENAME` / `HSET` / `HDEL` / `LPUSH` / `RPUSH` / `LSET` / `SADD` / `SREM` / `ZADD` / `ZREM`, plus key detail lookup). Raw commands typed in the console stay direct so write commands are never replayed (#414 follow-up).
+- Redis: refreshing a loaded database no longer crashes (#424). The conditionally inserted loading / error icons shifted the layout index of the sibling text containers, so the measurement cache missed and prepaint crashed; those containers now carry stable IDs.
+- Database: fixed a process crash after a successful SQL execution. Cache invalidation eventually removes directories through `tokio::fs`, which must be polled inside the Tokio runtime; it used to be awaited from the foreground task, so with release builds (`panic = "abort"`) a single successful DDL terminated the whole process.
+- Cloud sync: fixed connections falling back to the root folder after every sync, which forced a manual regroup. Cloud records arrive in reverse update order, so a connection often lands before its group exists and gets written to the root; the finalize pass now re-aligns connections to their cloud group whenever the local copy was untouched.
+- Development builds: debug builds now default to an isolated data directory (`~/.linop-dev`) instead of polluting an installed release instance; `--data-dir`, `--portable`, `NAVOP_DATA_DIR` and `NAVOP_PORTABLE` still take precedence.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.20.3...v0.20.4
+
+## [v0.20.3] - 2026-10-19
+
+#### 更新内容
+
+- 终端可以用键盘回看历史输出：`Ctrl+Shift+↑/↓` 逐行滚动，`Shift+PageUp/PageDown` 按屏翻页，快捷键可在设置里修改（#409）。
+- Auto 模式的 SQL 编辑器改为粘性会话：同一页签内的多次执行复用同一条数据库连接，`SET @变量` 这类会话状态不再跨执行丢失（issue #312）。
+- 笔记 / Markdown 编辑器新增右侧可折叠大纲面板（`Cmd/Ctrl+Shift+O`），并新增 Markdown 代码字体设置；同步上游 velotype 的改进，包括双击按词选择、输入法相关崩溃修复，以及 `div` 块内图片与链接的排版（#406）。
+- SFTP 本地栏恢复磁盘下拉（仅 Windows），地址栏可以直接输入 `C:` 这样的裸盘符路径（issue #276、#375）。
+- 同一条 SSH 连接上的文件传输从单并发改为 3 条并发车道，一个卡住的上传不再拖死同服务器上的其它传输（#418）。
+
+#### 修复与优化
+
+- Redis：「启用 TLS」此前必然失败——客户端根本没有编译 TLS 支持，连 URL 解析阶段就报错，与服务器、证书、网络无关；现在可以正常连接 TLS 服务端。集群模式会汇总所有 master 节点（SCAN / TYPE / DEL 与键计数跨节点生效，并处理 MOVED 重定向，issue #414）。同时修复切换到空库时应用崩溃，以及 zset 类型徽章出现时的同类崩溃（issue #416）。
+- SFTP：上传卡在无响应的服务器上时可以立即取消并快速失败，单条请求超时由 300 秒缩短到 60 秒；包含符号链接的目录上传不再整体失败，文件链接按真实大小上传，目录链接与坏链跳过（#417）。
+- 数据库：清空表（TRUNCATE 或全表 DELETE）后自动刷新表数据页签（#413）；修复结果集编辑网格保存时库名前缀被重复拼接、导致 MySQL 报 `Table ... doesn't exist`（42S02 / 1146）的问题。
+- 剪贴板：复制 JSON 字段不再额外包一层引号，粘贴出来的内容与存储原文一致（#412）。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.20.3) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- Terminals can scroll back with the keyboard: `Ctrl+Shift+Up/Down` moves one line, `Shift+PageUp/PageDown` moves a screen, and both are rebindable in Settings (#409).
+- The Auto-mode SQL editor now keeps a sticky session per tab: repeated runs reuse one database connection, so session state such as `SET @var` survives across executions (issue #312).
+- The Notes / Markdown editor gains a collapsible outline panel on the right (`Cmd/Ctrl+Shift+O`) and a dedicated Markdown code font setting; upstream velotype improvements are included — double-click word selection, the IME-related crash fix, and image/link layout inside `div` blocks (#406).
+- The SFTP local pane restores the disk dropdown on Windows, and the address bar accepts bare drive letters such as `C:` (issues #276, #375).
+- File transfers on a single SSH connection now use three concurrent lanes, so one stalled upload no longer blocks the others to the same server (#418).
+
+#### Fixes and Improvements
+
+- Redis: "Enable TLS" used to fail unconditionally — the client was built without TLS support at all, so it errored while parsing the URL before any network request, regardless of server, certificate or network; TLS servers now connect. Cluster mode aggregates every master node (SCAN / TYPE / DEL and key counts span nodes, with MOVED redirection handled, issue #414). Also fixed the crash when switching to an empty database and the same crash triggered when the zset type badge appears (issue #416).
+- SFTP: an upload stuck on an unresponsive server can be cancelled immediately and fails fast, and the single-request timeout drops from 300s to 60s; directory uploads containing symlinks no longer fail as a whole — file links upload at their real size while directory links and broken links are skipped (#417).
+- Database: truncating a table (TRUNCATE or a full-table DELETE) now refreshes the table data tab (#413); saving edits from the result grid no longer repeats the schema prefix and fails with MySQL `Table ... doesn't exist` (42S02 / 1146).
+- Clipboard: copying a JSON field no longer wraps it in an extra pair of quotes, so the pasted content matches the stored value (#412).
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.20.2...v0.20.3
+
+## [v0.20.2] - 2026-10-13
+
+#### 修复与优化
+
+- 修复 Windows 版安装后无法启动（issue #397）：v0.20.1 的 Windows 产物漏掉了应用程序清单，程序在 `main` 之前就以「无法定位程序输入点 TaskDialogIndirect」退出，exe、MSI 与便携版全部受影响。现在 linop.exe 自行嵌入 Common-Controls v6 清单（含 asInvoker、Windows 10 兼容声明与 PerMonitorV2 DPI 感知），发布流水线同时新增清单校验，避免它再次被静默丢掉。
+- 「检查更新」不再点了没反应：检查期间按钮显示加载态并自动防重复点击，整轮检查加 20 秒总超时（超时给出明确提示，而不是无限转圈），说明行常驻显示「上次检查」的时间与结果（已是最新 / 发现新版本 / 检查失败 / 检查超时）。顺带修掉一个隐患：主窗口在检查期间被关闭会让 future 一起丢弃，按钮永久转圈且再也回不来。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.20.2) 下载桌面端安装包
+
+---
+
+#### Fixes and Improvements
+
+- Fixed the Windows build failing to start after installation (issue #397): the v0.20.1 Windows artifacts shipped without an application manifest, so the executable exited before `main` with "the procedure entry point TaskDialogIndirect could not be located" — the exe, MSI and portable packages were all affected. linop.exe now embeds its own Common-Controls v6 manifest (asInvoker, Windows 10 compatibility, PerMonitorV2 DPI awareness), and the release pipeline validates the manifest so it cannot go missing silently again.
+- "Check for updates" no longer appears to do nothing: the button shows a loading state while checking (which also prevents duplicate clicks), the whole check is bounded by a 20-second timeout that reports a clear message instead of spinning forever, and a persistent line reports when the last check ran and what it found (up to date / new version available / failed / timed out). This also fixes a latent case where closing the main window mid-check discarded the future and left the button spinning forever.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.20.1...v0.20.2
+
+## [v0.20.1] - 2026-10-13
+
+#### 更新内容
+
+- Windows 原生 RDP 远程桌面改用合成呈现（issue #310）：GPUI 的浮层（标签菜单、弹窗、下拉）此前会被原生 RDP 画面「挖孔」盖住，落在下面的控件既看不见也点不到。现在浮层正常画在 RDP 画面之上，附加失败会自动退回子窗口方式，不会留下被遮蔽却不可用的窗口。浮动侧边栏与对话框同步适配。
+- 新增 SQL 库（issue #313）：SQL 文件不再依附于连接管理，独立成库可跨连接复用；侧边栏列表采用 dbx 风格的单色书签图标。
+- 主密钥支持修改与重置（issue #371）：修改时校验旧密钥后重新加密本地连接、钥匙串条目与已同步数据，中途断网只记待办、下次同步前自动补做；重置需输入 RESET 二次确认，删除范围逐项可勾选。「个人密钥」入口不再转交给「修改主密钥」弹窗，两个入口各司其职。
+- AI 供应商设置重做：新增 OpenRouter / MiniMax / 硅基流动等 6 家供应商并预填 base_url；内置 Linop AI 供应商移除，AI 能力改由用户自备（OpenAI 兼容接口均可接入）。
+- 新增鼠标中键关闭未固定（unpinned）的标签页。
+- DDL 统一由数据库驱动生成，删除宿主兜底拼装。
+- 终端嵌套 shell 场景新增 `terminal.control` 的 `reintegrate`，恢复丢失的宿主集成；shell 宿主新增 `linop.i18n` / `linop.theme` 两条 host 模块。
+- FTP / Telnet 连接的端口改为普通输入框，移除预设下拉。
+- 语言扩展的 WASM 编译改用专用大栈线程，修复打开高亮文件时崩溃。
+
+##### 修复与优化
+
+- 表格列筛选 / 隐藏列后操作落到错误行列：筛选生效时「删除记录」删的是另一行——界面提示成功、选中的行还在，刷新后像「删不掉」；隐藏 / 移动列后打开大文本编辑器显示的是别的列的内容（issue #387）。视图层「显示坐标」与数据层「数据坐标」的换算统一收口到委托层：删除、批量删除、新增行、复制行、大文本编辑全部修正，新增行在筛选生效时也照常可见，空筛选值集改为取消该列筛选。
+- 复制 SQL 时限定表名逐段加引号，不再把整段语句的表名一次包进引号。
+- Markdown 编辑器 Cmd/Ctrl+A 一次全选整篇，删除两段式选中循环。
+- 修复 gpui-fast 后端暴露的多处保留渲染契约违规；渲染栈整体迁移到 gpui-fast 0.1.8 自包含快照并同步 gpui-kit 上游修复。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.20.1) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- The Windows native RDP session is presented through composition (issue #310): GPUI overlays (tab menus, popovers, dropdowns) used to be swallowed by the airspace hole of the native RDP surface, leaving controls beneath it invisible and unclickable. Overlays now draw above the RDP content, with an automatic fallback to the plain child-window presentation when attaching fails. The floating sidebar and dialogs are adapted accordingly.
+- New SQL Library (issue #313): SQL files no longer live inside individual connections — they form a standalone library reusable across connections, with dbx-style monochrome bookmark icons in the sidebar.
+- Master key can now be changed and reset (issue #371): changing it verifies the old key and re-encrypts local connections, keychain entries and already-synced data, deferring interrupted re-encryption to the next sync; resetting requires typing RESET and lets you tick exactly what gets wiped. The "personal key" entry no longer hands over to the "change master key" dialog — each entry keeps its own form.
+- AI provider settings reworked: 6 providers including OpenRouter / MiniMax / SiliconFlow are added with prefilled base_url; the built-in Linop AI provider is removed — bring your own key with any OpenAI-compatible endpoint.
+- Middle-click closes unpinned tabs.
+- DDL is now generated uniformly by database drivers; the host-side fallback assembly is gone.
+- Nested shells in the terminal gain `terminal.control`'s `reintegrate` to restore lost host integration, and the shell host adds `linop.i18n` / `linop.theme` host modules.
+- FTP / Telnet port fields become plain inputs instead of a preset dropdown.
+- Language-extension WASM compilation moves to a dedicated large-stack thread, fixing a crash when opening highlighted files.
+
+#### Fixes and Improvements
+
+- Table operations no longer land on the wrong row or column while column filters or hidden columns are active: with a filter on, "delete record" deleted a different row — reported success while the selected row survived the refresh; with a column hidden or moved, the large-text editor showed another column's content (issue #387). Display-to-data coordinate translation is now centralized in the delegate layer: delete, batch delete, add row, clone row and large-text editing are all corrected, newly added rows stay visible under active filters, and an empty filter selection now clears that column's filter.
+- Copying SQL quotes each table reference segment individually instead of wrapping the whole statement's identifiers at once.
+- The Markdown editor's Cmd/Ctrl+A selects the whole document in one shot; the two-stage selection loop is gone.
+- Fixed several retained-rendering contract violations surfaced by the gpui-fast backend; the rendering stack moves to the self-contained gpui-fast 0.1.8 snapshot with upstream gpui-kit fixes.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.20.0...v0.20.1
+
+## [v0.20.0] - 2026-10-10
+
+#### 更新内容
+
+- Windows 原生 RDP 远程桌面改用窗口组合呈现（issue #310）：GPUI 的浮层（标签菜单、弹窗、下拉）此前会被原生 RDP 画面「挖孔」盖住，落在下面的控件既看不见也点不到。现在把 ActiveX 宿主窗口挂成组合表面，浮层正常画在 RDP 画面之上；组合附加失败会自动退回原来的子窗口方式，不会留下一块被遮蔽却不可用的窗口。内部依赖同步到 gpui-pre fork-0.3.126（fork-0.3.125 在 Linux 上编不过：上游 Wayland 重组路径对可选 renderer 直接调方法、没有解包）。
+- 新增 Gbase 8a 数据库支持。
+- 表数据页新增「字段定位」：可按字段名直接定位到对应列，列很多时不用再横向翻找。
+- 列注释改为设置项：此前只有把鼠标悬浮在列名上才看得到注释，现在可以在设置里让注释常驻显示（issue #251）。
+- 终端弹层背景不透明度可配置（issue #73）：命令提示 / `cd` 补全 / `Ctrl+R` 历史搜索共用的下拉弹层，背景此前是一个写死的 0.72 透明度常量 —— issue #5 时代为「不遮挡终端内容」特意从 0.88 调低，但它会让下层终端文字以 28% 权重透进弹层，与弹层自身文字对比度同量级，亮色主题下整层几乎不可读。先把透出压到 4%，再做成终端侧边栏设置里的「弹层背景不透明度」滑块（范围 0.5–1.0，默认 0.96），两个相反诉求可以各取所需。
+- 展开表快多了：表展开此前会串行查 5 类元数据（列 / 索引 / 外键 / 触发器 / 检查约束）并把结果全部预置。实测 MySQL 5.7 下「外键」那一条 `information_schema` 查询单独就要 2.9–3.2 秒、且返回 0 行，表展开的 3–6 秒几乎全花在这条白等上。现在只立即查列，其余四类改成点开对应目录时才查（四个目录的展开箭头照常显示，行为不变）。
+- 「执行记录」面板改用虚拟化列表（issue #368）：打开执行记录后，SQL 编辑器每敲一个字都要重建最多 1000 条记录（约两万个元素）的 element 树，表现为「每打一个字卡一下」，清空记录后立刻消失。现在只渲染可见的十来行。
+- 个人同步补上真正的跨实例互斥：目录 / Git / WebDAV 这三类后端都可能被同一台机器的两个实例、或两台机器通过 Dropbox / iCloud 共享同一个同步目录指向，此前锁是「永远成功且从不释放」的空实现，两边会并发「读记录 → 改 → 写回」，单文件原子写保不住版本。现在目录 / Git 后端用带 TTL 与 nonce 的锁文件（放在同步包之外，不会被 Git 提交上去），WebDAV 用 PUT 后回读 nonce 裁决；拿不到锁只让路一轮、下一轮自动重试，也可读不到锁基础设施时降级为「本轮不加锁继续」，不会把本来能跑的同步变成失败。
+- 递归分组的父子层级随同步载荷传递（issue #356）：分组此前只同步 name / color / icon / sort_order，而 parent 是机器内自增 id，于是另一台电脑应用同步数据后，A/B 两层嵌套会变成两个并列分组。现在载荷带「格式版本 + 父分组云 ID」，祖先优先排序保证父分组先拿到云 ID，应用阶段顺序无关、幂等，旧客户端留下的无层级载荷也不会把本地嵌套拍平；云同步与个人同步（Git / WebDAV / 目录）两条链路一起修。
+- 本地删除遇上「远端之后又改过」时挂冲突而不是抹掉（issue #361）：删除事件此前只带数据类型与云 ID，判不出远端在我们删除之后是否又被别的设备改过，于是只能无条件把远端记录推成墓碑、静默抹掉对方刚做的改动。现在删除事件带上删除前的同步基线（真正删行之前读出），远端在基线之后被改过就挂 `LocalDeletedRemoteModified` 冲突交给用户裁决。
+- 面板分隔条与列宽抓取区改为骑在边界两侧（issue #333）：以前命中带只有 2px 且整条缩在边界一侧，鼠标稍动光标与悬停高亮就一起消失，必须像素级对准才拖得动。现在以列边界为中心、两侧各留 4px，数据表格表头、表对象列表、表设计器、Redis 值表、单元格预览分隔条、各面板分隔条一并生效。
+- 复制整行再粘贴不再丢字段（issue #355）：可编辑表格与查询结果共用「制表符分列、换行分行」的剪贴板格式，但复制侧原样写出、粘贴侧裸切，字段自身含制表符 / 换行 / 引号时复制那一刻就已经被切乱（表现为「剪贴板里字段是全的，粘进去少了几个」）。现在新增统一的 TSV 编解码（RFC 4180 风格成对转义），四个读写点全部改走它：字段含分隔符才加引号并双写内部引号，普通值保持原样，从别处粘单值（JSON 片段、`C:\new\test` 这类路径）依旧原样写入。
+- 终端文件侧边栏的连接名标签只显示前两个字符、其余用 `...` 省略，完整名称仍由 tooltip 呈现：目标选择器与 SFTP 端点切换按钮此前各自调宽度上限，长连接名仍会把右侧路径栏挤窄。
+- 文件传输面板的「自动跟随终端目录」与「隐藏文件」开关现在开与关一眼可辨（开启用强调色，关闭退回次要前景色），并新增「定位到终端目录」按钮（面板当前目录 → 终端 `cd`，方向与既有的「同步终端目录」相反）（issue #359）。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.20.0) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- The Windows native RDP session is now presented through window composition (issue #310): GPUI overlays (tab menus, popovers, dropdowns) used to be covered by the airspace hole of the native RDP surface, so controls underneath were neither visible nor clickable. The ActiveX host window is attached as a composition surface so overlays draw above the RDP content; a failed attach falls back to the previous plain child-window presentation and never leaves a cloaked window behind. Internal dependencies were synced to gpui-pre fork-0.3.126 (fork-0.3.125 did not compile on Linux: the upstream Wayland recomposition path called renderer methods on the fork's optional renderer without unwrapping it).
+- Added support for the Gbase 8a database.
+- The table data page gains "locate field", which jumps straight to the column matching a field name — no more horizontal hunting in wide tables.
+- Column comments become a setting: they used to appear only while hovering the column header, and can now be shown permanently from settings (issue #251).
+- The terminal popup background opacity is configurable (issue #73): the dropdown shared by command suggestions, `cd` completion and `Ctrl+R` history search drew its background at a hard-coded 0.72 opacity. That value dates back to issue #5, where the popup was lowered from 0.88 so it would not hide the terminal beneath it — but it lets the terminal text bleed through at 28%, on the same order as the popup's own text contrast, leaving the whole layer nearly unreadable in light themes. The bleed-through was first cut to 4%, then turned into a "popup background opacity" slider in the terminal sidebar settings (0.5–1.0, default 0.96), so both opposite requests can be satisfied.
+- Expanding a table is much faster: it used to run five `information_schema` queries serially (columns, indexes, foreign keys, triggers, check constraints) and pre-populate all of them. Measured on MySQL 5.7 the foreign-key query alone costs 2.9–3.2 s and returns 0 rows, so nearly all of the 3–6 s expand was spent waiting for nothing. Only columns are fetched eagerly now; the other four categories are queried when their folder is expanded (all four folders keep showing their chevron and behave as before).
+- The execution history panel uses a virtualized list (issue #368): with the panel open, the SQL editor rebuilt the element tree of up to 1000 records (~20k elements) on every keystroke, which showed up as a stutter per character and disappeared as soon as the history was cleared. Only the visible dozen rows are rendered now.
+- Personal sync gains real cross-instance exclusion: folder, Git and WebDAV backends can all be pointed at by two instances on one machine, or by two machines sharing one sync directory (Dropbox / iCloud), and the lock used to be an "always succeeds, never released" stub, so both sides ran read → modify → write back concurrently and the atomic single-file write could not protect the version. Folder and Git backends now use a lock file with a TTL and a nonce (kept outside the sync package so the Git backend never commits it), and WebDAV decides by reading the nonce back after PUT; a busy lock only yields this round and retries on the next one, and a broken lock infrastructure degrades to "continue without a lock" instead of failing a sync that used to work.
+- Nested workspaces carry their parent link through the sync payload (issue #356): only name / color / icon / sort_order were synced while parent was a machine-local auto-increment id, so after applying synced data on another computer an A/B nesting became two sibling groups. The payload now carries a format version plus the parent's cloud id, uploads are sorted ancestor-first so parents get their cloud id before children reference it, and applying is order-independent and idempotent — payloads from older clients do not flatten local nesting. Both cloud sync and personal sync (Git / WebDAV / folder) are fixed.
+- A local delete that races a later remote edit now becomes a conflict instead of a silent erase (issue #361): the delete event only carried the data type and cloud id, so it could not tell whether the remote record had been changed by another device after our delete, and the remote record was unconditionally tombstoned — silently wiping a change the other side had just made. The event now carries the sync baseline read before the local row is removed, and a remote edit after that baseline raises a `LocalDeletedRemoteModified` conflict for the user to decide.
+- Panel dividers and column-resize handles straddle the boundary (issue #333): the hit band used to be 2px wide and fully inset on one side of the boundary, so you had to aim pixel-perfectly and the cursor and hover highlight vanished at the slightest movement. The grab area is now centered on the boundary with 4px on each side, across data grid headers, the table object list, the table designer, Redis value tables, the cell preview divider and every panel divider.
+- Copying a row and pasting it no longer loses fields (issue #355): editable tables and query results share a "tab-separated columns, newline-separated rows" clipboard format, but the copy side wrote values verbatim and the paste side split naively, so a field containing a tab, newline or quote was already cut apart at copy time (the clipboard looked complete while the pasted row lost fields). A shared TSV codec with RFC 4180-style paired escaping now backs all four read/write sites: only fields containing separators are quoted with doubled inner quotes, plain values stay untouched, and pasting a single value from elsewhere (a JSON fragment, a path like `C:\new\test`) is still written verbatim.
+- The connection-name label in the terminal file sidebar shows only its first two characters with `...` for the rest, with the full name still available in the tooltip: the target picker and the SFTP endpoint switcher used to tune their own width caps, and a long connection name still squeezed the path bar on the right.
+- The file transfer panel's "follow terminal directory" and "hidden files" toggles are now obviously on or off (accent color when on, secondary foreground when off), and a "locate terminal directory" button was added (panel directory → terminal `cd`, the reverse direction of the existing "sync terminal directory") (issue #359).
+
+#### Fixes and Improvements
+
+- On macOS, copying files out of a remote desktop session and pasting them in Finder produced an "already pasted <date>" text file instead of the real file: the clipboard writer left only plain-text types, and GPUI's pasteboard reader restores file paths only from `NSFilenamesPboardType` — so the 500ms local clipboard sync echo-pushed the "file" back to the remote as text (rdpclip churn). The writer now uses the classic `declareTypes` plus `setPropertyList(NSFilenamesPboardType)` sequence and ignores late remote text announcements while installed files remain authoritative.
+- The desktop shortcut icon degraded to a generic blank page after installing on Windows (issue #325): the MSI `<Shortcut>` elements referenced the Icon table, and MSI saves that icon as a separate file which, once cleaned up or once the icon cache goes stale, leaves only the blank icon. Shortcuts no longer reference the Icon table; the icon comes from the embedded resource in `linop.exe`.
+- In-app updates on Linux always failed with `Text file busy (os error 26)` (issue #353): the pre-flight check ran `open(O_WRONLY)` on the running executable itself, which Linux always answers with ETXTBSY. The replacement path only needs directory write permission, so the check now probes the target directory instead, and a read-only target file in a writable directory is no longer wrongly rejected either.
+- First connection over SSH no longer fails outright when the device has not yet recycled an old session: constrained devices (Huawei S5720 switches and the like) do not release their side of the session record immediately after dropping the transport, so the previous "reconnect once with no delay" was usually killed by the same cause. It now retries with a bounded backoff (1s, 3s) and only reports the failure when the budget is exhausted, and the hint no longer points at "VTY concurrency limit" but explains that the device briefly keeps the disconnected session, suggesting a retry in a few seconds or disabling shell integration for that connection.
+- SFTP downloads no longer fail as a whole on a short read (issue #363): pipelined downloads request fixed 61440-byte chunks and required a full read, but the protocol only guarantees "not more than requested" and a jump host (JumpServer in the report) really returns 32768 — so the whole download died with `SFTP short read ...`. A chunk is now read again until it is complete; empty reads and over-long responses are still errors.
+- Refreshing a node while a filter is active no longer makes the matching table disappear for a moment (issue #362): refresh used to clear the whole subtree first and fetch it asynchronously. Refresh now only clears the "loaded" mark and keeps the existing subtree on screen, replacing it when the new data arrives; this also fixes the expand chevron never coming back after refreshing a collapsed database/schema node.
+- SQL completion no longer leaks into tables of other statements in the same document (issue #329): the symbol table was built from the whole document while "does the current statement have a FROM" was narrowed by semicolons, so the two disagreed and multi-statement documents mixed in fields from other statements — and a bare column name shared across tables was forced into `table.column`. Completion of columns, dotted aliases and inline ghost text now all use the current statement's token slice.
+- The public MCP server sanitizes tool names so Grok no longer connects but sees zero tools (issue #194): internal tool ids are dotted (`ssh.command.poll`) while Grok's function registration only accepts `[A-Za-z0-9_-]` and dropped the whole batch. The outward view now sanitizes names with the same rules the ACP side already used, internal ids are untouched, and clients that still allow dots can keep calling the original names.
+- Fixed sync conflicts becoming permanently unresolvable once the local entry was deleted, where "use remote version" even pulled the just-deleted entry back (issue #361): conflicts are now re-resolved by `(data_type, cloud_id)` at solve time, inserting or tombstoning when the local entry no longer exists, and deleting a connection / group / credential also clears the conflicts it left behind.
+- The ▶ run button of the SQL editor no longer drifts after scrolling (issue #330): the gutter marker was placed in content coordinates without adding the vertical scroll translation, so after scrolling each button sat at its unscrolled row and running it executed a different statement.
+- Updated internal dependencies to gpui-kit upstream e746db5c (dialog margin, scrollable mask corner radius, settings focus ring, kit UI testing, narrow text_view columns — five upstream commits).
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.19.5...v0.20.0
+
+## [v0.19.5] - 2026-10-06
+
+#### 更新内容
+
+- 主密钥修改与重置：入口有三处——设置页「账户」、主页侧边栏同步状态下方、账户菜单，都是弹窗表单。修改主密钥时先校验旧密钥，再用新密钥重新加密本地连接、钥匙串条目、团队密钥缓存与 WebDAV 密码，并把已同步到 Linop Cloud 或个人同步（文件夹 / Git / WebDAV）的数据逐条重写为新密文，中途断网只记待办、下次同步前自动补做，不会把本地退回去；团队共享数据由团队密钥加密，不受主密钥变更影响。重置主密钥会弹窗强提示并要求输入 RESET 二次确认，删除范围逐项可勾选（默认全选，含团队数据、查询历史、命令历史、笔记与云同步版本信息），清空后回到全新安装状态。多设备新增密钥版本机制：其他设备同步时一旦发现云端密钥版本更高，会明确提示「主密钥已在其他设备上被修改，请输入新的主密钥」，而不是让你怀疑自己输错了。
+
+- 个人同步新增 WebDAV：与「文件夹」「Git」并列，填服务器地址、用户名、密码即可用。密码经加密后落盘，不明文保存。协议实现刻意只用 GET / PUT / DELETE 三个基础方法加 Basic 认证，不做 PROPFIND / MKCOL 探测，以规避坚果云、群晖、Nextcloud 与自建服务之间的 WebDAV 方言差异；首次写入前用 MKCOL 建目录，服务端返回 409 会被正确识别为「目录不可用」并提示去服务器上建目录或检查写权限，不再误报成「记录版本冲突」进入反复失败后暂停。设置页只显示当前后端相关的项（选 WebDAV 时隐藏「同步路径」，选文件夹 / Git 时隐藏三项 WebDAV 配置），三个输入框统一宽度，密码框可切换明文 / 掩码。WebDAV 没有本地目录可监听，同步由 60 秒周期扫描驱动。
+- SSH Agent 转发：凭据里的私钥可勾选「通过 ssh-agent 转发此密钥」，连接侧也有「SSH Agent 转发」（ForwardAgent）开关。本地 ssh-agent 转发给远端后，远端（例如跳板机）能代表你用本机私钥向更内层主机认证。对新开的终端会话生效。
+- 表结构设计页新增「刷新表结构」：重新读取最新的列、索引与表信息。设计器里有未保存改动时会先提示「刷新会放弃当前设计器中未保存的更改」，确认后「放弃并刷新」。
+- 终端粘贴确认弹窗补上「打开设置」与「不再提示」：多行粘贴、高危命令、大段粘贴三类提示都能直接跳到对应设置项，被反复拦截时不用再自己找去哪里关。大段粘贴是硬阈值，不提供「不再提示」。
+- SQL 编辑器手动事务的提交 / 回滚按钮、表数据页的「提交更改」，在写库期间显示 loading，能看出是哪一步还在跑，另一个按钮只禁用、不跟着转。
+- 走 IPC 的外部驱动改为按调用类别区分请求超时，并支持连接级配置：查询、执行、游标、导入导出等用户操作类默认 30 分钟，元数据与结构浏览类保持 30 秒；连接的高级设置里新增「请求超时（秒）」（留空按类别默认，0 表示不限制）。慢库上的大查询、大导入不再被此前那个对所有调用一视同仁的 30 秒硬超时打断。
+
+#### 修复与优化
+
+- macOS（Touch Bar 机型）：关闭窗口闪退这次收口到上游修复。上游 zed#65186 修掉了根因——accesskit 不再用动态替换内容视图的类来挂适配器，而那次「还原类」正是破坏 AppKit Touch Bar 观察者状态、让窗口关闭时抛异常的动作。因此「关闭即隐藏」这个实验开关撤掉，macOS 两个架构、Windows、Linux 统一回到「关闭即销毁」，不再为这个修复承担隐藏窗口一直占着原生窗口与渲染层的内存代价。整套机制原样保留、现在恒为关；万一闪退在真机复现，给对应构建打开同一个开关即可，代码不用改。同时把内部依赖同步到 gpui-pre fork-0.3.124 与 gpui-kit v0.7.1（含 37 个上游提交，以及上游对 headless windowing、hang monitor 等一批修复）。
+- 修复 WHERE / ORDER BY 过滤输入框里输入中文导致程序崩溃（#326）：补全候选的扫描按字节回退，而中文首字符占三个字节，回退一位会落进字符中间，直接把进程带走。现在一律按 UTF-8 字符边界回退。
+- 修复表数据过滤条的 WHERE / ORDER BY 两个输入框比迁移前高出一行：输入框在组件外部化时从「单行输入」换成了恒为多行的编辑器，行数写在布局模式里、默认 2 行，而过滤条外层是 auto 高度容器，于是直接退化成两行的下界高度——不是内容撑高的。现在行数可配置，过滤条按一行渲染（实测高度 40px → 20px），SQL 高亮与字段补全一点没动。
+- 终端命令输入栏的折叠态提示重做：此前折叠时展示的是输入框的按键提示（↑/↓ 选择 · Tab 补全 · Enter 逐条执行 · Shift+Enter 换行），可输入框这时是隐藏的，看着像是终端自己给的提示，也不容易发现有「命令输入」这个功能。现在折叠态换成可点击的「点击展开 · 命令输入支持批量执行」，点击任意位置即展开；展开后的按键说明并入输入框 placeholder，不再另起一行与 placeholder 重复。
+- 修复 Linux（Arch + Hyprland / Wayland）上每次应用内退出都以 SIGABRT 收尾并留下 core（#336）：根因不在退出逻辑，而是线程局部存储的析构顺序——托盘句柄先注册析构器，async-io 的驱动缓存在后，退出时逆序析构，轮到托盘时驱动缓存已经销毁，析构器不能 unwind，只能 abort。现在退出前显式释放托盘与全局快捷键的原生句柄，句柄交出去后托盘命令自动退化为空操作，重复调用幂等。
+- 修复 AI 对话里取消回答后会话被误判为失败：取消时提前丢掉请求 future 会拆掉 JSON-RPC 的响应通道，agent 对 session/cancel 的回应因此变成「连接致命错误」并把会话状态翻成失败。现在在取消握手期间保住这个 future，取消后回到可继续对话的状态。
+- 修复达梦等方言下表设计器改完列注释、界面一直显示旧注释：COMMENT ON 语句此前不在 DDL 关键字里，改注释根本进不到表结构缓存失效那条路径。现在 COMMENT ON COLUMN / TABLE / VIEW 都纳入失效，列注释改动即时生效（定位不到具体对象的类型宁可整库失效，不少失效）。
+- 保存流程不再依赖「窗口会消失」：受保护模式下隐藏失败会把窗口留在屏幕上，而旧保存流程是靠「窗口反正会消失」来结束这一轮的，于是表单没切到「已保存」，用户再点一次「保存」会再插一条连接（redis / mongo / serial / 端口转发最明显，数据库、中间件、扩展、凭据表单则是清掉编辑状态后重建）。现在保存成功即就地切「已保存」、下一次保存走更新而不是新建；异步保存的表单在保存落地后再补一次状态切换，所以提示里能带「已保存」这个事实——窗口没能关闭时会提示「已保存，但窗口没能关闭，可以重试关闭」，取消、红点、Cmd-W 这些裸关窗不受影响。
+- 远端目标选择器改为按可用宽度省略、完整连接名进 tooltip：此前按 12 个字符硬截断，中英文名宽窄不一，同样的上限压不住中文长名（连接名一长就把右侧路径栏挤掉），短英文名又显得空。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.19.5) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- Personal sync gains a WebDAV backend next to "Folder" and "Git": enter the server URL, user name and password and it works. The password is sealed before it is written to disk. The protocol implementation deliberately uses only GET / PUT / DELETE plus Basic auth and never probes with PROPFIND / MKCOL, to avoid the WebDAV dialect differences between Jianguoyun, Synology, Nextcloud and self-hosted servers; a collection is created with MKCOL before the first write, and a 409 from the server is now correctly recognized as "directory unavailable" with a hint to create the directory or check write permissions instead of being misreported as a version conflict that ends in a paused sync. The settings page only shows the items of the selected backend (no sync path for WebDAV, no WebDAV fields for Folder / Git), the three inputs share one width, and the password field can be revealed. WebDAV has no local directory to watch, so a 60-second scan drives syncing.
+- SSH agent forwarding: a key credential can be marked "Forward this key through ssh-agent", and a connection has its own "SSH Agent Forwarding" (ForwardAgent) switch. With the local ssh-agent forwarded to the remote host, that host (a jump host, for example) can authenticate onward to deeper hosts with your local key. Applies to new terminal sessions.
+- The table structure designer gains "Refresh table structure", which reloads the latest columns, indexes and table info. With unsaved edits in the designer it first warns that refreshing discards them, and confirms with "Discard and refresh".
+- The terminal's paste confirmation dialog now offers "Open settings" and "Don't ask again": multi-line paste, high-risk command and large paste prompts all link to the matching setting, so repeated prompts no longer leave you hunting for where to turn them off. Large paste is a hard threshold and offers no "don't ask again".
+- The commit and rollback buttons of the SQL editor's manual transaction, and "Commit changes" in the table data page, show a loading indicator while the write is in flight, so it is clear which step is still running; the other button is merely disabled and does not spin.
+- External drivers reached over IPC can now time out per call category, with a per-connection override: user operations (query, exec, cursor, import/export) default to 30 minutes while metadata and structure browsing keep 30 seconds, and the connection's advanced settings gain a "Request timeout (seconds)" field (empty follows the category defaults, 0 means unlimited). Large queries and imports on slow databases are no longer cut off by the single 30-second timeout that used to apply to every call.
+
+#### Fixes and Improvements
+
+- macOS (Touch Bar models): the crash when closing a window is now closed out by the upstream fix. Upstream zed#65186 removed the root cause — accesskit no longer swaps the content view's class to attach its adapter, and that "restore the class" step was what corrupted the AppKit Touch Bar observer state and made window close throw. The "hide on close" experiment switch is therefore gone, and both macOS architectures, Windows and Linux are back to destroying on close, no longer paying the memory cost of hidden windows that keep their native window and rendering layer alive. The whole mechanism is kept and is now permanently off; if the crash ever reproduces on real hardware, passing the same feature to the affected build is enough and no code has to change. Internal dependencies were synced to gpui-pre fork-0.3.124 and gpui-kit v0.7.1 (37 upstream commits, including a batch of upstream fixes for headless windowing and the hang monitor).
+- Fixed the crash when typing Chinese into the WHERE / ORDER BY filter inputs (#326): completion scanning stepped back one byte at a time, and because the first byte of a Chinese character spans three, that landed in the middle of a character and took the process down. It now steps back on UTF-8 character boundaries.
+- Fixed the WHERE / ORDER BY inputs of the table data filter bar being one line taller than before the migration: when the input component was externalized, the single-line input became an always-multiline editor whose row count lives in the layout mode and defaults to 2, while the filter bar sits in an auto-height container — so it collapsed into the two-row lower bound rather than being pushed up by content. The row count is now configurable and the filter bar renders one row (measured 40px → 20px), with SQL highlighting and field completion untouched.
+- Reworked the collapsed hint of the terminal's command input bar: it used to show the input's key hints (↑/↓ to select · Tab to complete · Enter to run all · Shift+Enter for a new line) while that input was hidden, which read like a hint from the terminal itself and made the "command input" feature easy to miss. The collapsed state is now a clickable "Click to expand · the command input runs batches", and expanding happens from a click anywhere on it; the key hints moved into the input's placeholder instead of repeating on a line of their own.
+- Fixed every in-app quit ending in SIGABRT on Linux (Arch + Hyprland / Wayland) with a core file (#336): the cause was not the quit logic but thread-local destruction order — the tray handle registered its destructor first and the async-io driver cache after it, so on exit the cache was already gone when the tray handle was destroyed, and a destructor that cannot unwind can only abort. The tray and global-hotkey native handles are now released explicitly before quitting, and once the handle is handed over the tray commands degrade to no-ops, making repeated calls idempotent.
+- Fixed an AI chat turn being marked as failed after cancelling a reply: dropping the request future early tears down the JSON-RPC response channel, so the agent's reply to session/cancel surfaced as a connection-fatal error and flipped the session to Failed. The future now stays alive through the cancel handshake and the session returns to a usable state.
+- Fixed the table designer showing a stale column comment after editing it on dialects such as Dameng: COMMENT ON statements were not in the DDL keyword list, so a comment edit never reached the path that invalidates the table structure cache. COMMENT ON COLUMN / TABLE / VIEW now all invalidate it, so column comment changes take effect immediately (types whose object cannot be located invalidate the whole database instead — better too much than too little).
+- Save flows no longer rely on "the window is going to disappear": when hiding fails in protected mode the window stays on screen, and the old flow used that disappearance to end the round — so the form never flipped to "saved" and pressing Save again inserted a second connection (most visible with redis / mongo / serial / port forwarding; the database, middleware, extension and credential forms rebuilt from a cleared editing state instead). A successful save now flips the form to its saved state in place, so the next save updates rather than creates; asynchronous save forms flip the state once the save lands, which is what lets the message carry the "saved" fact — a window that could not be closed now reports "saved, but the window could not be closed and closing can be retried", while plain closes (cancel, red dot, Cmd-W) are unaffected.
+- The remote target picker now elides by available width and puts the full connection name in a tooltip: it used to cut at 12 characters, which could not contain long CJK names (a long connection name pushed the path bar out) while short English names looked empty.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.19.4...v0.19.5
+
+## [v0.19.4] - 2026-09-28
+
+#### 更新内容
+
+- macOS（Touch Bar 机型）：关闭窗口闪退的问题这次收口到「所有会开窗口的入口」。上一版把弹窗的关闭路径收进统一漏斗之后仍会崩，因为表单、远程桌面、表导出、编辑器窗口里还各有自己销毁原生窗口的入口——从那些入口关闭（例如表单里的「保存」）照样走到 AppKit 的销毁流程。现在这些窗口的关闭一律经过同一条漏斗：不销毁原生窗口，只隐藏并结束业务会话，下次打开同一目标直接复用那个原生窗口。同时开多个窗口（同时编辑两个连接、同时连两台远程桌面、同一连接库的不同表导出）互不干扰。
+
+#### 修复与优化
+
+- 「关闭即隐藏」当前只在 Intel 版 macOS 包（x86_64）里默认打开：已复现的闪退现场都在 Intel 机型上，而隐藏的原生窗口会一直占着 NSWindow 与渲染层直到进程退出。ARM Mac、Windows、Linux 保持原来的「关闭即销毁」，不再为这个修复承担内存代价；Apple Silicon 的 13 英寸 MacBook Pro（M1 2020 / M2 2022）同样带 Touch Bar，那一侧需要同样保护时给对应构建打开同一个开关即可。
+- 内部依赖更新（gpui 分支 fork-0.3.121 / fork-0.3.122）：Touch Bar 重复注销异常的捕获挪到 Objective-C 侧编译，release 构建的 panic=abort 下才真正生效（此前 Rust 侧的捕获在 release 里形同虚设）。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.19.4) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- macOS (Touch Bar models): closing a window no longer crashes, now covering every entry point that opens a window. Closing the dialog path in the previous release was not enough: forms, remote desktop, table export and the editor window each destroyed their own native window, so closing from any of those (the "Save" button in a form, for example) still entered AppKit's destruction flow. All of them now go through the same funnel — the native window is hidden rather than destroyed, the session ends, and opening the same target again reuses that window. Multiple windows open at the same time (two connections being edited, two remote desktops, exports of different tables in one connection) no longer interfere with each other.
+
+#### Fixes and Improvements
+
+- "Hide on close" is currently on by default only for the Intel macOS package (x86_64): every reproduced crash came from an Intel model, and a hidden native window keeps its NSWindow and rendering layer alive until the process exits. ARM Macs, Windows and Linux keep destroying on close, so they no longer pay a memory cost for this fix; the 13-inch MacBook Pro with M1 (2020) or M2 (2022) also has a Touch Bar, so that side can switch the same feature on for its build whenever the protection is needed.
+- Internal dependency update (gpui fork 0.3.121 / 0.3.122): the Touch Bar duplicate-unregistration exception is now caught in code compiled as Objective-C, which is what makes it effective in release builds with panic=abort (the Rust-side catch never took effect there).
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.19.3...v0.19.4
+
+## [v0.19.3] - 2026-09-28
+
+#### 更新内容
+
+- SSH 支持「密码 + 密钥」组合认证（MFA password,publickey）：防火墙、交换机等设备把 AuthenticationMethods 配成 password,publickey 后，必须在同一条连接上依次通过两个因素，此前只能二选一，这类设备必然登录失败。新增的认证方式由服务器决定因素顺序，password,publickey 与 publickey,password 两种设备都能登录；目标机与跳板机各自可选，数据库隧道、终端、SFTP、端口转发等入口一并支持。
+- SQL 编辑器的「查看对象详情」不再弹独立窗口，改为在数据库页签内打开只读页签：Cmd/Ctrl+点击标识符或右键菜单都能打开，同一对象重复打开只激活已有页签，页签标题与图标按对象类型区分，内容可选中复制。
+- 数据库树搜索框新增「区分大小写 / 全词 / 正则」三个开关（与 IDEA 一致的 Cc / W / .*）：正则开启时「全词」置灰不可用，正则写错时开关标红并在悬停提示里说明、树里显示「未找到」而不是匹配全部；正则模式下不做行内高亮，避免错误的匹配标记。
+- 打开表设计器时先显示「正在加载表结构…」：首次打开既有表要串行查列、索引、表信息三次，此前这段时间是一片空白表单，看着像坏了。
+- RDP 每个连接新增图形管线开关（自动 / 始终 / 从不）：自动模式在部分环境下画质或性能不理想时可以手工指定。
+
+#### 修复与优化
+
+- 修复 MSSQL 打开设计表后字段栏一片空白的问题：可空列返回的是变长类型，此前一律解码失败，整份列清单又被静默吞掉，界面上只剩一张没有任何提示的空表。现在补齐变长类型解码，加载失败也会推窗口通知。各引擎的自增标记也不再丢失：MSSQL IDENTITY、MySQL AUTO_INCREMENT、PostgreSQL serial 与 identity、SQLite 单列 INTEGER 主键、DuckDB nextval、Oracle 标识列现在都由元数据如实上报，设计器不再退化成靠类型字符串猜。
+- 修复对象详情、悬停浮层和「复制 DDL」生成的建表语句与表设计器不一致的问题：此前用的是本地生成逻辑，产物基本是非法 DDL（双引号引用、缺主键 / 自增 / 引擎 / 字符集 / 注释 / 索引）。现在三处统一调用驱动生成，与表设计器逐字一致；DDL 生成期间显示「DDL 生成中…」，视图、列、函数不再假装有建表语句。
+- 修复大分辨率（如 2724x1530）远程桌面会话约每 500ms 反复重连的问题：同一批脏矩形互相重叠，同一批像素被按 2–3 倍上行，超限后又丢弃待提交的基础帧并重连整个会话。现在合并预算按帧尺寸缩放，队列里已有基础帧时只丢增量，绝不为增量压力丢弃基础帧。
+- 修复数据库树搜索「张开就收不回去」：搜索态下点箭头收起节点后，重建扁平列表又把它展开回来。现在搜索期间的手动收起会生效，命中节点仍会自动展开。
+- 修复数据库树搜索时展开的分支「张开却无节点」：箭头方向取自持久展开状态、子项渲染取自搜索结果，两者不一致。现在搜索态下箭头只反映真正渲染出来的子项，取消搜索后也不再留下错误的展开状态。
+- 修复表设计器选中行的悬停底色盖掉选中高亮：此前鼠标移到选中的行上，选中高亮就消失，移开又回来。现在悬停底色只叠加在未选中行上。
+- 扩展的持久化存储改为真正落盘：此前 host storage 的 get 恒返回空、set 恒成功，扩展写进去的订阅、游标读回来永远是空的，MQTT 扩展的「已保存订阅」实际上从未生效。现在每个扩展有独立的命名空间目录，写入走临时文件加 rename，读不出来的旧文件隔离为 .corrupt，支持 TTL 与体积预算。
+- provider 进程崩溃并被宿主自动重启后，已挂载的 shell 页面原地重挂，不再永久停在「加载失败，请关闭并重开连接」；重启还没落地时会等下一次事件，不抢跑。
+- provider 异常退出时记录退出码与 stderr 尾部（含 error / panic / fatal 等关键行），并随重启、自愈被禁用、重启预算耗尽三类日志一起输出，崩溃排查不再只能靠猜。
+- 工作台区分「provider 暂时不可用」与真正的协议错误：前者标记为可重试（宿主会自动重启 provider），后者仍按协议错误上报，调用方不再一概收到 PROTOCOL_ERROR 而无法决定是重试还是报错。
+- 修复出站消息超过协议帧上限时报成「连接莫名断开」：超限帧在写出任何字节之前就被拒绝，连接本身仍然可用，现在明确提示消息过大；入站超限也从 debug 提到 warn，并说明连接随后会被关闭。
+- macOS：带 Touch Bar 的机型上关闭弹窗不再闪退。上一版把「确定 / 取消」那条关闭路径收口之后，点原生红点仍会崩——区别在于那次销毁是 AppKit 在自己的关闭流程里发起的。现在弹窗关闭一律只隐藏并结束会话、不再销毁原生窗口，红点与 Cmd-W 走同一个漏斗。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.19.3) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- SSH now supports combined "password + private key" authentication (MFA password,publickey): firewalls and switches configured with AuthenticationMethods password,publickey must pass two factors on the same connection, and picking one method at a time always failed on such devices. The server decides the factor order, so both password,publickey and publickey,password devices work; the option is available for the target host and the jump host separately, and database tunnels, terminals, SFTP and port forwarding all support it.
+- "View object details" in the SQL editor no longer opens a separate window; it opens a read-only tab inside the database tab. Cmd/Ctrl+click on an identifier and the context menu both work, reopening the same object activates the existing tab, the title and icon follow the object type, and the content stays selectable.
+- The database tree search box gains "match case / whole word / regex" toggles (Cc / W / .*, matching IDEA). With regex on, "whole word" is disabled; an invalid pattern marks the regex toggle red, explains it in a tooltip and shows "not found" in the tree instead of matching everything; inline highlighting is skipped in regex mode to avoid misleading marks.
+- Opening the table designer now shows "Loading table structure…": the first open of an existing table runs three serial queries (columns, indexes, table info) and used to leave a blank form that looked broken.
+- RDP connections gain a graphics pipeline switch (auto / always / never) per connection, for environments where the automatic mode is not the right choice for quality or performance.
+
+#### Fixes and Improvements
+
+- Fixed the blank field list when opening a table designer on MSSQL: nullable columns come back as variable-length types that failed to decode, and the whole column list was then silently swallowed, leaving an empty table with no message at all. Variable-length types now decode, and a failed load raises a window notification. Auto-increment flags are no longer lost either: MSSQL IDENTITY, MySQL AUTO_INCREMENT, PostgreSQL serial and identity, SQLite single-column INTEGER primary keys, DuckDB nextval and Oracle identity columns are all reported from metadata now, so the designer no longer falls back to guessing from the type name.
+- Fixed the CREATE TABLE produced by object details, the hover popover and "Copy DDL" differing from the table designer: it came from a local generator whose output was effectively invalid DDL (double-quoted identifiers, missing primary key / auto-increment / engine / charset / comments / indexes). All three now call the driver's generator and match the table designer byte for byte, showing "Generating DDL…" while it loads; views, columns and functions no longer pretend to have a CREATE TABLE statement.
+- Fixed high-resolution remote desktop sessions (for example 2724x1530) reconnecting roughly every 500 ms: dirty rectangles inside a batch overlap, the same pixels were pushed two or three times, and exceeding the budget dropped the pending base frame and restarted the whole session. The merge budget now scales with the frame size, and a queued base frame is never dropped because of delta pressure.
+- Fixed tree nodes that could not be collapsed while a database search was active: collapsing a branch was undone as soon as the flat list was rebuilt. Manual collapses during a search now stick, while matching nodes still auto-expand.
+- Fixed branches expanded during a database search showing "expanded but empty": the arrow came from the persistent expansion state while the children came from the filtered result. In search mode the arrow now reflects what is actually rendered, and cancelling the search no longer leaves a wrong expansion state behind.
+- Fixed the hover background covering the selection highlight in the table designer: moving the pointer over a selected row used to make the highlight disappear, and moving it away brought it back. The hover background is now only applied to unselected rows.
+- Extension persistent storage now actually writes to disk: host storage used to return an empty value from get and succeed on set, so subscriptions and cursors written by an extension always read back empty — the MQTT extension's saved subscriptions had never worked. Each extension now gets its own namespace directory, writes go through a temporary file plus rename, unreadable files are quarantined as .corrupt, and TTL and size budgets are enforced.
+- After a provider process crashes and the host restarts it, mounted shell pages are remounted in place instead of staying permanently on "loading failed, close and reopen this connection"; a restart that has not landed yet simply waits for the next event.
+- Provider exits now record the exit code and the tail of stderr (including error / panic / fatal lines) and report them alongside restarts, disabled self-healing and exhausted restart budgets, so a crash no longer has to be diagnosed by guesswork.
+- The workbench now distinguishes "provider temporarily unavailable" from a real protocol error: the former is marked retryable (the host restarts the provider automatically) while the latter is still reported as a protocol error, so callers no longer get a blanket PROTOCOL_ERROR and cannot tell whether to retry.
+- Fixed outbound messages over the protocol frame limit being reported as "the connection dropped": an oversized frame is rejected before any byte is written and the connection stays usable, and the error now says the message is too large; inbound overflow was also raised from debug to warn together with the note that the connection is closed afterwards.
+- macOS: closing a dialog no longer crashes on Touch Bar Macs. After the previous release closed the "OK / Cancel" path, clicking the native close button still crashed — the difference is that AppKit initiates that destruction inside its own close flow. Dialogs are now only hidden and their session ended, never destroyed, and the close button and Cmd-W go through the same funnel.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.19.2...v0.19.3
+
+## [v0.19.2] - 2026-09-24
+
+#### 更新内容
+
+- 数据库结果新增纵向「列：值」显示方式：宽表横向铺满几十列后没法读，现在可以按「列名：值」逐字段竖排（表数据页与 SQL 结果页共用），工具栏「显示方式」或「设置 → 通用 → 数据库 → 结果显示方式」切换。长值不再被截断——标签列固定、值区单独横向滚动且滚动条常驻；单击值行选中、在选中行上再点一次进入编辑（Enter 提交、Esc 取消），提交前工具栏会亮出撤销 / SQL 预览 / 提交。
+- 字段过滤面板重做：新增字段搜索框（不区分大小写的子串匹配，输入 `id` 同时命中 `id` 与 `tenant_id`）、列表限高滚动并常驻滚动条、标题显示「已显示字段数 / 字段总数」，底部固定「至少保留一列可见」提示与「显示全部字段」。此前是下拉菜单，高度只由条目数决定，几十列的表会一路顶到窗口底部，最后几个字段点不到。
+- 表数据页底部状态栏的 SQL 可以整条复制：宽表下这行总被省略号截断，复制到的是完整语句；空 SQL 不写剪贴板，避免把上次的内容悄悄清掉。SQL 编辑器的「注释/取消注释」纳入「设置 → 快捷键 → 数据库」，默认 macOS 为 `Cmd+/`、Windows/Linux 为 `Ctrl+/`，改键后立即生效（此前改键不生效、默认键在编辑器里按不出来）；空白行也能先生成 `-- ` 再写 SQL，光标停在标记之后可直接续写。
+- SQL 转储支持每条 INSERT 合并多行数据：转储窗口在「转储到」下方新增「每条语句的数据行数」，默认 100（与 Navicat 的「每条语句的数据行数」一致），分页按整批对齐，一批数据不会被页边界拆成两条语句。
+- 双击已打开的 RDP/VNC 连接改为切换已有标签页，不再堆出多个指向同一主机的会话，标签身份按「协议 + 连接 id」钉死。同一连接因此不再能开出第二个标签页（需要第二条同主机会话时，可复制一份连接）。
+
+#### 修复与优化
+
+- 修复 macOS 上关闭部分弹窗就闪退的问题（带 Touch Bar 的机型，崩溃栈落在 AppKit 的 Touch Bar 观察者注销上）：弹窗关闭改为隐藏并复用，不再销毁原生窗口。本次接入全局代理设置、更新提示、扩展离线包下载与扩展详情、远程图片预览、SQL 悬停详情、导入数据、导出表、运行 SQL 文件、转储 SQL 文件、数据比较、结构比较共 12 个窗口。需要注意的行为变化：同类弹窗（导入数据、导出表、数据比较等）由「可同时开多个」变为「一次一个」。
+- 在单元格里编辑时用鼠标拖选文本，网格不再同时开始自己的拖选：此前指针扫过相邻单元格就会把它们纳入选区，提交时把新值批量写到整片选区，现象是「不小心把隔壁一起编辑了」。
+- 修复 SQLite 联合主键表的 DDL 显示错误：表设计器打开 WITHOUT ROWID 联合主键表时，DDL 会被渲染成 `"device_id" INTEGER PRIMARY KEY AUTOINCREMENT` 并重复声明主键。现在联合主键的每一列都能正确识别，只有单列 INTEGER 主键才视作自增，生成的建表语句也不再多写一个表级主键。
+- SSH 连接：设备在认证阶段掐断连接时，报错不再只有 `Unable to receive more messages from the channel` 或裸 `Disconnected`。现在会记录设备给出的断开原因码与文本（warn 日志），报错里点出常见原因（密码被拒、账号已在别处登录、VTY/并发达上限、RADIUS・TACACS・LDAP 不可达、设备认证超时短于登录往返）；若设备是在 keyboard-interactive 往返中断开传输层，会自动改用纯密码认证重试一次（仅本会话生效，一次连接序列最多降级一次）。
+- 从 SecureCRT 等工具迁移/导入进来的连接不再默认勾选「双因素认证」：此前每个迁移连接都会优先走 keyboard-interactive，在交换机、防火墙这类设备上一认证就被掐断。迁移源里的「支持多种认证方式」只是服务器返回的方法列表，不等于需要二次认证；确实需要二次认证的设备请手动开启。
+- 认证失败的提示文案不再断言「服务器需要 MFA/二次认证」——交换机往往只是声明支持多种认证方式。现在改为说明当前认证方式被拒绝并提示先核对凭据，双因素开关的悬停说明也补充了自动降级的说明。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.19.2) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- Query results can now use a vertical "column: value" layout: a wide result set that spans dozens of columns becomes readable when shown field by field, shared by the table data page and the SQL result tabs, and switchable from "Display mode" in the toolbar or Settings → General → Database → Result display mode. Long values are no longer truncated — the label column stays fixed while the value area scrolls horizontally with an always-visible scrollbar. Click a value row to select it, click a selected row again to edit it (Enter commits, Esc cancels), and the toolbar reveals undo / SQL preview / commit while editing.
+- The field filter panel was rebuilt: it now has a field search box (case-insensitive substring, so `id` also matches `tenant_id`), a height-capped list with an always-visible scrollbar, a "shown fields / total fields" counter in the title, and a fixed footer with the "at least one field stays visible" hint and "Show all fields". Previously it was a dropdown menu whose height was decided purely by the number of entries, so a table with dozens of columns pushed it past the bottom of the window and the last fields could not be reached.
+- The SQL shown in the table data page status bar can now be copied in full: the line is ellipsized on wide tables, and the copy contains the whole statement. An empty statement no longer overwrites the clipboard. "Toggle comment" in the SQL editor is now listed under Settings → Shortcuts → Database, defaulting to `Cmd+/` on macOS and `Ctrl+/` on Windows/Linux, and re-binding takes effect immediately (previously a new binding did not take effect and the default never fired inside the editor). Blank lines can generate `-- ` so you can write the comment before the SQL, with the caret left right after the marker.
+- SQL dumps can merge multiple rows into a single INSERT: the dump window gains a "rows per statement" field next to the destination, defaulting to 100 (matching Navicat's equivalent setting), and paging is aligned to whole batches so a batch is never split across two statements.
+- Double-clicking an RDP/VNC connection that is already open now switches to its existing tab instead of stacking several sessions for the same host, with the tab identity pinned to "protocol + connection id". The same connection can no longer open a second tab (copy the connection if you need a second session to the same host).
+
+#### Fixes and Improvements
+
+- Fixed Linop crashing on macOS when closing some dialogs on Touch Bar Macs, where the crash frames land in AppKit's Touch Bar observer deregistration: dialogs now hide and get reused instead of destroying the native window. 12 windows are covered — global proxy settings, the update prompt, extension offline package download and extension details, remote image preview, SQL hover details, import data, export table, run SQL file, dump SQL file, data comparison and schema comparison. Note the deliberate behavior change: dialogs such as import data, export table and data comparison now open one at a time instead of allowing several at once.
+- Dragging to select text inside a cell that is being edited no longer starts the grid's own drag selection: the pointer used to sweep neighbouring cells into the selection, and committing wrote the new value across the whole selection — effectively editing the neighbours by accident.
+- Fixed the DDL shown for SQLite tables with a composite primary key: the table designer used to render `"device_id" INTEGER PRIMARY KEY AUTOINCREMENT` and declare the primary key twice for WITHOUT ROWID tables. Every composite key column is now detected, only a single-column INTEGER primary key counts as auto-increment, and the generated CREATE TABLE statement no longer adds a duplicated table-level primary key.
+- SSH: when a device drops the connection during authentication, the error is no longer just `Unable to receive more messages from the channel` or a bare `Disconnected`. The reason code and text sent by the device are now logged as a warning, and the error points at the common causes (rejected credentials, an account already logged in elsewhere, VTY/concurrency limits, unreachable RADIUS・TACACS・LDAP, or a device authentication timeout shorter than the login round trip). If the device drops the transport during the keyboard-interactive exchange, Linop retries once with password authentication only, scoped to that session and at most once per connection sequence.
+- Connections migrated or imported from SecureCRT and similar tools no longer enable two-factor authentication by default: every imported connection used to prefer keyboard-interactive and was dropped by switches and firewalls on the first authentication round. The "supports multiple authentication methods" reported by the migration source is just the method list returned by the server, not a requirement for a second factor; devices that genuinely need one can be switched on manually.
+- Authentication failures no longer claim that "the server requires MFA / a second factor" — switches often just advertise several authentication methods. The message now states that the current authentication method was rejected and suggests verifying the credentials first, and the two-factor tooltip explains the automatic fallback.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.19.1...v0.19.2
+
+## [v0.19.1] - 2026-09-24
+
+#### 修复与优化
+
+- 修复 Windows 下终端频繁卡顿的问题（git bash、PowerShell，操作后切换界面即卡、过会才恢复）。三个热点一并处理：存在高亮/搜索等装饰时每次重绘都整屏重建文本缓存，现在只重建装饰发生变化的行；自定义高亮规则不再每帧全屏扫描，改为只重扫本帧发生变化的行；本地终端悬停检测目录条目的同步读盘移到后台线程，不再阻塞 UI 线程。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.19.1) 下载桌面端安装包
+
+---
+
+#### Fixes and Improvements
+
+- Fixed terminals freezing frequently on Windows (git bash, PowerShell — stalling right after switching views, recovering after a while). Three hotspots are addressed together: whenever decorations such as highlights or search marks existed, every repaint rebuilt the entire text cache for the whole screen; now only the lines whose decorations actually changed are rebuilt. Custom highlight rules no longer rescan the full visible grid every frame — only lines damaged this frame are rescanned. And the directory-entry lookup for hover detection on local terminals moved its synchronous disk read to a background thread, off the UI thread.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.19.0...v0.19.1
+
+## [v0.19.0] - 2026-09-23
+
+#### 更新内容
+
+- 表格数据支持查找：浏览表数据时按 Cmd/Ctrl+F 打开查找面板，命中单元格高亮描边，Cmd/Ctrl+G / Cmd/Ctrl+Shift+G 在命中间跳转并把所在列横向滚入视口，换页/刷新后按当前词重扫。修复了两个前置缺陷：焦点停在页签外壳时按 Cmd/Ctrl+F 完全无反应（现在页签打开后焦点直接落在表格）；工具栏搜索框不再过滤行、改为高亮匹配，两种入口合并为单一查找框。
+- 表数据预览支持字段过滤隐藏列：列头下拉可选可见字段，宽表只看关心的列。
+- SQL 编辑器对象详情体验重做：鼠标悬停弹详情默认关闭（设置里可开，开启后须停驻 600ms 才显示），改由右键菜单「查看对象详情」打开独立弹窗，内容可选中复制；右键新增「复制 DDL」，一键拷贝选中/光标处表的 CREATE TABLE/VIEW 语句；选中表名右键也能解析。
+- 新增关闭当前页签快捷键 Cmd/Ctrl+Shift+W，可在设置里改绑。
+- 连接表单「工作区」字段统一改称「分组」，与实际语义一致。
+
+#### 修复与优化
+
+- 修复 SSH MFA 登录把保存的密码当作验证码应答导致认证失败的问题：现在先用 RFC 4252 "none" 探测服务器是否提供 keyboard-interactive，提供则验证码由用户输入、密码仍在密码提示处用保存凭据应答；用户作答的验证码被拒直接报 MFA 失败不再无意义重试；无该方法时保持原有密码认证顺序。
+- 修复老设备（华为 VRP 系等）SSH 连接报 `` `mpint` encoding invalid `` 失败的问题：这些设备的主机公钥在 RSA e/n 里带 RFC 4251 禁止的多余前导零字节，OpenSSH 一直容忍而我们严格拒绝，现在读对端报文时同样裁剪归一化。
+- 修复 SQLite WITHOUT ROWID 表、视图预览整页空白的问题：预览 SQL 硬编码投影 rowid 伪列，这类对象没有该列直接报 no such column，现在翻页前先探测可用性，不可用回退普通 SELECT *。
+- 修复 PostgreSQL 序列目录一直为空的问题：序列列表查询用了不存在的列，整张表查不出来。
+- 数据库连接健壮性：长时间挂机后 TCP 被 NAT/防火墙静默丢弃，复用会话的 ping 与退出路径的断开在死 socket 上永久挂起（查询转圈、关 tab 卡死，只能杀进程）。现在复用前 ping 10 秒上限、超时判死并丢弃会话，断开 5 秒上限、超时放弃优雅断开强制回收；MySQL/PostgreSQL 连接启用 TCP keepalive 30 秒，空闲期由 OS 尽早暴露死连接。
+- 修复断连杀死的手工事务卡在「关不掉也提交不了」死循环：现在自动收尾。
+- 修复 MCP 客户端配置写入已废弃的 mcp 位置参数（影响 Claude Desktop/Code、Codex 启动）。
+- 默认 HTTP 客户端改为跟随系统代理与环境变量代理：浏览器能上网而 Linop 登录报 error sending request 的场景（代理开在系统代理里而应用直连）不再出现。
+- Linux 发布包不再链接 WebKitGTK 4.1，渲染依赖独立成 gpu-stack 包按需安装（安装脚本只补宿主缺失的库，支持 --dry-run/--uninstall）；HTML 预览 webview 改为全平台默认关闭，弹窗降级提示「用浏览器打开」「下载 HTML」不受影响。
+- 依赖链：gpui-pre 升到 fork-0.3.114（图片 atlas 与字形/emoji atlas 分离，丢弃图片可释放 GPU 页；顺带修复 Windows directx 编译错误）。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.19.0) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- Table data find: press Cmd/Ctrl+F while browsing table data to open the find bar; matched cells get an outlined highlight, Cmd/Ctrl+G / Cmd/Ctrl+Shift+G jump between matches and scroll the hit column into view horizontally, and hits are re-scanned after paging/refresh using the current term. Two prerequisite defects are fixed: Cmd/Ctrl+F did nothing while focus sat on the tab shell (focus now lands on the grid right after the tab opens), and the toolbar search box no longer filters rows — it highlights matches instead, with both entries merged into a single find bar.
+- Field filtering for table data preview: a column-header dropdown selects visible fields, so wide tables can show only the columns you care about.
+- SQL editor object details reworked: hover popups are off by default (enable in settings; when on they require a 600ms dwell instead of firing on mouse pass), replaced by a right-click "View object details" that opens a standalone dialog with selectable, copyable content. Right-click also gains "Copy DDL", which copies the CREATE TABLE/VIEW statement of the table under the cursor or selection; selecting a table name and right-clicking resolves it too.
+- New shortcut Cmd/Ctrl+Shift+W closes the active tab, rebindable in settings.
+- The "Workspace" field in connection forms is now consistently called "Group", matching what it actually does.
+
+#### Fixes and Improvements
+
+- Fixed SSH MFA logins answering the verification-code prompt with the saved password and failing auth. The client now probes with the RFC 4252 "none" method first: when the server offers keyboard-interactive, the code is entered by the user while the password is still answered from saved credentials at the password prompt; a user-answered code being rejected fails MFA immediately instead of retrying pointlessly; servers without the method keep the original password-first order.
+- Fixed SSH connections to legacy devices (Huawei VRP etc.) dying with `` `mpint` encoding invalid ``: their host keys carry redundant leading zero bytes in the RSA e/n, which RFC 4251 forbids but OpenSSH has always tolerated on read. Peer-message parsing now trims and normalizes them the same way.
+- Fixed SQLite WITHOUT ROWID tables and views showing an empty page in the data preview: the preview SQL hard-coded a rowid pseudo-column that these objects lack, failing with no such column. Availability is now probed before paging, falling back to a plain SELECT * when unavailable.
+- Fixed the PostgreSQL sequence catalogue always being empty: the listing query referenced a column that does not exist.
+- Database connection robustness: after long idle periods TCP connections get silently dropped by NAT/firewalls, and both the pre-reuse ping and the shutdown-path disconnect hung forever on the dead socket (spinning queries, uncloseable tabs, process kill as the only way out). The ping now has a 10-second cap that declares the session dead and discards it (the next query opens a fresh connection), the disconnect has a 5-second cap after which the socket is force-reclaimed, and MySQL/PostgreSQL connections enable 30s TCP keepalive so the OS surfaces dead connections early.
+- Fixed manually-started transactions killed by a disconnect getting stuck in a "can neither commit nor close" loop; they are now finalized automatically.
+- Fixed MCP client configs being written with a removed `mcp` positional argument (affecting Claude Desktop/Code and Codex launchers).
+- The default HTTP client now follows system and environment-variable proxies: the "browser can reach the internet but Linop login says error sending request" scenario (proxy configured at system level while the app connected directly) no longer occurs.
+- Linux packages no longer link WebKitGTK 4.1; rendering dependencies ship as a separate gpu-stack package installed on demand (the installer only adds libraries the host is missing, with --dry-run/--uninstall support). The HTML preview webview is off by default on all platforms; the dialog degrades gracefully while "Open in browser" and "Download HTML" keep working.
+- Dependencies: gpui-pre upgraded to fork-0.3.114 (image atlas split from the glyph/emoji atlas so dropping images releases GPU pages; also fixes a Windows directx compile error).
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.18.6...v0.19.0
+
+## [v0.18.6] - 2026-09-21
+
+#### 更新内容
+
+- 数据库对象列表支持全选与拖选。表、视图、存储过程等对象现在可以 Shift 点击或用鼠标拖选多行，Cmd/Ctrl 拖选在已有选择上继续追加，来回拖动区间可正常收缩。修掉了两处交互问题：在列表外松开鼠标时不再沿用旧锚点截出错误区间；Shift 点击只把目标行滚动到最近位置，不会再把可见行整块顶走。
+- PostgreSQL 支持外部表和物化视图。此前 PG 连接的表目录写死只列普通表，外部表与分区表根本列不出来，物化视图也没有入口（视图列表不含它），用户已经建好的对象在 Linop 里等于不存在。现在外部表与普通表、分区表同处「表」目录，类型列分别显示 Table / Partitioned Table / Foreign Table，物化视图单独一个目录；重命名、清空、删除、转储等右键动作按对象类型分别生成 SQL，非 public schema 下也带 schema 限定名，不会把 `DROP TABLE` 打到外部表上。外部表不参与结构比较、数据比较、ER 图与整库 DDL 转储（数据转储仍可用）。
+
+#### 修复与优化
+
+- 修复 SQL 页签无法并发执行的问题。A 页签执行时 B 页签就连不上，即使 B 连的是另一台库——根因是整张会话表共用一把锁，取到连接后要一直持有到语句执行结束，等于所有页签排队。会话池的复用与释放还有三处并发缺陷：释放与下一条语句交错时会把正在执行的会话标成空闲，随后被清理回收（报 session not found）；复用扫描一个正在跑长语句的会话会连带堵住其它页签；会话被并发摘除时会重复断开连接。现在锁粒度降到每个会话各自的连接，会话状态查询不再等待执行中的语句，复用与生命周期按引用计数同步，一条语句恰好占用与释放一次。同一会话内仍保持互斥。
+- 修复 MySQL 文本列被显示成二进制的问题。连接某些 MySQL 兼容实现或代理时，结果列元数据里的字符集为 0，取不到解码器就一律降级成二进制，文本列在网格里显示为「二进制 · N B」，表结构元数据、自定义 SQL 与 UNION ALL 结果同样受影响，而这些字节其实是合法 UTF-8。现在字符集未知时按严格 UTF-8 兜底解码，非法 UTF-8 或含控制字符的字节仍保留二进制。
+- 修复 SSH 目录上传小文件过慢的问题。上传每个文件固定要付 6 次控制往返（stat / open / fsync / fstat / close / rename），串行执行时吞吐由网络往返延迟决定而不是带宽，且任何时刻只有一个文件在传。现在小文件走受限并发（并发度 6），超过 512 KiB 的文件独占预算、行为与串行时一致，不会在内存里堆积未确认字节；失败语义不变，出错后不再接纳新任务、等在飞任务跑完再返回，避免残留暂存文件。进度累计改为全局原子量，并发上报时不再回跳。
+- 修复 macOS 上关闭内置远程编辑器导致应用崩溃的问题。Intel Touch Bar 机型上关闭编辑器弹窗必现崩溃：原生窗口被销毁后，系统在显示周期里注销 Touch Bar 观察者时抛出未捕获异常，进程被直接终止。现在 macOS 上关闭不再销毁原生窗口，改为隐藏并复用，下次打开直接复用该窗口；同时把连接改为按标签持有，修掉跨会话复用会走错连接的问题，旧弹窗的确认也不会作用到复用后的新会话上。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.18.6) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- Database object lists now support select all and drag-select. Tables, views and stored procedures can be Shift-clicked or drag-selected as multiple rows, Cmd/Ctrl drag-select adds to the existing selection, and dragging back and forth shrinks the range as expected. Two interaction bugs are fixed as well: releasing the mouse outside the list no longer reuses a stale anchor and cuts out a wrong range, and Shift-click scrolls the target row just into view instead of pushing the visible rows away.
+- PostgreSQL foreign tables and materialized views are now supported. The table catalogue for PG connections was hard-coded to ordinary tables only, so foreign and partitioned tables simply never showed up, and materialized views had no entry point at all because the view list does not include them — objects the user had already created did not exist in Linop. Foreign tables now live in the same "Tables" folder as ordinary and partitioned tables, with the type column showing Table / Partitioned Table / Foreign Table, and materialized views get their own folder. Rename, truncate, drop and dump actions generate SQL according to the object type and are schema-qualified outside `public`, so `DROP TABLE` is never issued against a foreign table. Foreign tables are excluded from schema comparison, data comparison, ER diagrams and whole-database DDL dumps (data dumps still work).
+
+#### Fixes and Improvements
+
+- Fixed SQL tabs not being able to execute concurrently. While one tab was running, no other tab could execute even when connected to a different database: the whole session table shared a single lock, held from acquiring the connection until the statement finished, so every tab queued behind it. The session pool also had three concurrency defects: releasing a session interleaved with the next statement could mark a running session as idle, which was then reclaimed by the idle sweep (surfacing as "session not found"); scanning for a reusable session blocked other tabs when it hit one running a long statement; and a concurrently detached session could be disconnected twice. Locking is now per-session on the connection itself, session state queries no longer wait for a running statement, and reuse and lifecycle are synchronized by reference counting so a statement acquires and releases exactly once. Mutual exclusion within the same session is preserved.
+- Fixed MySQL text columns being displayed as binary. When connecting to some MySQL-compatible implementations or proxies, the character set in the result column metadata is 0, so with no decoder available every column was downgraded to binary and text columns showed up as "二进制 · N B" in the grid. Table structure metadata, custom SQL and UNION ALL results were affected in the same way, even though the bytes were valid UTF-8. Unknown character sets now fall back to strict UTF-8 decoding; bytes that are not valid UTF-8 or contain control characters still stay binary.
+- Fixed SSH directory uploads being slow with many small files. Every uploaded file costs six control round trips (stat / open / fsync / fstat / close / rename), so serial execution made throughput depend on round-trip latency rather than bandwidth, and only one file was ever in flight. Small files now use bounded concurrency (6 in flight), while files above 512 KiB take the whole budget and behave exactly as before, so unacknowledged bytes are not piled up in memory. Failure semantics are unchanged: after the first error no new task is accepted and in-flight ones are awaited before returning, which keeps temporary files from being left behind. Progress accumulation is now a global atomic counter, so concurrent reports no longer jump backwards.
+- Fixed the app crashing on macOS when closing the built-in remote editor. On Intel Touch Bar models closing the editor dialog crashed every time: after the native window was destroyed, the system unregistered the Touch Bar observer during a display cycle and threw an uncaught exception, terminating the process. Closing no longer destroys the native window on macOS — it is hidden and reused, and reopening reuses that window. Connections are now held per tab, fixing cross-session reuse hitting the wrong connection, and a confirmation from a previous dialog can no longer act on the reused session.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.18.5...v0.18.6
+
+## [v0.18.5] - 2026-09-20
+
+#### 修复与优化
+
+- Windows：修复应用内更新完成后新版本不再出现的问题。替换安装包时，Windows 允许重命名正在运行的 exe，替换会在旧实例仍然存活的情况下就完成，紧接着拉起的新版本发现单实例管道还被旧实例占着，只做一次启动转发便自己退出，用户看到的现象就是「更新完成后应用不再出现」。现在替换完成后会先等待旧实例真正退出（备份文件重新变成可删除即视为已退出）再启动新版本；等待超时或探测失败时不再盲目重启，改为弹出系统提示，请用户结束 Linop 进程后手动启动。
+- Windows：修复主窗口最小化到托盘后，再次启动应用无法把窗口叫回来的问题。转发启动请求时只调用了窗口激活，而托盘隐藏用的是隐藏窗口，不属于系统最小化状态，激活逻辑不会发出任何显示调用；同时恢复路径区分了「被最小化」与「被隐藏」，二次启动后窗口既可见、又保持最大化，不会把最大化的窗口缩回去。
+- AI 助手：修复内置对话中让模型保存连接时整个任务失败的问题。保存连接的工具参数 schema 使用了顶层 `oneOf`，OpenAI 兼容网关会拒绝整个模型请求，而不是只拒绝这一个工具；现在改为扁平的 object schema，并在本地校验阶段提前拦截顶层的组合关键字，报错也会带上具体工具名。
+- 数据库：外部驱动增加最低版本门。此前只判断驱动是否已安装、不校验版本，而 OceanBase 0.1.12 之前的驱动对无符号列返回十进制文本，宿主反序列化直接失败（`invalid type: string "4", expected u64`），整张表都读不出来；现在版本低于要求时同样进入安装/更新引导，提示中带上最低版本号。
+- 终端：左边距的空行不再显示时间戳占位括号和一串孤立行号，改为「这一行有输出才显示时间戳与行号」，两列共用同一个判定。
+- 随带跟进 UI 依赖链：gpui-kit 上游合入到 0.6.4，gpui-pre 快照更新到 `fork-0.3.110`。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.18.5) 下载桌面端安装包
+
+---
+
+#### Fixes and Improvements
+
+- Windows: fixed the new version not coming back after an in-app update. While replacing the package the updater can rename the running executable on Windows, so the replacement completes while the old instance is still alive; the new version started right afterwards found the single-instance pipe still held by that instance, forwarded the startup request once and exited — which looked like "the app disappears after updating". The updater now waits until the previous instance really exits (the backup file becoming deletable is that signal) before starting the new version. When the wait times out or the probe fails it no longer restarts blindly: it shows a system dialog asking the user to end the Linop process and start the app manually.
+- Windows: fixed the main window not being restored when the app is started again after being minimized to the tray. The forwarded startup request only asked the window to activate, while tray hiding uses a hidden window, which is not the minimized state, so no show call was ever issued. The restore path now distinguishes minimized from hidden windows, so the restored window is both visible and still maximized instead of being shrunk back.
+- AI assistant: fixed a whole task failing when the model saved a connection in the built-in chat. The tool parameter schema for saving a connection used a top-level `oneOf`, and OpenAI-compatible gateways reject the entire model request instead of just that tool. It is now a flat object schema, and the local validator rejects top-level composition keywords up front and reports the offending tool.
+- Database: external drivers now have a minimum version gate. Previously only the presence of a driver was checked, not its version, while drivers older than OceanBase 0.1.12 return unsigned columns as decimal text, which made host deserialization fail (`invalid type: string "4", expected u64`) and the whole table unreadable. Drivers below the required version now go through the same install/update guidance, with the minimum version shown in the message.
+- Terminal: blank lines in the left margin no longer show timestamp placeholder brackets and a trail of stray line numbers. A line shows its timestamp and number only once it has output, and both columns share the same check.
+- Bundled UI dependency refresh: gpui-kit upstream merged to 0.6.4, and the gpui-pre snapshot updated to `fork-0.3.110`.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.18.4...v0.18.5
+
+## [v0.18.4] - 2026-09-19
+
+#### 修复与优化
+
+- macOS：修复在 macOS 13 及更早系统上，从托盘恢复主窗口会直接崩溃退出的问题。恢复窗口时调用了一个只在 macOS 14 及以上提供的系统接口，低版本系统上会因找不到该接口而终止进程；现在按系统版本选择可用的接口，macOS 12 / 13 也能正常恢复。
+- Windows：修复重复启动——双击应用图标会开出第二个窗口。原先第二个实例判断「是否已有实例在运行」时用错了系统错误码，导致转发分支从未真正执行过；即便执行，它依赖的等待超时在 Windows 命名管道上也不被支持。本次按原生命名管道重写实例检测与启动转发，并收紧启动门禁：既拿不到主实例身份、转发也失败时，明确提示后退出，不再默默再开一个窗口。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.18.4) 下载桌面端安装包
+
+---
+
+#### Fixes and Improvements
+
+- macOS: fixed a crash when restoring the main window from the tray on macOS 13 and earlier, where the app terminated the process. The restore path called a system API that only exists on macOS 14 and newer. It now picks the API available on the running system, so macOS 12 and 13 restore the window normally.
+- Windows: fixed duplicate launches, where double-clicking the app icon opened a second window. The second instance compared the wrong system error code when checking whether another instance was running, so the forwarding branch never executed; even when it did, the wait timeout it relied on is unsupported on Windows named pipes. The instance check and startup forwarding are rewritten on native named pipes, and the startup gate is tightened: when the process can neither claim the primary instance nor forward its request, it reports the failure and exits instead of silently starting a second window.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.18.3...v0.18.4
+
+## [v0.18.3] - 2026-09-19
+
+#### 修复与优化
+
+- Windows：修复打开应用时闪一下控制台窗口的问题。启动阶段识别 WSL 发行版，以及打开 HTML 预览、浏览容器文件树、在设置页安装技能这些后台操作，此前会直接拉起控制台子进程（`wsl.exe`、`cmd`、`docker`、`npx`）；Windows 会为它们新建并显示一个控制台窗口，即使输出已经重定向到管道也一样。这些调用现在统一以隐藏控制台的方式运行，不再闪窗。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.18.3) 下载桌面端安装包
+
+---
+
+#### Fixes and Improvements
+
+- Windows: fixed a console window flashing when the app starts. Background helpers — WSL distribution detection during startup, opening an HTML preview, browsing container files, and installing skills from Settings — used to spawn console child processes (`wsl.exe`, `cmd`, `docker`, `npx`); Windows created and displayed a console window for each of them, even though their output was already redirected into pipes. They now all run with a hidden console window, so nothing flashes anymore.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.18.2...v0.18.3
+
+## [v0.18.2] - 2026-09-19
+
+#### 更新内容
+
+- 托盘：点击窗口关闭按钮不再默默隐藏，改为询问「最小化到托盘 / 退出应用」，可勾选记住选择；设置页新增「关闭窗口行为」下拉。托盘不可用时仍直接退出，不会留下找不到也恢复不了的隐藏窗口。同时修复 Windows 重复启动：第二个实例此前误判自己就是主实例，会起出完整进程。
+- 终端文件面板支持切换远端目标主机：面板顶栏新增目标选择器，只列出 SSH / SFTP / FTP 连接，并分别标记当前目标与终端所在主机；切换后清空原主机的路径与历史，跨主机时暂停跟随终端上报的目录。
+- 临时 SSH 连接（每次输入凭据）现在可以「保存为连接」：终端工具栏与首页快速连接结果项都提供入口，预填用户名与密码，密码随连接写入凭据库；同时补上临时连接的文件侧边栏与服务器监控面板，凭据就绪后按需创建。
+- 终端网格左侧新增每行时间戳与行号，两项可在设置里分别开关。
+- 远端目标与 SFTP 端点切换统一为同一套候选弹窗：图标 + 连接名 + user@host:port，支持搜索、上下键选择与滚动，行样式与「快捷打开」一致。
+
+#### 修复与优化
+
+- 终端文件面板跨主机守卫：在堡垒机里嵌套 ssh 到内层主机时，内层 shell 上报的路径不再被当作面板所属主机的路径使用——此前会表现为目录列不出来、刷新也过不来，甚至可能在堡垒机上误删或误传文件；面板改为显示提示条，说明「终端已进入 X，面板仍连接 Y」。
+- 修复 shell 集成钩子被继承到子 shell 后，每个提示符都多输出一行「bash: __onetcli_precmd_bash：未找到命令」的问题（#217）：钩子改自带函数存在性判断，函数缺失时静默跳过，同时保证退出码仍正确上报。
+- 修复表数据过滤条按回车会插入换行再触发查询的问题（macOS 上表现为回车变成空行 + 查询）；Shift+Enter 仍保留换行。
+- 修复 AI 对话在上下文压缩后请求里不再含任何 user 消息、被 OpenAI 兼容网关以 400 拒绝导致整轮任务失败的问题。
+- 终端里远端目标下拉的气泡底色不再跟随浅色应用主题（恢复使用终端配色），列表过长时也会出现滚动条。
+- Linux：升级 gpui-pre fork 到 fork-0.3.109，修掉 XIM 握手完成前发送 im_id=0 导致 fcitx5 输入法被永久禁用的问题。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.18.2) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- Tray: the window close button no longer hides the window silently — it asks whether to minimize to the tray or quit, with a "remember my choice" checkbox and a new "Close button behavior" dropdown in Settings. When no tray is available the app still quits directly, so it can never leave a hidden window the user cannot find or restore. Windows duplicate launches are fixed as well: a second instance used to mistake itself for the primary one and start a full process.
+- The terminal's file panel can now switch its remote target host: a picker in the panel header lists SSH / SFTP / FTP connections, marks the current target and the terminal's own host separately, clears the previous host's path and history on switch, and pauses terminal-path following across hosts.
+- Temporary SSH connections (credentials typed per session) can be saved as a connection, from the terminal toolbar and from the home quick-connect result. Username and password are prefilled and the password goes into the credential store. These connections also gain the file sidebar and server monitor panels, created on demand once credentials are ready.
+- The terminal grid now shows a per-line timestamp and line number in the left margin, each toggleable in Settings.
+- Remote-target and SFTP-endpoint switching now share one picker dialog: icon, connection name and user@host:port, with search, arrow-key selection and scrolling, styled like Quick Open.
+
+#### Fixes and Improvements
+
+- Cross-host guard for the terminal file panel: when a jump host nests an ssh into an inner machine, paths reported by that inner shell are no longer used as the panel's own host paths. Previously the directory would not list or refresh at all, and files could be deleted or uploaded on the jump host by mistake. The panel now shows a notice explaining that the terminal has entered X while the panel is still connected to Y.
+- Fixed the shell integration hook being inherited into sub-shells, where every prompt printed "bash: __onetcli_precmd_bash: command not found" (#217). The hook now checks for its own function and stays silent when it is missing, while exit codes are still reported correctly.
+- Fixed the table data filter bar inserting a newline on Enter before running the query (on macOS Enter became a blank line plus a query). Shift+Enter still inserts a newline.
+- Fixed AI conversations failing the whole turn after context compaction: the compacted request no longer contained any user message and OpenAI-compatible gateways rejected it with a 400 error.
+- The terminal's remote-target dropdown no longer inherits the light application theme for its popover background (it uses the terminal palette again), and long lists now show a scrollbar.
+- Linux: bumped the gpui-pre fork to fork-0.3.109, fixing fcitx5 input methods being permanently disabled by an im_id=0 frame sent before the XIM handshake finished.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.18.1...v0.18.2
+
+## [v0.18.1] - 2026-09-18
+
+#### 修复与优化
+
+- 扩展市场：修复卡片上「安装 / 更新 / 卸载 / 重载」按钮与「点卡片查看详情」全部无响应的问题（v0.18.0 改版引入）；同时修好已安装卡片的悬停高亮，安装动作在窗口已关闭或标签页关不掉时不再把页面卡在忙碌状态。
+- SFTP：左侧切换服务器时，若目标连接要求连接时输入密码且此前未记住，改为弹窗录入本次凭据（不落库）；认证失败会把原因回填到弹窗里重试，不再让左侧直接断开。
+- 资源工作台：查询页合并页面初始加载结果与本次手动执行的结果，进入「表单 + 加载」类页面（如索引的 Documents 页）即可直接看到内容，不再停在 "No result yet" 必须先手动执行一次；加载失败也会如实展示在结果区。
+- 修复标签页右键菜单「复制」项把占位符渲染成 `{{label}}` 的问题，现在正常显示「复制标签」等文案。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.18.1) 下载桌面端安装包
+
+---
+
+#### Fixes and Improvements
+
+- Extension marketplace: fixed the release-blocking bug where none of the card actions worked — the install / update / uninstall / reload buttons and clicking a card to open its details were all unresponsive (regression from the v0.18.0 redesign). Installed cards now also show their hover highlight, and an install that loses its window or fails to close its tabs no longer leaves the page stuck in a busy state.
+- SFTP: switching the left pane to a server that requires a password at connect time and has not saved one now prompts for credentials in a dialog for that connection only (nothing is persisted). A failed authentication feeds the reason back into the dialog for a retry instead of dropping the left pane.
+- Resource workbench: query pages now merge the page's initial load result with the result of a manual run, so "form + load" pages (such as a collection's Documents page) show their content immediately instead of sitting on "No result yet" until the user runs something; a failed load is likewise surfaced in the result area.
+- Fixed the tab context menu's "Copy" item rendering its placeholder as `{{label}}`; it now reads "Copy Tab" and similar labels correctly.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.18.0...v0.18.1
+
+## [v0.18.0] - 2026-09-16
+
+#### 更新内容
+
+- 新增 FTP / FTPS 独立连接类型；SSH 连接可在同一条记录内切换 SFTP / FTP / FTPS 远程文件协议，终端仍走 SSH。FTPS 使用显式 AUTH TLS，并修复无法通过 IP 地址直连的问题；SSH 连接还可配置打开方式偏好，双击默认进入终端或双栏文件视图。
+- 新增原生资源工作台：扩展声明集合、表格、详情页与操作，宿主用原生 GPUI 渲染。首个发布 Docker 工作台，提供引擎概览、容器启停/重启/删除、镜像异步拉取、日志查看、容器进程、文件系统变更和 exec 终端，并收敛到区域化 v2 布局；破坏性操作执行前需要用户确认。
+- 数据库值模型重构：引入唯一 typed 值模型并贯通各驱动与消费端；MySQL BIT 以 BitString 保真、不再标为文本；PostgreSQL TIMESTAMPTZ 保留时区偏移；二进制预览统一为大写有界 hex。
+- 本地终端下拉自动识别并列出 WSL 发行版，可按发行版一键启动；WSL 与容器 exec 会话的文件树分别指向发行版文件系统与容器文件系统。
+- 主页新增全局导航布局与工作台卡片并持续精修；连接类型筛选改为纯文本英文菜单并按扩展贡献逐项列出；侧栏连接名后显示类型分类标签；扩展连接展示真实类型与贡献图标。
+- 扩展市场目录化改版并新增详情弹窗；扩展 provider 支持授权本地 Unix socket。
+- 设置新增界面缩放（issue #146）；字体下拉直接列出系统已安装字体。
+- AI：内置 Agent 支持自定义 system prompt（fix #173），系统提示词统一并国际化，用户自定义改为追加。
+- Redis 键树搜索改为输入停顿后自动扫描服务端（#181）；移除 IPC sidecar，统一使用内嵌 redis-rs。
+- TDengine 与 MQTT 改为扩展提供：移除内置实现，旧数据自动迁移到扩展，并通过扩展市场按需安装。
+- Shell 页纳入默认构建，除 32 位 Windows 外的发布产物都带 Shell 页（其 quickjs JIT 后端不支持 32 位）。
+- 终端上传、下载完成或失败时弹出即时提示。
+- 关闭主窗口最小化到系统托盘，应用继续在后台运行。
+- 资源工作台树支持静态子项：集合可声明无需请求的静态节点，树展开与导航解耦，子项树可直接展开浏览。
+
+#### 修复与优化
+
+- Redis：键树搜索不再对服务端结果做二次过滤，过滤态保留连接与数据库锚点（#181）；集合值视图列宽支持拖拽，长 score 不再被压缩（#180）；大键加载内存有界。
+- 终端：修复 Shell Integration 握手无兜底导致 SSH 键盘输入被永久暂存（#206）；本地 PTY 后端异常停止时显式结束会话，避免终端卡死；清屏后补发 Ctrl+L 修复提示符消失与输入错位；SSH 探测造成传输层断连后自动降级为单通道重连（#183）；复制后立即清除选区高亮；浮层高度封顶、滚动跟随选中并支持下键循环。
+- SSH：远程命令执行不在 EOF 处提前结束，修复解压成功却报错的问题。
+- 远程桌面：MSTSC 凭据 target 去掉端口，修复原生 RDP 无法自动填入密码；收敛关闭超时与分离任务的生命周期；原生 mstscax 会话不再每帧重复 SetWindowPos，修复光标抖动（#171）；断开 resize 与 fallback 重连互相触发的死循环（#171）；通过自维护 gpui-pre fork 恢复动态纹理；macOS 剪贴板迁移到 objc2。
+- AI：压缩上下文后仅保留开头唯一 system 消息（#174）；修复侧边栏 AI 文字选区显示与贡献式侧边栏无法选中文字；执行模式下拉宽度自适应，发送按钮不再被挤压。
+- 数据库：外部驱动图标改用无 scheme 资产路径，修复 IPC 扩展图标整块空白；修复输入 SQL 时当前语句框选消失；为结果表 frame refresh 增加重入保护。
+- 扩展：打通 provider 调用取消、mount 根令牌与有界清理；结构化错误 envelope 与 shell 网络授权修正；单个损坏扩展不再拖垮整个 catalog；provider 重启后自动恢复已挂载连接。
+- JSON 视图补全语法高亮并切换到 JSON 编辑器；工作区资源管理器的编辑器与状态栏配色跟随工作区主题。
+- SFTP / 传输：升级 russh 0.63.3 与 russh-sftp 3.0.0，并对齐传输窗口。
+- 资源工作台与扩展运行时：注册期拒绝未实现的终端 operation 与无效路由绑定，修正连接绑定注入、异步状态归属与表单字段类型；修复 stream 页首读报 -32602。
+- 修复标签栏国际化与 tooltip 显示；修复 SSH 表单弹窗宽度挤压表单内容的问题。
+- AI：流式请求改用空闲读超时，修复长任务被 120 秒总超时掐断；空闲超时值可在设置中配置。
+- 修复 SSH 彩色图标走 `img` 路径时内存暴涨（收缩图标固有尺寸）。
+- 发布包体积显著缩小：二进制约 -36%，DMG 安装包 68MB → 56MB（fat LTO、关闭展开、依赖去重）。
+- 日志文件改为 `linop.log`，超过 64MB 自动轮转（保留上一份 `.1`），避免长期使用把日志撑到 GB 级。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.18.0) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- New standalone FTP / FTPS connection type, and SFTP / FTP / FTPS switching on an existing SSH connection record while its terminal keeps using SSH. FTPS uses explicit AUTH TLS and now connects directly by IP address; SSH connections also gain an open-mode preference so a double-click opens the terminal or the dual-pane file view.
+- New native resource workbench: extensions declare collections, tables, detail pages, and operations that the host renders with native GPUI. The first release is a Docker workbench with engine overview, container start/stop/restart/remove, asynchronous image pulls, log viewer, container processes, filesystem changes, and exec terminals, refined into a region-based v2 layout. Destructive operations require user confirmation.
+- Database value-model refactor: a single typed value model now flows through every driver and consumer; MySQL BIT is preserved as BitString instead of text, PostgreSQL TIMESTAMPTZ keeps its timezone offset, and binary previews use bounded uppercase hex.
+- The local terminal launcher detects and lists WSL distributions for one-click launch; WSL and container exec sessions point the file tree at the distribution and container filesystems respectively.
+- New global-navigation home layout with workbench cards, refined over several passes; the connection-type filter is now a plain-text English menu listing each extension contribution, the sidebar shows a type tag after the connection name, and extension connections display their real type and contributed icon.
+- The extension marketplace gains a catalog-style redesign with a detail dialog; extension providers can be authorized for local Unix sockets.
+- Settings add an interface-scale option (issue #146) and a font dropdown that lists installed system fonts directly.
+- AI: the built-in Agent supports a custom system prompt (fix #173); the base system prompt is unified and localized, and user customization is applied as an addition.
+- Redis key-tree search now scans the server after a typing pause (#181); the IPC sidecar is removed in favor of the embedded redis-rs client.
+- TDengine and MQTT are now extension-provided: the built-in implementations are removed, existing data migrates to the extensions, and they install on demand from the marketplace.
+- The Shell page is included in the default build, so every release artifact ships with it except 32-bit Windows, where the quickjs JIT backend has no 32-bit support.
+- Uploads and downloads in the terminal show immediate completion or failure toasts.
+- Closing the main window minimizes it to the system tray and keeps the app running.
+- Resource workbench trees support static children declared without a request, decoupling tree expansion from navigation.
+
+#### Fixes and Improvements
+
+- Redis: key-tree search no longer double-filters server results and keeps connection and database anchors in filter mode (#181); collection value columns are resizable and long scores are no longer compressed (#180); large keys load with bounded memory.
+- Terminal: fixed SSH keyboard input being permanently buffered when the shell-integration handshake had no fallback (#206); a local PTY backend stopping abnormally now ends the session explicitly instead of hanging; Ctrl+L is re-sent after clear to fix a disappearing prompt and input misalignment; SSH degrades to a single-channel reconnect when probing drops the transport (#183); the selection highlight is cleared immediately after copy; overlays are height-capped with scroll-follow and down-key cycling.
+- SSH: remote command execution no longer ends early at EOF, which previously reported a failure after a successful extraction.
+- Remote desktop: the MSTSC credential target drops the port, fixing automatic password fill for native RDP; close timeouts and detached editor tasks are governed; embedded native mstscax sessions no longer call SetWindowPos every frame, fixing cursor jitter (#171); the resize/fallback reconnect loop is broken (#171); dynamic texture is restored through a self-maintained gpui-pre fork; the macOS clipboard migrates from cocoa to objc2.
+- AI: context compaction keeps only the leading system message (#174); fixed sidebar AI text-selection rendering and selection in contribution-based sidebars; the execution-mode dropdown now adapts its width instead of pushing out the send button.
+- Databases: external driver icons use scheme-free asset paths, fixing blank IPC extension icons; fixed the current-statement selection disappearing while typing SQL; added a reentry guard to result-grid frame refresh.
+- Extensions: provider call cancellation, mount root tokens, and bounded cleanup are wired through; structured error envelopes and shell network authorization are corrected; a single broken extension no longer takes down the whole catalog; providers auto-recover mounted connections after a restart.
+- JSON view restores syntax highlighting and switches input to the JSON editor; the workspace explorer editor and status bar follow the workspace theme.
+- SFTP / transfer: upgraded to russh 0.63.3 and russh-sftp 3.0.0 with an aligned transfer window.
+- Resource workbench and extension runtime: unimplemented terminal operations and invalid route bindings are rejected at registration, and connection binding, async state ownership, and form field types are corrected; fixed the stream page's first read returning -32602.
+- Fixed tab-bar localization and tooltips, and an SSH form dialog width that squeezed form content.
+- AI: streaming requests now use an idle read timeout, fixing long tasks being cut off by the fixed 120-second total timeout; the idle timeout is configurable in settings.
+- Fixed the memory blow-up when the SSH color icon is loaded through the `img` path by shrinking its intrinsic size.
+- Release artifacts are significantly smaller: the binary is about 36% smaller and the DMG installer drops from 68 MB to 56 MB (fat LTO, unwinding disabled, deduplicated dependencies).
+- The log file is now `linop.log` and rotates past 64 MB (keeping one `.1` backup), so long-running installs no longer grow multi-GB logs.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.17.0...v0.18.0
+
+## [v0.17.0] - 2026-09-08
+
+#### 更新内容
+
+- 新增「已知主机」页面：集中查看应用信任的 SSH 主机的密钥算法与指纹，支持复制主机标识、移除可信主机，并可扫描系统 `known_hosts` 导入。
+- 表数据编辑支持批量修改选中的多个单元格，结果表格滚动条与视口布局同步优化。
+- 远程文件编辑器：支持配置文件大小上限与默认编辑器，打开路由更完善。
+- 会话日志支持批量删除与增量加载，大量日志下浏览更流畅。
+- 设置页重构：按数据库、终端、Agent、MCP 拆分为独立分页；快捷键支持清除与禁用系统快捷键。
+- 连接表单统一声明式引擎：新增 Auth（用户名/密码/钥匙串）复合字段，MQTT 等中间件表单迁移到统一引擎，钥匙串引用端到端解析。
+- 工具箱：聚合扩展小工具并与连接扩展区分，小工具允许声明后端与全部 host 模块。
+- 快速打开支持临时 SSH 连接，标签栏新增连接入口；主页统一网格布局、树形视图与更克制的视觉层次，连接批量管理上线。
+- 编辑器：支持保存快捷键，WASM 语言解析器启用后语法高亮恢复。
+- Windows 现支持通过 Scoop 安装：`scoop bucket add extras && scoop install linop`。
+
+#### 修复与优化
+
+- 修复 macOS x86_64 上 `gpui` 框架 BOOL 类型差异导致的发布构建失败；同步更新 GPUI/CJK 输入（XIM、macOS IME）支持，Rocky Linux 10 可正常运行。
+- 修复编辑器语法高亮丢失与右键菜单回调中读取编辑器崩溃的问题。
+- 修复 SQL 编辑器右键菜单崩溃并补全剪切/复制/粘贴国际化。
+- 修复新建本地终端时 HomePage 重入崩溃；最近区不再参与搜索与批量操作，避免同一连接重复交互。
+- 修复主页工作区拖拽排序在重载后丢失的问题；团队徽标与工具栏控件精修。
+- 修复标签栏导航切换槽位显示异常。
+- 修复启动时默认打开 AI 工作台的行为，现保持用户上次的页面。
+- 修复终端块选区在滚动时丢失的问题。
+- 优化 AI 对话中的运行中活动显示；规范 Agent 上下文消息角色分配以兼容 OpenAI 协议。
+- 修复钥匙串引用隐藏凭据后下拉跳到表单顶部的问题。
+- 优化 SFTP/终端文件传输进度条尺寸。
+- 扩展管理页不再直接打开视图，入口按贡献分类；扩展机制收敛清理死代码，通用插件机制抽取为独立 crate。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.17.0) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- New Known Hosts page: review key algorithms and fingerprints of SSH hosts trusted by the app, copy or remove trusted host identities, and import entries from the system `known_hosts` file.
+- Table data editing supports batch-editing selected cells, with improved result-grid scrollbars and viewport layout.
+- Remote file editor: configurable file size limits and default editor, with improved open routing.
+- Session logs support batch delete and incremental loading for smoother browsing of large histories.
+- Settings redesign: dedicated pages for database, terminal, Agent, and MCP settings; shortcuts can be cleared and system shortcuts disabled.
+- Unified declarative connection-form engine: new Auth (username/password/keychain) composite field; middleware forms such as MQTT migrate to the engine with end-to-end keychain reference resolution.
+- Toolbox: aggregates extension tools, separated from connection extensions; tools may declare backends and full host modules.
+- Quick open supports ad-hoc SSH connections with a new tab-bar entry; the home page gains a unified grid layout, tree view, restrained visual hierarchy, and batch connection management.
+- Editor: save shortcuts, and syntax highlighting restored with WASM language parsers enabled.
+- Linop is now installable on Windows via Scoop: `scoop bucket add extras && scoop install linop`.
+
+#### Fixes and Improvements
+
+- Fixed the release build failure on macOS x86_64 caused by a BOOL type difference in the GPUI framework; updated GPUI with CJK input (XIM, macOS IME) support, and Rocky Linux 10 now works.
+- Fixed editor syntax-highlighting loss and a crash when the context menu read the editor during callbacks.
+- Fixed the SQL editor context-menu crash and completed cut/copy/paste localization.
+- Fixed a HomePage re-entrancy crash when creating a new local terminal; the recent section no longer participates in search or batch operations to avoid duplicate interactions.
+- Fixed home workspace drag order being lost on reload; refined team badges and toolbar controls.
+- Fixed the tab-bar navigation toggle slot display.
+- Startup no longer forces the AI workbench open; the last visited page is preserved.
+- Fixed terminal block selections being lost while scrolling.
+- Improved the running-activity display in AI conversations; normalized Agent context message roles for OpenAI-protocol compatibility.
+- Fixed the keychain dropdown jumping to the top of the form when credentials are hidden.
+- Resized SFTP/terminal transfer progress bars.
+- The extension manager no longer opens views directly and groups entries by contribution; the extension mechanism was consolidated with dead code removed, and the universal plugin mechanism was extracted into its own crate.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.16.1...v0.17.0
+
+## [v0.16.1] - 2026-09-05
+
+#### 修复与优化
+
+- 修复 Windows 深色主题下最小化、最大化、还原和关闭按钮图标显示为黑色、难以辨认的问题（#164），图标现跟随主题配色。
+- 优化发布构建，使用并行 Thin LTO；将 LLM 连接器迁入工作区 crate，统一依赖管理。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.16.1) 下载桌面端安装包
+
+---
+
+#### Fixes and Improvements
+
+- Fixed minimize, maximize, restore, and close icons appearing black and hard to see under dark themes on Windows (#164). Window control icons now follow the theme colors.
+- Improved release builds with parallel Thin LTO and moved the LLM connector into a workspace crate for unified dependency management.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.16.0...v0.16.1
+
+## [v0.16.0] - 2026-09-04
+
+#### 更新内容
+
+- 后台任务不再自动弹出任务面板或发送 Toast，上传/下载等进度统一通过各视图底部进度条展示，界面更安静。
+- 「通用资源插件」基础框架落地：扩展可基于标准连接声明新的资源类型，并复用连接表单、工作区、首页与侧边栏生命周期；宿主统一负责扩展进程的启动、权限、健康检查与重启管理，为第三方资源类型铺路。
+- SQL 补全与编辑增强：新增 UPDATE 语句表别名诊断与补全；表数据页签支持右键复制表名，列头支持右键复制字段名与注释；文件管理器支持 Backspace 返回上一级目录（输入框聚焦时不触发）。
+- Oracle 支持：连接表单新增连接角色（默认 / SYSDBA / SYSOPER）；普通权限账户可正常获取 schema 补全；元数据改为表名优先发布，大 schema 下列扫描期间表名即可完成补全。
+- 新增 TDengine 时序数据库连接：基于官方 taos WebSocket 驱动（经 taosAdapter :6041 连接，纯 Rust、无需本地 C 依赖），支持数据库/超级表/子表浏览、DESCRIBE 与 TAG 识别、分页查询等完整数据库能力；连接表单、连接导入协议与 TDengine CLI 命令（`taos` / `jdbc:TAOS-RS://`）同步支持。
+- 新增 MQTT 中间件连接：基于 rumqttc 运行时（MQTT 3.1.1，rustls 加密），提供订阅、消息、发布三个视图（消息环形缓冲、文本/Hex 切换），连接页签对齐 MongoDB 多开模式，支持 SSH 隧道与断线自动重订阅。
+- 新增通用中间件声明式连接表单引擎：中间件连接复用数据库表单的页面模式，标签页由声明式配置驱动，工作区/团队/云同步/钥匙串/备注由引擎统一处理；新建连接弹框同步新增「时序数据库」「中间件」分类。
+
+#### 修复与优化
+
+- 修复终端手动输入密码时大写与部分特殊字符丢失导致认证失败的问题（#147）。
+- 修复粘贴确认弹窗按钮被挤出可视区、大体量粘贴缺少确认的问题；长内容预览改为限高内滚动，支持合并为单行粘贴，并对非 bracketed 粘贴过滤危险控制字符。
+- 修复 SQL 运行按钮偶发阻塞 UI 与指针样式、INSERT 值提示覆盖或重叠 SQL 文本的问题（#141）。
+- 修复独立 MSTSC 远程桌面未传递已保存凭据的问题（#136）。
+- 修复 Windows 上 Personal Sync(Git) 自动同步每次弹出黑色控制台窗口的问题。
+- 修复 SQLite 启用 WAL 失败（杀软 / 同步盘 / 受限文件系统）时应用启动卡死或崩溃的问题，现会回退到 DELETE 日志模式并正常启动。
+- 修复钥匙串列表滚动容器塌陷导致白屏的问题。
+- 优化 SFTP 上传性能与稳定性：大文件采用更大的并发写窗口与请求超时，瞬态断连可自动重试一次；批量上传支持逐项处理文件/目录冲突，并可将决定应用到后续同类冲突。
+- 修复组件库升级后部分确认弹窗不显示操作按钮的问题。
+- AI 对话中的 Markdown 现跟随终端主题渲染，改善终端配色下正文、链接、引用和代码块的可读性。
+- 笔记：因组件库升级迁移，移除左编辑右预览的分栏（Split）模式，该模式旧配置会自动回退到源码（Source）模式。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.16.0) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- Background tasks no longer auto-open the task panel or fire toasts; upload/download progress is now shown in each view's bottom progress bar for a quieter experience.
+- A "Universal Resource Plugin" foundation lands: extensions can declare new resource types backed by a standard stored connection and reuse the connection form, workspace, home, and sidebar lifecycles; the host owns process startup, permissions, health checks, and restarts, paving the way for third-party resource types.
+- SQL completion and editing: added UPDATE table-alias diagnostics and completion; table-data tabs can copy the table name from the context menu and column headers can copy field names/comments; the file manager navigates up with Backspace (ignored while an input is focused).
+- Oracle: the connection form adds a connection role (Default / SYSDBA / SYSOPER); schema completion now works for limited-privilege accounts, and metadata publishes table names first so completion is available early during large-schema column scans.
+- Added TDengine time-series database connections on the official taos WebSocket driver (via taosAdapter :6041, pure Rust with no local C dependency), with full database capabilities including database/super-table/child-table browsing, DESCRIBE with TAG awareness, and paged queries; the connection form, connection import protocol, and TDengine CLI commands (`taos` / `jdbc:TAOS-RS://`) are supported as well.
+- Added MQTT middleware connections on a rumqttc runtime (MQTT 3.1.1 over rustls) with dedicated subscribe, messages, and publish views (ring-buffered messages, text/Hex toggle); connection tabs follow the MongoDB multi-tab pattern, with SSH tunneling and automatic resubscription after reconnects.
+- Added a declarative connection-form engine for middleware: middleware connections reuse the database form's page model with declaratively configured tabs, while workspace/team/cloud-sync/keychain/notes are handled uniformly; the new-connection dialog now includes dedicated Time-series Database and Middleware categories.
+
+#### Fixes and Improvements
+
+- Fixed terminal authentication failures when manually typing passwords containing uppercase or certain special characters (#147).
+- Fixed paste-confirm dialog buttons being pushed out of view and missing large-paste confirmation; long previews now scroll within a height limit, with an option to paste as a single line, and non-bracketed pastes filter dangerous control characters.
+- Fixed the SQL Run button occasionally blocking the UI, its cursor style, and INSERT value hints overlapping/replacing SQL text (#141).
+- Fixed saved credentials not being passed to the standalone MSTSC remote desktop (#136).
+- Fixed Personal Sync (Git) flashing a black console window on Windows during auto-sync.
+- Fixed app startup hanging or crashing when SQLite fails to enable WAL (antivirus, sync folders, restricted filesystems); it now falls back to DELETE journal mode and starts normally.
+- Fixed the keychain list scrolling container collapsing and causing a blank screen.
+- Improved SFTP upload performance and reliability: large files use a larger concurrent-write window and request timeout, transient disconnects retry once, and batch uploads resolve file/directory conflicts individually with an apply-to-similar option.
+- Fixed action buttons disappearing from some confirmation dialogs after the component-library upgrade.
+- AI chat Markdown now follows the terminal theme, improving the readability of body text, links, quotes, and code blocks across terminal color schemes.
+- Notes: the split (left-edit / right-preview) mode is removed as part of the component-library migration; existing split configurations automatically fall back to Source mode.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.15.2...v0.16.0
+
+## [v0.15.2] - 2026-08-31
+
+#### 更新内容
+
+- 设置入口统一迁移到全局标签栏右上角，位于后台任务入口之后；现代主页与传统主页不再重复显示设置入口。
+- SQL 结果表格编辑体验增强：日期、时间和数值列会根据结果集与表结构元数据使用对应的编辑控件，非 MySQL 数据库无需为识别字段类型额外查询表结构。
+
+#### 修复与优化
+
+- 修复 Windows 上数据库树筛选弹窗输入时闪烁、无法持续输入或丢失 IME/焦点的问题；筛选面板改为独立宿主，并完善外部点击、Escape、焦点恢复与连接切换行为。
+- 修复 MySQL 在 `character_set_results=binary` 等环境下将数据库名、表名及其他文本结果误显示为十六进制的问题；连接后显式协商结果字符集，同时继续无损保留真实二进制数据。
+- 修复 Redis 树视图的搜索、刷新和添加键等图标在暗黑模式下显示为黑色的问题，纯色图标现在正确跟随主题颜色。
+- 修复非 macOS 平台的全局关闭窗口快捷键占用 `Ctrl+D`，导致终端无法发送 EOF 的问题；默认快捷键现改为 `Ctrl+Shift+W`，macOS 继续使用 `Cmd+W`。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.15.2) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- The Settings entry is now consistently placed at the top-right of the global tab bar, after Background Tasks; it is no longer duplicated in the modern or classic home navigation.
+- SQL result editing is improved: date, time, and numeric columns now use type-appropriate editors based on result-set and schema metadata, without extra schema queries just to identify types for non-MySQL databases.
+
+#### Fixes and Improvements
+
+- Fixed the database-tree filter popover flickering, rejecting continued input, or losing IME/focus on Windows; the filter panel now uses an independent host with consistent outside-click, Escape, focus restoration, and connection-switching behavior.
+- Fixed MySQL database names, table names, and other text results being displayed as hexadecimal under environments such as `character_set_results=binary`; result character sets are now negotiated explicitly while genuine binary data remains lossless.
+- Fixed Redis tree search, refresh, and add-key icons rendering black in dark mode; monochrome icons now correctly follow the active theme color.
+- Fixed the global close-window shortcut reserving `Ctrl+D` on non-macOS platforms and preventing terminals from sending EOF; the default is now `Ctrl+Shift+W`, while macOS continues to use `Cmd+W`.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.15.1...v0.15.2
+
+## [v0.15.1] - 2026-08-30
+
+#### 更新内容
+
+- 终端新增「选中文本后高亮相同内容」：选中一段文本后，可见区域内相同文本会以淡色背景高亮，SSH 与本地终端同时生效，可在终端侧边栏设置中开关（默认开启）。
+- 连接列表宽度支持持久化：拖拽调整侧栏连接树宽度后自动保存，重启应用恢复上次宽度；停靠模式侧栏与主窗口背景统一、分隔线由拖拽手柄承担，浮动模式改为浮层卡片样式（圆角 + 阴影）。
+- 「自动检查更新」开关与「检查更新」按钮从通用设置页迁移到关于页面，与版本信息同页展示。
+
+#### 修复与优化
+
+- 修复侧边栏与命令栏图标按钮在终端/Agent 自定义主题下颜色不跟随、误显示为黑色的问题。
+- 修复 SFTP 覆盖远端文件时恢复旧修改时间（mtime），导致 rsync 部署、Web/应用缓存与增量构建等基于 mtime 的变更检测误判文件未更新、继续使用旧内容的问题；现在覆盖写入后 mtime 由服务器按实际写入时间记录。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.15.1) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- Terminal gains "highlight identical text on selection": after selecting text, matching text in the visible area is highlighted with a subtle background, working in both SSH and local terminals; toggleable in the terminal sidebar settings (on by default).
+- Connection list width is now persisted: resizing the sidebar connection tree is saved automatically and restored on next launch; the docked sidebar shares the main window background with a resize-handle divider, and the floating mode adopts a card-style look (rounded corners + shadow).
+- The "check for updates automatically" toggle and "Check for Updates" button move from general settings to the About page, alongside the version information.
+
+#### Fixes and Improvements
+
+- Fixed sidebar and command bar icon buttons rendering black instead of following the terminal/Agent custom theme colors.
+- Fixed SFTP restoring the old mtime when overwriting remote files, which made mtime-based change detection (rsync deploys, web/app caches, incremental builds) treat the overwritten file as unchanged and keep serving stale content; the server now records the actual write time.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.15.0...v0.15.1
+
+## [v0.15.0] - 2026-08-30
+
+#### 更新内容
+
+- 终端 SSH 监控改为通过当前 SSH 会话推送执行采集脚本，不再向远端主机写入脚本，并在监控面板顶部新增监控开关（#126）。
+- 终端内联凭据/MFA 输入体验优化：用户名与验证码在终端内明文回显，密码以 `*` 掩码显示。
+- 终端文件管理器新增「自动跟随终端工作目录」开关，与设置页开关复用同一持久化链路；远端路径统一归一化，修复面包屑路径重复显示。
+- 笔记目录布局优化：用户显式选择的目录直接作为笔记根，不再自动创建 `files/` 子目录；新增左编辑右预览分栏模式，预览实时镜像（#109）。
+
+#### 修复与优化
+
+- 修复终端内联 MFA/凭据输入时按键透传平台文本输入系统，导致验证码/密码被双写。
+- 修复 MySQL 连接取消 SSL 后残留参数仍强制启用 TLS。
+- 修复 OpenAI Compatible 连接名含非打印 ASCII（如中文）时，出站 User-Agent 被上游拒绝的问题。
+- 完善终端内联连接反馈：重连失败以红色内联提示报告、提示文案固定英文。
+
+---
+
+#### What's New
+
+- Terminal SSH monitoring now runs collection through the current SSH session instead of writing scripts to the remote host, with a new monitoring toggle in the panel header (#126).
+- Terminal inline credential/MFA input now echoes usernames and verification codes in plain text while masking passwords with asterisks.
+- The terminal file manager gains an "auto-follow terminal working directory" toggle sharing the settings persistence path, and remote paths are normalized to fix duplicated breadcrumb segments.
+- Notes directory layout improvements: an explicitly chosen directory becomes the notes root directly (no automatic `files/` subdirectory), plus a split edit-with-live-preview mode (#109).
+
+#### Fixes and Improvements
+
+- Fixed terminal inline MFA/credential keys passing through to the platform text-input system, double-typing verification codes and passwords.
+- Fixed MySQL still forcing TLS after SSL was disabled.
+- Fixed OpenAI Compatible connections whose names contain non-printable ASCII (e.g. Chinese) being rejected for non-printable User-Agent header values.
+- Completed inline terminal connection feedback: reconnect failures are reported as red inline notices with English-only copy.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.14.0...v0.15.0
+
+## [v0.14.0] - 2026-08-29
+
+#### 更新内容
+
+- SQL 编辑器新增跨数据库/跨 Schema 限定名补全（惰性加载），并优化 FROM 子句的数据库提示、选中数据库限定符建议与限定符元数据作用域隔离。
+- SQL 格式化支持保留关键字大小写，新增格式化设置（关键字大小写、缩进）与实时预览，并通过模板掩码避免示例代码/占位符被误格式化。
+- 终端将连接状态与认证提示内联显示，不再以弹窗打断操作。
+- 后台任务对话框重构为带计数过滤页签，文件操作分组展示更清晰。
+- 新增操作系统/网络设备图标并刷新现有图标配色；SSH 连接刷新 Linux penguin 图标并支持 FreeBSD uname 检测。
+- SSH 跳板机配置在禁用后仍保留，便于快速重新启用。
+- SFTP 左侧远端面板遵循配置的 SFTP 初始目录。
+- 无标签页时退出应用跳过确认，加快退出。
+- 扩展市场页支持「有更新」过滤，更新通知跳转只显示可更新扩展，并移除 MCP 助手分类。
+- macOS 标题栏内容内边距改为可选开启，避免干扰自绘标题栏。
+
+#### 修复与优化
+
+- 修复首页「开始中心」最近使用列被 items_center 撑爆的响应式布局，改用主轴居中。
+- 修复 SQL 编辑器输入抖动与弹层交互不稳定问题；查询工具栏按钮统一为 28px 控件高度。
+- 修复会话日志删除确认后未真正删除的问题。
+- 修复同步记录未保留远端时间戳的问题。
+- 修复 SFTP 覆盖远端文件时未保留 owner/group/权限的问题。
+- 修复回到首页时连接侧边栏折叠状态丢失的问题。
+- 内部改进：统一 rustfmt 格式、修复存量测试失败、CI 新增 fast 构建模式（跳过 fat LTO 加快构建）。
+
+国内下载：如果 GitHub 下载较慢，可从 [CNB 镜像](https://cnb.cool/linop-dev/linop/-/releases/tag/v0.14.0) 下载桌面端安装包
+
+---
+
+#### What's New
+
+- SQL editor now supports cross-database/schema qualified completion with lazy loading, plus database hints after FROM, selected-database qualifier suggestions, and isolated qualifier metadata scopes.
+- SQL formatting preserves keyword case; new format settings (keyword case, indentation) with live preview and balanced template masking so sample code/placeholders are not mangled.
+- Terminal shows connection status and auth prompts inline instead of interrupting with popups.
+- Background task dialog reworked with counted filter tabs for clearer grouped file operations.
+- New OS/network device icons with refreshed colors; SSH connections refresh the Linux penguin icon and add FreeBSD uname detection.
+- SSH jump server config is retained when disabled for quick re-enable.
+- The SFTP left remote panel honors the configured SFTP initial directory.
+- Quitting the app skips confirmation when no tabs are open.
+- Extension marketplace supports an "updates available" filter; update notifications jump only to updatable extensions; the MCP Assistant category is removed.
+- macOS titlebar content inset is now opt-in to avoid disturbing custom titlebars.
+
+#### Fixes and Improvements
+
+- Fixed the home "Start Center" recent list being stretched by items_center; centered on the main axis instead.
+- Stabilized SQL editor typing flicker and popover interactions; query toolbar buttons pinned to the shared 28px control height.
+- Fixed session log delete confirmation not actually deleting the log.
+- Fixed synced records not preserving the remote timestamp.
+- Fixed SFTP overwrite not preserving owner/group/permissions on remote files.
+- Fixed the collapsed connection sidebar state being lost when returning home.
+- Internal: unified rustfmt formatting, fixed pre-existing test failures, and added a fast CI build mode (skips fat LTO for quicker builds).
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.13.0...v0.14.0
+
+## [v0.13.0] - 2026-08-28
+
+### 中文
+
+#### 更新内容
+
+- SQL 编辑器大幅增强：支持函数签名提示、行内内联小组件与编辑器生命周期管理；多语句执行、`@set` 变量、IN 列表与 INSERT 子句智能提示、通配符补全；执行错误映射到准确源码位置，配合来源映射便于定位问题。
+- 终端新增运行时 SSH Shell 集成：无需写入远端即可实时感知提示符、命令开始/结束与当前目录，为自动化执行与脚本提示提供基础。
+- 后台任务能力升级：文件操作支持按标签页分组显示；SFTP 传输、远程删除等转移为全局后台任务；终端与后台任务面板新增传输进度展示。
+- 连接树自动隐藏模式优化：点击设置、扩展、AI 工作台等非连接区域时自动收起连接树；同时支持将连接树固定为常驻侧栏。
+- 连接支持自定义 SSH 图标。
+- MCP 审批等待时间可配置，超时后返回 `approval_timeout`。
+- AI 工具调用默认改为「手动确认」模式：模型请求业务工具前需用户确认，降低误操作风险。
+- 刷新内置模型目录，接入最新模型列表。
+- 会话日志支持删除操作。
+
+#### 修复与优化
+
+- 修复 zmodem 上传/下载的传输竞态、任务生命周期与帧解析问题，进度更新更准确且不冲突。
+- 修复终端大段粘贴导致 SSH 超时的问题。
+- 修复 Redis 空用户名存储为 null 导致默认用户认证超时的问题。
+- 修复数据库表/对象树未按字母排序的问题，子节点排序更稳定。
+- 修复带注释的 DDL 导出：补充主键、表/列注释的导出，并在驱动仅返回注释时回退到 DDL 构建器。
+- 修复真 schema 驱动在表导出时错误附加数据库限定名的问题。
+- 修复后台任务进度完成时未固定到 100% 的问题；进度条默认使用主题主色。
+- 修复连接树浮层滚动事件传播到标签内容的问题。
+- 修复文件管理器面包屑标签过长时未截断的问题。
+- 后台任务展示由浮层改为独立对话框，信息更完整。
+- 转发窗口表单高度调整，避免内容挤压。
+
+---
+
+### English
+
+#### What's New
+
+- Major SQL editor upgrade: function signature hints, inline widgets and editor lifecycle management; multi-statement execution, `@set` variables, IN-list and INSERT-clause smart completion, and wildcard completion; execution errors now map to precise source locations for easier troubleshooting.
+- The terminal gains runtime SSH shell integration: prompts, command start/end, and the current directory are sensed in real time without any writes to the remote host, laying the groundwork for automation and script hints.
+- Background task capabilities improved: file operations can be grouped by tab; SFTP transfers and remote deletes move to global background tasks; transfer progress is shown in the terminal and the background task panel.
+- Connection tree auto-hide mode refined: clicking non-connection areas such as Settings, Extensions, or the AI Workbench now collapses the tree automatically; the tree can also be pinned as a fixed sidebar.
+- Connections support custom SSH icons.
+- MCP approval wait time is configurable and returns `approval_timeout` when it expires.
+- AI tool calls now default to manual confirmation: the user confirms before the model runs business tools, reducing the risk of accidental operations.
+- Refreshed the built-in model catalog with the latest model list.
+- Session logs support deletion.
+
+#### Fixes and Improvements
+
+- Fixed zmodem upload/download transfer races, task lifecycle, and frame parsing issues; progress updates are more accurate and no longer collide.
+- Fixed SSH timeouts caused by large terminal pastes.
+- Fixed Redis storing an empty username as null, which caused default-user auth timeouts.
+- Fixed database table/object tree children not sorted alphabetically.
+- Fixed DDL export for commented objects: PRIMARY KEY and table/column comments are now exported, with a fallback to the DDL builder when a driver returns only comments.
+- Fixed true-schema drivers incorrectly appending a database qualifier during table export.
+- Fixed background task progress not pinning to 100% when complete; the progress bar now uses the theme primary color by default.
+- Fixed scroll events from the floating connection tree propagating into tab content.
+- Fixed file manager breadcrumb labels not truncating when too long.
+- Background tasks now show in a dedicated dialog instead of a popover for a fuller view.
+- Adjusted the forwarding window form height to avoid content squeezing.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.12.1...v0.13.0
+
+## [v0.12.1] - 2026-08-26
+
+### 中文
+
+#### 更新内容
+
+- SSH 连接支持为 SFTP 单独配置一套账户：在连接表单新增「SFTP 账户」页签，可启用独立 SFTP 用户名/密码；启用后 SFTP 传输、远程文件浏览与远程文件编辑使用该账户连接远端，SSH 终端仍使用主账户，未配置时 SFTP 与 SSH 共用一套凭据。
+- SFTP 文件浏览的面包屑导航优化了最小宽度处理：根目录标签不再强制保留额外宽度，窄窗口下路径显示更紧凑。
+- 连接树新增「自动隐藏」开关（默认开启）：开启时连接树以浮层显示，双击打开会话后自动收起、不再遮挡终端；关闭后连接树改为与终端并排固定的分割面板，保持展开，方便持续浏览连接列表。
+
+#### 修复与优化
+
+- 修复终端粘贴误拦截：粘贴带行尾反斜杠续行的多行命令（如多行 wget/curl）不再被当作「不安全的多行粘贴」硬拦截，改为走普通多行粘贴确认；对 heredoc、未闭合引号等高风险粘贴，提示框新增「仍然粘贴」按钮，可在确认后继续粘贴。
+- 修复从终端复制表格内容时列对齐丢失的问题，复制结果保留原始列间距。
+- 修复 RDP 连接测试（IronRDP 路径）依赖完整 RDP/TLS/NLA 认证的问题：改为 TCP 可达性探测（支持直连与代理），无需账号凭据也能快速反馈目标主机是否可达。
+- 修复 Windows 下 RDP 重连时选择重连方式的仲裁对话框被自动隐藏/中断的问题，保持对话框可见直至用户选择。
+- 修复从对象页签（对象树）双击打开 MySQL 表数据时数据库名为空、报 "Incorrect database name"（ERROR 42000）的问题。
+- 修复查询结果编辑时带引号表名（反引号、双引号、方括号等）被二次加引号、导致 INSERT/UPDATE/DELETE 语句异常的问题。
+- 修复导入数据库连接后在新连接表单中编辑并保存时误按「更新已有连接」处理的问题：现在保存为全新连接。
+
+---
+
+### English
+
+#### What's New
+
+- SSH connections can now use a separate SFTP account: a new "SFTP Account" tab in the connection form lets you enable an independent SFTP username/password. When enabled, SFTP transfers, remote file browsing, and remote file editing connect with that account while the SSH terminal keeps using the main account; when unset, SFTP and SSH share the same credentials.
+- The SFTP file browser breadcrumb now handles minimum widths more smartly: the root label no longer reserves extra width, keeping the path compact in narrow windows.
+- The connection tree gains an auto-hide toggle (enabled by default): when on, the tree shows as a floating overlay and collapses automatically after you open a session so it never covers the terminal; when off, the tree renders as a fixed split panel docked beside the terminal and stays expanded for continuous browsing.
+
+#### Fixes and Improvements
+
+- Fixed terminal paste blocking: multi-line commands with trailing backslash line continuations (e.g., multi-line wget/curl) are no longer hard-blocked as "unsafe multi-line paste" and now use the normal multi-line paste confirmation; the unsafe-paste warning for heredoc and unterminated quotes now offers a "Paste Anyway" button so you can proceed after confirming.
+- Fixed copying table output from the terminal losing column alignment; copied text now keeps the original column spacing.
+- Fixed the RDP connection test (IronRDP path) depending on full RDP/TLS/NLA authentication: it now performs a TCP reachability probe (direct or proxy-aware) and reports whether the target host is reachable without needing account credentials.
+- Fixed the reconnect arbitration dialog on Windows RDP being dismissed/interrupted on reconnect; it now stays visible until you choose.
+- Fixed opening a MySQL table from the object tab failing with "Incorrect database name" (ERROR 42000) when the database metadata was empty.
+- Fixed editable result sets mis-handling quoted table names (backticks, double quotes, brackets): generated INSERT/UPDATE/DELETE statements no longer double-quote the table name.
+- Fixed saving an edited database draft imported into the new-connection form treating it as an update to an existing connection; it now saves as a brand-new connection.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.12.0...v0.12.1
+
+## [v0.12.0] - 2026-08-25
+
+### 中文
+
+#### 更新内容
+
+- 扩展市场新增更新提醒：应用启动后在后台检查扩展市场，与已安装的插件版本对比，发现新版本时弹出通知，并可直接跳转到扩展市场查看更新；同一批更新仅提醒一次，确认后不再重复打扰。
+- 离线安装包下载窗口现在展示全部下载渠道：扩展市场、GitHub Releases 与国内扩展下载镜像，每个渠道都支持复制地址与一键打开。
+- 连接树改为浮动面板：展开连接树时不再挤压或推动终端与标签栏，点击连接也不会误收起侧栏；展开/收起按钮在窗口控件下不再跳动。
+
+#### 修复与优化
+
+- 表设计器 SQL 预览改为通过数据库驱动异步生成，与保存共用同一路径：方言级 DDL（如 COMMENT ON）由数据库插件生成而非宿主内置，修复 DM、金仓（Kingbase）等表/列注释修改时预览为空白或「没有需要变更的语句」的问题。
+- 表设计器打开时正确回显表注释：通过 IPC 传递 Schema 匹配已加载的表，驱动未返回 Schema 时按表名兜底匹配。
+- 表设计器 SQL 预览与保存增加加载状态：预览生成期间显示进度条，保存期间禁用保存按钮。
+- 修复 Oracle 在对象页签右键「设计表」无法打开的问题：对象树节点 ID 统一从父节点派生，与左侧树保持一致。
+- 修复多显示器场景下弹窗位置错误：新建连接、导入、设置、更新等弹窗现在会出现在当前活动窗口所在的屏幕。
+- 修复数据比较中 JSON 字段控制字符显示不一致的问题：比较面板不再将 `\r\n` 显示为自动换行的多行文本，与查询面板保持一致。
+- 修复 Moonshot Kimi 系列模型（kimi-k2 等）调用报错的问题：强制使用模型要求的 temperature=1。
+- 授权协议调整：允许免费渠道分发 Linop，禁止商业转售。
+
+---
+
+### English
+
+#### What's New
+
+- Extension marketplace update notifications: Linop now checks the extension marketplace in the background on startup, compares it with installed plugin versions, and shows a notification when updates are available, with a direct link to view them in the marketplace; each batch of updates is announced only once.
+- The offline package download dialog now lists all download channels: the extension marketplace, GitHub Releases, and the domestic mirror, each with copy-address and open buttons.
+- The connection tree is now a floating panel: expanding it no longer squeezes or pushes the terminal/tab bar, clicking a connection no longer accidentally collapses the sidebar, and the expand/collapse toggle no longer jumps under the window controls.
+
+#### Fixes and Improvements
+
+- Table designer SQL preview is now generated asynchronously by the database driver, sharing the same code path as saving: dialect-specific DDL such as `COMMENT ON` is produced by the IPC plugin instead of a host-local builder, fixing blank or "no changes detected" previews when editing table/column comments on DM, Kingbase, and others.
+- The table designer now echoes the table comment on load by plumbing the schema through IPC, falling back to matching by table name when a driver does not report a schema.
+- Table designer SQL preview and save now show loading states: a spinner while the preview is generated and a disabled save button while DDL is built and executed.
+- Fixed "Design Table" from the object tab for Oracle by deriving object tree node IDs from their parent node so they match the left-side tree.
+- Fixed popup placement on multi-monitor setups: dialogs such as New Connection, Import, Settings, and Update now appear on the screen of the active window.
+- Fixed inconsistent JSON control-character rendering in data comparison, so `\r\n` no longer wraps into multi-line text and now matches the query panel.
+- Fixed invocation errors with Moonshot Kimi models (kimi-k2 and newer) by forcing the model-required `temperature=1`.
+- License update: free distribution channels are permitted; commercial resale is prohibited.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.11.0...v0.12.0
+
+## [v0.11.0] - 2026-08-24
+
+### 中文
+
+#### 更新内容
+
+- 连接列表新增排序设置：「设置 → 通用 → 连接显示」新增「连接排序」，默认按名称自然排序（IP 地址等数字段按数值比较、忽略大小写），也可切换为「最近使用优先（LRU）」；首页连接列表、Redis/MongoDB 工作区标签页与持久侧栏连接树统一应用该配置，切换后即时生效。
+- SSH 新增对老旧服务器的可选兼容支持：在连接「高级设置」中开启「允许旧版 SSH 算法」后，可连接仅支持 DSA 主机密钥、SHA-1 密钥交换/MAC 或 1024 位 DH 组协商的旧设备，并针对「Key exchange init failed」问题调整协商参数与顺序，同时完善相关错误提示。
+- 标签页改进：复制标签页自动追加序号（例如 192.168.1.1 → 192.168.1.1(1)），并复用已释放的编号；标签宽度按内容自适应，不再截断长标题。
+- 更新依赖以提升安全性与功能：升级 clickhouse、sqlparser、russh、russh-sftp 等依赖，并引入 gpui-ce 剪贴板修复。
+
+#### 修复与优化
+
+- 修复原生 RDP 遮挡对话框与关闭流程问题，改进原生窗口叠加层、连接状态显示与剪贴板同步重试回退。
+- 修复 MySQL 数据库导出时 LONGTEXT 字段未能作为文本正确导出的问题。
+
+---
+
+### English
+
+#### What's New
+
+- Added configurable connection sorting under **Settings → General → Connection Display**: a new "Connection Sorting" option defaults to natural name order (numeric segments such as IP addresses compared by value, case-insensitive) with "Most Recently Used" (LRU) also available; the Home connection list, Redis/MongoDB workspace tabs, and the persistent connection sidebar tree all honor the setting and refresh immediately on change.
+- SSH now offers opt-in compatibility for legacy servers. With "Allow Legacy SSH Algorithms" enabled under **Advanced Settings**, Linop can connect to old devices that only support DSA host keys, SHA-1 key exchange/MAC, or 1024-bit DH group negotiation, with adjusted negotiation parameters and order that avoid "Key exchange init failed", plus clearer error messages.
+- Improved tabs: duplicated tabs are automatically numbered (e.g. `192.168.1.1` → `192.168.1.1(1)`), reusing freed numbers, and tab widths now adapt to content so long titles are not truncated.
+- Updated dependencies for security and functionality: clickhouse, sqlparser, russh, and russh-sftp were upgraded, and a gpui-ce clipboard fix was included.
+
+#### Fixes and Improvements
+
+- Fixed native RDP overlay dialogs and the close flow, and improved native window overlay handling, connecting status display, and clipboard retry/backoff.
+- Fixed MySQL export so `LONGTEXT` fields are correctly exported as text.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.10.10...v0.11.0
+
+## [v0.10.10] - 2026-08-24
+
+### 中文
+
+#### 修复与优化
+
+- 修复 Windows RDP 独立全屏窗口的兼容性与稳定性问题：从连接右键菜单打开独立窗口时，改用系统远程桌面客户端 `mstsc.exe` 启动全屏会话，避免内嵌原生窗口可能出现的白屏、焦点和退出异常。
+- 支持将主机名、IPv4、IPv6 与自定义端口正确传递给系统远程桌面客户端；参数无效或外部程序启动失败时会在 Linop 中显示明确提示。
+- 修复 Windows 原生 RDP 会话关闭超时后标签页可能无法完成关闭的问题；超时隔离原生组件后，Linop 现在会正确收敛标签页关闭流程。
+- 修复关闭当前标签页后剩余标签页未正确激活、聚焦，以及延迟激活事件可能让空标签容器覆盖新版首页的问题。
+- 非 Windows 平台及 VNC 独立窗口继续使用 Linop 内置窗口，不受本次调整影响。
+
+---
+
+### English
+
+#### Fixes and Improvements
+
+- Fixed compatibility and stability issues with dedicated fullscreen Windows RDP windows. Opening a dedicated window from a connection's context menu now launches the system Remote Desktop client (`mstsc.exe`) in fullscreen, avoiding white-screen, focus, and exit issues that could occur with the embedded native window.
+- Correctly passes hostnames, IPv4/IPv6 addresses, and custom ports to the system Remote Desktop client, with clear in-app messages when the connection parameters are invalid or the external program cannot be launched.
+- Fixed an issue where a Windows native RDP tab could remain open after native shutdown timed out. Once the native component is quarantined, Linop now completes the tab close flow correctly.
+- Fixed lifecycle and focus restoration for the remaining tab after closing the active tab, and prevented a delayed activation event from replacing the modern home page with an empty tab container.
+- Dedicated VNC windows and remote desktop windows on non-Windows platforms continue to use Linop's built-in window and are unaffected by this change.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.10.9...v0.10.10
+
+## [v0.10.9] - 2026-08-24
+
+### 中文
+
+#### 更新内容
+
+- 标签页新增会话锁定功能：可通过密码锁定/解锁会话（密码仅保存在内存中），支持「锁定全部会话」与「隐藏输出」，锁定中的终端会拒绝键盘输入，且无法通过关闭按钮直接关闭。
+- 标签页新增 SecureCRT 风格的连接状态徽章：已连接、断开、已连接并锁定等状态以不同图标显示，并带悬浮提示。
+- 连接导入新增 SecureCRT 会话与快捷命令支持，支持手动扫描目录，并展示扫描到的可用工作区分组。
+- SSH 支持可选的旧版 ssh-dss 主机密钥认证，并在 Windows 上新增 Pageant 认证。
+- 终端快捷命令编辑器新增「点击执行」选项，点击命令即可自动回车执行；终端设置新增建议弹窗独立开关，并增强设置面板与命令栏功能。
+- Telnet 连接支持自定义退格键编码。
+- 数据库工作区改进：MySQL/PostgreSQL 表信息视图新增表大小、索引数等信息；SQL 导出保留 Schema 元数据并支持使用当前选中的数据库；二进制与文本值（含 MySQL BIT、文本 sidecar、空二进制）在显示、编辑、导入导出等数据工作流中得到更好保留；修复字符类型显示与编辑问题。
+- 数据库比较功能优化：改进结果布局与差异浏览，差异详情列表采用虚拟化渲染，比较问题区域支持滚动查看。
+- 连接表单统一 SSH 隧道配置，减少重复填写。
+- Windows 原生 RDP 全面重构初始化与关闭生命周期，修复白屏与崩溃问题，默认在标签页中打开；独立全屏窗口改为从连接右键菜单打开且默认激活呈现，支持通过顶部悬停显示标题栏并按 ESC 退出全屏；仅保留 Windows 原生 MSTSC 与 IronRDP 后端。
+- 其他改进：窗口跨显示器恢复位置、SFTP 支持延迟凭据提示、PostgreSQL 瞬时连接失败自动重试、RDP 标准化 Windows 剪贴板文件路径、首页快速打开连接改为双击触发、补充国际化文案。
+
+#### 修复与优化
+
+- 修复 Windows 原生 RDP 初始化与关闭期间的崩溃和白屏问题。
+- 修复数据库字符类型显示与编辑，以及二进制/文本值在数据工作流中丢失的问题。
+- 修复终端 ZMODEM 探测输出停滞、AI 聊天侧栏切换标签后滚动位置丢失等问题。
+- 修复窗口在多个显示器之间切换后无法恢复位置的问题。
+
+---
+
+### English
+
+#### What's New
+
+- Added session locking to tabs: lock and unlock sessions with a password kept only in memory, with "Lock All Sessions" and "Hide Output" options; locked terminals reject keystrokes and cannot be closed via the close button.
+- Added SecureCRT-style connection status badges to tabs, showing connected, disconnected, and connected-and-locked states with tooltips.
+- Added SecureCRT session and quick-command import, with manual directory scanning and surfaced scanned workspace groups.
+- Added opt-in legacy ssh-dss host-key support for SSH, and Pageant authentication on Windows.
+- Quick-command editor now supports "execute on click" to run a command immediately, added an independent toggle for the suggestion popup in terminal settings, and enhanced the settings panel and command bar.
+- Added configurable backspace code for Telnet connections.
+- Improved the database workspace: MySQL/PostgreSQL table views now show table sizes and index counts; SQL exports preserve schema metadata and can use the currently selected database; binary and text values (including MySQL BIT, text sidecars, and empty binary) are better preserved across display, editing, import, and export workflows; fixed character-type display and editing.
+- Improved database comparison with better result layout and diff browsing, virtualized diff-detail lists, and scrollable comparison issues.
+- Unified the SSH tunnel form in connection forms to reduce repeated configuration.
+- Rebuilt Windows native RDP initialization and shutdown lifecycle to fix white screens and crashes, opening in a tab by default; the dedicated fullscreen window is available from the connection context menu, starts as the active presentation, reveals its title bar on top-edge hover, and exits fullscreen with Escape; only the Windows-native MSTSC and IronRDP backends remain.
+- Other improvements: window placement is restored across displays, SFTP prompts for delayed credentials, PostgreSQL retries transient connection failures, RDP normalizes Windows clipboard file paths, quick-open on the home page now triggers on double-click, and additional i18n text was added.
+
+#### Fixes and Improvements
+
+- Fixed crashes and white screens during Windows native RDP initialization and shutdown.
+- Fixed database character-type display and editing, and the loss of binary/text values across data workflows.
+- Fixed stalled ZMODEM probe output in terminals and AI Chat sidebar scroll position after switching tabs.
+- Fixed window placement not being restored when switching between multiple displays.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.10.8...v0.10.9
+
+## [v0.10.8] - 2026-08-20
+
+### 中文
+
+#### 更新内容
+
+- 新增 Telnet 连接支持，并支持自动登录脚本和手动凭据覆盖。
+- 新增会话日志和静态终端历史查看器，支持滚动查看、文本选择、搜索与 TXT 导出，可查看 SSH、串口和本地终端的活动日志。
+- 凭据管理新增可复用的钥匙串引用与个人钥匙串同步，改善凭据跨连接复用和跨设备同步体验。
+- 终端新增可复用的快捷命令及全局作用域，并改进快捷键捕获、历史建议、自定义串口波特率、重连和分屏交互。
+- Markdown 编辑器支持点击 Mermaid 图和数学公式放大查看，并可在源码与预览之间切换；同时优化表格操作栏和渲染内容交互。
+- 数据库工作区新增 SQL 执行历史侧栏，并持久化保存历史记录，方便快速回看和复用查询。
+- 改进数据库 Schema/Data Compare，增强跨数据库列类型映射、目标表匹配、差异浏览和同步计划安全性，并修复新增表索引与外键遗漏问题。
+- Oracle 连接配置新增 Native 与纯 Go 驱动选择，改善编辑连接时的驱动模式保留，并支持 Oracle 11g 查询分页限制。
+- Linux 发布包新增 x64 与 ARM64 便携版，并改善旧版 ARM64 运行时、Wayland 依赖和 usrmerge 环境下的兼容性。
+
+#### 修复与优化
+
+- 修复终端 Escape 被清除选区快捷键拦截的问题，Vim 等终端程序现在可正常接收 Escape。
+- 改进 MySQL BIT 和二进制值在 SQL 导入导出、表格编辑和数据网格中的保留与编辑，避免值在格式化或保存过程中丢失。
+- 改善凭据存储、SSH/Telnet 登录、终端重连、窗口快捷键和 AI Chat 侧栏滚动等稳定性问题。
+- Public MCP 终端工具支持发送原始按键输入，便于自动化处理交互式终端场景。
+
+---
+
+### English
+
+#### What's New
+
+- Added Telnet connections with automatic login scripts and manual credential overrides.
+- Added session logs and a static terminal history viewer with scrollback, text selection, search, and TXT export for SSH, serial, and local terminal sessions.
+- Added reusable keychain references and personal keychain sync for easier credential reuse across connections and devices.
+- Added reusable terminal quick commands with global scope, and improved shortcut capture, history suggestions, custom serial baud rates, reconnect behavior, and split-pane interaction.
+- Markdown editor previews for Mermaid diagrams and math formulas can now be enlarged and switched between source and preview, with improved table controls and rendered-content interaction.
+- Added a persistent SQL execution history sidebar to the database workspace for quickly revisiting and reusing previous queries.
+- Improved database schema and data comparison with cross-database column-type mapping, better target-table matching, clearer diff navigation, safer sync-plan execution, and fixes for missing indexes and foreign keys on new tables.
+- Added Native and pure-Go driver choices for Oracle connections, improved driver-mode preservation when editing connections, and added Oracle 11g query-limit support.
+- Added portable x64 and ARM64 Linux packages and improved compatibility with older ARM64 runtimes, Wayland dependencies, and usrmerge-based systems.
+
+#### Fixes and Improvements
+
+- Fixed Escape being intercepted by the terminal clear-selection shortcut, allowing Vim and other terminal applications to receive Escape normally.
+- Improved preservation and editing of MySQL BIT and binary values across SQL import/export, table editing, and data grids.
+- Improved credential storage, SSH/Telnet login, terminal reconnects, window shortcut handling, and AI Chat sidebar scrolling.
+- Public MCP terminal tools can now send raw key input for interactive automation scenarios.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.10.7...v0.10.8
+
+## [v0.10.7] - 2026-08-13
+
+### 中文
+
+#### 更新内容
+
+- 终端工作区新增面板分屏控制，可向左、右、上、下拆分终端，并可将面板恢复为普通标签页。
+- 连接侧边栏新增批量选择与管理模式，可选择当前可见连接、批量移动到分组或批量删除，并将相关入口整合到溢出菜单。
+- SSH 连接支持配置终端类型，改善不同远程系统和 shell 环境下的兼容性。
+- SQL 查询新增无限结果模式和执行中取消能力。
+- 统一辅助窗口的关闭行为，并使用对应平台的标准窗口关闭快捷键。
+
+#### 修复与优化
+
+- 表数据导入支持事务执行与二进制安全处理，失败时可回滚，避免留下部分导入数据；SQL 导出现在也会正确保留二进制值。
+- 改善 SSH 多因素及 keyboard-interactive 认证流程，保留终端缓冲区并支持继续完成多步认证。
+- 修复终端长行在可见视口中的换行，以及调整窗口大小后的内容重新排版问题。
+- 限制 AI Chat 会话记录、缓存会话和工具信息的内存占用，提升长时间会话的稳定性。
+- 为远程桌面帧增量、扩展驱动 worker、Public MCP 审批队列、SSH 路径补全缓存和远程文件外部编辑会话增加容量或生命周期限制，降低长期运行时的资源堆积风险。
+- 优化大型 DML 执行后的数据库缓存失效判断，避免不必要地解析完整 SQL。
+- 修复表格复制选择可能超出有效列范围的问题。
+- 将 Redis 驱动最低兼容版本更新至 `0.1.4`，以支持原生 pipeline 与连接断开后的恢复能力。
+
+---
+
+### English
+
+#### What's New
+
+- Added terminal pane controls for splitting a terminal to the left, right, top, or bottom, with an option to restore a pane to a regular tab.
+- Added batch selection and management to the connection sidebar, including selecting visible connections, moving multiple connections to a group, and deleting them in one operation, with the related actions consolidated into the overflow menu.
+- Added configurable SSH terminal types for better compatibility with different remote systems and shell environments.
+- Added an unlimited-results mode and cancellation for running SQL queries.
+- Unified auxiliary-window close behavior and aligned shortcuts with each platform's standard window-close action.
+
+#### Fixes and Improvements
+
+- Made table imports transactional and binary-safe so failures can roll back without leaving partial data, and fixed SQL exports to preserve binary values correctly.
+- Improved SSH multi-factor and keyboard-interactive authentication by preserving terminal buffers and allowing multi-step authentication to continue.
+- Fixed terminal soft-wrapping within the visible viewport and content reflow after resizing the window.
+- Bounded AI Chat transcripts, cached sessions, and tool information to improve stability during long-running conversations.
+- Added capacity or lifecycle limits for remote-desktop frame deltas, extension-driver workers, Public MCP approval queues, SSH path-completion caches, and external remote-file editing sessions to reduce resource buildup during long-running use.
+- Optimized database cache invalidation after large DML statements by avoiding unnecessary full-SQL parsing.
+- Fixed table copy selections that could extend beyond the valid column range.
+- Updated the minimum compatible Redis driver version to `0.1.4` to support native pipelines and recovery after dropped connections.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.10.6...v0.10.7
+
+## [v0.10.6] - 2026-08-11
+
+### 中文
+
+#### 更新内容
+
+- 工作区文件浏览器新增文件和目录的剪切、复制、粘贴操作，并支持 macOS `Cmd-X/C/V` 与其他平台 `Ctrl-X/C/V` 快捷键。
+- 全面增强 SSH/SFTP 文件管理：本地与远程操作菜单改为更清晰的下拉菜单，补充文件剪贴板、远程命令执行、复制进度与取消，并重构服务器间复制流程，支持直传认证、自动配置源端 SSH key、保留 SSH proxy 设置以及仅中继模式。
+- SFTP 新增未知或变更主机密钥确认，可选择拒绝、仅本次接受或接受并保存；文件列表同时支持显示所有者用户名，并分别保存左右面板的隐藏列配置。
+- 降低远程桌面的显示延迟，优化帧呈现、纹理上传与资源回收流程，并支持从 macOS Finder 向远程桌面复制文件。
+- 数据库工作区查询支持在可用连接之间选择，并同步当前连接、数据库和 Schema 上下文；关闭未命名 SQL 查询时可选择取消、放弃保存或命名后保存。
+- SSH 终端支持在连接过程中请求运行时凭据；Agent 新增可配置的迭代次数上限，并改善聊天消息复制内容。
+
+#### 修复与优化
+
+- 修复 SSH 多因素认证过程中 OTP 提示可能丢失的问题。
+- 修复 SFTP 服务器直传可能卡住、缺少源端 key、丢失源端 SSH proxy 设置以及未知主机密钥无法处理等问题。
+- 工作区侧栏现在会持久化折叠状态并可隐藏空工作区，同时将工作区名称唯一性限制在同一父工作区内。
+- 修复表格多行复制时可能重复生成列的问题。
+- 修复 MCP 启动器必须预先解析 `npx` 路径的问题，现在会直接执行 `npx`。
+- 改善主页与 Tab 系统的兼容性，修复无 Tab、从主页切换或使用旧版主页导航时 Tab 栏和导航入口可能不可见的问题。
+- 修复流式执行 DDL 后 Schema 元数据缓存未及时失效的问题，并优化 SSH 连接表单的界面布局。
+
+---
+
+### English
+
+#### What's New
+
+- Added cut, copy, and paste for files and directories in the workspace explorer, with `Cmd-X/C/V` shortcuts on macOS and `Ctrl-X/C/V` on other platforms.
+- Expanded SSH/SFTP file management with clearer drop-down action menus, file clipboard operations, remote command execution, copy progress and cancellation, plus a reworked server-to-server copy flow with direct-transfer authentication, automatic source-side SSH key setup, preserved SSH proxy settings, and a relay-only mode.
+- Added confirmation for unknown or changed SFTP host keys, with reject, accept-once, and accept-and-save choices. File listings can also show owner usernames and persist hidden-column preferences independently for the left and right panes.
+- Reduced remote desktop display latency, optimized frame presentation, texture uploads, and resource cleanup, and added support for copying files from macOS Finder to a remote desktop session.
+- Workspace database queries can now select among available connections while synchronizing the active connection, database, and schema context. Closing an unnamed SQL query now offers cancel, discard, or save-with-a-name choices.
+- SSH terminals can request runtime credentials during connection. Agent settings now include a configurable iteration limit, and copied chat-message content has been improved.
+
+#### Fixes and Improvements
+
+- Fixed OTP prompts being lost during SSH multi-factor authentication.
+- Fixed direct SFTP server-to-server copies that could hang, omit source-side keys, lose source SSH proxy settings, or fail to handle unknown host keys.
+- Workspace sidebar collapse state is now persisted, empty workspaces can be hidden, and workspace-name uniqueness is scoped to the parent workspace.
+- Fixed duplicate columns being produced when copying multiple table rows.
+- Fixed MCP launcher startup by executing `npx` directly instead of requiring its path to be resolved first.
+- Improved compatibility between the home page and the tab system, fixing cases where the tab bar or navigation entry could disappear with no tabs or while switching from the legacy home page.
+- Fixed stale schema metadata after streaming DDL execution and improved the SSH connection form layout.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.10.5...v0.10.6
+
+## [v0.10.5] - 2026-08-07
+
+### 中文
+
+#### 更新内容
+
+- SSH 终端新增可配置字符集，支持 UTF-8、GBK、GB18030、Big5、Shift_JIS、EUC-JP、EUC-KR 和 Windows-1252，改善旧系统及非 UTF-8 环境的显示与输入。
+- 终端右键菜单新增“粘贴选中内容”，可直接将当前选中的文本发送到终端。
+- SSH 主机指纹发生变化时新增安全确认，展示新旧指纹并提示中间人攻击风险，需明确确认后才能更新或临时接受。
+
+#### 修复与优化
+
+- 修复 Agent 上下文压缩模型调用失败时任务会中断的问题，现在会使用本地摘要继续执行，同时保留取消操作语义。
+- 修复弹出菜单在搜索或内容更新后可能丢失键盘焦点的问题，并在关闭时正确恢复此前焦点。
+- 修复 AI Chat 切换资源上下文后最新消息可能不可见的问题，现在会自动滚动到最新消息。
+- 改善 SSH 和 SFTP 的连接失败诊断以及 SSH 终端运行时错误展示：日志和断开界面会保留完整错误上下文，便于定位连接、输入发送、解析及会话运行问题。
+- 改善旧版 SSH 服务器兼容性；明确启用“允许旧版 SSH 算法”后，SSH 和 SFTP 支持更多 SHA-1 密钥交换算法，默认仍保持关闭。
+
+---
+
+### English
+
+#### What's New
+
+- Added configurable SSH terminal encodings, including UTF-8, GBK, GB18030, Big5, Shift_JIS, EUC-JP, EUC-KR, and Windows-1252, improving display and input for legacy and non-UTF-8 environments.
+- Added “Paste Selected Text” to the terminal context menu, allowing the current selection to be sent directly to the terminal.
+- Added explicit security confirmation when an SSH host key changes, showing the new and previously trusted fingerprints and warning about possible man-in-the-middle attacks before allowing an update or one-time acceptance.
+
+#### Fixes and Improvements
+
+- Fixed Agent tasks stopping when context-compaction model calls fail; a local fallback summary is now used while preserving cancellation behavior.
+- Fixed keyboard focus being lost in popovers during search or content updates, and correctly restored the previously focused element when the popover is dismissed.
+- Fixed the latest message becoming hidden after changing the AI Chat resource context; the view now scrolls to the newest message automatically.
+- Improved SSH and SFTP connection diagnostics and SSH terminal runtime error reporting. Logs and the disconnect UI now preserve full error context for connection, input, parser, and session failures.
+- Improved compatibility with older SSH servers by supporting additional SHA-1 key-exchange algorithms for SSH and SFTP when “Allow Legacy SSH Algorithms” is explicitly enabled; the setting remains disabled by default.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.10.4...v0.10.5
+
+## [v0.10.4] - 2026-08-05
+
+### 中文
+
+#### 更新内容
+
+- 终端新增 SSH 下的 ZMODEM 文件传输支持，可在检测到上传或下载请求时选择本地文件或下载目录。
+- SFTP 文件传输工具栏新增目录上传能力，可从上传菜单直接选择文件或目录。
+- 数据库对象树中的表菜单新增“复制表名”和“复制表注释”操作。
+
+#### 修复与优化
+
+- 修复 SQL 查询结果导出不完整的问题，现在可导出完整结果集。
+- 修复 Agent 输入框 mention 补全在快速输入、中文或数字查询时可能崩溃或显示过期结果的问题。
+- 修复 Windows 本地终端环境变量未及时刷新以及 Git Bash 路径解析问题。
+- 修复 RDP 显示及桌面交互相关问题，并改善连接侧栏中的连接分组拖放目标区域。
+- 为 Linux Wayland 窗口设置稳定的应用 ID 和 `Linop` 窗口标题，改善桌面环境中的窗口识别。
+- 修复 Markdown 编辑器删除包含 Unicode 字符的脚注引用时可能发生的崩溃。
+
+---
+
+### English
+
+#### What's New
+
+- Added ZMODEM file transfers over SSH, including file selection for uploads and destination-directory selection for downloads.
+- Added directory uploads to the SFTP file-transfer toolbar, allowing users to choose files or folders directly from the upload menu.
+- Added table actions for copying a table name or table comment from the database object tree.
+
+#### Fixes and Improvements
+
+- Fixed incomplete SQL query-result exports so complete result sets can now be exported.
+- Fixed crashes and stale-result updates in Agent mention completion, especially during rapid typing and CJK or numeric queries.
+- Fixed stale Windows local-terminal environments and improved Git Bash path resolution.
+- Fixed display and desktop interaction issues in RDP sessions, and expanded connection-group drop targets in the sidebar.
+- Set a stable Linux Wayland application ID and `Linop` window title for better desktop integration.
+- Fixed a crash when deleting Markdown footnote references containing Unicode characters.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.10.3...v0.10.4
+
+## [v0.10.3] - 2026-08-04
+
+### 中文
+
+#### 更新内容
+
+- 支持编辑 MySQL 存储过程、MySQL 函数以及 PostgreSQL 函数和过程；例程列表显示参数和身份参数信息，按 schema 区分对象，并支持准确打开重载例程。
+- 新增 RDP 保存前连接测试，提供超时和更清晰的失败诊断；修复远程键盘输入状态处理，并优化 RDP/VNC 连接图标显示。
+- 重设计开始中心并统一桌面 UI 视觉系统，改善连接侧栏和数据库对象导航布局，以及连接协议、数据库导航和 AI 图标的一致性与可读性。
+- 新增全局同步开关（默认关闭），并完善同步与加密提示；便携模式可在设置中选择将加密主密钥副本保存到 `data/state/key_storage` 以自动解锁。该副本使用程序内置密钥而非设备绑定保护，任何同时获得应用程序和完整 `data` 目录的人都可能恢复主密钥；仅在理解并接受此风险时启用。
+- 新增 Windows 32 位发布包，并让更新器按 Windows x86 选择对应下载包。
+
+#### 修复与优化
+
+- 连接快速打开现在支持按 IP 地址、用户名、主机和端口搜索。
+- 约束 Agent/MCP 不把计划标题、状态等内容直接提交为 shell 命令；远程无 stdin 命令启动后立即发送 EOF，避免因等待输入而无限挂起。
+
+---
+
+### English
+
+#### What's New
+
+- Added editors for MySQL procedures, MySQL functions, and PostgreSQL functions and procedures. Routine lists now show argument and identity-argument information, distinguish schema-scoped objects, and open overloaded routines accurately.
+- Added a pre-save RDP connection test with timeout handling and clearer failure diagnostics, fixed remote keyboard input-state handling, and improved RDP/VNC connection icons.
+- Redesigned the Start Center and established a unified desktop visual system, improving the connection sidebar and database-object navigation layouts, together with the consistency and readability of connection-protocol, database-navigation, and AI icons.
+- Added a global sync switch that is disabled by default and clarified sync and encryption prompts. Portable mode can optionally store an encrypted master-key copy under `data/state/key_storage` for automatic unlock. This copy uses a key embedded in the application rather than device-bound protection, so anyone who obtains both the application and the complete `data` directory may be able to recover the master key. Enable it only if you understand and accept this risk.
+- Added Windows 32-bit release packages and made the updater select the matching Windows x86 download.
+
+#### Fixes and Improvements
+
+- Connection Quick Open now searches by IP address, username, host, and port.
+- Prevented Agent/MCP from submitting plan titles or status text directly as shell commands, and now send EOF immediately to remote commands without stdin so they do not wait indefinitely for input.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.10.2...v0.10.3
+
+## [v0.10.2] - 2026-08-03
+
+### 中文
+
+#### 更新内容
+
+- Windows 新增 EXE 安装包，与 MSI 共用同一套当前用户安装流程；使用默认安装位置时无需管理员权限，并提供开始菜单、桌面快捷方式和文件关联。
+- Windows 普通免安装 ZIP 与便携 ZIP 现已明确拆分：普通 `linop-x86_64-pc-windows-msvc.zip` 使用标准 Windows 用户数据目录并支持记住主密钥；`linop-x86_64-pc-windows-msvc-portable.zip` 将数据保存在程序旁，默认每次启动时要求输入主密钥，也允许用户在明确接受风险后选择将可自动恢复的加密副本保存到 `data/state/key_storage`。该副本使用程序内置密钥而非设备绑定保护，同时获得应用程序和完整 `data` 目录的人可能恢复主密钥。
+- SSH 连接新增“允许旧版 SSH 算法”兼容选项，默认关闭；需要连接旧服务器时可按连接启用，并覆盖 SSH、SFTP、跳板机和连接复用场景。
+
+#### Windows ZIP 用户升级提示
+
+- **如果你使用的是 v0.10.1 或更早版本的 Windows ZIP，请继续下载新的 `linop-x86_64-pc-windows-msvc-portable.zip`。**旧版普通 ZIP 实际包含 `linop.portable`，因此原有数据位于程序旁的 `data` 目录。
+- 升级前请完整备份旧便携目录；将新版便携 ZIP 解压到新目录后，把旧目录中的整个 `data` 复制过去，并确认 `linop.portable` 仍与 `linop.exe` 同级。启动后需要输入原主密钥。
+- 不要通过删除 `linop.portable` 来迁移数据。新的普通 ZIP、MSI 和 EXE 安装版使用标准 Windows 用户数据目录，不会自动迁移旧便携数据；切换后连接和设置看似消失时，旧数据仍保留在原便携目录中。
+
+#### 修复与优化
+
+- 改进 SiliconFlow 等模型的图片附件兼容性：根据实际图片格式处理 PNG、JPEG、WebP 和 GIF，并对不兼容或过大的图片进行转换或缩放；无法处理的附件会在发送请求前给出明确错误。
+- 改进旧版 SSH 服务器的连接失败提示：当密钥交换协商失败且没有共同 KEX 算法时，引导用户在连接的高级设置中启用旧版算法兼容选项。
+- 优化 SSH 主机密钥算法选择，在不弱化主机密钥校验的前提下优先使用已信任密钥对应的算法，旧版算法仅在连接明确启用兼容选项后加入。
+- 修复 SSH 连接设置窗口内容过长时的滚动和底部按钮布局，避免表单撑开窗口或遮挡操作按钮。
+
+---
+
+### English
+
+#### What's New
+
+- Added a Windows EXE installer that uses the same per-user installation flow as the MSI. The default installation location does not require administrator privileges and provides Start menu shortcuts, a desktop shortcut, and file associations.
+- Clearly separated the standard Windows no-install ZIP from the portable ZIP. The standard `linop-x86_64-pc-windows-msvc.zip` uses the normal Windows user data directories and supports remembered master-key unlock. The portable `linop-x86_64-pc-windows-msvc-portable.zip` keeps data beside the executable and asks for the master key on every start by default, but users who explicitly accept the risk may store an encrypted, automatically recoverable copy under `data/state/key_storage`. This copy uses a key embedded in the application instead of device-bound protection, so anyone who obtains both the application and the complete `data` directory may be able to recover the master key.
+- Added an opt-in “Allow Legacy SSH Algorithms” compatibility setting for individual SSH connections. It is disabled by default and applies to SSH, SFTP, jump hosts, and connection reuse when explicitly enabled for legacy servers.
+
+#### Upgrade Notice for Windows ZIP Users
+
+- **If you use the Windows ZIP from v0.10.1 or earlier, continue with the new `linop-x86_64-pc-windows-msvc-portable.zip`.** The earlier standard ZIP contained `linop.portable`, so its existing data is stored in the `data` directory beside the executable.
+- Back up the complete old portable directory before upgrading. Extract the new portable ZIP to a new directory, copy the entire old `data` directory into it, keep `linop.portable` beside `linop.exe`, and enter the original master key when starting the new version.
+- Do not migrate by deleting `linop.portable`. The new standard ZIP and the MSI/EXE installers use the normal Windows user data directories and do not automatically migrate old portable data. If connections and settings appear missing after switching editions, the original data remains in the old portable directory.
+
+#### Fixes and Improvements
+
+- Improved image attachment compatibility for SiliconFlow and other models by handling PNG, JPEG, WebP, and GIF according to their actual encoding, converting or resizing incompatible and oversized images, and reporting unsupported attachments before sending the request.
+- Added an actionable hint when an older SSH server fails key-exchange negotiation because there is no common KEX algorithm, directing users to enable legacy algorithm compatibility in the connection's advanced settings.
+- Improved SSH host-key algorithm selection by prioritizing algorithms associated with trusted keys without weakening host-key verification. Legacy algorithms are added only when explicitly enabled for the connection.
+- Fixed scrolling and footer-button layout in the SSH connection form when the content is taller than the window.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.10.1...v0.10.2
+
+## [v0.10.1] - 2026-08-02
+
+### 中文
+
+#### 更新内容
+
+- 新增终端会话录制与只读时间线回放，支持持久化保存、录制文件关联和安全浏览；回放期间会阻止输入、在线操作及 Public MCP 暴露，避免误执行。
+- 数据库表数据视图新增打开表查询入口，单元格预览面板支持调整大小，并改进行选择与 Shift 连续范围选择。
+- 改进 Markdown 编辑和文件交互：增强 Typora 兼容编辑体验、支持在表格单元格中渲染图片、补充笔记导航快捷键，并可通过拖放打开已关联文件。
+- 更新对话框提供更完整的版本信息与跳过版本选项，同时增加本地更新模拟能力，便于验证完整更新流程。
+
+#### 修复与优化
+
+- 修复 Windows 上 WSL、PowerShell 等终端在持续输出或高负载下白屏、窗口无响应的问题；同时为渲染、搜索、选择、剪贴板、滚动和控制操作增加非阻塞调度与有界排队，持续输出时界面仍可响应。
+- 全面优化终端高负载路径：限制输入队列和命令执行输出捕获，改进 SSH/串口解析入口、性能指标、命令栏历史导航，并在 SSH 重连后保留现有终端输出。
+- 改进 SSH 主机密钥校验、信任提示、会话复用、闲置回收和重连行为，使多窗口及连接恢复更加稳定。
+- 提升 SFTP 传输可靠性：断开和重连时及时淘汰过期客户端与传输池，远程写入采用暂存后替换，并正确反馈远程读取失败，降低卡住和文件半写风险。
+- 保留并展示 IPC 数据库驱动和 PostgreSQL 返回的详细错误信息，帮助定位 SQL、连接和服务端问题；同时提前阻止与当前 Linop 宿主不兼容的 IPC 驱动。
+- 修复 CSV 导入导出以及 ClickHouse、DuckDB IPC 驱动中 `NULL` 与空字符串语义混淆的问题，并改进数据库表格编辑、搜索快捷键和大文本预览体验。
+- 修复 RDP Caps Lock 状态不同步的问题，并使服务器监控中的进程颜色更好地适配当前终端主题。
+- 改进 Public MCP 工具目标恢复和超大终端命令输出的截断反馈，降低异常会话或大输出对应用稳定性的影响。
+
+---
+
+### English
+
+#### What's New
+
+- Added persistent terminal session recording with read-only timeline playback, recording file associations, and safe browsing. Playback blocks input, online operations, and Public MCP exposure to prevent accidental execution.
+- Added an entry point for opening table queries from database table views, made the cell preview panel resizable, and improved row selection with Shift-based range extension.
+- Improved Markdown editing and file interactions with better Typora compatibility, image rendering inside table cells, note-navigation shortcuts, and drag-and-drop opening for associated files.
+- Expanded the update dialog with richer version information and a skip-version option, and added local update simulation for validating the complete update flow.
+
+#### Fixes and Improvements
+
+- Fixed Windows terminals such as WSL and PowerShell blanking or becoming unresponsive during continuous output or heavy load. Rendering, search, selection, clipboard, scrolling, and control operations now use non-blocking scheduling with bounded queues so the UI remains responsive.
+- Optimized high-load terminal paths by bounding ingress queues and command-output capture, improving SSH and serial parser ingestion and performance metrics, adding command-bar history navigation, and preserving terminal output across SSH reconnects.
+- Improved SSH host-key verification, trust prompts, session reuse, idle cleanup, and reconnect behavior for more reliable multi-window and connection recovery workflows.
+- Improved SFTP reliability by retiring stale clients and transfer pools during disconnects and reconnects, staging remote writes before replacement, and surfacing remote read failures to reduce hangs and partial-write risks.
+- Preserved and surfaced detailed IPC database-driver and PostgreSQL server errors for easier SQL and connection diagnostics, and now reject IPC drivers that are incompatible with the current Linop host before startup.
+- Fixed `NULL` versus empty-string semantics across CSV import/export and the ClickHouse and DuckDB IPC drivers, and improved database table editing, search shortcuts, and large-text previews.
+- Fixed RDP Caps Lock synchronization and adjusted server-monitor process colors to better match the active terminal theme.
+- Improved Public MCP tool-target recovery and truncation feedback for very large terminal command output, reducing the stability impact of stale sessions and oversized results.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.10.0...v0.10.1
+
+## [v0.10.0] - 2026-07-30
+
+### 中文
+
+#### 更新内容
+
+- 新增 SSH 远程/反向端口转发（`ssh -R`），支持固定远程端口和端口 `0` 自动分配，并贯通连接管理、启动与停止、命令复制、分享、个人同步、状态展示及中英文文档。
+- AI Chat 统一执行模式现在会持久化保存，重新打开应用后仍会保留上次选择。
+
+#### 修复与优化
+
+- 完善远程端口转发的生命周期处理，避免自动分配端口时的启动竞态，并确保停止失败后不会残留错误的运行状态。
+- 优化 RDP 远程光标移动，使鼠标反馈更加平滑稳定。
+- 修复数据库表重命名失败时错误未正确显示的问题。
+- 修复 PostgreSQL 主键修改未正确应用的问题。
+- 扩大 Tab 重命名输入区域，长名称编辑时可以看到更多内容。
+
+---
+
+### English
+
+#### What's New
+
+- Added SSH remote/reverse port forwarding (`ssh -R`) with both fixed remote ports and automatic port allocation via port `0`, integrated across connection management, start/stop handling, command copying, sharing, personal sync, status display, and bilingual documentation.
+- Unified execution mode in AI Chat is now persisted, preserving the selected mode after restarting the application.
+
+#### Fixes and Improvements
+
+- Improved remote port-forwarding lifecycle handling by preventing the startup race during automatic port allocation and ensuring failed cleanup does not leave a stale running state.
+- Smoothed remote cursor movement in RDP sessions for more stable pointer feedback.
+- Fixed database table rename failures not being surfaced correctly.
+- Fixed PostgreSQL primary-key edits not being applied correctly.
+- Widened the Tab rename input so longer names remain visible while editing.
+
+**Full Changelog**: https://github.com/feigeCode/linop/compare/v0.9.8...v0.10.0

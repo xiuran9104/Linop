@@ -1,0 +1,4 @@
+interface:
+  display_name: "Linop Release Notes"
+  short_description: "Generate and publish bilingual Linop release notes."
+  default_prompt: "Use $linop-release-notes to generate bilingual notes for the latest Linop version and save them to the matching GitHub Release."

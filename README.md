@@ -136,6 +136,12 @@ Linop 自研部分(`crates/linop-*`、`apps/linop` TUI)与 navop 源码相互独
 vendored 于 `vendor/dbx/`,与 navop 同法本地化(gaussdb/mysql_async fork
 改 `file://` bare 仓库,patch 上移至根 workspace)。
 
+- **GUI 抽出为顶层 `gui/`**:GPUI 桌面壳整体移出 vendor,**navop 名字全树清除**
+  (目录/包名/资源/身份串:apps/linop、linop_app、linop_runtime、linop-shell);
+  **数据库域整体删除**(db/db_view/db-value/redis/mongodb/er_flow/runtime_database/
+  runtime_redis/data_domain 共 12 个 crate 及 feature 门控 —— 壳按域注册表渲染,
+  域删除后数据库入口自然消失);russh fork 同步 bare 化;数据目录变为
+  `~/.linop-dev`(原 `~/.navop-dev` 不自动迁移)
 - **`crates/linop-dbx`** —— Linop 的数据库模块,后端直接编译 DBX 的
   `dbx-core`/`dbx-mcp`(与 DBX 桌面/CLI/MCP 共享同一 `dbx.db` 连接库,
   `DBX_DATA_DIR` 可重定向):`connections` / `list_tables` / `query`

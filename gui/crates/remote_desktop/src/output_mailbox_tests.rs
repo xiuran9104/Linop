@@ -1,0 +1,586 @@
+use super::*;
+use crate::{
+    RemoteDesktopCursor, RemoteDesktopFailure, RemoteDesktopFrameRect, RemoteDesktopReconnect,
+    RemoteDesktopReconnectReason,
+};
+
+#[test]
+fn keeps_only_latest_pending_frame() {
+    let (tx, rx) = output_mailbox();
+    tx.send(frame(1)).unwrap();
+    tx.send(frame(2)).unwrap();
+    tx.send(frame(3)).unwrap();
+
+    let batch = rx.drain();
+
+    assert_eq!(Vec::<RemoteDesktopOutput>::new(), batch.control);
+    assert_eq!(Some(frame(3)), batch.latest_frame);
+    assert_eq!(3, batch.stats.full_frames_received);
+    assert_eq!(2, batch.stats.full_frames_coalesced);
+    assert_eq!(2, batch.stats.frames_dropped);
+    assert_eq!(1, batch.stats.wakeups);
+}
+
+#[test]
+fn preserves_control_event_order_while_replacing_frames() {
+    let (tx, rx) = output_mailbox();
+    tx.send(RemoteDesktopOutput::Status("one".into())).unwrap();
+    tx.send(frame(1)).unwrap();
+    tx.send(RemoteDesktopOutput::ClipboardText { text: "two".into() })
+        .unwrap();
+    tx.send(frame(2)).unwrap();
+
+    let batch = rx.drain();
+
+    assert_eq!(
+        vec![
+            RemoteDesktopOutput::Status("one".into()),
+            RemoteDesktopOutput::ClipboardText { text: "two".into() },
+        ],
+        batch.control
+    );
+    assert_eq!(Some(frame(2)), batch.latest_frame);
+}
+
+#[test]
+fn preserves_clipboard_transfer_events_without_coalescing() {
+    let (tx, rx) = output_mailbox();
+    let ready = RemoteDesktopOutput::ClipboardFilesReady {
+        transfer_id: (1_u64 << 63) | 7,
+        paths: vec!["/tmp/linop-rdp-clipboard/transfer-7/report.txt".into()],
+    };
+    let failed = RemoteDesktopOutput::ClipboardTransferFailed {
+        transfer_id: (1_u64 << 63) | 8,
+        message: "transfer failed".into(),
+    };
+
+    tx.send(ready.clone()).unwrap();
+    tx.send(failed.clone()).unwrap();
+
+    assert_eq!(vec![ready, failed], rx.drain().control);
+}
+
+#[test]
+fn terminal_event_discards_pending_frame() {
+    let (tx, rx) = output_mailbox();
+    tx.send(frame(7)).unwrap();
+    tx.send(RemoteDesktopOutput::Terminated(
+        RemoteDesktopFailure::ServerEndedSession,
+    ))
+    .unwrap();
+
+    let batch = rx.drain();
+
+    assert_eq!(None, batch.latest_frame);
+    assert_eq!(
+        vec![RemoteDesktopOutput::Terminated(
+            RemoteDesktopFailure::ServerEndedSession
+        )],
+        batch.control
+    );
+}
+
+#[test]
+fn reconnecting_event_discards_frames_from_the_previous_session() {
+    let (tx, rx) = output_mailbox();
+    tx.send(frame(7)).unwrap();
+    tx.send(RemoteDesktopOutput::FrameBgraRects {
+        width: 1,
+        height: 1,
+        rects: vec![RemoteDesktopFrameRect {
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            byte_len: 4,
+        }],
+        bgra: vec![1, 2, 3, 255],
+    })
+    .unwrap();
+    tx.send(reconnecting()).unwrap();
+
+    let batch = rx.drain();
+
+    assert_eq!(None, batch.latest_frame);
+    assert_eq!(None, batch.latest_delta);
+    assert_eq!(vec![reconnecting()], batch.control);
+}
+
+#[test]
+fn drops_late_frames_until_the_next_session_connects() {
+    let (tx, rx) = output_mailbox();
+    tx.send(reconnecting()).unwrap();
+    tx.send(frame(7)).unwrap();
+    tx.send(RemoteDesktopOutput::FrameBgraRects {
+        width: 1,
+        height: 1,
+        rects: vec![RemoteDesktopFrameRect {
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            byte_len: 4,
+        }],
+        bgra: vec![1, 2, 3, 255],
+    })
+    .unwrap();
+    tx.send(RemoteDesktopOutput::Connected {
+        width: 1,
+        height: 1,
+        capabilities: crate::RemoteDesktopCapabilities::rdp_mvp(),
+    })
+    .unwrap();
+    tx.send(frame(8)).unwrap();
+
+    let batch = rx.drain();
+
+    assert_eq!(None, batch.latest_delta);
+    assert_eq!(Some(frame(8)), batch.latest_frame);
+    assert!(matches!(
+        batch.control.as_slice(),
+        [
+            RemoteDesktopOutput::Reconnecting(_),
+            RemoteDesktopOutput::Connected { .. }
+        ]
+    ));
+}
+
+#[test]
+fn old_session_output_is_ignored_after_the_next_session_starts() {
+    let (root_tx, rx) = output_mailbox();
+    let first_session = root_tx.begin_session();
+    first_session
+        .send(RemoteDesktopOutput::Connected {
+            width: 1,
+            height: 1,
+            capabilities: crate::RemoteDesktopCapabilities::rdp_mvp(),
+        })
+        .unwrap();
+    first_session.send(frame(1)).unwrap();
+    let first_batch = rx.drain();
+    assert_eq!(Some(frame(1)), first_batch.latest_frame);
+
+    first_session.end_session();
+    root_tx.send(reconnecting()).unwrap();
+    let second_session = root_tx.begin_session();
+    second_session
+        .send(RemoteDesktopOutput::Connected {
+            width: 2,
+            height: 2,
+            capabilities: crate::RemoteDesktopCapabilities::rdp_mvp(),
+        })
+        .unwrap();
+    second_session.send(frame(2)).unwrap();
+
+    first_session
+        .send(RemoteDesktopOutput::Terminated(
+            RemoteDesktopFailure::ServerEndedSession,
+        ))
+        .unwrap();
+    first_session.send(frame(3)).unwrap();
+
+    let second_batch = rx.drain();
+    assert_eq!(Some(frame(2)), second_batch.latest_frame);
+    assert_eq!(
+        vec![
+            reconnecting(),
+            RemoteDesktopOutput::Connected {
+                width: 2,
+                height: 2,
+                capabilities: crate::RemoteDesktopCapabilities::rdp_mvp(),
+            },
+        ],
+        second_batch.control
+    );
+}
+
+#[test]
+fn keeps_keyframe_when_coalescing_dirty_rectangles() {
+    let (tx, rx) = output_mailbox();
+    tx.send(RemoteDesktopOutput::FrameBgra {
+        width: 128,
+        height: 128,
+        bgra: vec![0; 128 * 128 * 4],
+    })
+    .unwrap();
+    tx.send(RemoteDesktopOutput::FrameBgraRects {
+        width: 128,
+        height: 128,
+        rects: vec![RemoteDesktopFrameRect {
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            byte_len: 4,
+        }],
+        bgra: vec![1, 2, 3, 255],
+    })
+    .unwrap();
+
+    let batch = rx.drain();
+    assert!(matches!(
+        batch.latest_frame,
+        Some(RemoteDesktopOutput::FrameBgra { .. })
+    ));
+    assert!(matches!(
+        batch.latest_delta,
+        Some(RemoteDesktopOutput::FrameBgraRects { .. })
+    ));
+}
+
+#[test]
+fn pending_delta_chain_stays_within_the_rect_budget() {
+    let (tx, rx) = output_mailbox();
+    tx.send(delta_with_rect_count(MIN_PENDING_DELTA_RECTS / 2))
+        .unwrap();
+    tx.send(delta_with_rect_count(MIN_PENDING_DELTA_RECTS / 2))
+        .unwrap();
+
+    let batch = rx.drain();
+
+    assert!(!batch.frame_sync_lost);
+    let Some(RemoteDesktopOutput::FrameBgraRects { rects, bgra, .. }) = batch.latest_delta else {
+        panic!("expected a bounded merged delta");
+    };
+    assert_eq!(MIN_PENDING_DELTA_RECTS, rects.len());
+    assert!(bgra.is_empty());
+    assert_eq!(1, batch.stats.delta_frames_merged);
+    assert_eq!(0, batch.stats.frames_dropped);
+}
+
+#[test]
+fn delta_overflow_discards_the_chain_and_reports_sync_loss() {
+    let (tx, rx) = output_mailbox();
+    tx.send(delta_with_rect_count(MIN_PENDING_DELTA_RECTS))
+        .unwrap();
+    tx.send(delta_with_rect_count(1)).unwrap();
+
+    let batch = rx.drain();
+
+    assert_eq!(None, batch.latest_delta);
+    assert!(batch.frame_sync_lost);
+    assert_eq!(2, batch.stats.frames_dropped);
+}
+
+#[test]
+fn delta_overflow_keeps_a_queued_base_frame_and_does_not_lose_sync() {
+    let (tx, rx) = output_mailbox();
+    tx.send(frame(3)).unwrap();
+    tx.send(delta_with_rect_count(MIN_PENDING_DELTA_RECTS))
+        .unwrap();
+    tx.send(delta_with_rect_count(1)).unwrap();
+
+    let batch = rx.drain();
+
+    assert_eq!(Some(frame(3)), batch.latest_frame);
+    assert_eq!(None, batch.latest_delta);
+    assert!(!batch.frame_sync_lost);
+    assert_eq!(2, batch.stats.frames_dropped);
+
+    // The queued base is a resume point, so the session keeps taking deltas instead of
+    // being restarted.
+    tx.send(delta_with_rect_count(1)).unwrap();
+    let recovered = rx.drain();
+
+    assert!(matches!(
+        recovered.latest_delta,
+        Some(RemoteDesktopOutput::FrameBgraRects { .. })
+    ));
+    assert!(!recovered.frame_sync_lost);
+    assert_eq!(0, recovered.stats.frames_dropped);
+}
+
+#[test]
+fn delta_budget_scales_with_the_desktop_it_describes() {
+    let (tx, rx) = output_mailbox();
+    tx.send(RemoteDesktopOutput::FrameBgra {
+        width: 3840,
+        height: 2160,
+        bgra: vec![0; 4],
+    })
+    .unwrap();
+    // One 4K screen's worth of delta pixels is a routine update at that size, and must
+    // not be mistaken for an overflow.
+    let full_screen_bytes = 3840 * 2160 * 4;
+    tx.send(RemoteDesktopOutput::FrameBgraRects {
+        width: 3840,
+        height: 2160,
+        rects: vec![RemoteDesktopFrameRect {
+            x: 0,
+            y: 0,
+            width: 3840,
+            height: 2160,
+            byte_len: full_screen_bytes,
+        }],
+        bgra: vec![0; full_screen_bytes],
+    })
+    .unwrap();
+
+    let batch = rx.drain();
+
+    assert!(!batch.frame_sync_lost);
+    assert!(matches!(
+        batch.latest_delta,
+        Some(RemoteDesktopOutput::FrameBgraRects { .. })
+    ));
+    assert_eq!(0, batch.stats.frames_dropped);
+}
+
+#[test]
+fn oversized_delta_payload_is_rejected_without_retaining_it() {
+    let (tx, rx) = output_mailbox();
+    tx.send(RemoteDesktopOutput::FrameBgraRects {
+        width: 1,
+        height: 1,
+        rects: vec![RemoteDesktopFrameRect {
+            x: 0,
+            y: 0,
+            width: 1,
+            height: 1,
+            byte_len: MIN_PENDING_DELTA_BYTES + 1,
+        }],
+        bgra: vec![0; MIN_PENDING_DELTA_BYTES + 1],
+    })
+    .unwrap();
+
+    let batch = rx.drain();
+
+    assert_eq!(None, batch.latest_delta);
+    assert!(batch.frame_sync_lost);
+    assert_eq!(1, batch.stats.frames_dropped);
+}
+
+#[test]
+fn deltas_are_dropped_until_a_full_frame_recovers_sync() {
+    let (tx, rx) = output_mailbox();
+    tx.send(delta_with_rect_count(MAX_PENDING_DELTA_RECTS + 1))
+        .unwrap();
+    let overflow = rx.drain();
+    assert!(overflow.frame_sync_lost);
+
+    tx.send(delta_with_rect_count(1)).unwrap();
+    let dropped = rx.drain();
+    assert_eq!(None, dropped.latest_delta);
+    assert!(!dropped.frame_sync_lost);
+    assert_eq!(1, dropped.stats.frames_dropped);
+
+    tx.send(frame(3)).unwrap();
+    tx.send(delta_with_rect_count(1)).unwrap();
+    let recovered = rx.drain();
+    assert_eq!(Some(frame(3)), recovered.latest_frame);
+    assert!(matches!(
+        recovered.latest_delta,
+        Some(RemoteDesktopOutput::FrameBgraRects { .. })
+    ));
+    assert!(!recovered.frame_sync_lost);
+}
+
+#[test]
+fn full_frame_before_drain_cancels_a_pending_sync_loss_notification() {
+    let (tx, rx) = output_mailbox();
+    tx.send(delta_with_rect_count(MAX_PENDING_DELTA_RECTS + 1))
+        .unwrap();
+    tx.send(frame(5)).unwrap();
+    tx.send(delta_with_rect_count(1)).unwrap();
+
+    let batch = rx.drain();
+
+    assert_eq!(Some(frame(5)), batch.latest_frame);
+    assert!(matches!(
+        batch.latest_delta,
+        Some(RemoteDesktopOutput::FrameBgraRects { .. })
+    ));
+    assert!(!batch.frame_sync_lost);
+}
+
+#[tokio::test]
+async fn frame_sync_loss_wakes_an_otherwise_empty_mailbox() {
+    let (tx, rx) = output_mailbox();
+    let mut subscription = rx.subscribe();
+
+    tx.send(delta_with_rect_count(MAX_PENDING_DELTA_RECTS + 1))
+        .unwrap();
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), subscription.wait())
+        .await
+        .expect("delta overflow should wake the receiver")
+        .unwrap();
+    let batch = rx.drain();
+    assert!(batch.frame_sync_lost);
+    assert_eq!(None, batch.latest_delta);
+    assert_eq!(1, batch.stats.wakeups);
+}
+
+#[test]
+fn coalesces_adjacent_cursor_positions() {
+    let (tx, rx) = output_mailbox();
+    tx.send(RemoteDesktopOutput::CursorPosition { x: 1, y: 2 })
+        .unwrap();
+    tx.send(RemoteDesktopOutput::CursorPosition { x: 3, y: 4 })
+        .unwrap();
+
+    assert_eq!(
+        vec![RemoteDesktopOutput::CursorPosition { x: 3, y: 4 }],
+        rx.drain().control
+    );
+}
+
+#[test]
+fn coalesces_adjacent_cursor_bitmaps_without_crossing_state_boundaries() {
+    let (tx, rx) = output_mailbox();
+    tx.send(cursor(1)).unwrap();
+    tx.send(cursor(2)).unwrap();
+    tx.send(RemoteDesktopOutput::CursorHidden).unwrap();
+    tx.send(cursor(3)).unwrap();
+
+    assert_eq!(
+        vec![cursor(2), RemoteDesktopOutput::CursorHidden, cursor(3)],
+        rx.drain().control
+    );
+}
+
+#[test]
+fn reconnect_barrier_discards_pending_cursor_state() {
+    let (tx, rx) = output_mailbox();
+    tx.send(RemoteDesktopOutput::CursorPosition { x: 1, y: 2 })
+        .unwrap();
+    tx.send(cursor(1)).unwrap();
+    tx.send(reconnecting()).unwrap();
+
+    assert_eq!(vec![reconnecting()], rx.drain().control);
+}
+
+#[test]
+fn terminal_barrier_discards_pending_cursor_state() {
+    let (tx, rx) = output_mailbox();
+    tx.send(RemoteDesktopOutput::CursorHidden).unwrap();
+    tx.send(RemoteDesktopOutput::ConnectionFailure(
+        RemoteDesktopFailure::ConnectionFailed,
+    ))
+    .unwrap();
+
+    assert_eq!(
+        vec![RemoteDesktopOutput::ConnectionFailure(
+            RemoteDesktopFailure::ConnectionFailed
+        )],
+        rx.drain().control
+    );
+}
+
+#[test]
+fn send_fails_after_receiver_is_dropped() {
+    let (tx, rx) = output_mailbox();
+    drop(rx);
+
+    assert!(tx.send(frame(1)).is_err());
+}
+
+#[tokio::test]
+async fn output_ready_is_observed_when_send_precedes_subscription() {
+    let (tx, rx) = output_mailbox();
+    tx.send(frame(1)).unwrap();
+    let mut subscription = rx.subscribe();
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), subscription.wait())
+        .await
+        .expect("pending output should be observed without waiting")
+        .unwrap();
+}
+
+#[tokio::test]
+async fn output_ready_wakes_a_waiting_subscription() {
+    let (tx, rx) = output_mailbox();
+    let mut subscription = rx.subscribe();
+
+    let send = tokio::spawn(async move {
+        tokio::task::yield_now().await;
+        tx.send(frame(1)).unwrap();
+    });
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), subscription.wait())
+        .await
+        .expect("output should wake the subscription")
+        .unwrap();
+    send.await.unwrap();
+}
+
+#[tokio::test]
+async fn frame_burst_coalesces_to_one_wakeup_until_drain() {
+    let (tx, rx) = output_mailbox();
+    let mut subscription = rx.subscribe();
+
+    tx.send(frame(1)).unwrap();
+    tx.send(frame(2)).unwrap();
+    tx.send(frame(3)).unwrap();
+
+    subscription.wait().await.unwrap();
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(10), subscription.wait())
+            .await
+            .is_err(),
+        "a non-empty mailbox must not schedule duplicate wakeups"
+    );
+
+    let batch = rx.drain();
+    assert_eq!(Some(frame(3)), batch.latest_frame);
+    assert_eq!(1, batch.stats.wakeups);
+
+    tx.send(frame(4)).unwrap();
+    tokio::time::timeout(std::time::Duration::from_secs(1), subscription.wait())
+        .await
+        .expect("the first output after drain should schedule another wakeup")
+        .unwrap();
+}
+
+#[tokio::test]
+async fn dropping_receiver_closes_output_ready_subscription() {
+    let (_tx, rx) = output_mailbox();
+    let mut subscription = rx.subscribe();
+
+    drop(rx);
+
+    assert_eq!(Err(OutputMailboxClosed), subscription.wait().await);
+}
+
+fn frame(value: u8) -> RemoteDesktopOutput {
+    RemoteDesktopOutput::FrameBgra {
+        width: 1,
+        height: 1,
+        bgra: vec![value, 0, 0, 255],
+    }
+}
+
+fn reconnecting() -> RemoteDesktopOutput {
+    RemoteDesktopOutput::Reconnecting(RemoteDesktopReconnect {
+        reason: RemoteDesktopReconnectReason::ConnectionLost,
+        delay_secs: Some(1),
+    })
+}
+
+fn cursor(value: u8) -> RemoteDesktopOutput {
+    RemoteDesktopOutput::CursorBitmap(RemoteDesktopCursor {
+        width: 1,
+        height: 1,
+        hotspot_x: 0,
+        hotspot_y: 0,
+        rgba: vec![value, 0, 0, 255],
+    })
+}
+
+fn delta_with_rect_count(rect_count: usize) -> RemoteDesktopOutput {
+    RemoteDesktopOutput::FrameBgraRects {
+        width: 1,
+        height: 1,
+        rects: vec![
+            RemoteDesktopFrameRect {
+                x: 0,
+                y: 0,
+                width: 0,
+                height: 0,
+                byte_len: 0,
+            };
+            rect_count
+        ],
+        bgra: Vec::new(),
+    }
+}

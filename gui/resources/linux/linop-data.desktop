@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Linop Data
+Comment=Linop Data - Database, Redis, MongoDB, SQL
+Exec=linop-data %F
+Icon=linop-data
+Type=Application
+Categories=Development;Utility;Database;
+Terminal=false
+StartupWMClass=linop-data
+Keywords=database;sql;postgresql;mysql;sqlite;duckdb;redis;mongodb;

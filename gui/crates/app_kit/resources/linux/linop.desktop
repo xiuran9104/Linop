@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Linop
+Comment=Linop - Database, SSH, Terminal, AI Tools
+Exec=linop %F
+Icon=linop
+Type=Application
+Categories=Development;Utility;Database;
+Terminal=false
+StartupWMClass=linop
+MimeType=application/vnd.sqlite3;application/x-sqlite3;application/x-duckdb;application/vnd.duckdb;text/markdown;application/x-asciicast;
+Keywords=database;ssh;sftp;terminal;redis;mongodb;postgresql;mysql;

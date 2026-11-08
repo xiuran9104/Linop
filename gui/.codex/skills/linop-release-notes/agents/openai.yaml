@@ -1,0 +1,4 @@
+interface:
+  display_name: "Linop Release Notes"
+  short_description: "Maintain bilingual Linop changelog and release notes."
+  default_prompt: "Use $linop-release-notes to generate the next bilingual Linop changelog entry before tagging, then verify the GitHub and R2 release-note inputs."

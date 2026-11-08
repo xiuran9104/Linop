@@ -1,0 +1,26 @@
+name: 使用问题 / Question
+description: 询问 Linop 的配置、用法或能力 / Ask about configuration, usage, or capabilities
+title: "[Question]: "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        直接提问即可。请勿提交密码、私钥、Token、完整连接串或业务数据。
+
+        Ask away. Do not include credentials, full connection strings, or business data.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: 你的问题 / Your question
+      description: 请说明你想完成什么，以及目前卡在哪里。Tell us what you are trying to do and where you are stuck.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 补充信息 / Additional context
+      description: 可选：已尝试的方法、Linop 版本、截图或脱敏日志。Optional attempts, Linop version, screenshots, or sanitized logs.

@@ -1,0 +1,111 @@
+use crate::NotesStorage;
+use crate::storage_support::{read_optional_json, write_json_atomic};
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
+
+const LOCATION_FILE: &str = "notes-location.json";
+const LEGACY_FILES_DIR: &str = "files";
+const LEGACY_NOTEBOOK_FILE: &str = "notebook.json";
+
+/// 笔记存储位置。
+///
+/// `user_selected` 表达内容树布局：
+/// - `true`：用户显式选择的自定义目录直接作为笔记根，不创建 `files/` 子目录；
+/// - `false`：默认位置或已有 `files/` 旧数据，内容树放在 `root/files/` 下。
+///
+/// 旧版本配置文件没有该字段，缺省为 `false` 以保持既有布局，避免老用户笔记“消失”。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct NotesLocation {
+    root: PathBuf,
+    #[serde(default)]
+    user_selected: bool,
+}
+
+impl NotesStorage {
+    /// 笔记默认根目录。
+    ///
+    /// 跟随应用路径解析走：开发构建落在 `~/.linop-dev/state/notes`，安装态仍是
+    /// `~/Library/Application Support/linop/notes`。这里过去硬编码
+    /// `dirs::data_local_dir()/linop/notes`，`cargo run` 起来的开发实例会直接读写
+    /// 生产笔记目录（2026-11-01 事故复盘里被列为隔离缺口之一）。
+    pub fn default_root() -> Result<PathBuf> {
+        if let Some(data_dir) = one_core::app_dirs::data_dir() {
+            return Ok(data_dir.join("notes"));
+        }
+        let base = dirs::data_local_dir().context("local data directory is unavailable")?;
+        Ok(base.join("linop").join("notes"))
+    }
+
+    pub fn configured_root() -> Result<PathBuf> {
+        let default = Self::default_root()?;
+        Self::configured_root_from(&location_path(&default)?, &default)
+    }
+
+    /// 返回 (根目录, 内容树是否使用 `files/` 子目录)。
+    pub fn configured_location() -> Result<(PathBuf, bool)> {
+        let default = Self::default_root()?;
+        Self::configured_location_from(&location_path(&default)?, &default)
+    }
+
+    pub fn has_configured_root() -> Result<bool> {
+        let default = Self::default_root()?;
+        Self::has_configured_root_at(&location_path(&default)?)
+    }
+
+    pub fn save_configured_root(root: &Path) -> Result<()> {
+        let default = Self::default_root()?;
+        Self::save_configured_root_to(&location_path(&default)?, root)
+    }
+
+    pub(crate) fn configured_root_from(config: &Path, default: &Path) -> Result<PathBuf> {
+        Ok(Self::configured_location_from(config, default)?.0)
+    }
+
+    pub(crate) fn configured_location_from(
+        config: &Path,
+        default: &Path,
+    ) -> Result<(PathBuf, bool)> {
+        Ok(read_optional_json::<NotesLocation>(config)?
+            .map(|location| (location.root, !location.user_selected))
+            .unwrap_or_else(|| (default.to_path_buf(), true)))
+    }
+
+    pub(crate) fn has_configured_root_at(config: &Path) -> Result<bool> {
+        Ok(read_optional_json::<NotesLocation>(config)?.is_some())
+    }
+
+    pub(crate) fn save_configured_root_to(config: &Path, root: &Path) -> Result<()> {
+        let root = root.canonicalize()?;
+        if let Some(parent) = config.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let user_selected = !uses_files_subdir(&root, &Self::default_root()?);
+        write_json_atomic(
+            config,
+            &NotesLocation {
+                root,
+                user_selected,
+            },
+        )
+    }
+}
+
+/// 保存时应采用的布局：默认位置或已存在 `files/` 旧数据的目录沿用旧布局，
+/// 其余（用户显式选择的新目录）直接作为笔记根。
+pub(crate) fn uses_files_subdir(root: &Path, default_root: &Path) -> bool {
+    if root == default_root {
+        return true;
+    }
+    root.join(LEGACY_FILES_DIR)
+        .join(LEGACY_NOTEBOOK_FILE)
+        .exists()
+}
+
+fn location_path(default_root: &Path) -> Result<PathBuf> {
+    Ok(default_root
+        .parent()
+        .context("default notes root has no parent")?
+        .join(LOCATION_FILE))
+}

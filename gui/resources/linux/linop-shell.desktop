@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Linop Shell
+Comment=Linop Shell - SSH, SFTP, Terminal, Port Forwarding
+Exec=linop-shell %F
+Icon=linop-shell
+Type=Application
+Categories=Development;Utility;System;
+Terminal=false
+StartupWMClass=linop-shell
+Keywords=ssh;sftp;ftp;terminal;port-forwarding;rdp;vnc;

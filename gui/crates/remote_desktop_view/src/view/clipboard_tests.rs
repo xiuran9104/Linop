@@ -1,0 +1,243 @@
+use std::path::PathBuf;
+use std::time::{Duration, Instant};
+
+use gpui::{ClipboardEntry, ClipboardItem, ExternalPaths};
+use remote_desktop::RemoteDesktopProtocol;
+
+use super::{
+    FIRST_LOCAL_CLIPBOARD_TRANSFER_ID, LocalClipboardContent, REMOTE_CLIPBOARD_TRANSFER_BIT,
+    REMOTE_TEXT_AFTER_FILES_SUPPRESS, allocate_local_clipboard_transfer_id,
+    classify_local_clipboard, clipboard_files_supported, clipboard_sync_is_due,
+    clipboard_text_supported, is_remote_clipboard_transfer_id, remote_text_suppressed_after_files,
+    remote_text_suppressed_while_files_installed, validate_remote_clipboard_paths_in_root,
+};
+
+#[test]
+fn clipboard_sync_backoff_uses_explicit_time_without_sleeping() {
+    let now = Instant::now();
+
+    assert!(!clipboard_sync_is_due(
+        Some(now),
+        None,
+        now + Duration::from_millis(1_999)
+    ));
+    assert!(clipboard_sync_is_due(
+        Some(now),
+        None,
+        now + Duration::from_secs(2)
+    ));
+    assert!(!clipboard_sync_is_due(
+        None,
+        Some(now),
+        now + Duration::from_millis(499)
+    ));
+    assert!(clipboard_sync_is_due(
+        None,
+        Some(now),
+        now + Duration::from_millis(500)
+    ));
+}
+
+#[test]
+fn successful_clipboard_reads_and_writes_clear_the_unavailable_backoff() {
+    let clipboard_source = include_str!("clipboard.rs").replace("\r\n", "\n");
+    let input_source = include_str!("input.rs").replace("\r\n", "\n");
+
+    assert_eq!(
+        3,
+        clipboard_source
+            .matches("self.clear_clipboard_read_backoff();")
+            .count()
+    );
+    assert!(input_source.contains(
+        "let Some(item) = cx.read_from_clipboard() else {\n            return true;\n        };\n        self.clear_clipboard_read_backoff();"
+    ));
+}
+
+#[test]
+fn clipboard_protocol_policy_keeps_vnc_to_ascii_text_only() {
+    assert!(clipboard_text_supported(
+        RemoteDesktopProtocol::Rdp,
+        "中文 clipboard"
+    ));
+    assert!(clipboard_text_supported(
+        RemoteDesktopProtocol::Vnc,
+        "ASCII clipboard"
+    ));
+    assert!(!clipboard_text_supported(
+        RemoteDesktopProtocol::Vnc,
+        "中文 clipboard"
+    ));
+    assert!(clipboard_files_supported(RemoteDesktopProtocol::Rdp));
+    assert!(!clipboard_files_supported(RemoteDesktopProtocol::Vnc));
+}
+
+#[test]
+fn local_clipboard_classification_prioritizes_files_over_path_text_fallback() {
+    let files = ExternalPaths(
+        [
+            PathBuf::from("/tmp/report.txt"),
+            PathBuf::from("/tmp/data.csv"),
+        ]
+        .into_iter()
+        .collect(),
+    );
+    let item = ClipboardItem {
+        entries: vec![
+            ClipboardEntry::String(gpui::ClipboardString::new(
+                "platform path fallback".to_string(),
+            )),
+            ClipboardEntry::ExternalPaths(files),
+        ],
+    };
+
+    assert_eq!(
+        LocalClipboardContent::Files(vec![
+            "/tmp/report.txt".to_string(),
+            "/tmp/data.csv".to_string(),
+        ]),
+        classify_local_clipboard(&item)
+    );
+    assert_eq!(
+        LocalClipboardContent::Text("ASCII clipboard".to_string()),
+        classify_local_clipboard(&ClipboardItem::new_string("ASCII clipboard".to_string()))
+    );
+    assert_eq!(
+        LocalClipboardContent::Other,
+        classify_local_clipboard(&ClipboardItem { entries: vec![] })
+    );
+}
+
+#[test]
+fn local_clipboard_transfer_ids_never_enter_the_remote_namespace() {
+    let mut next_id = FIRST_LOCAL_CLIPBOARD_TRANSFER_ID;
+
+    assert_eq!(1, allocate_local_clipboard_transfer_id(&mut next_id));
+    assert_eq!(2, allocate_local_clipboard_transfer_id(&mut next_id));
+
+    next_id = REMOTE_CLIPBOARD_TRANSFER_BIT - 1;
+    assert_eq!(
+        REMOTE_CLIPBOARD_TRANSFER_BIT - 1,
+        allocate_local_clipboard_transfer_id(&mut next_id)
+    );
+    assert_eq!(1, allocate_local_clipboard_transfer_id(&mut next_id));
+    assert!(!is_remote_clipboard_transfer_id(1));
+    assert!(is_remote_clipboard_transfer_id(
+        REMOTE_CLIPBOARD_TRANSFER_BIT | 1
+    ));
+}
+
+#[test]
+fn remote_clipboard_paths_must_resolve_inside_the_staging_root() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let root = temp.path().join("linop-rdp-clipboard");
+    let transfer = root.join("transfer-remote");
+    std::fs::create_dir_all(&transfer).expect("create transfer directory");
+    let received = transfer.join("report.txt");
+    std::fs::write(&received, b"report").expect("write received file");
+    let received_string = received.to_string_lossy().into_owned();
+
+    assert_eq!(
+        vec![dunce::canonicalize(&received).unwrap()],
+        validate_remote_clipboard_paths_in_root(&root, &[received_string]).unwrap()
+    );
+    assert!(
+        validate_remote_clipboard_paths_in_root(
+            &root,
+            &[temp
+                .path()
+                .join("outside.txt")
+                .to_string_lossy()
+                .into_owned()]
+        )
+        .is_err()
+    );
+    assert!(validate_remote_clipboard_paths_in_root(&root, &[]).is_err());
+    assert!(validate_remote_clipboard_paths_in_root(&root, &["relative.txt".to_string()]).is_err());
+}
+
+#[cfg(unix)]
+#[test]
+fn remote_clipboard_paths_reject_symlink_escape_from_staging_root() {
+    use std::os::unix::fs::symlink;
+
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let root = temp.path().join("linop-rdp-clipboard");
+    let transfer = root.join("transfer-remote");
+    std::fs::create_dir_all(&transfer).expect("create transfer directory");
+    let outside = temp.path().join("outside.txt");
+    std::fs::write(&outside, b"outside").expect("write outside file");
+    let escaped = transfer.join("escaped.txt");
+    symlink(&outside, &escaped).expect("create symlink");
+
+    assert!(
+        validate_remote_clipboard_paths_in_root(&root, &[escaped.to_string_lossy().into_owned()])
+            .is_err()
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn remote_clipboard_paths_normalize_windows_verbatim_prefixes() {
+    let temp = tempfile::tempdir().expect("temporary directory");
+    let root = temp.path().join("linop-rdp-clipboard");
+    let transfer = root.join("transfer-remote");
+    std::fs::create_dir_all(&transfer).expect("create transfer directory");
+    let received = transfer.join("report.txt");
+    std::fs::write(&received, b"report").expect("write received file");
+
+    let received_string = received.to_string_lossy().into_owned();
+    let prefix_string = if received_string.starts_with(r"\\?\") {
+        received_string.clone()
+    } else {
+        format!(r"\\?\{}", received_string)
+    };
+
+    let validated = validate_remote_clipboard_paths_in_root(&root, &[received_string])
+        .expect("plain Windows paths remain valid");
+
+    let prefix_validated = validate_remote_clipboard_paths_in_root(&root, &[prefix_string])
+        .expect("Windows verbatim prefix is normalized");
+    assert_eq!(validated[0], prefix_validated[0]);
+    assert!(
+        !validated[0]
+            .as_os_str()
+            .to_string_lossy()
+            .starts_with(r"\\?\")
+    );
+}
+
+#[test]
+fn remote_text_is_suppressed_only_inside_the_post_file_install_window() {
+    let installed_at = Instant::now();
+
+    // No install recorded -> text passes through.
+    assert!(!remote_text_suppressed_after_files(
+        None,
+        installed_at + Duration::from_millis(100)
+    ));
+
+    // Inside the window the file clipboard is protected.
+    assert!(remote_text_suppressed_after_files(
+        Some(installed_at),
+        installed_at + Duration::from_millis(2_999)
+    ));
+
+    // A genuinely new remote clipboard generation arrives later -> honoured.
+    assert!(!remote_text_suppressed_after_files(
+        Some(installed_at),
+        installed_at + REMOTE_TEXT_AFTER_FILES_SUPPRESS
+    ));
+}
+
+#[test]
+fn remote_text_is_suppressed_as_long_as_installed_files_hold_the_clipboard() {
+    // Installed files still authoritative (no local copy since) -> ignored,
+    // no matter how late rdpclip re-announces the file's text format.
+    assert!(remote_text_suppressed_while_files_installed(Some(&vec![
+        "/tmp/linop-rdp-clipboard/transfer-x/a.txt".to_string()
+    ])));
+
+    // A local copy superseded the installed files -> text passes through.
+    assert!(!remote_text_suppressed_while_files_installed(None));
+}
