@@ -1623,9 +1623,11 @@ impl App {
                     .join("dbx.db")
             })
             .unwrap_or_else(|| std::path::PathBuf::from(".linop-dev/dbx-data/dbx.db"));
+        // connections.toml:via 跳板隧道解析需要。
+        let conns_reg = linop_core::Registry::load_default().unwrap_or_default();
         let outcome = match tokio::time::timeout(
             Duration::from_secs(CONNECT_TIMEOUT_SECS),
-            DbxKernel::open(&store, profiles),
+            DbxKernel::open(&store, profiles, &conns_reg),
         )
         .await
         {
