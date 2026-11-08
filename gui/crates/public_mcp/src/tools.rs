@@ -1,4 +1,5 @@
 mod agent_runtime_adapter;
+mod database;
 mod internal;
 mod mongo;
 mod redis;
@@ -11,6 +12,7 @@ mod terminal_read;
 mod terminal_write_keys;
 mod tool_runtime_adapter;
 
+pub use database::{DatabaseRuntimeProvider, DatabaseToolProvider, database_tool_registry};
 pub use agent_runtime_adapter::agent_runtime_tool_registry;
 pub use internal::{
     InternalFunctionDefinition, InternalFunctionFuture, internal_function_tool_registry,

@@ -11,19 +11,18 @@ use gpui_component::{
     ActiveTheme, Disableable, Sizable, button::Button, h_flex, input::Input,
     input::InputState, v_flex,
 };
-use linop_core::DbProfile;
 use one_core::gpui_tokio::Tokio;
 use one_ui::{Column, EditTableDelegate, EditTableState};
 use one_core::tab_container::{TabContent, TabContentEvent};
 use gpui::EventEmitter;
 
-use crate::{DbxRuntime, default_store_path};
+use crate::DbxRuntime;
 
 pub struct DbxPanel {
     kind: &'static str,
     focus: FocusHandle,
     runtime: Option<Arc<DbxRuntime>>,
-    profiles: Vec<DbProfile>,
+    profiles: Vec<linop_dbx::DbxConnectionSummary>,
     selected: Option<String>,
     tables: Vec<TableInfoRow>,
     selected_table: Option<String>,
@@ -158,8 +157,9 @@ impl DbxPanel {
             status: "正在打开数据库运行时…".into(),
             loading: true,
         };
+        let task = Tokio::spawn(cx, load_runtime());
         cx.spawn(async move |this, cx| {
-            let loaded = load_runtime().await;
+            let loaded = task.await.unwrap_or_else(|e| Err(anyhow::anyhow!("{e}")));
             let _ = this.update(cx, |panel, cx| match loaded {
                 Ok((runtime, profiles)) => {
                     panel.loading = false;
@@ -349,7 +349,13 @@ impl DbxPanel {
             let _ = this.update(cx, |panel, _cx| match outcome {
                 Ok(Ok(())) => {
                     panel.selected = Some(name);
-                    panel.profiles.push(profile);
+                    panel.profiles.push(linop_dbx::DbxConnectionSummary {
+                        name: profile.name.clone(),
+                        driver: profile.driver.as_str().to_string(),
+                        host: profile.host.clone().unwrap_or_default(),
+                        port: profile.port.unwrap_or_default(),
+                        database: profile.database.clone(),
+                    });
                     panel.status = "已保存并注入运行时".into();
                 }
                 Ok(Err(e)) => panel.status = format!("注入失败:{e}"),
@@ -367,14 +373,11 @@ fn quote_table(name: &str) -> String {
         .join(".")
 }
 
-/// 后台加载运行时与连接清单。
-async fn load_runtime() -> anyhow::Result<(Arc<DbxRuntime>, Vec<DbProfile>)> {
-    let profiles = linop_core::DbRegistry::load_default()
-        .map_err(|e| anyhow::anyhow!("{}", e))?
-        .profiles()
-        .to_vec();
-    let runtime = DbxRuntime::open_with(default_store_path(), profiles.clone()).await?;
-    Ok((Arc::new(runtime), profiles))
+/// 后台加载共享运行时与连接清单(gpui_tokio 的 Tokio runtime 上执行)。
+async fn load_runtime() -> anyhow::Result<(Arc<DbxRuntime>, Vec<linop_dbx::DbxConnectionSummary>)> {
+    let runtime = DbxRuntime::shared().await?;
+    let connections = runtime.0.connections().await;
+    Ok((runtime, connections))
 }
 
 impl Render for DbxPanel {
@@ -395,7 +398,7 @@ impl Render for DbxPanel {
                     style.bg(theme.colors.accent).text_color(theme.colors.accent_foreground)
                 })
                 .when(!is_selected, |style| style.hover(|s| s.bg(theme.colors.selection)))
-                .child(format!("{} ({})", p.name, p.driver.as_str()))
+                .child(format!("{} ({})", p.name, p.driver))
                 .on_click(cx.listener({
                     let name = name.clone();
                     move |panel, _ev, _window, cx| {

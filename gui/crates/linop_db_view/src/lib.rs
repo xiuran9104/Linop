@@ -1,5 +1,6 @@
 //! Linop 数据库面板(DBX 内核,GPUI 原生)。
 
+pub mod mcp;
 pub mod panel;
 
 use std::path::PathBuf;
@@ -9,6 +10,9 @@ use domain_api::{ConnectionOpener, Domain, DomainId, DomainRegistry};
 use gpui::AppContext;
 use linop_core::DbRegistry;
 use one_core::storage::ConnectionType;
+
+/// 进程级共享运行时:面板与 MCP 工具共用一套(via 隧道只建立一次)。
+static SHARED_RUNTIME: tokio::sync::OnceCell<Arc<DbxRuntime>> = tokio::sync::OnceCell::const_new();
 
 /// 共享的 DBX 运行时(连接池由 DBX 管理)。
 pub struct DbxRuntime(pub Arc<linop_dbx::Dbx>);
@@ -57,6 +61,24 @@ impl DbxRuntime {
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))
     }
+
+    /// 进程级单例:databases.toml + connections.toml 打开,首个调用方初始化,
+    /// 后续共享(via 隧道只建立一套)。初始化失败不缓存,下次调用重试;
+    /// 面板与 MCP 工具都应经由 gpui_tokio 的 Tokio runtime 调用,
+    /// 保证 DBX 资源(SSH 隧道/连接池)始终创建并轮询于同一 runtime。
+    pub async fn shared() -> anyhow::Result<Arc<Self>> {
+        Ok(SHARED_RUNTIME
+            .get_or_try_init(|| async {
+                let profiles = DbRegistry::load_default()
+                    .map_err(|e| anyhow::anyhow!("{}", e))?
+                    .profiles()
+                    .to_vec();
+                let runtime = Self::open_with(default_store_path(), profiles).await?;
+                Ok::<_, anyhow::Error>(Arc::new(runtime))
+            })
+            .await?
+            .clone())
+    }
 }
 
 /// 数据域:注册 Database / Redis 连接的打开入口(视图 = DBX 面板)。
@@ -72,6 +94,7 @@ impl Domain for DbxDomain {
     }
 
     fn register(&self, registry: &mut DomainRegistry) {
+        mcp::register_mcp_toolsets();
         registry.register_connection_opener(
             ConnectionType::Database,
             std::sync::Arc::new(DbxConnectionOpener),

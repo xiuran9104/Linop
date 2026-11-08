@@ -8015,11 +8015,14 @@ dependencies = [
  "linop-core",
  "linop-db-core",
  "linop-dbx",
+ "mcp_host",
  "one-core",
  "one-ui",
+ "public_mcp",
  "rust-i18n",
  "serde_json",
  "tokio",
+ "tool_runtime",
 ]
 
 [[package]]
