@@ -338,8 +338,10 @@ panic = "unwind"
 
 [profile.release]
 opt-level = 3
-lto = "fat"
-codegen-units = 1
+# fat LTO 在本仓库规模下链接峰值内存超出 WSL2 15Gi(两次 OOM SIGKILL),
+# 与根 workspace 对齐改 thin;codegen-units 同步放开以压峰值。
+lto = "thin"
+codegen-units = 16
 strip = true
 # 关闭展开：省掉 __eh_frame / __gcc_except_tab（约 27MB 元数据）。
 # 代价：release 下 panic 直接 abort，catch_unwind 不再拦截（terminal 录制
