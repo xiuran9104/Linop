@@ -1,6 +1,6 @@
 //! via 隧道 e2e:postgres 容器 + SSH 跳板(testsupport)→ 隧道端点注入 → 查询。
 
-use linop_core::{Connection as SshConnection, Auth, DbProfile, DbRegistry, Registry};
+use linop_core::{Connection as SshConnection, Auth, DbProfile, Registry};
 use linop_dbx::Dbx;
 use linop_testsupport::TestSshServer;
 

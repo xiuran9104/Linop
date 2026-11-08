@@ -55,9 +55,12 @@ pub struct Dbx {
 }
 
 /// 一条存活的数据库隧道:SSH 会话 + 本地转发。
+/// `ssh`/`forward` 仅作 RAII 句柄持有(Drop 时拆除),不读取。
 pub struct DbxTunnel {
     pub profile_name: String,
+    #[allow(dead_code)]
     ssh: linop_ssh::Session,
+    #[allow(dead_code)]
     forward: linop_ssh::LocalForward,
 }
 
