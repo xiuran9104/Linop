@@ -77,8 +77,9 @@ async fn open() -> Result<Dbx, String> {
         .map_err(|e| e.to_string())?
         .profiles()
         .to_vec();
+    let conns = linop_core::Registry::load_default().map_err(|e| e.to_string())?;
     let store = linop_dbx::default_store_path().map_err(|e| e.to_string())?;
-    Dbx::open(&store, profiles).await.map_err(|e| e.to_string())
+    Dbx::open(&store, profiles, &conns).await.map_err(|e| e.to_string())
 }
 
 async fn run(f: impl std::future::Future<Output = Result<String, String>>) -> i32 {

@@ -13,6 +13,7 @@ serde = { workspace = true }
 linop-db-core = { path = "../../vendor/dbx/crates/linop-db-core" }
 linop-db-types = { path = "../../vendor/dbx/crates/linop-db-types" }
 linop-core = { path = "../linop-core" }
+linop-ssh = { path = "../linop-ssh" }
 
 [[bin]]
 name = "linop-dbx"
@@ -20,3 +21,5 @@ path = "src/main.rs"
 
 [dev-dependencies]
 tempfile = "3"
+linop-testsupport = { path = "../linop-testsupport" }
+anyhow = { workspace = true }

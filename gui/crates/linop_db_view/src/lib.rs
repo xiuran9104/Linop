@@ -30,7 +30,9 @@ impl DbxRuntime {
         store: PathBuf,
         profiles: Vec<linop_core::DbProfile>,
     ) -> anyhow::Result<Self> {
-        let dbx = linop_dbx::Dbx::open(&store, profiles)
+        let conns = linop_core::Registry::load_default()
+            .map_err(|e| anyhow::anyhow!("connections.toml 加载失败(via 隧道需要):{e}"))?;
+        let dbx = linop_dbx::Dbx::open(&store, profiles, &conns)
             .await
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         Ok(Self(Arc::new(dbx)))

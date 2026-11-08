@@ -49,7 +49,16 @@ pub struct Dbx {
     state: std::sync::Arc<tokio::sync::Mutex<AppState>>,
     /// 连接配置(Linop databases.toml 注入的镜像)。
     profiles: tokio::sync::Mutex<Vec<linop_core::DbProfile>>,
+    /// 经由 SSH 跳板建立的隧道(`via` 字段);Dbx 生命周期内保持存活。
+    tunnels: tokio::sync::Mutex<Vec<DbxTunnel>>,
     data_dir: PathBuf,
+}
+
+/// 一条存活的数据库隧道:SSH 会话 + 本地转发。
+pub struct DbxTunnel {
+    pub profile_name: String,
+    ssh: linop_ssh::Session,
+    forward: linop_ssh::LocalForward,
 }
 
 /// Linop 数据目录下的 DBX 技术存储路径。
@@ -63,7 +72,13 @@ pub fn default_store_path() -> Result<PathBuf> {
 impl Dbx {
     /// 打开运行时:`store_path` 是技术性 dbx.db(空库即可);
     /// `profiles` 来自 linop-core 的 databases.toml,会话内注入。
-    pub async fn open(store_path: &Path, profiles: Vec<linop_core::DbProfile>) -> Result<Self> {
+    /// 带 `via` 字段的 profile 先经跳板建立本地隧道,连接端点改写为
+    /// 隧道本地地址后再注入。
+    pub async fn open(
+        store_path: &Path,
+        profiles: Vec<linop_core::DbProfile>,
+        connections: &linop_core::Registry,
+    ) -> Result<Self> {
         if let Some(parent) = store_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -73,17 +88,68 @@ impl Dbx {
         let state = std::sync::Arc::new(tokio::sync::Mutex::new(AppState::new(storage)));
         // 核心方言注册(linop-db-web 同款全局初始化)。
         linop_db_core::sql_dialect::dialect_loader::register_core_dialects();
+
+        let mut tunnels = Vec::new();
         for profile in &profiles {
-            Self::inject(&state, profile).await?;
+            let effective = if let Some(via) = &profile.via {
+                let tunnel = Self::establish_tunnel(profile, via, connections).await?;
+                tunnels.push(tunnel.1);
+                tunnel.0
+            } else {
+                profile.clone()
+            };
+            Self::inject(&state, &effective).await?;
         }
         Ok(Self {
             state,
             profiles: tokio::sync::Mutex::new(profiles),
+            tunnels: tokio::sync::Mutex::new(tunnels),
             data_dir: store_path.to_path_buf(),
         })
     }
 
-    /// 把 Linop profile 构造成 DBX ConnectionConfig 并注入运行时。
+    /// 对带 `via` 的 profile 建立 SSH 隧道,返回改写端点后的副本与隧道句柄。
+    async fn establish_tunnel(
+        profile: &linop_core::DbProfile,
+        via: &str,
+        connections: &linop_core::Registry,
+    ) -> Result<(linop_core::DbProfile, DbxTunnel)> {
+        let jump = connections
+            .get(via)
+            .cloned()
+            .ok_or_else(|| DbxError::Dbx(format!("via 跳板 {via} 不在 connections.toml")))?;
+        let policy = linop_ssh::KnownHostsPolicy::TrustOnFirstUse(
+            linop_ssh::KnownHosts::load_default(),
+        );
+        let ssh = linop_ssh::Session::connect_profile(&jump, policy)
+            .await
+            .map_err(|e| DbxError::Dbx(format!("连接跳板 {via} 失败:{e}")))?;
+        let rule = linop_core::PortForward::new(
+            0, // 内核分配本地端口
+            profile.host.clone().unwrap_or_default(),
+            profile.port.unwrap_or(match profile.driver {
+                linop_core::DbDriver::Postgres => 5432,
+                linop_core::DbDriver::MySql => 3306,
+                linop_core::DbDriver::Redis => 6379,
+                linop_core::DbDriver::Sqlite => 0,
+            }),
+        );
+        let forward = ssh
+            .open_local_forward(&rule)
+            .await
+            .map_err(|e| DbxError::Dbx(format!("跳板 {via} 上建立转发失败:{e}")))?;
+        let local = forward.local_addr;
+        let mut effective = profile.clone();
+        effective.host = Some(local.ip().to_string());
+        effective.port = Some(local.port());
+        Ok((
+            effective,
+            DbxTunnel { profile_name: profile.name.clone(), ssh, forward },
+        ))
+    }
+
+    /// 把 Linop profile 构造为 DBX ConnectionConfig 并注入运行时。
+    /// `profile` 已是改写后的有效端点(直连原样 / 隧道本地地址)。
     async fn inject(
         state: &std::sync::Arc<tokio::sync::Mutex<AppState>>,
         profile: &linop_core::DbProfile,
@@ -150,8 +216,20 @@ impl Dbx {
     }
 
     /// 会话内追加一个连接(不入库;连接配置持久化归 databases.toml)。
-    pub async fn add_profile(&self, profile: linop_core::DbProfile) -> Result<()> {
-        Self::inject(&self.state, &profile).await?;
+    /// 带 via 的 profile 同样先建隧道再注入。
+    pub async fn add_profile(
+        &self,
+        profile: linop_core::DbProfile,
+        connections: &linop_core::Registry,
+    ) -> Result<()> {
+        let effective = if let Some(via) = &profile.via {
+            let (effective, tunnel) = Self::establish_tunnel(&profile, via, connections).await?;
+            self.tunnels.lock().await.push(tunnel);
+            effective
+        } else {
+            profile.clone()
+        };
+        Self::inject(&self.state, &effective).await?;
         self.profiles.lock().await.push(profile);
         Ok(())
     }
@@ -182,6 +260,11 @@ impl Dbx {
     pub fn store_path(&self) -> &Path {
         &self.data_dir
     }
+
+    /// 活动隧道列表(诊断/GUI 展示)。
+    pub async fn tunnel_names(&self) -> Vec<String> {
+        self.tunnels.lock().await.iter().map(|t| t.profile_name.clone()).collect()
+    }
 }
 
 #[cfg(test)]
@@ -201,7 +284,8 @@ mod tests {
             Some("pw".into()),
             Some("orders".into()),
         )];
-        let dbx = Dbx::open(&store, profiles).await.unwrap();
+        let conns_reg = linop_core::Registry::new();
+        let dbx = Dbx::open(&store, profiles, &conns_reg).await.unwrap();
         assert!(store.exists(), "open 应创建技术性 dbx.db");
         let conns = dbx.connections().await;
         assert_eq!(conns.len(), 1);
@@ -213,7 +297,8 @@ mod tests {
     #[tokio::test]
     async fn unknown_connection_is_reported() {
         let dir = tempfile::tempdir().unwrap();
-        let dbx = Dbx::open(&dir.path().join("dbx.db"), Vec::new())
+        let conns_reg = linop_core::Registry::new();
+        let dbx = Dbx::open(&dir.path().join("dbx.db"), Vec::new(), &conns_reg)
             .await
             .unwrap();
         let err = dbx.connection_id("nope").await.unwrap_err();

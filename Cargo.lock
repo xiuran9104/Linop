@@ -3841,9 +3841,12 @@ dependencies = [
 name = "linop-dbx"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "linop-core",
  "linop-db-core",
  "linop-db-types",
+ "linop-ssh",
+ "linop-testsupport",
  "serde",
  "serde_json",
  "tempfile",

@@ -128,7 +128,8 @@ async fn query_via_linop_db_core_state_injection() {
     let loaded = DbRegistry::load(&toml_path).unwrap();
     assert_eq!(loaded.profiles(), &profiles);
 
-    let dbx = Dbx::open(&store, loaded.profiles().to_vec()).await.unwrap();
+    let conns_reg = linop_core::Registry::new();
+    let dbx = Dbx::open(&store, loaded.profiles().to_vec(), &conns_reg).await.unwrap();
 
     // 表元数据。
     let tables = dbx.list_tables("pg").await.unwrap();
