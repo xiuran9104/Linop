@@ -155,7 +155,7 @@ fn dialog_body(
                 div()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
-                    .child("已启用启动保护，请输入主密钥解锁 Navop。"),
+                    .child("已启用启动保护，请输入主密钥解锁 Linop。"),
             )
         })
         .child(key_field(input))

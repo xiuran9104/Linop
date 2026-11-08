@@ -45,14 +45,15 @@ impl WindowsNativeComposition {
         if self.attached {
             return Ok(());
         }
-        let attachment = self
-            .surface
-            .platform_surface()
-            .map_err(|error| format!("this composition surface is not platform backed: {error:#}"))?;
+        let attachment = self.surface.platform_surface().map_err(|error| {
+            format!("this composition surface is not platform backed: {error:#}")
+        })?;
         attachment
             .set_window_content(Box::new(self.window))
             .map_err(|error| {
-                format!("attaching the overlay window as the portal's composition content: {error:#}")
+                format!(
+                    "attaching the overlay window as the portal's composition content: {error:#}"
+                )
             })?;
         match attachment.set_visible(false) {
             Ok(()) => self.visible = false,
@@ -79,31 +80,35 @@ impl WindowsNativeComposition {
     ///
     /// `None` means the overlay was clipped away, so its visual must not be
     /// presented either.
-    pub(super) fn sync_bounds(&mut self, bounds: Option<(i32, i32, i32, i32)>) -> Result<(), String> {
+    pub(super) fn sync_bounds(
+        &mut self,
+        bounds: Option<(i32, i32, i32, i32)>,
+    ) -> Result<(), String> {
         if !self.attached {
             return Ok(());
         }
-        let attachment = self
-            .surface
-            .platform_surface()
-            .map_err(|error| format!("this composition surface is not platform backed: {error:#}"))?;
+        let attachment = self.surface.platform_surface().map_err(|error| {
+            format!("this composition surface is not platform backed: {error:#}")
+        })?;
         match bounds {
             Some(bounds) => {
                 attachment
                     .set_bounds(physical_bounds_to_device_pixels(bounds))
-                    .map_err(|error| format!("mirroring the overlay bounds into the portal: {error:#}"))?;
+                    .map_err(|error| {
+                        format!("mirroring the overlay bounds into the portal: {error:#}")
+                    })?;
                 if !self.visible {
-                    attachment
-                        .set_visible(true)
-                        .map_err(|error| format!("showing the composed overlay visual: {error:#}"))?;
+                    attachment.set_visible(true).map_err(|error| {
+                        format!("showing the composed overlay visual: {error:#}")
+                    })?;
                     self.visible = true;
                 }
             }
             None => {
                 if self.visible {
-                    attachment
-                        .set_visible(false)
-                        .map_err(|error| format!("hiding the composed overlay visual: {error:#}"))?;
+                    attachment.set_visible(false).map_err(|error| {
+                        format!("hiding the composed overlay visual: {error:#}")
+                    })?;
                     self.visible = false;
                 }
             }
@@ -116,13 +121,12 @@ impl WindowsNativeComposition {
         if !self.attached || self.visible == visible {
             return Ok(());
         }
-        let attachment = self
-            .surface
-            .platform_surface()
-            .map_err(|error| format!("this composition surface is not platform backed: {error:#}"))?;
-        attachment
-            .set_visible(visible)
-            .map_err(|error| format!("mirroring the overlay visibility into the portal: {error:#}"))?;
+        let attachment = self.surface.platform_surface().map_err(|error| {
+            format!("this composition surface is not platform backed: {error:#}")
+        })?;
+        attachment.set_visible(visible).map_err(|error| {
+            format!("mirroring the overlay visibility into the portal: {error:#}")
+        })?;
         self.visible = visible;
         Ok(())
     }
@@ -133,9 +137,6 @@ impl WindowsNativeComposition {
 fn physical_bounds_to_device_pixels(bounds: (i32, i32, i32, i32)) -> Bounds<DevicePixels> {
     Bounds {
         origin: point(DevicePixels(bounds.0), DevicePixels(bounds.1)),
-        size: size(
-            DevicePixels(bounds.2.max(0)),
-            DevicePixels(bounds.3.max(0)),
-        ),
+        size: size(DevicePixels(bounds.2.max(0)), DevicePixels(bounds.3.max(0))),
     }
 }

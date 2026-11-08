@@ -12,7 +12,7 @@ pub type ShutdownHook = fn(&mut App, &'static str);
 
 /// 未 bootstrap 时使用的产品显示名。
 #[cfg(target_os = "windows")]
-const DEFAULT_DISPLAY_NAME: &str = "Navop";
+const DEFAULT_DISPLAY_NAME: &str = "Linop";
 /// 默认的应用图标资源路径，与全量产品的 `AssetSource` 对齐。
 const DEFAULT_ICON_ASSET_PATH: &str = "navop/app-icon.png";
 

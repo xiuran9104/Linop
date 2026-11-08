@@ -407,7 +407,9 @@ impl Analyzer {
                     });
                 }
             }
-            TableFactor::Derived { subquery, alias, .. } => {
+            TableFactor::Derived {
+                subquery, alias, ..
+            } => {
                 if alias
                     .as_ref()
                     .is_some_and(|alias| !alias.columns.is_empty())
@@ -442,7 +444,12 @@ impl Analyzer {
         }
     }
 
-    fn expand_wildcard(&mut self, qualifier: Option<&str>, scope: &Scope, outputs: &mut Vec<OutputColumn>) {
+    fn expand_wildcard(
+        &mut self,
+        qualifier: Option<&str>,
+        scope: &Scope,
+        outputs: &mut Vec<OutputColumn>,
+    ) {
         let relations: Vec<&Relation> = match qualifier {
             None => {
                 if scope.relations.is_empty() {
@@ -578,9 +585,7 @@ fn collect_expr_refs(expr: &Expr, scope: &Scope, out: &mut Vec<ColumnReference>)
         | Expr::AtTimeZone {
             timestamp: left,
             time_zone: right,
-        } => {
-            collect_expr_refs(left, scope, out) && collect_expr_refs(right, scope, out)
-        }
+        } => collect_expr_refs(left, scope, out) && collect_expr_refs(right, scope, out),
         Expr::Between {
             expr, low, high, ..
         } => {
@@ -590,16 +595,11 @@ fn collect_expr_refs(expr: &Expr, scope: &Scope, out: &mut Vec<ColumnReference>)
         }
         Expr::InList { expr, list, .. } => {
             collect_expr_refs(expr, scope, out)
-                && list
-                    .iter()
-                    .all(|item| collect_expr_refs(item, scope, out))
+                && list.iter().all(|item| collect_expr_refs(item, scope, out))
         }
         Expr::InUnnest {
             expr, array_expr, ..
-        } => {
-            collect_expr_refs(expr, scope, out)
-                && collect_expr_refs(array_expr, scope, out)
-        }
+        } => collect_expr_refs(expr, scope, out) && collect_expr_refs(array_expr, scope, out),
         Expr::InSubquery { expr, .. } => {
             // 子查询内部的列属于另一个作用域，不参与外层结果列来源。
             collect_expr_refs(expr, scope, out)
@@ -608,8 +608,7 @@ fn collect_expr_refs(expr: &Expr, scope: &Scope, out: &mut Vec<ColumnReference>)
         | Expr::ILike { expr, pattern, .. }
         | Expr::SimilarTo { expr, pattern, .. }
         | Expr::RLike { expr, pattern, .. } => {
-            collect_expr_refs(expr, scope, out)
-                && collect_expr_refs(pattern, scope, out)
+            collect_expr_refs(expr, scope, out) && collect_expr_refs(pattern, scope, out)
         }
         Expr::IsNormalized { expr, .. } => collect_expr_refs(expr, scope, out),
         Expr::Substring {
@@ -641,11 +640,7 @@ fn collect_expr_refs(expr: &Expr, scope: &Scope, out: &mut Vec<ColumnReference>)
                     .unwrap_or(true)
                 && trim_characters
                     .as_deref()
-                    .map(|items| {
-                        items
-                            .iter()
-                            .all(|item| collect_expr_refs(item, scope, out))
-                    })
+                    .map(|items| items.iter().all(|item| collect_expr_refs(item, scope, out)))
                     .unwrap_or(true)
         }
         Expr::Position { expr, r#in } => {
@@ -685,9 +680,7 @@ fn collect_expr_refs(expr: &Expr, scope: &Scope, out: &mut Vec<ColumnReference>)
             ok
         }
         Expr::Function(function) => collect_function_refs(&function.args, scope, out),
-        Expr::Tuple(items) => items
-            .iter()
-            .all(|item| collect_expr_refs(item, scope, out)),
+        Expr::Tuple(items) => items.iter().all(|item| collect_expr_refs(item, scope, out)),
         Expr::GroupingSets(sets) | Expr::Cube(sets) | Expr::Rollup(sets) => sets
             .iter()
             .flatten()
@@ -753,10 +746,7 @@ fn object_name_to_string(name: &ast::ObjectName) -> Option<String> {
 }
 
 /// 解析 SQL 并推导结果列来源。解析失败或非 SELECT 语句返回 `None`。
-pub(crate) fn analyze_sql_lineage(
-    dialect: &dyn Dialect,
-    sql: &str,
-) -> Option<ResultColumnLineage> {
+pub(crate) fn analyze_sql_lineage(dialect: &dyn Dialect, sql: &str) -> Option<ResultColumnLineage> {
     let statements = Parser::parse_sql(dialect, sql).ok()?;
     let statement = statements.first()?;
     let ast::Statement::Query(query) = statement else {
@@ -805,7 +795,10 @@ mod tests {
     fn expands_qualified_wildcard_to_source_table() {
         let lineage = analyze("SELECT u.* FROM users u JOIN orders o ON u.id = o.user_id");
         assert_eq!(lineage.tables, vec!["users", "orders"]);
-        assert_eq!(lineage.columns, vec![ResultColumnSource::Wildcard { table: 0 }]);
+        assert_eq!(
+            lineage.columns,
+            vec![ResultColumnSource::Wildcard { table: 0 }]
+        );
     }
 
     #[test]
@@ -827,9 +820,7 @@ mod tests {
 
     #[test]
     fn follows_derived_table_alias() {
-        let lineage = analyze(
-            "SELECT t.n FROM (SELECT name AS n FROM users) t",
-        );
+        let lineage = analyze("SELECT t.n FROM (SELECT name AS n FROM users) t");
         assert_eq!(lineage.tables, vec!["users"]);
         assert_eq!(lineage.columns, vec![refs(vec![0], "name")]);
     }
@@ -863,9 +854,7 @@ mod tests {
 
     #[test]
     fn recursive_cte_marks_lineage_incomplete() {
-        let lineage = analyze(
-            "WITH RECURSIVE tree AS (SELECT id FROM nodes) SELECT id FROM tree",
-        );
+        let lineage = analyze("WITH RECURSIVE tree AS (SELECT id FROM nodes) SELECT id FROM tree");
         assert!(!lineage.complete);
     }
 }

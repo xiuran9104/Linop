@@ -152,8 +152,11 @@ fn gpt6_tool_requests_turn_reasoning_off() {
     // #487：gpt-6 系列在 /v1/chat/completions 上不接受「推理 + 函数工具」，
     // 必须在带工具的请求里显式传 reasoning_effort: "none"，否则上游直接 400。
     let client = LlmModelClient::new(sample_provider_named("openai"), "gpt-6.1-sol");
-    let request = ModelRequest::new(vec![Message::user("hi")])
-        .with_tools(vec![Tool::function("echo", None, serde_json::json!({}))]);
+    let request = ModelRequest::new(vec![Message::user("hi")]).with_tools(vec![Tool::function(
+        "echo",
+        None,
+        serde_json::json!({}),
+    )]);
 
     let chat_request = client.to_chat_request(request);
 

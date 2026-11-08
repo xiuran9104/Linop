@@ -635,8 +635,8 @@ fn run_local_exec_supervisor(
                                         }));
                                         true
                                     } else {
-                                        let _ = result
-                                            .send(Err(TerminalControlError::Disconnected));
+                                        let _ =
+                                            result.send(Err(TerminalControlError::Disconnected));
                                         false
                                     }
                                 }

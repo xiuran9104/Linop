@@ -373,7 +373,7 @@ pub fn install_dev_host_ops(cx: &mut gpui::App) {
             let view_id = view_id.to_string();
             cx.defer(move |cx| {
                 let Some(window) = crate::app_init::resolve_navop_window(cx) else {
-                    tracing::warn!(%extension_id, %view_id, "no Navop window available for dev view");
+                    tracing::warn!(%extension_id, %view_id, "no Linop window available for dev view");
                     return;
                 };
                 let _ = window.update(cx, |_, window, cx| {

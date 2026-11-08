@@ -1,0 +1,142 @@
+---
+title: 连接导入
+description: 从 Navicat、DBeaver、DataGrip、RedisDesktopManager 和 Another Redis Desktop Manager 导入连接与分组。
+---
+
+DBX 可以从其他数据库工具导入连接，在切换工具时无需手动重新创建大量连接。
+
+## 支持的格式
+
+| 来源    | 格式            | 导入内容                                 |
+| ------- | --------------- | ---------------------------------------- |
+| Navicat | `.ncx` 导出文件 | 主机、端口、用户名、数据库类型、连接名称 |
+| DBeaver | 连接配置文件    | 主机、端口、用户名、数据库类型、连接名称 |
+| DataGrip | `dataSources.xml` 等项目/全局配置 | JDBC URL、驱动、连接名称、分组和可读取凭据 |
+| RedisDesktopManager | JSON 导出文件 | Redis 连接、嵌套分组、认证、TLS 和 SSH 配置 |
+| Another Redis Desktop Manager | `.ano` 导出文件 | Redis 连接、分组、ACL、SSH/TLS、Sentinel 和 Cluster 配置 |
+
+<Callout type="info">导入的连接保留原始连接名称和类型。其他工具以加密格式存储的密码无法解密——导入后需要重新输入密码。</Callout>
+
+## 导入 Navicat 连接
+
+<Steps>
+  <Step>
+    ### 从 Navicat 导出
+
+    在 Navicat 中，选择要迁移的连接。使用**文件 → 导出连接**并保存 `.ncx` 文件。
+
+  </Step>
+  <Step>
+    ### 打开导入对话框
+
+    在 DBX 中，前往**设置 → 导入连接**，或右键点击侧边栏分组标题选择**导入连接**。
+
+  </Step>
+  <Step>
+    ### 选择 NCX 文件
+
+    选择从 Navicat 导出的 `.ncx` 文件。
+
+  </Step>
+  <Step>
+    ### 检查并完成
+
+    DBX 解析文件并列出所有找到的连接。检查列表，在需要处重新输入密码并保存。
+
+  </Step>
+</Steps>
+
+## 导入 DBeaver 连接
+
+<Steps>
+  <Step>
+    ### 找到 DBeaver 配置
+
+    DBeaver 将连接存储在其工作区目录中。具体路径取决于操作系统和 DBeaver 版本。常见位置包括 `~/.local/share/DBeaverData/workspace6/General/.dbeaver/`。
+
+  </Step>
+  <Step>
+    ### 打开导入对话框
+
+    在 DBX 中，前往**设置 → 导入连接**。
+
+  </Step>
+  <Step>
+    ### 选择 DBeaver 文件
+
+    选择 DBeaver 连接配置文件（`.dbeaver-data-sources.xml` 或类似文件）。
+
+  </Step>
+  <Step>
+    ### 检查并完成
+
+    DBX 从配置中提取连接信息。重新输入无法解密的密码。
+
+  </Step>
+</Steps>
+
+## 导入 DataGrip 连接
+
+<Steps>
+  <Step>
+    ### 选择配置
+
+    在 DBX 中选择**导入 DataGrip**，再选择 DataGrip 项目或全局配置中的 `dataSources.xml`；同目录的 local 配置会用于补充字段。
+
+  </Step>
+  <Step>
+    ### 检查类型识别
+
+    DBX 会结合 driver reference、数据库产品名、JDBC subprotocol 和驱动类识别数据库。KingbaseES 等数据库会映射到对应 DBX profile，未知驱动保留为通用 JDBC。
+
+  </Step>
+  <Step>
+    ### 检查分组
+
+    DataGrip 的分组路径会导入为 DBX 连接分组，方便保留项目组织方式。
+
+  </Step>
+  <Step>
+    ### 补充凭据
+
+    macOS 上 DBX 会在允许时读取 DataGrip 钥匙串密码；其它加密或不可访问的凭据仍需手动填写。
+
+  </Step>
+</Steps>
+
+## 导入 RedisDesktopManager 连接
+
+从 RedisDesktopManager 导出 JSON，在侧边栏或欢迎页的导入菜单选择 **导入 RedisDesktopManager**。检查连接选择预览，再选择需要迁移的连接并确认导入。连接和嵌套分组会一起迁移，原有连接不会被覆盖。
+
+支持普通 Redis 连接的主机、端口、ACL 用户名、`auth` 密码、键分隔符和过滤模式，以及 SSH 密码、私钥或 agent 配置。连接和执行超时会从毫秒转换为秒。
+
+TLS 的 CA、客户端证书和私钥路径会保留，但不会读取或复制文件，跨机器迁移后需要检查路径。不会继承 RDM 的忽略证书错误设置。导出文件可能含有明文密码，请妥善保管；导入不会自动连接数据库。
+
+## 导入 Another Redis Desktop Manager 连接
+
+在 Another Redis Desktop Manager 的设置中导出 `connections.ano`，在 DBX 侧边栏或欢迎页的导入菜单选择 **导入 Another Redis Desktop Manager**。勾选需要的连接并确认，再按提示恢复分组。支持旧版连接数组和新版带 `connections` / `groups` 的导出，保留普通、Sentinel、Cluster 模式及只读标记。
+
+`.ano` 是 Base64 包装的 UTF-8 JSON，并不是加密文件，可能包含 Redis、SSH 和 Sentinel 的明文密码。请妥善保管。SSH 私钥口令、证书和私钥文件路径会保留，但不会读取或复制这些文件；跨机器后应重新检查。Sentinel 密码与 Redis 节点密码分别映射，不互相替代。
+
+自定义 TLS `servername` 和非空 NAT 映射目前无法无损映射到 DBX，导入会明确拒绝，而不是静默丢弃。文件最大 16 MiB，连接和分组各最多 10,000 项；畸形文件在保存任何连接前报错。运行时的 `key` / 当前 `db` 不导入，原有连接不被覆盖，导入不会自动连接。
+
+## 导入后
+
+导入的连接与手动创建的连接一同出现在侧边栏中。你应该：
+
+- **测试每个连接**以验证导入的设置是否正常工作
+- **设置密码**，用于原始密码无法导入的连接
+- **分配连接颜色**以区分生产、测试和开发环境
+- **配置 SSH 隧道**，用于需要隧道访问的连接
+- **设置可见数据库过滤**，如果服务器包含大量数据库
+
+## 无法导入的内容
+
+| 设置           | 原因                                             |
+| -------------- | ------------------------------------------------ |
+| 加密密码       | 每个工具使用各自的加密方式，密码需要重新输入     |
+| SSH 隧道密钥   | 密钥文件路径可能因机器而异，需要重新选择密钥文件 |
+| 自定义驱动配置 | 驱动路径和版本是工具特定的                       |
+| 代理设置       | 在连接的代理标签页中重新配置                     |
+
+导入只创建连接草稿，不证明连接一定可用。保存前检查数据库 profile、JDBC URL、SSL、SSH、代理和数据库名，保存后逐个执行连接测试。

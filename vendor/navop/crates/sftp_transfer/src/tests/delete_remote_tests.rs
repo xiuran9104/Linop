@@ -94,7 +94,9 @@ fn delete_remote_shares_connection_lane_with_uploads(cx: &mut TestAppContext) {
     });
 
     // 上传、删除、下载共用同一连接的车道：容量内并行，超出后按 FIFO 补位。
-    wait_until(cx, |_| started_matches(&provider, &[upload, filler, delete]));
+    wait_until(cx, |_| {
+        started_matches(&provider, &[upload, filler, delete])
+    });
     provider.complete(upload, Ok(()));
     wait_until(cx, |_| {
         started_matches(&provider, &[upload, filler, delete, download])

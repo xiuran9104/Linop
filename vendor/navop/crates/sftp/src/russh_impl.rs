@@ -2413,57 +2413,62 @@ impl RemoteFileClient for RusshSftpClient {
 
         let result = race_with_cancel(
             &cancelled,
-            with_remote_replace(&self.sftp, remote_path, total_size, |mut remote_file| async {
-                let mut buffer = vec![0u8; BUFFER_SIZE];
-                let mut transferred = 0u64;
-                let started_at = Instant::now();
-                let mut last_update = Instant::now();
+            with_remote_replace(
+                &self.sftp,
+                remote_path,
+                total_size,
+                |mut remote_file| async {
+                    let mut buffer = vec![0u8; BUFFER_SIZE];
+                    let mut transferred = 0u64;
+                    let started_at = Instant::now();
+                    let mut last_update = Instant::now();
 
-                loop {
+                    loop {
+                        ensure_not_cancelled(&cancelled)?;
+                        let bytes_read = local_file
+                            .read(&mut buffer)
+                            .await
+                            .map_err(|e| anyhow!("Failed to read from local file: {}", e))?;
+
+                        if bytes_read == 0 {
+                            break;
+                        }
+
+                        remote_file
+                            .write_all(&buffer[..bytes_read])
+                            .await
+                            .map_err(|e| anyhow!("Failed to write to remote file: {}", e))?;
+
+                        transferred += bytes_read as u64;
+
+                        let now = Instant::now();
+                        let elapsed = now.duration_since(last_update).as_secs_f64();
+
+                        if elapsed >= 0.1 {
+                            let total_elapsed = started_at.elapsed().as_secs_f64();
+                            let speed = if total_elapsed > 0.0 {
+                                transferred as f64 / total_elapsed
+                            } else {
+                                0.0
+                            };
+
+                            progress(TransferProgress {
+                                transferred,
+                                total: total_size,
+                                speed,
+                                current_file: None,
+                                current_file_transferred: 0,
+                                current_file_total: 0,
+                            });
+
+                            last_update = now;
+                        }
+                    }
+
                     ensure_not_cancelled(&cancelled)?;
-                    let bytes_read = local_file
-                        .read(&mut buffer)
-                        .await
-                        .map_err(|e| anyhow!("Failed to read from local file: {}", e))?;
-
-                    if bytes_read == 0 {
-                        break;
-                    }
-
-                    remote_file
-                        .write_all(&buffer[..bytes_read])
-                        .await
-                        .map_err(|e| anyhow!("Failed to write to remote file: {}", e))?;
-
-                    transferred += bytes_read as u64;
-
-                    let now = Instant::now();
-                    let elapsed = now.duration_since(last_update).as_secs_f64();
-
-                    if elapsed >= 0.1 {
-                        let total_elapsed = started_at.elapsed().as_secs_f64();
-                        let speed = if total_elapsed > 0.0 {
-                            transferred as f64 / total_elapsed
-                        } else {
-                            0.0
-                        };
-
-                        progress(TransferProgress {
-                            transferred,
-                            total: total_size,
-                            speed,
-                            current_file: None,
-                            current_file_transferred: 0,
-                            current_file_total: 0,
-                        });
-
-                        last_update = now;
-                    }
-                }
-
-                ensure_not_cancelled(&cancelled)?;
-                Ok((remote_file, transferred))
-            }),
+                    Ok((remote_file, transferred))
+                },
+            ),
         )
         .await;
 
@@ -2957,10 +2962,7 @@ impl RemoteFileClient for RusshSftpClient {
             .map(|(_, _, size)| size)
             .sum();
         let mut replacement = if conflict_policy == DirectoryConflictPolicy::Replace {
-            Some(
-                race_with_cancel(&cancelled, self.begin_directory_replace(remote_path))
-                    .await?,
-            )
+            Some(race_with_cancel(&cancelled, self.begin_directory_replace(remote_path)).await?)
         } else {
             race_with_cancel(&cancelled, self.ensure_copy_directory(remote_path)).await?;
             None
@@ -3047,9 +3049,10 @@ impl RemoteFileClient for RusshSftpClient {
 
                                 loop {
                                     ensure_not_cancelled(cancelled)?;
-                                    let bytes_read = local_file.read(&mut buffer).await.map_err(
-                                        |e| anyhow!("Failed to read from local file: {}", e),
-                                    )?;
+                                    let bytes_read =
+                                        local_file.read(&mut buffer).await.map_err(|e| {
+                                            anyhow!("Failed to read from local file: {}", e)
+                                        })?;
 
                                     if bytes_read == 0 {
                                         break;
@@ -3220,8 +3223,7 @@ mod tests {
     #[tokio::test]
     async fn race_with_cancel_passes_through_completed_request() {
         let cancelled = AtomicBool::new(false);
-        let result: Result<u64> =
-            race_with_cancel(&cancelled, async { Ok(42u64) }).await;
+        let result: Result<u64> = race_with_cancel(&cancelled, async { Ok(42u64) }).await;
         assert_eq!(result.expect("must pass through"), 42);
     }
 
@@ -3291,15 +3293,13 @@ mod tests {
         assert!(!names.iter().any(|name| name == "broken_link"));
 
         let find = |name: &str| {
-            entries
-                .iter()
-                .find(|(path, _, _)| {
-                    path.strip_prefix(base)
-                        .expect("strip prefix")
-                        .to_string_lossy()
-                        .replace('\\', "/")
-                        == name
-                })
+            entries.iter().find(|(path, _, _)| {
+                path.strip_prefix(base)
+                    .expect("strip prefix")
+                    .to_string_lossy()
+                    .replace('\\', "/")
+                    == name
+            })
         };
 
         let regular = find("regular.txt").expect("regular.txt should be present");

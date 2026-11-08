@@ -441,7 +441,7 @@ impl Render for ImportDialog {
             None => div()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
-                .child("支持从全量 Navop 直接迁移，或导入其它产品导出的迁移包。"),
+                .child("支持从全量 Linop 直接迁移，或导入其它产品导出的迁移包。"),
         };
         v_flex()
             .size_full()

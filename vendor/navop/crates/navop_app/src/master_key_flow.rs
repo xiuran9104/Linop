@@ -5,7 +5,7 @@
 //!
 //! 1. 原样 re-export 下沉后的公开符号，`crate::master_key_flow::*` 的调用点全部不变；
 //! 2. 把"只有 main 才能做"的四件事注册成 [`app_kit::vault::VaultHostHooks`]：
-//!    Navop Cloud / 个人同步的云端重加密、云端数据清空、云端密钥版本上报，以及
+//!    Linop Cloud / 个人同步的云端重加密、云端数据清空、云端密钥版本上报，以及
 //!    笔记目录定位。注册发生在原有入口被调用时（解锁后、修改后、重置时），
 //!    不新增初始化时序；独立产品不调用这里，钩子保持 no-op。
 
@@ -80,7 +80,7 @@ fn start_cloud_reencrypt(
     }
 }
 
-/// 一次 Navop Cloud 重加密任务需要的全部东西（避免 `Tokio::spawn` 闭包参数过长）
+/// 一次 Linop Cloud 重加密任务需要的全部东西（避免 `Tokio::spawn` 闭包参数过长）
 struct OnetReencryptJob {
     client: Arc<dyn CloudApiClient>,
     service: Arc<RwLock<CloudSyncService>>,
@@ -91,7 +91,7 @@ struct OnetReencryptJob {
     user_id: String,
 }
 
-/// Navop Cloud 侧重加密：先把新密钥塞进同步服务，再异步重加密并全量同步一次
+/// Linop Cloud 侧重加密：先把新密钥塞进同步服务，再异步重加密并全量同步一次
 fn start_onet_cloud_reencrypt(
     old_key: &str,
     new_key: &str,
@@ -100,7 +100,7 @@ fn start_onet_cloud_reencrypt(
     cx: &mut App,
 ) -> bool {
     let Some(user) = GlobalCloudUser::get_user(cx) else {
-        tracing::info!("未登录 Navop Cloud，跳过云端重加密");
+        tracing::info!("未登录 Linop Cloud，跳过云端重加密");
         return false;
     };
     let job = OnetReencryptJob {
@@ -198,7 +198,7 @@ fn reencrypt_message<E: std::fmt::Display>(
     }
 }
 
-/// 按重置范围清空云端：个人同步数据与 Navop Cloud 数据分别按勾选处理
+/// 按重置范围清空云端：个人同步数据与 Linop Cloud 数据分别按勾选处理
 fn wipe_cloud_data(scope: CloudWipeScope, cx: &mut App) {
     if scope.personal_sync {
         personal_sync_runtime::wipe_cloud_data(cx);
@@ -239,7 +239,7 @@ fn report_key_version_to_cloud_inner(cx: &mut App) {
     .detach();
 }
 
-/// 清空 Navop Cloud 侧数据：个人记录按 `cloud_sync` 勾选，团队记录按 `team_data` 勾选
+/// 清空 Linop Cloud 侧数据：个人记录按 `cloud_sync` 勾选，团队记录按 `team_data` 勾选
 fn wipe_onet_cloud(include_team: bool, cx: &mut App) {
     let Some(user) = GlobalCloudUser::get_user(cx) else {
         return;

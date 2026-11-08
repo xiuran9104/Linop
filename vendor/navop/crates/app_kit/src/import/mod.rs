@@ -27,10 +27,10 @@ use self::bundle::plan::{
     ImportPlan, PlanInput, PlannedConnection, PlannedWorkspace, normalize_name, plan_import,
 };
 
+use self::bundle::workspace_bundle_id;
 pub use self::bundle::{
     BUNDLE_VERSION, BundleConnection, BundleWorkspace, ConnectionBundle, ImportReport,
 };
-use self::bundle::workspace_bundle_id;
 pub use self::dialog::open_import_dialog;
 pub use self::sqlite::{
     detect_full_product, full_product_candidates, is_sqlite_database, read_bundle_from_sqlite,

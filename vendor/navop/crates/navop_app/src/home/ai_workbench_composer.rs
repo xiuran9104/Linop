@@ -600,7 +600,7 @@ mod tests {
         };
         run_git(&["init", "-q"]);
         run_git(&["config", "user.email", "tests@navop.invalid"]);
-        run_git(&["config", "user.name", "Navop Tests"]);
+        run_git(&["config", "user.name", "Linop Tests"]);
         std::fs::write(root.join("README.md"), "hello\n").expect("write README");
         run_git(&["add", "."]);
         run_git(&["commit", "-q", "-m", "init"]);

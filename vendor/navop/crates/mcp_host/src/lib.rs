@@ -194,11 +194,7 @@ pub fn current_toolset_enabled(cx: &App, toolset: McpToolset) -> bool {
 }
 
 /// 修改单个工具集并重启 server。
-pub fn set_toolset_enabled(
-    cx: &mut App,
-    toolset: McpToolset,
-    enabled: bool,
-) -> anyhow::Result<()> {
+pub fn set_toolset_enabled(cx: &mut App, toolset: McpToolset, enabled: bool) -> anyhow::Result<()> {
     AppSettings::update_and_save(cx, |settings| {
         set_toolset_fields(&mut settings.tool_exposure.mcp, toolset, enabled);
     });
@@ -208,7 +204,11 @@ pub fn set_toolset_enabled(
     start(cx, identity)
 }
 
-fn set_toolset_fields(toolsets: &mut ToolExposureToolsetSettings, toolset: McpToolset, enabled: bool) {
+fn set_toolset_fields(
+    toolsets: &mut ToolExposureToolsetSettings,
+    toolset: McpToolset,
+    enabled: bool,
+) {
     match toolset {
         McpToolset::Terminal => {
             toolsets.terminal = enabled;

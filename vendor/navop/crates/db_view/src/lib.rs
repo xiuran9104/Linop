@@ -1,8 +1,8 @@
 rust_i18n::i18n!("locales", fallback = "en");
 
+mod auto_session;
 pub mod common;
 pub mod compare;
-mod auto_session;
 pub mod connection_form_window;
 pub mod database_objects_tab;
 #[cfg(test)]
@@ -30,9 +30,9 @@ mod object_list_selection;
 pub mod search_shortcut;
 pub mod settings;
 mod sidebar;
-pub mod sql_editor;
 #[cfg(test)]
 mod sql_cache_runtime_contract_tests;
+pub mod sql_editor;
 #[cfg(test)]
 mod sql_editor_completion_tests;
 mod sql_editor_definition;

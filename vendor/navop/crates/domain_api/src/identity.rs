@@ -25,7 +25,7 @@ impl AppIdentity {
     /// 全量版沿用既有身份，避免老用户迁移数据目录与 keychain。
     pub const FULL: Self = Self {
         app_id: "navop",
-        display_name: "Navop",
+        display_name: "Linop",
         bundle_id: "com.onetcli.app",
         binary_name: "navop",
         data_dir_name: "navop",
@@ -43,7 +43,7 @@ impl AppIdentity {
 
     pub const SHELL: Self = Self {
         app_id: "navop-shell",
-        display_name: "Navop Shell",
+        display_name: "Linop Shell",
         bundle_id: "com.navop.shell",
         binary_name: "navop-shell",
         data_dir_name: "navop-shell",

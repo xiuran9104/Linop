@@ -1864,7 +1864,9 @@ async fn reported_token_usage_updates_session_context_tokens() {
 
 #[tokio::test]
 async fn absent_token_usage_leaves_session_context_tokens_unset() {
-    let model = Arc::new(MockModelClient::new([ModelResponse::text("没有计量的回答。")]));
+    let model = Arc::new(MockModelClient::new([ModelResponse::text(
+        "没有计量的回答。",
+    )]));
     let runtime = Runtime::new(RuntimeServices::new(
         model,
         Arc::new(ToolRouter::new(ToolRegistry::new())),

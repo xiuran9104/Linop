@@ -9887,10 +9887,7 @@ mod local_volume_wiring_tests {
             body.contains("local_volume::local_volumes()"),
             "打开下拉时重新枚举卷，插拔磁盘要能看到"
         );
-        assert!(
-            body.contains("dropdown_caret"),
-            "触发按钮要带下拉指示"
-        );
+        assert!(body.contains("dropdown_caret"), "触发按钮要带下拉指示");
     }
 
     #[test]

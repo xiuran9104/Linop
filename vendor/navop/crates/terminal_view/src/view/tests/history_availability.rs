@@ -160,8 +160,9 @@ fn suggestion_popup_opacity_travels_from_the_settings_panel_to_the_dropdown() {
 
     let settings = include_str!("../../settings.rs");
     assert!(
-        settings
-            .contains("settings.terminal_suggestion_popup_opacity = next.suggestion_popup_opacity;")
+        settings.contains(
+            "settings.terminal_suggestion_popup_opacity = next.suggestion_popup_opacity;"
+        )
     );
 
     let appearance = include_str!("../appearance.rs");

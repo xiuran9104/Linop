@@ -393,7 +393,7 @@ fn about_group() -> SettingGroup {
         .item(SettingItem::render(|_options, _window, _cx| {
             let name = crate::identity()
                 .map(|identity| identity.display_name)
-                .unwrap_or("Navop");
+                .unwrap_or("Linop");
             let app_id = crate::identity()
                 .map(|identity| identity.app_id)
                 .unwrap_or("navop");

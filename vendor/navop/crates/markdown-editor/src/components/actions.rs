@@ -518,9 +518,20 @@ fn load_dynamic_keybinding<A: gpui::Action>(
     context: Option<&str>,
     cx: &App,
 ) -> KeyBinding {
-    let context_predicate = context
-        .map(|context| gpui::KeyBindingContextPredicate::parse(context).unwrap().into());
-    KeyBinding::load(keystrokes, Box::new(action), context_predicate, false, None, cx).unwrap()
+    let context_predicate = context.map(|context| {
+        gpui::KeyBindingContextPredicate::parse(context)
+            .unwrap()
+            .into()
+    });
+    KeyBinding::load(
+        keystrokes,
+        Box::new(action),
+        context_predicate,
+        false,
+        None,
+        cx,
+    )
+    .unwrap()
 }
 
 pub(crate) fn normalize_shortcut_keys(keys: &[String]) -> Option<Vec<String>> {
@@ -686,8 +697,12 @@ fn key_binding_for(
         ShortcutCommand::Newline => load_dynamic_keybinding(key, Newline, context, cx),
         ShortcutCommand::DeleteBack => load_dynamic_keybinding(key, DeleteBack, context, cx),
         ShortcutCommand::Delete => load_dynamic_keybinding(key, Delete, context, cx),
-        ShortcutCommand::WordDeleteBack => load_dynamic_keybinding(key, WordDeleteBack, context, cx),
-        ShortcutCommand::WordDeleteForward => load_dynamic_keybinding(key, WordDeleteForward, context, cx),
+        ShortcutCommand::WordDeleteBack => {
+            load_dynamic_keybinding(key, WordDeleteBack, context, cx)
+        }
+        ShortcutCommand::WordDeleteForward => {
+            load_dynamic_keybinding(key, WordDeleteForward, context, cx)
+        }
         ShortcutCommand::FocusPrev => load_dynamic_keybinding(key, FocusPrev, context, cx),
         ShortcutCommand::FocusNext => load_dynamic_keybinding(key, FocusNext, context, cx),
         ShortcutCommand::MoveLeft => load_dynamic_keybinding(key, MoveLeft, context, cx),
@@ -704,8 +719,12 @@ fn key_binding_for(
         ShortcutCommand::JumpToBottom => load_dynamic_keybinding(key, JumpToBottom, context, cx),
         ShortcutCommand::SelectLeft => load_dynamic_keybinding(key, SelectLeft, context, cx),
         ShortcutCommand::SelectRight => load_dynamic_keybinding(key, SelectRight, context, cx),
-        ShortcutCommand::WordSelectLeft => load_dynamic_keybinding(key, WordSelectLeft, context, cx),
-        ShortcutCommand::WordSelectRight => load_dynamic_keybinding(key, WordSelectRight, context, cx),
+        ShortcutCommand::WordSelectLeft => {
+            load_dynamic_keybinding(key, WordSelectLeft, context, cx)
+        }
+        ShortcutCommand::WordSelectRight => {
+            load_dynamic_keybinding(key, WordSelectRight, context, cx)
+        }
         ShortcutCommand::SelectHome => load_dynamic_keybinding(key, SelectHome, context, cx),
         ShortcutCommand::SelectEnd => load_dynamic_keybinding(key, SelectEnd, context, cx),
         ShortcutCommand::SelectAll => load_dynamic_keybinding(key, SelectAll, context, cx),
@@ -715,8 +734,12 @@ fn key_binding_for(
         ShortcutCommand::Undo => load_dynamic_keybinding(key, Undo, context, cx),
         ShortcutCommand::Redo => load_dynamic_keybinding(key, Redo, context, cx),
         ShortcutCommand::BoldSelection => load_dynamic_keybinding(key, BoldSelection, context, cx),
-        ShortcutCommand::ItalicSelection => load_dynamic_keybinding(key, ItalicSelection, context, cx),
-        ShortcutCommand::UnderlineSelection => load_dynamic_keybinding(key, UnderlineSelection, context, cx),
+        ShortcutCommand::ItalicSelection => {
+            load_dynamic_keybinding(key, ItalicSelection, context, cx)
+        }
+        ShortcutCommand::UnderlineSelection => {
+            load_dynamic_keybinding(key, UnderlineSelection, context, cx)
+        }
         ShortcutCommand::StrikethroughSelection => {
             load_dynamic_keybinding(key, StrikethroughSelection, context, cx)
         }
@@ -728,20 +751,34 @@ fn key_binding_for(
         ShortcutCommand::SetHeading4 => load_dynamic_keybinding(key, SetHeading4, context, cx),
         ShortcutCommand::SetHeading5 => load_dynamic_keybinding(key, SetHeading5, context, cx),
         ShortcutCommand::SetHeading6 => load_dynamic_keybinding(key, SetHeading6, context, cx),
-        ShortcutCommand::ToggleBulletList => load_dynamic_keybinding(key, ToggleBulletList, context, cx),
-        ShortcutCommand::ToggleOrderedList => load_dynamic_keybinding(key, ToggleOrderedList, context, cx),
-        ShortcutCommand::ToggleTaskList => load_dynamic_keybinding(key, ToggleTaskList, context, cx),
+        ShortcutCommand::ToggleBulletList => {
+            load_dynamic_keybinding(key, ToggleBulletList, context, cx)
+        }
+        ShortcutCommand::ToggleOrderedList => {
+            load_dynamic_keybinding(key, ToggleOrderedList, context, cx)
+        }
+        ShortcutCommand::ToggleTaskList => {
+            load_dynamic_keybinding(key, ToggleTaskList, context, cx)
+        }
         ShortcutCommand::ToggleQuote => load_dynamic_keybinding(key, ToggleQuote, context, cx),
-        ShortcutCommand::ToggleCodeBlock => load_dynamic_keybinding(key, ToggleCodeBlock, context, cx),
+        ShortcutCommand::ToggleCodeBlock => {
+            load_dynamic_keybinding(key, ToggleCodeBlock, context, cx)
+        }
         ShortcutCommand::MoveBlockUp => load_dynamic_keybinding(key, MoveBlockUp, context, cx),
         ShortcutCommand::MoveBlockDown => load_dynamic_keybinding(key, MoveBlockDown, context, cx),
-        ShortcutCommand::DuplicateBlock => load_dynamic_keybinding(key, DuplicateBlock, context, cx),
+        ShortcutCommand::DuplicateBlock => {
+            load_dynamic_keybinding(key, DuplicateBlock, context, cx)
+        }
         ShortcutCommand::DeleteBlock => load_dynamic_keybinding(key, DeleteBlock, context, cx),
         ShortcutCommand::IndentBlock => load_dynamic_keybinding(key, IndentBlock, context, cx),
         ShortcutCommand::OutdentBlock => load_dynamic_keybinding(key, OutdentBlock, context, cx),
         ShortcutCommand::ExitCodeBlock => load_dynamic_keybinding(key, ExitCodeBlock, context, cx),
-        ShortcutCommand::DismissTransientUi => load_dynamic_keybinding(key, DismissTransientUi, context, cx),
-        ShortcutCommand::ToggleViewMode => load_dynamic_keybinding(key, ToggleViewMode, context, cx),
+        ShortcutCommand::DismissTransientUi => {
+            load_dynamic_keybinding(key, DismissTransientUi, context, cx)
+        }
+        ShortcutCommand::ToggleViewMode => {
+            load_dynamic_keybinding(key, ToggleViewMode, context, cx)
+        }
     }
 }
 

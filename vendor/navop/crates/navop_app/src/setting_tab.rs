@@ -658,11 +658,7 @@ impl SettingsPanel {
     /// 快捷键、LLM 提供商 → 账户、关于。数据库与终端是日常最常用的功能，放在前面；
     /// 账户与关于收尾。领域页来自注册表，数量随参与编译的领域变化，所以同步页的
     /// 绝对下标要在拼接完之后才算得出来。
-    fn setting_pages(
-        &mut self,
-        _window: &mut Window,
-        cx: &mut App,
-    ) -> (Vec<SettingPage>, usize) {
+    fn setting_pages(&mut self, _window: &mut Window, cx: &mut App) -> (Vec<SettingPage>, usize) {
         let llm_view = self.llm_providers_view.clone();
         let acp_view = self.acp_agents_view.clone();
         let default_settings = AppSettings::default();

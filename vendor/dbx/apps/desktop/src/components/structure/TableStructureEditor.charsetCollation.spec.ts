@@ -1,0 +1,938 @@
+// @vitest-environment happy-dom
+
+import { createApp, h, KeepAlive, nextTick, ref, type App, type Ref } from "vue";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  connection: {
+    id: "structure-charset-test",
+    name: "MySQL",
+    db_type: "mysql",
+    driver_profile: "mysql",
+    driver_label: "MySQL",
+  },
+  ensureConnected: vi.fn(),
+  executeQuery: vi.fn(),
+  listDataTypes: vi.fn(),
+  buildTableStructureChangeSql: vi.fn(),
+  buildCreateTableSql: vi.fn(),
+  buildMysqlAutoIncrementSql: vi.fn(),
+  getMysqlTableAutoIncrement: vi.fn(),
+  executeBatch: vi.fn(),
+  updateEditorSettings: vi.fn(),
+  loadObjectDdl: vi.fn(),
+  invalidateObjectDdl: vi.fn(),
+  loadObjectMetadataFacet: vi.fn(),
+  invalidateObjectMetadataCache: vi.fn(),
+  invalidateTableMetadataCache: vi.fn(),
+  toast: vi.fn(),
+  updateDraft: vi.fn(),
+}));
+
+vi.mock("vue-i18n", async (original) => ({ ...(await original<typeof import("vue-i18n")>()), useI18n: () => ({ t: (key: string) => key }) }));
+
+vi.mock("@lucide/vue", async () => {
+  const { defineComponent, h } = await import("vue");
+  const Icon = defineComponent({ name: "Icon", setup: () => () => h("span") });
+  return {
+    AlertTriangle: Icon,
+    Check: Icon,
+    ChevronDown: Icon,
+    ChevronUp: Icon,
+    ClipboardList: Icon,
+    Copy: Icon,
+    Database: Icon,
+    Info: Icon,
+    Keyboard: Icon,
+    KeyRound: Icon,
+    ListChevronsUpDown: Icon,
+    Loader2: Icon,
+    Maximize2: Icon,
+    Pencil: Icon,
+    Plus: Icon,
+    RefreshCw: Icon,
+    Rows3: Icon,
+    Save: Icon,
+    Search: Icon,
+    Settings: Icon,
+    SlidersHorizontal: Icon,
+    Trash2: Icon,
+    UserRound: Icon,
+    X: Icon,
+  };
+});
+
+vi.mock("@/components/ui/button", async () => {
+  const { defineComponent, h } = await import("vue");
+  return {
+    Button: defineComponent({
+      name: "Button",
+      inheritAttrs: false,
+      setup:
+        (_props, { attrs, slots }) =>
+        () =>
+          h("button", attrs, slots.default?.()),
+    }),
+  };
+});
+vi.mock("@/components/ui/input", async () => {
+  const { defineComponent, h } = await import("vue");
+  return {
+    Input: defineComponent({
+      name: "Input",
+      inheritAttrs: false,
+      props: { modelValue: { type: [String, Number], default: "" } },
+      emits: ["update:modelValue"],
+      setup:
+        (props, { attrs, emit }) =>
+        () =>
+          h("input", {
+            ...attrs,
+            value: props.modelValue,
+            onInput: (event: Event) => emit("update:modelValue", (event.target as HTMLInputElement).value),
+          }),
+    }),
+  };
+});
+vi.mock("@/components/ui/badge", async () => {
+  const { defineComponent, h } = await import("vue");
+  return {
+    Badge: defineComponent({
+      name: "Badge",
+      inheritAttrs: false,
+      setup:
+        (_props, { attrs, slots }) =>
+        () =>
+          h("span", attrs, slots.default?.()),
+    }),
+  };
+});
+vi.mock("@/components/ui/tabs", async () => {
+  const { defineComponent, h } = await import("vue");
+  const Div = defineComponent({
+    inheritAttrs: false,
+    setup:
+      (_props, { attrs, slots }) =>
+      () =>
+        h("div", attrs, slots.default?.()),
+  });
+  const Button = defineComponent({
+    inheritAttrs: false,
+    setup:
+      (_props, { attrs, slots }) =>
+      () =>
+        h("button", attrs, slots.default?.()),
+  });
+  return { Tabs: Div, TabsContent: Div, TabsList: Div, TabsTrigger: Button };
+});
+vi.mock("@/components/ui/dropdown-menu", async () => {
+  const { defineComponent, h } = await import("vue");
+  const Div = defineComponent({
+    inheritAttrs: false,
+    setup:
+      (_props, { attrs, slots }) =>
+      () =>
+        h("div", attrs, slots.default?.()),
+  });
+  const Button = defineComponent({
+    inheritAttrs: false,
+    setup:
+      (_props, { attrs, slots }) =>
+      () =>
+        h("button", attrs, slots.default?.()),
+  });
+  return { DropdownMenu: Div, DropdownMenuCheckboxItem: Div, DropdownMenuContent: Div, DropdownMenuItem: Button, DropdownMenuTrigger: Div };
+});
+vi.mock("@/components/ui/popover", async () => {
+  const { defineComponent, h } = await import("vue");
+  const Div = defineComponent({
+    inheritAttrs: false,
+    setup:
+      (_props, { attrs, slots }) =>
+      () =>
+        h("div", attrs, slots.default?.()),
+  });
+  return { Popover: Div, PopoverContent: Div, PopoverTrigger: Div };
+});
+vi.mock("@/components/ui/tooltip", async () => {
+  const { defineComponent, h } = await import("vue");
+  const Div = defineComponent({
+    inheritAttrs: false,
+    setup:
+      (_props, { attrs, slots }) =>
+      () =>
+        h("div", attrs, slots.default?.()),
+  });
+  return { Tooltip: Div, TooltipContent: Div, TooltipTrigger: Div };
+});
+vi.mock("@/components/ui/searchable-select", async () => {
+  const { defineComponent, h } = await import("vue");
+  return {
+    SearchableSelect: defineComponent({
+      name: "SearchableSelect",
+      inheritAttrs: false,
+      props: {
+        modelValue: { type: String, default: "" },
+        options: { type: Array, default: () => [] },
+        allowCustom: { type: Boolean, default: false },
+        clearable: { type: Boolean, default: false },
+      },
+      emits: ["update:modelValue"],
+      setup:
+        (props, { attrs, emit }) =>
+        () =>
+          h(
+            "select",
+            {
+              ...attrs,
+              value: props.modelValue,
+              "data-searchable-select": "true",
+              "data-model-value": props.modelValue,
+              "data-options": JSON.stringify(props.options),
+              "data-allow-custom": String(props.allowCustom),
+              onChange: (event: Event) => emit("update:modelValue", (event.target as HTMLSelectElement).value),
+              onKeydown: (event: KeyboardEvent) => {
+                if (props.clearable && ["Backspace", "Delete"].includes(event.key)) emit("update:modelValue", "");
+              },
+            },
+            [...new Set(["", props.modelValue, ...(props.options as string[])])].map((option) => h("option", { value: option }, option)),
+          ),
+    }),
+  };
+});
+vi.mock("@/components/ui/select", async () => {
+  const { defineComponent, h } = await import("vue");
+  const Div = defineComponent({
+    inheritAttrs: false,
+    setup:
+      (_props, { attrs, slots }) =>
+      () =>
+        h("div", attrs, slots.default?.()),
+  });
+  return { Select: Div, SelectContent: Div, SelectItem: Div, SelectTrigger: Div, SelectValue: Div };
+});
+
+vi.mock("@/stores/connectionStore", () => ({
+  useConnectionStore: () => ({
+    ensureConnected: mocks.ensureConnected,
+    connectionStateRevision: () => 1,
+    isCurrentConnectionStateRevision: () => true,
+    getConfig: (connectionId: string) => (connectionId === mocks.connection.id ? mocks.connection : undefined),
+  }),
+}));
+vi.mock("@/stores/productionSafetyStore", () => ({ useProductionSafetyStore: () => ({ requestConfirmation: vi.fn() }) }));
+vi.mock("@/stores/queryStore", () => ({ useQueryStore: () => ({ tableStructureRefreshVersion: () => 0 }) }));
+vi.mock("@/stores/historyStore", () => ({ useHistoryStore: () => ({ add: vi.fn() }) }));
+vi.mock("@/stores/settingsStore", () => ({
+  useSettingsStore: () => ({
+    editorSettings: { structureEditorDensity: "compact", sqlFormatter: {}, tableColumnTemplateFields: [], generateSqlQuoteIdentifiers: true },
+    updateEditorSettings: mocks.updateEditorSettings,
+  }),
+}));
+vi.mock("@/composables/useTheme", () => ({ useTheme: () => ({ isDark: { value: false } }) }));
+vi.mock("@/composables/useToast", () => ({ useToast: () => ({ toast: mocks.toast }) }));
+vi.mock("@/lib/sql/sqlHighlighter", () => ({ createShikiSqlHighlighter: vi.fn(async () => (sql: string) => sql) }));
+vi.mock("@/lib/metadata/objectDdlCache", () => ({
+  loadObjectDdl: mocks.loadObjectDdl,
+  invalidateObjectDdl: mocks.invalidateObjectDdl,
+}));
+vi.mock("@/lib/metadata/objectMetadataCache", () => ({ loadObjectMetadataFacet: mocks.loadObjectMetadataFacet, invalidateObjectMetadataCache: mocks.invalidateObjectMetadataCache }));
+vi.mock("@/lib/metadata/tableMetadataCache", () => ({ invalidateTableMetadataCache: mocks.invalidateTableMetadataCache }));
+vi.mock("@/lib/backend/api", () => ({
+  executeQuery: mocks.executeQuery,
+  listDataTypes: mocks.listDataTypes,
+  buildTableStructureChangeSql: mocks.buildTableStructureChangeSql,
+  buildCreateTableSql: mocks.buildCreateTableSql,
+  buildMysqlAutoIncrementSql: mocks.buildMysqlAutoIncrementSql,
+  getMysqlTableAutoIncrement: mocks.getMysqlTableAutoIncrement,
+  executeBatch: mocks.executeBatch,
+}));
+
+import TableStructureEditor from "@/components/structure/TableStructureEditor.vue";
+
+const mountedApps: App[] = [];
+let mountedEditor: { applyChanges: () => Promise<boolean> } | undefined;
+
+function draft(autoIncrement = false, counter?: { value?: string; originalValue?: string }) {
+  return {
+    initialized: true,
+    activeTab: "columns" as const,
+    newTableName: "",
+    tableComment: "",
+    originalTableComment: "",
+    mysqlAutoIncrementValue: counter?.value,
+    originalMysqlAutoIncrementValue: counter?.originalValue,
+    columns: [
+      {
+        id: "existing:id",
+        name: "id",
+        dataType: "VARCHAR",
+        isNullable: true,
+        defaultValue: "",
+        comment: "",
+        isPrimaryKey: false,
+        characterSet: "utf8mb3",
+        collation: "utf8mb3_uca1400_ai_ci",
+        extra: { autoIncrement },
+        original: {
+          name: "id",
+          data_type: "VARCHAR",
+          is_nullable: true,
+          column_default: null,
+          is_primary_key: false,
+          extra: autoIncrement ? "auto_increment" : null,
+          comment: null,
+        },
+        originalPosition: 0,
+        markedForDrop: false,
+      },
+    ],
+    indexes: [],
+    foreignKeys: [],
+    triggers: [],
+  };
+}
+
+async function mountEditor(autoIncrement = false, counter?: { value?: string; originalValue?: string }, draftOverride?: ReturnType<typeof draft> | null, createMode = false, active?: Ref<boolean>) {
+  mocks.ensureConnected.mockResolvedValue(undefined);
+  mocks.listDataTypes.mockResolvedValue([]);
+  mocks.buildTableStructureChangeSql.mockResolvedValue({ statements: [], warnings: [] });
+
+  const root = document.createElement("div");
+  document.body.append(root);
+  const editorProps = {
+    connectionId: mocks.connection.id,
+    database: "test",
+    schema: "test",
+    tableName: createMode ? "" : "users",
+    draft: draftOverride === null ? undefined : (draftOverride ?? draft(autoIncrement, counter)),
+    "onUpdate:draft": mocks.updateDraft,
+  };
+  const app = active
+    ? createApp({
+        render: () => h(KeepAlive, {}, { default: () => (active.value ? h(TableStructureEditor, { ...editorProps, ref: (editor) => (mountedEditor = editor as unknown as typeof mountedEditor) }) : null) }),
+      })
+    : createApp(TableStructureEditor, editorProps);
+  mountedApps.push(app);
+  const instance = app.mount(root);
+  if (!active) mountedEditor = instance as unknown as { applyChanges: () => Promise<boolean> };
+  await nextTick();
+  await Promise.resolve();
+  await nextTick();
+  return root;
+}
+
+function searchableSelectInColumn(root: HTMLElement, header: string): HTMLSelectElement {
+  const headerIndex = Array.from(root.querySelectorAll("thead th")).findIndex((cell) => cell.textContent?.trim() === header);
+  if (headerIndex < 0) throw new Error(`Missing ${header} column`);
+  const row = root.querySelector<HTMLElement>('[data-column-row-index="0"]');
+  const cell = row?.querySelectorAll("td")[headerIndex];
+  const select = cell?.querySelector<HTMLSelectElement>('[data-searchable-select="true"]');
+  if (!select) throw new Error(`Missing ${header} searchable select`);
+  return select;
+}
+
+function queryResult(columns: string[], rows: unknown[][]): { columns: string[]; rows: unknown[][]; affected_rows: number; execution_time_ms: number } {
+  return { columns, rows, affected_rows: 0, execution_time_ms: 1 };
+}
+
+function mockMysqlCharsetMetadata() {
+  mocks.executeQuery.mockImplementation(async (_connectionId, _database, sql: string) => {
+    if (sql === "SHOW CHARACTER SET") {
+      return queryResult(
+        ["Charset", "Default collation"],
+        [
+          ["utf8mb4", "utf8mb4_0900_ai_ci"],
+          ["utf8mb3", "utf8mb3_general_ci"],
+        ],
+      );
+    }
+    if (sql === "SHOW COLLATION") {
+      return queryResult(
+        ["Collation", "Charset", "Default"],
+        [
+          ["utf8mb4_0900_ai_ci", "utf8mb4", "Yes"],
+          ["utf8mb4_0900_as_cs", "utf8mb4", ""],
+          ["utf8mb4_bin", "utf8mb4", ""],
+          ["utf8mb3_general_ci", "utf8mb3", "Yes"],
+        ],
+      );
+    }
+    if (sql.includes("information_schema.TABLES")) return queryResult(["TABLE_COLLATION"], [["utf8mb3_general_ci"]]);
+    return queryResult([], []);
+  });
+}
+
+function newTableDraft() {
+  const value = draft();
+  value.newTableName = "users";
+  value.columns[0].characterSet = "";
+  value.columns[0].collation = "";
+  return value;
+}
+
+async function selectTableOption(root: HTMLElement, selector: string, value: string) {
+  const select = await vi.waitFor(() => {
+    const element = root.querySelector<HTMLSelectElement>(selector);
+    expect(element).not.toBeNull();
+    expect(element!.disabled).toBe(false);
+    expect(JSON.parse(element!.dataset.options ?? "[]")).toContain(value);
+    return element!;
+  });
+  select.value = value;
+  select.dispatchEvent(new Event("change", { bubbles: true }));
+  await nextTick();
+  expect(select.dataset.modelValue).toBe(value);
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.connection.db_type = "mysql";
+  mocks.connection.name = "MySQL";
+  mocks.connection.driver_label = "MySQL";
+  mocks.connection.driver_profile = "mysql";
+  mocks.executeQuery.mockResolvedValue(queryResult([], []));
+  mocks.loadObjectDdl.mockResolvedValue({ ddl: "CREATE TABLE users (id varchar(255))", cacheStatus: "remote" });
+  mocks.invalidateObjectDdl.mockResolvedValue(undefined);
+  mocks.loadObjectMetadataFacet.mockResolvedValue({ value: [], cacheStatus: "remote" });
+  mocks.buildCreateTableSql.mockResolvedValue({ statements: ["CREATE TABLE users (id INT PRIMARY KEY AUTO_INCREMENT);"], warnings: [] });
+  mocks.getMysqlTableAutoIncrement.mockResolvedValue("10");
+  mocks.buildMysqlAutoIncrementSql.mockImplementation(async ({ value }: { value: string }) => `ALTER TABLE \`test\`.\`users\` AUTO_INCREMENT = ${value};`);
+  mocks.executeBatch.mockResolvedValue({ affected_rows: 0 });
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  for (const app of mountedApps.splice(0)) app.unmount();
+  document.body.innerHTML = "";
+});
+
+describe("TableStructureEditor charset/collation column width", () => {
+  it.each(["starrocks", "mysql"])("hides MySQL charset and collation for StarRocks via %s", async (dbType) => {
+    mocks.connection.db_type = dbType;
+    mocks.connection.driver_profile = "starrocks";
+    const root = await mountEditor();
+    const headers = Array.from(root.querySelectorAll("thead th")).map((cell) => cell.textContent?.trim());
+    expect(headers).not.toContain("structureEditor.characterSet");
+    expect(headers).not.toContain("structureEditor.collation");
+    expect(mocks.executeQuery.mock.calls.some((call) => /SHOW (CHARACTER SET|COLLATION)/.test(String(call[2])))).toBe(false);
+  });
+
+  it("lets the charset trigger fill its resizable column instead of a fixed width cap", async () => {
+    const root = await mountEditor();
+    const charsetSelect = searchableSelectInColumn(root, "structureEditor.characterSet");
+
+    const triggerClass = charsetSelect.getAttribute("trigger-class") ?? "";
+    expect(triggerClass.split(",")).toContain("w-full");
+    expect(triggerClass.split(",")).not.toEqual(expect.arrayContaining(["w-20"]));
+  });
+
+  it("lets the collation trigger fill its resizable column instead of a fixed width cap", async () => {
+    const root = await mountEditor();
+    const collationSelect = searchableSelectInColumn(root, "structureEditor.collation");
+
+    const triggerClass = collationSelect.getAttribute("trigger-class") ?? "";
+    expect(triggerClass.split(",")).toContain("w-full");
+    expect(triggerClass.split(",")).not.toEqual(expect.arrayContaining(["w-28"]));
+  });
+});
+
+describe("TableStructureEditor MySQL table charset and collation", () => {
+  it("shows table-level charset and collation for a new MySQL table", async () => {
+    const root = await mountEditor(false, undefined, null, true);
+
+    expect(root.querySelector("[data-mysql-table-charset-select]")).not.toBeNull();
+    expect(root.querySelector("[data-mysql-table-collation-select]")).not.toBeNull();
+  });
+
+  it("marks charset-only edits to a blank new table as dirty until the options are cleared", async () => {
+    mockMysqlCharsetMetadata();
+    const root = await mountEditor(false, undefined, null, true);
+    const expectDraft = async (dirty: boolean, mysqlTableCharset: string, mysqlTableCollation: string) => {
+      await vi.waitFor(() => expect(mocks.updateDraft.mock.lastCall?.[0]).toMatchObject({ dirty, newTableName: "", columns: [], mysqlTableCharset, mysqlTableCollation }));
+    };
+    await expectDraft(false, "", "");
+
+    await selectTableOption(root, "[data-mysql-table-charset-select]", "utf8mb4");
+    await expectDraft(true, "utf8mb4", "");
+    await selectTableOption(root, "[data-mysql-table-collation-select]", "utf8mb4_0900_as_cs");
+    await expectDraft(true, "utf8mb4", "utf8mb4_0900_as_cs");
+
+    root.querySelector("[data-mysql-table-collation-select]")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }));
+    await expectDraft(true, "utf8mb4", "");
+    root.querySelector("[data-mysql-table-charset-select]")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }));
+    await expectDraft(false, "", "");
+  });
+
+  it("loads server charset and collation metadata when creating a MySQL table", async () => {
+    mockMysqlCharsetMetadata();
+    const root = await mountEditor(false, undefined, newTableDraft(), true);
+
+    await vi.waitFor(() => expect(mocks.executeQuery).toHaveBeenCalledWith(mocks.connection.id, "test", "SHOW CHARACTER SET"));
+    expect(mocks.executeQuery).toHaveBeenCalledWith(mocks.connection.id, "test", "SHOW COLLATION");
+    await selectTableOption(root, "[data-mysql-table-charset-select]", "utf8mb4");
+    await vi.waitFor(() => {
+      const collationSelect = root.querySelector<HTMLSelectElement>("[data-mysql-table-collation-select]")!;
+      expect(JSON.parse(collationSelect.dataset.options ?? "[]")).toEqual(["utf8mb4_0900_ai_ci", "utf8mb4_0900_as_cs", "utf8mb4_bin"]);
+    });
+  });
+
+  it("passes selected table options to the CREATE preview and executes that preview", async () => {
+    mockMysqlCharsetMetadata();
+    const sql = "CREATE TABLE `users` (`id` varchar(255)) DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_as_cs;";
+    mocks.buildCreateTableSql.mockResolvedValue({ statements: [sql], warnings: [] });
+    const root = await mountEditor(false, undefined, newTableDraft(), true);
+
+    await selectTableOption(root, "[data-mysql-table-charset-select]", "utf8mb4");
+    await selectTableOption(root, "[data-mysql-table-collation-select]", "utf8mb4_0900_as_cs");
+    await vi.waitFor(() =>
+      expect(mocks.buildCreateTableSql).toHaveBeenLastCalledWith(expect.objectContaining({ tableName: "users" }), undefined, {
+        mysqlTableCharset: { charset: "utf8mb4", collation: "utf8mb4_0900_as_cs" },
+      }),
+    );
+    const preview = await vi.waitFor(() => {
+      const text = root.querySelector("pre")?.textContent;
+      expect(text).toContain("CHARACTER SET = utf8mb4");
+      expect(text).toContain("COLLATE = utf8mb4_0900_as_cs");
+      return text!;
+    });
+
+    await expect(mountedEditor?.applyChanges()).resolves.toBe(true);
+    expect(mocks.executeBatch).toHaveBeenCalledWith(mocks.connection.id, "test", [preview], "test", expect.any(Number), false);
+    expect(mocks.buildTableStructureChangeSql).not.toHaveBeenCalled();
+  });
+
+  it("leaves new table options unset so CREATE inherits the database defaults", async () => {
+    mockMysqlCharsetMetadata();
+    const root = await mountEditor(false, undefined, newTableDraft(), true);
+
+    await vi.waitFor(() => expect(mocks.executeQuery).toHaveBeenCalledWith(mocks.connection.id, "test", "SHOW COLLATION"));
+    await vi.waitFor(() => expect(mocks.buildCreateTableSql).toHaveBeenCalled());
+    expect(root.querySelector<HTMLSelectElement>("[data-mysql-table-charset-select]")?.dataset.modelValue).toBe("");
+    expect(root.querySelector<HTMLSelectElement>("[data-mysql-table-collation-select]")?.dataset.modelValue).toBe("");
+    expect(mocks.buildCreateTableSql).toHaveBeenLastCalledWith(expect.objectContaining({ tableName: "users" }), undefined, undefined);
+    expect(mocks.executeQuery.mock.calls.some((call) => String(call[2]).includes("information_schema.TABLES"))).toBe(false);
+
+    await expect(mountedEditor?.applyChanges()).resolves.toBe(true);
+    expect(mocks.executeBatch.mock.calls[0][2].join("\n")).not.toMatch(/CHARACTER SET|COLLATE/i);
+  });
+
+  it("clears new table options and disables collation until a charset is selected", async () => {
+    mockMysqlCharsetMetadata();
+    const root = await mountEditor(false, undefined, newTableDraft(), true);
+    const charsetSelect = root.querySelector<HTMLSelectElement>("[data-mysql-table-charset-select]")!;
+    const collationSelect = root.querySelector<HTMLSelectElement>("[data-mysql-table-collation-select]")!;
+    expect(collationSelect.disabled).toBe(true);
+
+    await selectTableOption(root, "[data-mysql-table-charset-select]", "utf8mb4");
+    await selectTableOption(root, "[data-mysql-table-collation-select]", "utf8mb4_0900_as_cs");
+    collationSelect.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }));
+    await vi.waitFor(() =>
+      expect(mocks.buildCreateTableSql).toHaveBeenLastCalledWith(expect.any(Object), undefined, {
+        mysqlTableCharset: { charset: "utf8mb4", collation: undefined },
+      }),
+    );
+    expect(collationSelect.dataset.modelValue).toBe("");
+    expect(collationSelect.disabled).toBe(false);
+
+    await selectTableOption(root, "[data-mysql-table-collation-select]", "utf8mb4_0900_as_cs");
+    charsetSelect.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true }));
+    await vi.waitFor(() => expect(mocks.buildCreateTableSql).toHaveBeenLastCalledWith(expect.any(Object), undefined, undefined));
+    expect(charsetSelect.dataset.modelValue).toBe("");
+    expect(collationSelect.dataset.modelValue).toBe("");
+    expect(collationSelect.disabled).toBe(true);
+  });
+
+  it("drops an incompatible collation when the new table charset changes", async () => {
+    mockMysqlCharsetMetadata();
+    const root = await mountEditor(false, undefined, newTableDraft(), true);
+    await selectTableOption(root, "[data-mysql-table-charset-select]", "utf8mb4");
+    await selectTableOption(root, "[data-mysql-table-collation-select]", "utf8mb4_0900_as_cs");
+
+    await selectTableOption(root, "[data-mysql-table-charset-select]", "utf8mb3");
+
+    expect(root.querySelector<HTMLSelectElement>("[data-mysql-table-collation-select]")?.dataset.modelValue).toBe("");
+    await vi.waitFor(() =>
+      expect(mocks.buildCreateTableSql).toHaveBeenLastCalledWith(expect.any(Object), undefined, {
+        mysqlTableCharset: { charset: "utf8mb3", collation: undefined },
+      }),
+    );
+  });
+
+  it("preserves a compatible collation when switching between utf8 and utf8mb3 aliases", async () => {
+    mockMysqlCharsetMetadata();
+    const value = { ...newTableDraft(), mysqlTableCharset: "utf8", mysqlTableCollation: "utf8mb3_general_ci" };
+    const root = await mountEditor(false, undefined, value, true);
+
+    await selectTableOption(root, "[data-mysql-table-charset-select]", "utf8mb3");
+
+    expect(root.querySelector<HTMLSelectElement>("[data-mysql-table-collation-select]")?.dataset.modelValue).toBe("utf8mb3_general_ci");
+    await vi.waitFor(() =>
+      expect(mocks.buildCreateTableSql).toHaveBeenLastCalledWith(expect.any(Object), undefined, {
+        mysqlTableCharset: { charset: "utf8mb3", collation: "utf8mb3_general_ci" },
+      }),
+    );
+  });
+
+  it("retries failed metadata on reactivation and reuses the successful server list", async () => {
+    mockMysqlCharsetMetadata();
+    const successfulQuery = mocks.executeQuery.getMockImplementation()!;
+    let serverAvailable = false;
+    mocks.executeQuery.mockImplementation(async (...args) => {
+      if (!serverAvailable && /^SHOW (CHARACTER SET|COLLATION)$/.test(String(args[2]))) throw new Error("metadata unavailable");
+      return successfulQuery(...args);
+    });
+    const active = ref(true);
+    const root = await mountEditor(false, undefined, newTableDraft(), true, active);
+    await selectTableOption(root, "[data-mysql-table-charset-select]", "utf8mb4");
+    const fallbackOptions = JSON.parse(root.querySelector<HTMLSelectElement>("[data-mysql-table-collation-select]")!.dataset.options ?? "[]");
+    expect(fallbackOptions).toContain("utf8mb4_bin");
+    expect(fallbackOptions).not.toContain("utf8mb4_0900_as_cs");
+
+    active.value = false;
+    await nextTick();
+    serverAvailable = true;
+    active.value = true;
+    await nextTick();
+
+    await vi.waitFor(() => {
+      const options = JSON.parse(root.querySelector<HTMLSelectElement>("[data-mysql-table-collation-select]")!.dataset.options ?? "[]");
+      expect(options).toContain("utf8mb4_0900_as_cs");
+    });
+    const queryCount = () => mocks.executeQuery.mock.calls.filter((call) => call[2] === "SHOW COLLATION").length;
+    expect(queryCount()).toBe(2);
+    active.value = false;
+    await nextTick();
+    active.value = true;
+    await nextTick();
+    await Promise.resolve();
+    expect(queryCount()).toBe(2);
+  });
+
+  it("restores new table selections and still loads the server options", async () => {
+    mockMysqlCharsetMetadata();
+    const value = { ...newTableDraft(), mysqlTableCharset: "utf8mb4", mysqlTableCollation: "utf8mb4_0900_as_cs" };
+    const root = await mountEditor(false, undefined, value, true);
+
+    await vi.waitFor(() => expect(mocks.executeQuery).toHaveBeenCalledWith(mocks.connection.id, "test", "SHOW COLLATION"));
+    expect(root.querySelector<HTMLSelectElement>("[data-mysql-table-charset-select]")?.dataset.modelValue).toBe("utf8mb4");
+    expect(root.querySelector<HTMLSelectElement>("[data-mysql-table-collation-select]")?.dataset.modelValue).toBe("utf8mb4_0900_as_cs");
+    await vi.waitFor(() =>
+      expect(mocks.buildCreateTableSql).toHaveBeenLastCalledWith(expect.objectContaining({ tableName: "users" }), undefined, {
+        mysqlTableCharset: { charset: "utf8mb4", collation: "utf8mb4_0900_as_cs" },
+      }),
+    );
+  });
+
+  it("does not carry table selections into a newly opened blank create editor", async () => {
+    mockMysqlCharsetMetadata();
+    const previousRoot = await mountEditor(false, undefined, newTableDraft(), true);
+    await selectTableOption(previousRoot, "[data-mysql-table-charset-select]", "utf8mb4");
+    await selectTableOption(previousRoot, "[data-mysql-table-collation-select]", "utf8mb4_0900_as_cs");
+    mountedApps.pop()!.unmount();
+    previousRoot.remove();
+    mocks.buildCreateTableSql.mockClear();
+
+    const root = await mountEditor(false, undefined, newTableDraft(), true);
+
+    expect(root.querySelector<HTMLSelectElement>("[data-mysql-table-charset-select]")?.dataset.modelValue).toBe("");
+    expect(root.querySelector<HTMLSelectElement>("[data-mysql-table-collation-select]")?.dataset.modelValue).toBe("");
+    await vi.waitFor(() => expect(mocks.buildCreateTableSql).toHaveBeenLastCalledWith(expect.any(Object), undefined, undefined));
+  });
+
+  it("loads complete server options for an existing table restored with table defaults", async () => {
+    mockMysqlCharsetMetadata();
+    const value = {
+      ...draft(),
+      mysqlTableCharset: "utf8mb4",
+      originalMysqlTableCharset: "utf8mb4",
+      mysqlTableCollation: "utf8mb4_0900_ai_ci",
+      originalMysqlTableCollation: "utf8mb4_0900_ai_ci",
+    };
+    const root = await mountEditor(false, undefined, value);
+
+    await vi.waitFor(() => expect(mocks.executeQuery).toHaveBeenCalledWith(mocks.connection.id, "test", "SHOW COLLATION"));
+    await selectTableOption(root, "[data-mysql-table-collation-select]", "utf8mb4_0900_as_cs");
+    await vi.waitFor(() =>
+      expect(mocks.buildTableStructureChangeSql).toHaveBeenLastCalledWith(expect.objectContaining({ tableName: "users" }), undefined, {
+        charset: "utf8mb4",
+        collation: "utf8mb4_0900_as_cs",
+      }),
+    );
+    expect(mocks.buildCreateTableSql).not.toHaveBeenCalled();
+  });
+
+  it("loads the table defaults and previews only the selected table-default change", async () => {
+    mocks.executeQuery.mockImplementation(async (_connectionId, _database, sql: string) => {
+      if (sql === "SHOW CHARACTER SET") {
+        return queryResult(
+          ["Charset", "Default collation"],
+          [
+            ["utf8mb4", "utf8mb4_0900_ai_ci"],
+            ["utf8mb3", "utf8mb3_general_ci"],
+          ],
+        );
+      }
+      if (sql === "SHOW COLLATION") {
+        return queryResult(
+          ["Collation", "Charset", "Default"],
+          [
+            ["utf8mb4_0900_ai_ci", "utf8mb4", "Yes"],
+            ["utf8mb4_bin", "utf8mb4", ""],
+            ["utf8mb3_general_ci", "utf8mb3", "Yes"],
+          ],
+        );
+      }
+      if (sql.includes("information_schema.TABLES")) return queryResult(["TABLE_COLLATION"], [["utf8mb3_general_ci"]]);
+      return queryResult([], []);
+    });
+
+    const root = await mountEditor();
+    const charsetSelect = await vi.waitFor(() => {
+      const select = root.querySelector<HTMLSelectElement>("[data-mysql-table-charset-select]");
+      expect(select).not.toBeNull();
+      return select!;
+    });
+    await vi.waitFor(() => expect(charsetSelect.dataset.modelValue).toBe("utf8mb3"));
+    expect(root.querySelector<HTMLSelectElement>("[data-mysql-table-collation-select]")?.dataset.modelValue).toBe("utf8mb3_general_ci");
+    expect(JSON.parse(charsetSelect.dataset.options ?? "[]")).toContain("utf8mb4");
+
+    await selectTableOption(root, "[data-mysql-table-charset-select]", "utf8mb4");
+    await vi.waitFor(() =>
+      expect(mocks.buildTableStructureChangeSql).toHaveBeenLastCalledWith(expect.objectContaining({ tableName: "users" }), undefined, {
+        charset: "utf8mb4",
+        collation: undefined,
+      }),
+    );
+
+    await selectTableOption(root, "[data-mysql-table-collation-select]", "utf8mb4_bin");
+    await vi.waitFor(() =>
+      expect(mocks.buildTableStructureChangeSql).toHaveBeenLastCalledWith(expect.objectContaining({ tableName: "users" }), undefined, {
+        charset: "utf8mb4",
+        collation: "utf8mb4_bin",
+      }),
+    );
+  });
+});
+
+describe("TableStructureEditor MySQL AUTO_INCREMENT counter", () => {
+  it("loads and renders the server value as a decimal string only for an existing auto-increment column", async () => {
+    const root = await mountEditor(true);
+    await vi.waitFor(() => expect(mocks.getMysqlTableAutoIncrement).toHaveBeenCalledWith("structure-charset-test", "test", "users"));
+
+    const input = root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]");
+    expect(input?.value).toBe("10");
+    expect(input?.disabled).toBe(false);
+    expect(input?.classList.contains("structure-grid-control")).toBe(false);
+    expect(input?.classList.contains("font-mono")).toBe(true);
+    expect(input?.closest("td")).not.toBeNull();
+    expect(root.querySelector("[data-mysql-auto-increment-editor-trigger]")?.getAttribute("title")).toContain("structureEditor.editMysqlAutoIncrementValue");
+  });
+
+  it("loads and renders the counter for MariaDB connections", async () => {
+    mocks.connection.name = "MariaDB";
+    mocks.connection.driver_label = "MariaDB";
+    mocks.connection.driver_profile = "mariadb";
+
+    const root = await mountEditor(true);
+
+    await vi.waitFor(() => expect(mocks.getMysqlTableAutoIncrement).toHaveBeenCalledWith("structure-charset-test", "test", "users"));
+    expect(root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")?.value).toBe("10");
+    expect(root.querySelector("[data-mysql-auto-increment-editor-trigger]")).not.toBeNull();
+  });
+
+  it("loads an editable blank counter when auto-increment is checked before saving", async () => {
+    mocks.getMysqlTableAutoIncrement.mockResolvedValueOnce(null);
+    const root = await mountEditor(false);
+    expect(root.querySelector("[data-mysql-auto-increment-editor-trigger]")).toBeNull();
+
+    const autoIncrementLabel = Array.from(root.querySelectorAll("label")).find((label) => label.textContent?.includes("structureEditor.autoIncrement"));
+    const checkbox = autoIncrementLabel?.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(checkbox).toBeTruthy();
+    checkbox!.checked = true;
+    checkbox!.dispatchEvent(new Event("change", { bubbles: true }));
+
+    await vi.waitFor(() => expect(mocks.getMysqlTableAutoIncrement).toHaveBeenCalledWith("structure-charset-test", "test", "users"));
+    const input = root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]");
+    await vi.waitFor(() => expect(input?.disabled).toBe(false));
+    expect(input?.value).toBe("");
+  });
+
+  it("keeps a restored dirty blank-counter draft when the server has no counter", async () => {
+    mocks.getMysqlTableAutoIncrement.mockResolvedValueOnce(null);
+    const restoredDraft = draft(false, { value: "500", originalValue: "" });
+    restoredDraft.columns[0].extra.autoIncrement = true;
+    const root = await mountEditor(false, undefined, restoredDraft);
+
+    const input = root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]");
+    await vi.waitFor(() => expect(input?.value).toBe("500"));
+  });
+
+  it("accepts unsigned bigint digits and rejects non-decimal input without rewriting it", async () => {
+    const root = await mountEditor(true);
+    const input = root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")!;
+    await vi.waitFor(() => expect(input.value).toBe("10"));
+    expect(input.getAttribute("inputmode")).toBe("numeric");
+    expect(input.getAttribute("pattern")).toBe("[0-9]*");
+
+    const maxUnsignedBigint = "18446744073709551615";
+    input.value = maxUnsignedBigint;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await vi.waitFor(() => expect(mocks.buildMysqlAutoIncrementSql).toHaveBeenCalledWith(expect.objectContaining({ value: maxUnsignedBigint })));
+    mocks.buildMysqlAutoIncrementSql.mockClear();
+
+    for (const invalidValue of ["abc", "-1", "+1", "1.5", "1e3"]) {
+      input.value = invalidValue;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      expect(input.value).toBe(maxUnsignedBigint);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(mocks.buildMysqlAutoIncrementSql).not.toHaveBeenCalled();
+  });
+
+  it("refreshes a restored clean counter draft from the server", async () => {
+    mocks.getMysqlTableAutoIncrement.mockResolvedValueOnce("30");
+    const root = await mountEditor(true, { value: "10", originalValue: "10" });
+
+    await vi.waitFor(() => expect(root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")?.value).toBe("30"));
+    expect(mocks.buildMysqlAutoIncrementSql).not.toHaveBeenCalled();
+  });
+
+  it("keeps a restored dirty value while rebasing its server baseline", async () => {
+    mocks.getMysqlTableAutoIncrement.mockResolvedValueOnce("15");
+    const root = await mountEditor(true, { value: "20", originalValue: "10" });
+    const input = root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")!;
+
+    await vi.waitFor(() => expect(input.value).toBe("20"));
+    await vi.waitFor(() => expect(mocks.buildMysqlAutoIncrementSql).toHaveBeenCalledWith(expect.objectContaining({ value: "20" })));
+    mocks.buildMysqlAutoIncrementSql.mockClear();
+    input.value = "15";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(mocks.buildMysqlAutoIncrementSql).not.toHaveBeenCalled();
+  });
+
+  it("keeps NULL or failed optional metadata from enabling a counter edit", async () => {
+    mocks.getMysqlTableAutoIncrement.mockResolvedValueOnce(null);
+    const nullRoot = await mountEditor(true);
+    await vi.waitFor(() => expect(mocks.getMysqlTableAutoIncrement).toHaveBeenCalled());
+    expect(nullRoot.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")?.disabled).toBe(true);
+
+    for (const app of mountedApps.splice(0)) app.unmount();
+    document.body.innerHTML = "";
+    mocks.getMysqlTableAutoIncrement.mockRejectedValueOnce(new Error("permission denied"));
+    const errorRoot = await mountEditor(true);
+    await vi.waitFor(() => expect(errorRoot.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")?.title).toBe("permission denied"));
+    expect(mocks.buildMysqlAutoIncrementSql).not.toHaveBeenCalled();
+
+    const structureStatement = "ALTER TABLE `test`.`users` COMMENT = 'ordinary edit';";
+    mocks.buildTableStructureChangeSql.mockResolvedValue({ statements: [structureStatement], warnings: [] });
+    const commentInput = Array.from(errorRoot.querySelectorAll<HTMLInputElement>("input")).find((input) => !input.hasAttribute("data-mysql-auto-increment-counter"))!;
+    commentInput.value = "ordinary edit";
+    commentInput.dispatchEvent(new Event("input", { bubbles: true }));
+    await vi.waitFor(() => expect(mocks.buildTableStructureChangeSql).toHaveBeenCalled());
+    await vi.waitFor(() => expect(Array.from(errorRoot.querySelectorAll("button")).find((button) => button.textContent?.includes("structureEditor.apply"))?.disabled).toBe(false));
+    await expect(mountedEditor?.applyChanges()).resolves.toBe(true);
+    expect(mocks.executeBatch.mock.calls[mocks.executeBatch.mock.calls.length - 1]?.[2]).toEqual([structureStatement]);
+    expect(mocks.buildMysqlAutoIncrementSql).not.toHaveBeenCalled();
+  });
+
+  it("appends validated counter DDL and preserves the draft when execution fails", async () => {
+    const root = await mountEditor(true);
+    await vi.waitFor(() => expect(root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")?.value).toBe("10"));
+    const input = root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")!;
+    input.value = "9007199254740993";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await vi.waitFor(() => expect(mocks.buildMysqlAutoIncrementSql).toHaveBeenCalledWith(expect.objectContaining({ value: "9007199254740993" })));
+
+    mocks.executeBatch.mockRejectedValueOnce(new Error("ALTER command denied"));
+    await expect(mountedEditor?.applyChanges()).resolves.toBe(false);
+    await vi.waitFor(() => expect(root.textContent).toContain("ALTER command denied"));
+    expect(input.value).toBe("9007199254740993");
+  });
+
+  it("does not treat the requested value as persisted when the post-save metadata refresh fails", async () => {
+    const persistedColumn = draft(true).columns[0]!.original;
+    mocks.loadObjectMetadataFacet.mockImplementation(async (_request, facet: string) => ({
+      value: facet === "columns" ? [persistedColumn] : [],
+      cacheStatus: "remote",
+    }));
+    const root = await mountEditor(true);
+    await vi.waitFor(() => expect(root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")?.value).toBe("10"));
+    const input = root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")!;
+    input.value = "20";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await vi.waitFor(() => expect(mocks.buildMysqlAutoIncrementSql).toHaveBeenCalledWith(expect.objectContaining({ value: "20" })));
+    const metadataCallsBeforeSave = mocks.getMysqlTableAutoIncrement.mock.calls.length;
+    mocks.getMysqlTableAutoIncrement.mockRejectedValueOnce(new Error("refresh denied"));
+    mocks.buildMysqlAutoIncrementSql.mockClear();
+
+    await expect(mountedEditor?.applyChanges()).resolves.toBe(true);
+    await vi.waitFor(() => expect(mocks.getMysqlTableAutoIncrement.mock.calls.length).toBeGreaterThan(metadataCallsBeforeSave));
+    await vi.waitFor(() => expect(root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")?.title).toBe("refresh denied"));
+    expect(root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")?.value).toBe("20");
+    expect(mocks.buildMysqlAutoIncrementSql).not.toHaveBeenCalled();
+  });
+});
+
+describe("TableStructureEditor MySQL creation counter", () => {
+  function createDraft(value?: string) {
+    const result = draft(true, { value });
+    result.newTableName = "users";
+    result.columns[0].dataType = "INT";
+    result.columns[0].isPrimaryKey = true;
+    result.columns[0].isNullable = false;
+    return result;
+  }
+
+  it("starts blank and submits edits, clears and toggles without reading server metadata", async () => {
+    const root = await mountEditor(true, undefined, createDraft(), true);
+    const input = root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")!;
+    expect(input).not.toBeNull();
+    expect(input.disabled).toBe(false);
+    expect(input.value).toBe("");
+    expect(input.placeholder).toBe("1");
+    expect(root.textContent).toContain("structureEditor.mysqlAutoIncrementStartHint");
+    expect(root.textContent).not.toContain("contextMenu.mysqlAutoIncrementNonemptyHint");
+    await vi.waitFor(() => expect(mocks.buildCreateTableSql).toHaveBeenLastCalledWith(expect.objectContaining({ mysqlAutoIncrementValue: undefined }), undefined, undefined));
+    input.value = "66";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    await vi.waitFor(() => expect(mocks.buildCreateTableSql).toHaveBeenLastCalledWith(expect.objectContaining({ mysqlAutoIncrementValue: "66" }), undefined, undefined));
+    const label = Array.from(root.querySelectorAll("label")).find((label) => label.textContent?.includes("structureEditor.autoIncrement"))!;
+    const checkbox = label.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    await vi.waitFor(() => expect(root.querySelector("[data-mysql-auto-increment-editor-trigger]")).toBeNull());
+    await vi.waitFor(() => expect(mocks.buildCreateTableSql).toHaveBeenLastCalledWith(expect.objectContaining({ mysqlAutoIncrementValue: undefined }), undefined, undefined));
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change", { bubbles: true }));
+    await nextTick();
+    const restored = root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")!;
+    expect(restored.value).toBe("66");
+    restored.value = "";
+    restored.dispatchEvent(new Event("input", { bubbles: true }));
+    await vi.waitFor(() => expect(mocks.buildCreateTableSql).toHaveBeenLastCalledWith(expect.objectContaining({ mysqlAutoIncrementValue: undefined }), undefined, undefined));
+    expect(mocks.getMysqlTableAutoIncrement).not.toHaveBeenCalled();
+    expect(mocks.buildMysqlAutoIncrementSql).not.toHaveBeenCalled();
+  });
+
+  it("restores a creation draft without losing integer precision", async () => {
+    const value = "18446744073709551615";
+    const root = await mountEditor(true, undefined, createDraft(value), true);
+    await vi.waitFor(() => expect(mocks.buildCreateTableSql).toHaveBeenCalledWith(expect.objectContaining({ mysqlAutoIncrementValue: value }), undefined, undefined));
+    expect(root.querySelector<HTMLInputElement>("[data-mysql-auto-increment-counter]")?.value).toBe(value);
+    expect(mocks.getMysqlTableAutoIncrement).not.toHaveBeenCalled();
+  });
+});
+
+it("renders translated creation warnings and prevents execution", async () => {
+  const warning = 'AUTO_INCREMENT column "id" requires a supporting index (first key column for InnoDB).';
+  mocks.buildCreateTableSql.mockResolvedValue({ statements: [], warnings: [warning] });
+  const value = draft(true);
+  value.newTableName = "users";
+  const root = await mountEditor(true, undefined, value, true);
+  await vi.waitFor(() => expect(root.textContent).toContain("structureEditor.mysqlAutoIncrementRequiresIndex"));
+  expect(root.textContent).not.toContain(warning);
+  await expect(mountedEditor?.applyChanges()).resolves.toBe(false);
+  expect(mocks.executeBatch).not.toHaveBeenCalled();
+});

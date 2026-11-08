@@ -1,7 +1,7 @@
 //! 主密钥「修改」与「重置」弹窗——`navop_app` 侧兼容层
 //!
 //! 弹窗本体已下沉到 `app_kit::vault::dialogs`。这里保留原来的函数名与签名，
-//! 只在打开前注册 [`crate::master_key_flow`] 里的宿主钩子（Navop Cloud / 个人
+//! 只在打开前注册 [`crate::master_key_flow`] 里的宿主钩子（Linop Cloud / 个人
 //! 同步 / 笔记目录），保证 `app_kit` 侧后续执行修改或重置时能用到 main 的实现。
 
 use gpui::{App, Window};

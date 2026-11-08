@@ -49,7 +49,7 @@ mod window_visibility;
 #[cfg(any(target_os = "windows", test))]
 mod windows_single_instance;
 
-use crate::navop_app::NavopApp;
+use crate::navop_app::LinopApp;
 
 /// 共享应用初始化：三个产品 crate 的 `Product::init` 都调用它。
 pub use crate::navop_app::init as init_app;
@@ -70,7 +70,7 @@ pub struct AppAssets {
 
 pub(crate) const NAVOP_ICON_ASSET_PATH: &str = "navop/app-icon.png";
 
-/// Navop 自带品牌图标(TDengine/MQTT)。
+/// Linop 自带品牌图标(TDengine/MQTT)。
 ///
 /// 外部 gpui-component 的 `IconName` 无法在本仓库扩展变体,这些 SVG
 /// 以 include_bytes 内嵌并按路径对外提供(路径常量定义在 one-core)。
@@ -104,7 +104,7 @@ fn navop_brand_icon(path: &str) -> Option<std::borrow::Cow<'static, [u8]>> {
 
 /// 单实例失败提示的对话框标题：只在 Windows 上需要（release 无控制台）。
 #[cfg(target_os = "windows")]
-pub(crate) const NAVOP_WINDOW_TITLE: &str = "Navop";
+pub(crate) const NAVOP_WINDOW_TITLE: &str = "Linop";
 const DEFAULT_MAIN_WINDOW_WIDTH: f32 = 1800.0;
 const DEFAULT_MAIN_WINDOW_HEIGHT: f32 = 1260.0;
 const MAIN_WINDOW_DISPLAY_RATIO: f32 = 0.9;
@@ -548,8 +548,8 @@ where
         extension_runtime::set_current_host_version(version)
             .expect("product version must be valid semver");
         if let Err(error) = app_kit::bootstrap(&product, cx) {
-            tracing::error!(error = %error, "failed to initialize Navop application state");
-            eprintln!("Failed to initialize Navop application state: {error:#}");
+            tracing::error!(error = %error, "failed to initialize Linop application state");
+            eprintln!("Failed to initialize Linop application state: {error:#}");
             cx.quit();
             return;
         }
@@ -620,14 +620,14 @@ where
             let main_window = match cx.open_window(options, |window, cx| {
                 window.activate_window();
                 app_init::init_window_systems(window, cx);
-                // 托盘必须在主窗口 handle 保存之后、`NavopApp` 安装关闭
+                // 托盘必须在主窗口 handle 保存之后、`LinopApp` 安装关闭
                 // handler 之前初始化：关闭 handler 要按托盘可用性决定
                 // 「隐藏」还是「退出确认」。此处已在主线程且 GPUI 事件
                 // 循环已启动（macOS 的 NSStatusItem 要求如此）。
                 system_tray::init(cx);
                 update::schedule_update_check(cx);
                 extension_update::schedule_plugin_update_check(window, cx);
-                let view = cx.new(|cx| NavopApp::new(window, cx));
+                let view = cx.new(|cx| LinopApp::new(window, cx));
                 let root = cx.new(|cx| Root::new(view, window, cx));
                 system_tray::sync_sessions_from(cx);
                 // 主窗口内的 dialog 与右键菜单一样，都是 GPUI 的 deferred 浮层：
@@ -643,8 +643,8 @@ where
             }) {
                 Ok(window) => window,
                 Err(error) => {
-                    tracing::error!(error = %error, "failed to open the Navop main window");
-                    eprintln!("Failed to open the Navop main window: {error:#}");
+                    tracing::error!(error = %error, "failed to open the Linop main window");
+                    eprintln!("Failed to open the Linop main window: {error:#}");
                     let _ = cx.update(|cx| {
                         navop_app::shutdown_application_resources_and_quit(
                             cx,
@@ -714,7 +714,7 @@ where
     // 「窗口还在、消息循环已停、连 `TerminateProcess` 都打不进去」的状态，
     // 从表面看就是「关不掉」。记录这个里程碑，可以把「卡在应用/GPU 资源析构」
     // 与「卡在进程退出」两类问题区分开。
-    tracing::info!("Navop run loop returned; application resources released");
+    tracing::info!("Linop run loop returned; application resources released");
 }
 
 #[cfg(test)]
@@ -981,8 +981,8 @@ mod embedded_cli_removal_tests {
             .expect("startup request loop");
         let error_path = &source[open..open + request_loop];
 
-        assert!(error_path.contains("failed to open the Navop main window"));
-        assert!(error_path.contains("Failed to open the Navop main window: {error:#}"));
+        assert!(error_path.contains("failed to open the Linop main window"));
+        assert!(error_path.contains("Failed to open the Linop main window: {error:#}"));
         assert!(error_path.contains("shutdown_application_resources_and_quit"));
     }
 
@@ -1110,7 +1110,7 @@ mod embedded_cli_removal_tests {
 
         assert_eq!(Some("navop"), options.app_id.as_deref());
         assert_eq!(
-            Some("Navop"),
+            Some("Linop"),
             options
                 .titlebar
                 .as_ref()
@@ -1178,12 +1178,10 @@ mod native_driver_feature_contract_tests {
     fn standalone_products_only_enable_their_own_domain_feature() {
         let shell_manifest = include_str!("../../../apps/navop-shell/Cargo.toml");
         let data_manifest = include_str!("../../../apps/navop-data/Cargo.toml");
-        let shell_line =
-            app_shell_dependency_line(shell_manifest, "navop_app")
-                .expect("navop-shell depends on navop_app");
-        let data_line =
-            app_shell_dependency_line(data_manifest, "navop_app")
-                .expect("navop-data depends on navop_app");
+        let shell_line = app_shell_dependency_line(shell_manifest, "navop_app")
+            .expect("navop-shell depends on navop_app");
+        let data_line = app_shell_dependency_line(data_manifest, "navop_app")
+            .expect("navop-data depends on navop_app");
 
         assert!(shell_line.contains("default-features = false"));
         assert!(shell_line.contains("\"shell\""));
@@ -1336,7 +1334,7 @@ mod system_tray_lifecycle_contract_tests {
             .find(&["system_tray::", "init(cx);"].concat())
             .expect("system tray initialization");
         let close_handler = source
-            .find("NavopApp::new(window, cx)")
+            .find("LinopApp::new(window, cx)")
             .expect("application entity creation");
 
         assert!(window_systems < tray);

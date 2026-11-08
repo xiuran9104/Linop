@@ -119,14 +119,14 @@ fn open_connection_on_navop_window(
     cx: &mut App,
 ) -> Result<Value, String> {
     let target_window =
-        resolve_navop_window(cx).ok_or_else(|| "no Navop window is available".to_string())?;
+        resolve_navop_window(cx).ok_or_else(|| "no Linop window is available".to_string())?;
     let home_page = cx
         .try_global::<GlobalHomePage>()
         .ok_or_else(|| "home page is not initialized".to_string())?
         .home_page
         .clone();
     if home_page.read(cx).startup_master_key_lock_active(cx) {
-        return Err("Navop is locked; enter the master key in the app first".to_string());
+        return Err("Linop is locked; enter the master key in the app first".to_string());
     }
     let connection_id = connection.id;
     let connection_name = connection.name.clone();

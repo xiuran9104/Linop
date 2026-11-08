@@ -61,7 +61,7 @@ pub(super) fn claim_or_forward(
         Ok(true) => return Ok(SingleInstanceOutcome::Forwarded),
         Ok(false) => {
             return Err(SingleInstanceError::Forward(std::io::Error::other(
-                "正在运行的 Navop 实例拒绝了启动请求",
+                "正在运行的 Linop 实例拒绝了启动请求",
             )));
         }
         Err(error) => {

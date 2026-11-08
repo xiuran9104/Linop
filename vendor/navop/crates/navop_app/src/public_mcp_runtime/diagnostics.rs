@@ -24,8 +24,8 @@ impl ToolHandler for RuntimeStatusTool {
     fn descriptor(&self) -> ToolDescriptor {
         ToolDescriptor {
             id: RUNTIME_STATUS_TOOL.to_string(),
-            title: "Navop runtime status".to_string(),
-            description: "Read the running Navop application's public MCP compatibility and authoritative Tool Exposure group states. Use initialize for the current permission mode and tools/list for the actual available tool names and schemas; do not infer tools from the CLI package or Skill.".to_string(),
+            title: "Linop runtime status".to_string(),
+            description: "Read the running Linop application's public MCP compatibility and authoritative Tool Exposure group states. Use initialize for the current permission mode and tools/list for the actual available tool names and schemas; do not infer tools from the CLI package or Skill.".to_string(),
             input_schema: json!({
                 "type": "object",
                 "properties": {},
@@ -35,7 +35,7 @@ impl ToolHandler for RuntimeStatusTool {
             permissions: Vec::new(),
             mode: ToolMode::Deterministic,
             adapters: vec![ToolAdapter::Mcp, ToolAdapter::FunctionCalling],
-            annotations: ToolAnnotations::read_only("Navop runtime status"),
+            annotations: ToolAnnotations::read_only("Linop runtime status"),
         }
     }
 
@@ -45,7 +45,7 @@ impl ToolHandler for RuntimeStatusTool {
             Ok(ToolResult::structured(json!({
                 "contractVersion": 1,
                 "app": {
-                    "name": "Navop",
+                    "name": "Linop",
                     "version": env!("CARGO_PKG_VERSION")
                 },
                 "toolDiscovery": {

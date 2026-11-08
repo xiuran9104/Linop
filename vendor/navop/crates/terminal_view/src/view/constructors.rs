@@ -24,14 +24,7 @@ impl TerminalView {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Self {
-        Self::new_local_view(
-            config,
-            tab_index,
-            Some(title),
-            connection_icon,
-            window,
-            cx,
-        )
+        Self::new_local_view(config, tab_index, Some(title), connection_icon, window, cx)
     }
 
     /// `title` 为 `Some` 表示扩展声明的终端型连接:固定标题且可重启。

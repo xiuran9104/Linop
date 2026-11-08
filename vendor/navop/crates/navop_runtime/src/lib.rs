@@ -6,8 +6,8 @@ pub use runtime_redis::redis_tools;
 #[cfg(feature = "sftp")]
 pub use runtime_sftp::sftp_tools;
 
-pub use runtime_core::workspaces;
 pub use runtime_core::builtin_tool_registry_with_version;
+pub use runtime_core::workspaces;
 
 pub fn builtin_tool_registry() -> tool_runtime::ToolRegistry {
     builtin_tool_registry_with_version(env!("CARGO_PKG_VERSION"))

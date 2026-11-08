@@ -411,7 +411,7 @@ fn remove_block(text: &str, begin: &str, end: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        CODEX_BEGIN, CODEX_END, DEVELOPMENT_SERVER_NAME, DEV_CODEX_BEGIN, DEV_CODEX_END,
+        CODEX_BEGIN, CODEX_END, DEV_CODEX_BEGIN, DEV_CODEX_END, DEVELOPMENT_SERVER_NAME,
         SERVER_NAME, codex_markers_for, legacy_cleanup_for, server_name_for,
     };
 

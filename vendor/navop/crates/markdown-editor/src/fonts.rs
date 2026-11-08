@@ -16,8 +16,7 @@ pub const DEFAULT_BODY_STACK: &str = ".SystemUIFont";
 /// Default family list for application controls.
 pub const DEFAULT_UI_STACK: &str = ".SystemUIFont";
 /// Cross-platform default family list for code text.
-pub const DEFAULT_CODE_STACK: &str =
-    "SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace";
+pub const DEFAULT_CODE_STACK: &str = "SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace";
 
 /// Case-insensitive lookup of available font families with their original spelling.
 #[derive(Clone, Debug)]
@@ -340,8 +339,8 @@ impl FontSettings {
     /// Installs the local catalog and resolved fonts, using defaults on a parse error.
     pub fn init(cx: &mut App, preferences: FontPreferences) {
         let catalog = FontCatalog::from_names(cx.text_system().all_font_names());
-        let settings = Self::resolve(preferences, &catalog, std::env::consts::OS)
-            .unwrap_or_else(|_| {
+        let settings =
+            Self::resolve(preferences, &catalog, std::env::consts::OS).unwrap_or_else(|_| {
                 Self::resolve(FontPreferences::default(), &catalog, std::env::consts::OS)
                     .expect("default font stacks are valid")
             });
@@ -350,10 +349,7 @@ impl FontSettings {
     }
 
     /// Replaces global fonts only after all supplied stacks resolve successfully.
-    pub fn update(
-        cx: &mut App,
-        preferences: FontPreferences,
-    ) -> Result<(), FontStackParseError> {
+    pub fn update(cx: &mut App, preferences: FontPreferences) -> Result<(), FontStackParseError> {
         let catalog = FontCatalog::current(cx);
         let settings = Self::resolve(preferences, &catalog, std::env::consts::OS)?;
         cx.set_global(settings);
@@ -451,7 +447,10 @@ mod tests {
         let missing_only =
             ResolvedFontStack::resolve("Missing", &catalog, "windows", true).unwrap();
         assert!(missing_only.uses_system_default);
-        assert_eq!(missing_only.native_families.first().unwrap(), SYSTEM_UI_FONT);
+        assert_eq!(
+            missing_only.native_families.first().unwrap(),
+            SYSTEM_UI_FONT
+        );
         assert_eq!(
             missing_only.native_families.get(1).unwrap(),
             "Microsoft Himalaya"

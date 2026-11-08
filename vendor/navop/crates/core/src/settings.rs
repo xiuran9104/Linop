@@ -2342,10 +2342,9 @@ mod tests {
         LocalTerminalProfileKind, LocalTerminalProfileSettings, MAX_AI_REQUEST_TIMEOUT_SECS,
         MAX_CUSTOM_SYSTEM_PROMPT_CHARS, MAX_RECENT_WORKSPACE_ROOTS, MAX_REMEMBERED_ACP_SESSIONS,
         MIN_AI_REQUEST_TIMEOUT_SECS, MainWindowState, MasterKeyStorage, McpPermissionMode,
-        McpServerMode, PersonalSyncBackendKind, RemoteFileOpenMode, SqlFormatSettings,
-        SidebarPlacement, SqlIndentStyle, SqlKeywordCase, StartupDefaultPage, SyncProvider,
-        TableViewMode,
-        UpdateChannel, UpdateMirror, default_grid_font_fallback_families,
+        McpServerMode, PersonalSyncBackendKind, RemoteFileOpenMode, SidebarPlacement,
+        SqlFormatSettings, SqlIndentStyle, SqlKeywordCase, StartupDefaultPage, SyncProvider,
+        TableViewMode, UpdateChannel, UpdateMirror, default_grid_font_fallback_families,
         default_grid_monospace_font_family, grid_monospace_font, installed_grid_monospace_font,
         is_installed_font_family, resolve_installed_grid_monospace_font_family,
     };

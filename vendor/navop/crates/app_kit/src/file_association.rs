@@ -15,7 +15,7 @@ use std::process::Command;
 
 const ASSOCIATION_SCHEMA_VERSION: u32 = 2;
 const REGISTRATION_STAMP_FILE: &str = "file-association-registration-v2";
-/// 反向域名 `app_id` 里不参与 ProgID 的根段：`com.navop.shell` → `NavopShell`。
+/// 反向域名 `app_id` 里不参与 ProgID 的根段：`com.navop.shell` → `LinopShell`。
 const REVERSE_DNS_ROOT: &str = "com";
 /// Linux 注册文件名里追加的扩展名。
 #[cfg(any(target_os = "linux", test))]
@@ -165,8 +165,8 @@ fn association_kind(declared: &str) -> Option<&'static AssociationKind> {
         .find(|kind| kind.name == name || kind.extension == declared.trim())
 }
 
-/// ProgID 前缀：`navop` → `Navop`，`navop-shell` → `NavopShell`，
-/// `com.navop.data` → `NavopData`。
+/// ProgID 前缀：`navop` → `Linop`，`navop-shell` → `LinopShell`，
+/// `com.navop.data` → `LinopData`。
 fn prog_id_prefix(identity: &AppIdentity) -> String {
     let mut prefix = String::new();
     for segment in identity.app_id.split(['.', '-', '_']) {
@@ -646,10 +646,10 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     const FULL_PROG_IDS: [&str; 4] = [
-        "Navop.SQLiteDatabase",
-        "Navop.DuckDBDatabase",
-        "Navop.MarkdownDocument",
-        "Navop.TerminalRecording",
+        "Linop.SQLiteDatabase",
+        "Linop.DuckDBDatabase",
+        "Linop.MarkdownDocument",
+        "Linop.TerminalRecording",
     ];
 
     #[test]
@@ -660,7 +660,7 @@ mod tests {
             specs.iter().map(|spec| spec.extension).collect::<Vec<_>>()
         );
         for spec in &specs {
-            assert!(spec.prog_id.starts_with("Navop."), "{}", spec.prog_id);
+            assert!(spec.prog_id.starts_with("Linop."), "{}", spec.prog_id);
         }
         assert_eq!(
             FULL_PROG_IDS
@@ -687,14 +687,14 @@ mod tests {
             app_id: "com.navop.shell",
             ..AppIdentity::SHELL
         };
-        assert_eq!("NavopShell", prog_id_prefix(&shell));
-        assert_eq!("Navop", prog_id_prefix(&AppIdentity::FULL));
-        assert_eq!("NavopData", prog_id_prefix(&AppIdentity::DATA));
+        assert_eq!("LinopShell", prog_id_prefix(&shell));
+        assert_eq!("Linop", prog_id_prefix(&AppIdentity::FULL));
+        assert_eq!("LinopData", prog_id_prefix(&AppIdentity::DATA));
     }
 
     #[test]
     fn windows_registry_plan_registers_handlers_without_overwriting_user_choice() {
-        let executable = Path::new(r"C:\Program Files\Navop\navop.exe");
+        let executable = Path::new(r"C:\Program Files\Linop\navop.exe");
         let commands = windows_registry_plan(executable, &AppIdentity::FULL);
         let rendered = commands
             .iter()
@@ -703,23 +703,23 @@ mod tests {
             .join("\n");
 
         for (extension, prog_id) in [
-            (".db", "Navop.SQLiteDatabase"),
-            (".duckdb", "Navop.DuckDBDatabase"),
-            (".md", "Navop.MarkdownDocument"),
-            (".cast", "Navop.TerminalRecording"),
+            (".db", "Linop.SQLiteDatabase"),
+            (".duckdb", "Linop.DuckDBDatabase"),
+            (".md", "Linop.MarkdownDocument"),
+            (".cast", "Linop.TerminalRecording"),
         ] {
             assert!(rendered.contains(extension));
             assert!(rendered.contains(prog_id));
         }
-        assert!(rendered.contains(r#""C:\Program Files\Navop\navop.exe" "%1""#));
+        assert!(rendered.contains(r#""C:\Program Files\Linop\navop.exe" "%1""#));
         assert!(rendered.contains(r"Applications\navop.exe"));
         assert!(!rendered.contains("UserChoice"));
         assert!(!rendered.contains(".partial"));
         for (extension, prog_id) in [
-            (".db", "Navop.SQLiteDatabase"),
-            (".duckdb", "Navop.DuckDBDatabase"),
-            (".md", "Navop.MarkdownDocument"),
-            (".cast", "Navop.TerminalRecording"),
+            (".db", "Linop.SQLiteDatabase"),
+            (".duckdb", "Linop.DuckDBDatabase"),
+            (".md", "Linop.MarkdownDocument"),
+            (".cast", "Linop.TerminalRecording"),
         ] {
             assert!(commands.iter().any(|command| {
                 command.key.ends_with(extension)
@@ -738,7 +738,7 @@ mod tests {
     fn windows_plan_is_empty_for_products_without_extensions() {
         assert!(
             windows_registry_plan(
-                Path::new(r"C:\Navop Shell\navop-shell.exe"),
+                Path::new(r"C:\Linop Shell\navop-shell.exe"),
                 &AppIdentity::SHELL
             )
             .is_empty()
@@ -748,7 +748,7 @@ mod tests {
     #[test]
     fn linux_registration_uses_user_data_directories_and_absolute_executable() {
         let files = linux_registration_files(
-            Path::new("/opt/Navop 100%/navop"),
+            Path::new("/opt/Linop 100%/navop"),
             Path::new("/home/alice/.local/share"),
             &AppIdentity::FULL,
         );
@@ -764,9 +764,9 @@ mod tests {
         assert!(
             files
                 .desktop_contents
-                .contains(r#"Exec="/opt/Navop 100%%/navop" %F"#)
+                .contains(r#"Exec="/opt/Linop 100%%/navop" %F"#)
         );
-        assert!(files.desktop_contents.contains("Name=Navop"));
+        assert!(files.desktop_contents.contains("Name=Linop"));
         assert!(
             files
                 .desktop_contents
@@ -807,7 +807,7 @@ mod tests {
             ..AppIdentity::DATA
         };
         let files = linux_registration_files(
-            Path::new("/opt/Navop Data/navop-data"),
+            Path::new("/opt/Linop Data/navop-data"),
             Path::new("/home/alice/.local/share"),
             &custom,
         );
@@ -820,7 +820,7 @@ mod tests {
             PathBuf::from("/home/alice/.local/share/mime/packages/navop-data.xml"),
             files.mime_path
         );
-        assert!(files.desktop_contents.contains("Name=Navop Data"));
+        assert!(files.desktop_contents.contains("Name=Linop Data"));
         assert!(files.desktop_contents.contains("Icon=navop-data"));
         assert_eq!(
             vec!["application/x-asciicast"],
@@ -837,9 +837,9 @@ mod tests {
     #[test]
     fn macos_bundle_is_derived_from_the_current_executable() {
         assert_eq!(
-            PathBuf::from("/Applications/Navop.app"),
+            PathBuf::from("/Applications/Linop.app"),
             macos_app_bundle_from_executable(Path::new(
-                "/Applications/Navop.app/Contents/MacOS/navop"
+                "/Applications/Linop.app/Contents/MacOS/navop"
             ))
             .unwrap()
         );
@@ -851,21 +851,21 @@ mod tests {
         let identity = &AppIdentity::FULL;
         assert_eq!(
             registration_stamp(
-                Path::new("/Applications/Navop.app/Contents/MacOS/navop"),
+                Path::new("/Applications/Linop.app/Contents/MacOS/navop"),
                 identity
             ),
             registration_stamp(
-                Path::new("/Applications/Navop.app/Contents/MacOS/navop"),
+                Path::new("/Applications/Linop.app/Contents/MacOS/navop"),
                 identity
             )
         );
         assert_ne!(
             registration_stamp(
-                Path::new("/Applications/Navop.app/Contents/MacOS/navop"),
+                Path::new("/Applications/Linop.app/Contents/MacOS/navop"),
                 identity
             ),
             registration_stamp(
-                Path::new("/Users/alice/Applications/Navop.app/Contents/MacOS/navop"),
+                Path::new("/Users/alice/Applications/Linop.app/Contents/MacOS/navop"),
                 identity
             )
         );
@@ -875,7 +875,7 @@ mod tests {
     fn registration_stamp_skips_repeated_migrations() -> anyhow::Result<()> {
         let temp = tempfile::tempdir()?;
         let stamp_path = temp.path().join("association-stamp");
-        let executable = Path::new("/Applications/Navop.app/Contents/MacOS/navop");
+        let executable = Path::new("/Applications/Linop.app/Contents/MacOS/navop");
         let identity = &AppIdentity::FULL;
 
         assert!(!stamp_matches_at(&stamp_path, executable, identity)?);
@@ -886,7 +886,7 @@ mod tests {
         assert!(stamp_matches_at(&stamp_path, executable, identity)?);
         assert!(!stamp_matches_at(
             &stamp_path,
-            Path::new("/Applications/Navop 2.app/Contents/MacOS/navop"),
+            Path::new("/Applications/Linop 2.app/Contents/MacOS/navop"),
             identity
         )?);
         Ok(())

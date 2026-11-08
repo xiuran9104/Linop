@@ -731,7 +731,7 @@ mod tests {
             direct_connection: true,
             use_tls: true,
             connect_timeout_seconds: Some(5),
-            application_name: Some("Navop Desktop".to_string()),
+            application_name: Some("Linop Desktop".to_string()),
             ssh_tunnel: None,
         };
 
@@ -743,7 +743,7 @@ mod tests {
         assert!(uri.contains("tls=true"));
         assert!(uri.contains("directConnection=true"));
         assert!(uri.contains("connectTimeoutMS=5000"));
-        assert!(uri.contains("appName=Navop+Desktop"));
+        assert!(uri.contains("appName=Linop+Desktop"));
         assert!(!uri.contains("secret"));
         assert!(!uri.contains("admin@"));
     }

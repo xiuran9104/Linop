@@ -7,11 +7,11 @@ use super::extract::extract_archive;
 use super::util::UpdateInstallAction;
 
 #[cfg(target_os = "macos")]
-const CURRENT_APP_BUNDLE_NAME: &str = "Navop.app";
+const CURRENT_APP_BUNDLE_NAME: &str = "Linop.app";
 #[cfg(target_os = "macos")]
 const LEGACY_APP_BUNDLE_NAME: &str = "OnetCli.app";
 
-/// 当前产品期望的 macOS bundle 目录名，例如 "Navop Shell.app"。
+/// 当前产品期望的 macOS bundle 目录名，例如 "Linop Shell.app"。
 ///
 /// 独立产品（navop-shell / navop-data）与全量产品共用这一套自更新安装器，
 /// 它们的 bundle 名从 `AppIdentity::display_name` 推导；未 bootstrap 身份的
@@ -251,7 +251,7 @@ fn restart_after_replacement(backup_path: &Path, target_path: &Path) -> Result<(
     {
         report_previous_instance_still_running();
         return Err(format!(
-            "旧版本实例没有在 {} 秒内退出，新版本文件已就位，请结束 Navop 进程后手动启动",
+            "旧版本实例没有在 {} 秒内退出，新版本文件已就位，请结束 Linop 进程后手动启动",
             PREVIOUS_INSTANCE_EXIT_TIMEOUT.as_secs()
         ));
     }
@@ -272,7 +272,7 @@ fn report_previous_instance_still_running() {
     use windows::core::HSTRING;
 
     let text = HSTRING::from(
-        "更新已经完成，但旧版本的 Navop 进程还没有退出。\n\n请在任务管理器中结束 Navop 进程，然后重新启动，即可使用新版本。",
+        "更新已经完成，但旧版本的 Linop 进程还没有退出。\n\n请在任务管理器中结束 Linop 进程，然后重新启动，即可使用新版本。",
     );
     let caption = HSTRING::from(super::host::display_name());
     // SAFETY: 两个字符串在调用期间保持存活；更新 helper 没有属主窗口，句柄传 None。
@@ -540,7 +540,7 @@ fn locate_linux_binary(staging_dir: &Path) -> Result<PathBuf, String> {
 /// 校验更新目标**所在目录**可写。
 ///
 /// 不能对目标文件本身试写：Linux 内核对正在执行的映像 `open(O_WRONLY)` 必定返回
-/// `ETXTBSY`（`Text file busy`，os error 26），而更新时 Navop 自己就是那个正在运行的
+/// `ETXTBSY`（`Text file busy`，os error 26），而更新时 Linop 自己就是那个正在运行的
 /// 二进制 —— 这样的前置检查会让 Linux 应用内更新必然失败，并把用户引向「权限」这个
 /// 错误方向（issue #353：便携目录已给足写权限仍报 os error 26）。
 ///
@@ -954,11 +954,11 @@ mod tests {
     fn current_app_bundle_path_from_exe_returns_app_bundle() {
         use super::current_app_bundle_path_from_exe;
 
-        let exe = PathBuf::from("/Applications/Navop.app/Contents/MacOS/navop");
+        let exe = PathBuf::from("/Applications/Linop.app/Contents/MacOS/navop");
 
         let app = current_app_bundle_path_from_exe(&exe).expect("应能定位 .app bundle");
 
-        assert_eq!(app, PathBuf::from("/Applications/Navop.app"));
+        assert_eq!(app, PathBuf::from("/Applications/Linop.app"));
     }
 
     #[cfg(target_os = "macos")]
@@ -981,7 +981,7 @@ mod tests {
     fn find_app_bundle_accepts_current_and_legacy_names() {
         use super::find_first_app_bundle;
 
-        for name in ["Navop.app", "OnetCli.app"] {
+        for name in ["Linop.app", "OnetCli.app"] {
             let temp = TestDir::new("find-app-bundle");
             let app = temp.path.join(name);
             std::fs::create_dir_all(&app).expect("创建 app bundle 失败");
@@ -1003,30 +1003,30 @@ mod tests {
 
         let err = find_first_app_bundle(&temp.path).expect_err("应拒绝未知 app bundle");
 
-        assert!(err.contains("Navop.app"), "错误应包含当前 bundle 名: {err}");
+        assert!(err.contains("Linop.app"), "错误应包含当前 bundle 名: {err}");
         assert!(
             err.contains("OnetCli.app"),
             "错误应包含旧版 bundle 名: {err}"
         );
     }
 
-    /// 独立产品（navop-shell / navop-data）的更新包里是 "Navop Shell.app" 这类
+    /// 独立产品（navop-shell / navop-data）的更新包里是 "Linop Shell.app" 这类
     /// bundle 目录：bundle 名来自身份常量的 display_name，finder 必须认。
-    /// 单测进程没有 bootstrap 产品身份，回退路径应仍认全量 "Navop.app"。
+    /// 单测进程没有 bootstrap 产品身份，回退路径应仍认全量 "Linop.app"。
     #[cfg(target_os = "macos")]
     #[test]
     fn find_app_bundle_accepts_product_bundle_name() {
         use super::expected_app_bundle_name;
 
         // 回退（无身份）时期望全量 bundle 名。
-        assert_eq!(expected_app_bundle_name(), "Navop.app");
+        assert_eq!(expected_app_bundle_name(), "Linop.app");
 
-        for name in ["Navop Shell.app", "Navop Data.app"] {
+        for name in ["Linop Shell.app", "Linop Data.app"] {
             let temp = TestDir::new("find-app-bundle-product");
             let app = temp.path.join(name);
             std::fs::create_dir_all(&app).expect("创建产品 app bundle 失败");
 
-            // 无 bootstrap 身份时 finder 仍认 Navop.app/OnetCli.app；产品 bundle
+            // 无 bootstrap 身份时 finder 仍认 Linop.app/OnetCli.app；产品 bundle
             // 目录必须能被识别——通过直接调 is_supported_app_bundle 验证参数化分支。
             // （身份 OnceLock 无法在单测里安全改写，这里覆盖参数化函数的判等逻辑。）
             let expected = name;

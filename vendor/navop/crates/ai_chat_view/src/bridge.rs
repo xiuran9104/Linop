@@ -83,8 +83,7 @@ impl LlmModelClient {
         };
         // #487: GPT-6 系列推理模型在 chat/completions 上不接受「推理 + 函数工具」，
         // 必须在带工具的请求里显式关闭推理，否则上游直接 400。
-        let reasoning_effort =
-            reasoning_effort_for_request(&self.model, tools.as_ref().is_some());
+        let reasoning_effort = reasoning_effort_for_request(&self.model, tools.as_ref().is_some());
 
         ChatRequest {
             model: self.model.clone(),

@@ -48,20 +48,12 @@ async fn mysql_real_sticky_session_keeps_user_variables_across_executions() {
     assert_cell(&select, 0, 1, "2026-2-1");
 
     // 4. 多次跨执行仍存活，且物理连接不变（粘性 = 同一条连接）
-    let identity_before = session_query(
-        &state,
-        &session_id,
-        "SELECT CAST(CONNECTION_ID() AS CHAR)",
-    )
-    .await;
+    let identity_before =
+        session_query(&state, &session_id, "SELECT CAST(CONNECTION_ID() AS CHAR)").await;
     let again = session_query(&state, &session_id, "SELECT @startdates").await;
     assert_cell(&again, 0, 0, "2026-1-1");
-    let identity_after = session_query(
-        &state,
-        &session_id,
-        "SELECT CAST(CONNECTION_ID() AS CHAR)",
-    )
-    .await;
+    let identity_after =
+        session_query(&state, &session_id, "SELECT CAST(CONNECTION_ID() AS CHAR)").await;
     let (before, after) = (
         cell_text(&identity_before, 0, 0),
         cell_text(&identity_after, 0, 0),

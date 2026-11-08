@@ -73,11 +73,11 @@ impl SingleInstanceError {
     pub fn user_message(&self) -> String {
         match self {
             Self::Forward(error) => format!(
-                "无法把启动请求转交给正在运行的 Navop 实例：{error}\n\
-                 请先退出正在运行的 Navop，或重启电脑后再试。"
+                "无法把启动请求转交给正在运行的 Linop 实例：{error}\n\
+                 请先退出正在运行的 Linop，或重启电脑后再试。"
             ),
             Self::Listen(error) => format!(
-                "无法创建 Navop 单实例监听：{error}\n\
+                "无法创建 Linop 单实例监听：{error}\n\
                  请检查系统临时目录是否可写，或重启电脑后再试。"
             ),
         }

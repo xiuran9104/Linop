@@ -66,11 +66,11 @@ pub struct GlobalHomePage {
 impl gpui::Global for GlobalHomePage {}
 
 #[derive(Clone)]
-pub struct GlobalNavopApp {
-    pub app: Entity<NavopApp>,
+pub struct GlobalLinopApp {
+    pub app: Entity<LinopApp>,
 }
 
-impl gpui::Global for GlobalNavopApp {}
+impl gpui::Global for GlobalLinopApp {}
 
 fn add_tab_button_handler() -> Arc<dyn Fn(&mut Window, &mut App) + Send + Sync> {
     Arc::new(|window: &mut Window, cx: &mut App| {
@@ -705,10 +705,10 @@ fn request_active_window_quit(cx: &mut App) {
     });
 }
 
-/// 走既有退出流程的公共入口：托盘「退出 Navop」、`QuitApp` 快捷键、应用菜单都经过它。
+/// 走既有退出流程的公共入口：托盘「退出 Linop」、`QuitApp` 快捷键、应用菜单都经过它。
 pub(crate) fn request_window_quit(window: &mut Window, cx: &mut App) {
     let Some(app) = cx
-        .try_global::<GlobalNavopApp>()
+        .try_global::<GlobalLinopApp>()
         .map(|global| global.app.clone())
     else {
         shutdown_application_resources_and_quit(cx, "quit without the application entity");
@@ -812,7 +812,7 @@ pub fn init(cx: &mut App) -> anyhow::Result<()> {
     setting_tab::init_settings(cx);
     one_core::init(cx)?;
     #[cfg(feature = "shell")]
-    app_kit::set_shell_host(Arc::new(crate::home_tab::domain_host::NavopShellHost));
+    app_kit::set_shell_host(Arc::new(crate::home_tab::domain_host::LinopShellHost));
     ai_chat_view::init(cx);
     mcp_approval::init(cx);
     crate::ai_chat_acp::init(cx);
@@ -1244,7 +1244,7 @@ fn close_active_window(cx: &mut App) {
     one_core::window_close::request_close_window(active_window, cx);
 }
 
-pub struct NavopApp {
+pub struct LinopApp {
     tab_container: Entity<TabContainer>,
     connection_sidebar: Entity<PersistentConnectionSidebar>,
     quit_state: QuitRequestState,
@@ -1257,8 +1257,8 @@ pub struct NavopApp {
 
 /// 关闭弹窗里「记住我的选择」勾选框的状态。
 ///
-/// 刻意做成独立实体而不是直接读 [`NavopApp`] 的字段：弹窗 body 由 `Root` 渲染，
-/// `NavopApp` 的 `notify()` 不会重绘它，勾选框必须自己负责刷新。
+/// 刻意做成独立实体而不是直接读 [`LinopApp`] 的字段：弹窗 body 由 `Root` 渲染，
+/// `LinopApp` 的 `notify()` 不会重绘它，勾选框必须自己负责刷新。
 struct CloseChoiceRememberState {
     remember: bool,
 }
@@ -1275,10 +1275,10 @@ impl Render for CloseChoiceRememberState {
     }
 }
 
-impl NavopApp {
+impl LinopApp {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let app_entity = cx.entity();
-        cx.set_global(GlobalNavopApp {
+        cx.set_global(GlobalLinopApp {
             app: app_entity.clone(),
         });
         let app = app_entity.downgrade();
@@ -1695,7 +1695,7 @@ impl NavopApp {
             let app_for_close = app_for_close.clone();
             let app_name = app_kit::identity()
                 .map(|identity| identity.display_name)
-                .unwrap_or("Navop");
+                .unwrap_or("Linop");
             dialog
                 .title(t!("Quit.confirm_title_app", app = app_name).to_string())
                 .child(t!("Quit.confirm_message_app", app = app_name).to_string())
@@ -1874,7 +1874,7 @@ mod tests {
                     .split("\n    pub(crate) fn set_home_page_style")
                     .next()
             })
-            .expect("NavopApp::new source");
+            .expect("LinopApp::new source");
 
         assert!(constructor.contains("home.show_pending_master_key_prompt(window, cx)"));
     }
@@ -1885,7 +1885,7 @@ mod tests {
         let handlers = source
             .split("fn init_action_handlers(")
             .nth(1)
-            .and_then(|source| source.split("\npub struct NavopApp").next())
+            .and_then(|source| source.split("\npub struct LinopApp").next())
             .expect("init_action_handlers source");
 
         assert_eq!(
@@ -1973,7 +1973,7 @@ mod tests {
     #[test]
     fn tree_auto_hide_selects_floating_overlay_otherwise_docked_panel() {
         let source = include_str!("navop_app.rs");
-        let render = source.rsplit("impl Render for NavopApp").next().unwrap();
+        let render = source.rsplit("impl Render for LinopApp").next().unwrap();
         assert!(render.contains("render_floating_tree"));
         assert!(render.contains("render_docked_connection_tree"));
         assert!(render.contains("is_auto_hide_tree()"));
@@ -2170,11 +2170,11 @@ mod tests {
     #[test]
     fn navop_app_registers_window_close_guard() {
         let source = include_str!("navop_app.rs");
-        let start = source.find("pub fn new").expect("NavopApp::new");
+        let start = source.find("pub fn new").expect("LinopApp::new");
         let end = source[start..]
             .find("\n        let tab_container")
             .map(|offset| start + offset)
-            .expect("NavopApp::new setup");
+            .expect("LinopApp::new setup");
         let new_fn = &source[start..end];
 
         assert!(new_fn.contains("on_window_should_close"));
@@ -2184,11 +2184,11 @@ mod tests {
     #[test]
     fn main_window_close_consults_the_system_tray_policy() {
         let source = include_str!("navop_app.rs");
-        let start = source.find("pub fn new").expect("NavopApp::new");
+        let start = source.find("pub fn new").expect("LinopApp::new");
         let end = source[start..]
             .find("\n        let tab_container")
             .map(|offset| start + offset)
-            .expect("NavopApp::new setup");
+            .expect("LinopApp::new setup");
         let new_fn = &source[start..end];
         // needle 运行时拼接：断言字面量不能把 include_str! 守卫自己命中。
         let policy_fn = ["crate::system_tray::main_window_close_", "action("].concat();
@@ -2318,11 +2318,11 @@ mod tests {
     #[test]
     fn navop_app_persists_window_state_after_bounds_changes() {
         let source = include_str!("navop_app.rs");
-        let start = source.find("pub fn new").expect("NavopApp::new");
+        let start = source.find("pub fn new").expect("LinopApp::new");
         let end = source[start..]
             .find("\n        let settings")
             .map(|offset| start + offset)
-            .expect("NavopApp::new window setup");
+            .expect("LinopApp::new window setup");
         let new_fn = &source[start..end];
 
         assert!(new_fn.contains("observe_window_bounds"));
@@ -2498,9 +2498,9 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn configured_log_file_path_accepts_windows_directory() {
-        let path = configured_log_file_path(r"D:\Navop\logs").expect("应返回 Windows 日志文件路径");
+        let path = configured_log_file_path(r"D:\Linop\logs").expect("应返回 Windows 日志文件路径");
 
-        assert_eq!(path, std::path::PathBuf::from(r"D:\Navop\logs\navop.log"));
+        assert_eq!(path, std::path::PathBuf::from(r"D:\Linop\logs\navop.log"));
     }
 
     #[test]
@@ -2603,7 +2603,7 @@ mod tests {
     }
 }
 
-impl Render for NavopApp {
+impl Render for LinopApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let sheet_layer = render_sheet_layer(window, cx);
         let dialog_layer = render_dialog_layer(window, cx);

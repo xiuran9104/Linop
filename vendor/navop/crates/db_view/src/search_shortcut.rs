@@ -88,7 +88,14 @@ fn init_keybindings(cx: &App) -> Vec<KeyBinding> {
     let mut keybindings: Vec<KeyBinding> =
         shortcuts_for(cx, action_id::DB_FOCUS_SEARCH, &default_search_shortcuts())
             .into_iter()
-            .map(|key| one_core::keybindings::load_dynamic_keybinding(&key, FocusSearchInput, Some(DB_SEARCH_CONTEXT), cx))
+            .map(|key| {
+                one_core::keybindings::load_dynamic_keybinding(
+                    &key,
+                    FocusSearchInput,
+                    Some(DB_SEARCH_CONTEXT),
+                    cx,
+                )
+            })
             .collect();
 
     keybindings.extend(
@@ -98,7 +105,14 @@ fn init_keybindings(cx: &App) -> Vec<KeyBinding> {
             &default_table_query_shortcuts(),
         )
         .into_iter()
-        .map(|key| one_core::keybindings::load_dynamic_keybinding(&key, OpenSelectedTableQuery, Some(DB_SEARCH_CONTEXT), cx)),
+        .map(|key| {
+            one_core::keybindings::load_dynamic_keybinding(
+                &key,
+                OpenSelectedTableQuery,
+                Some(DB_SEARCH_CONTEXT),
+                cx,
+            )
+        }),
     );
     keybindings.extend(
         shortcuts_for(
@@ -107,7 +121,14 @@ fn init_keybindings(cx: &App) -> Vec<KeyBinding> {
             &default_table_designer_shortcuts(),
         )
         .into_iter()
-        .map(|key| one_core::keybindings::load_dynamic_keybinding(&key, OpenTableDesigner, Some(DB_SEARCH_CONTEXT), cx)),
+        .map(|key| {
+            one_core::keybindings::load_dynamic_keybinding(
+                &key,
+                OpenTableDesigner,
+                Some(DB_SEARCH_CONTEXT),
+                cx,
+            )
+        }),
     );
     keybindings.extend(
         shortcuts_for(
@@ -116,7 +137,14 @@ fn init_keybindings(cx: &App) -> Vec<KeyBinding> {
             &default_select_all_shortcuts(),
         )
         .into_iter()
-        .map(|key| one_core::keybindings::load_dynamic_keybinding(&key, SelectAllObjects, Some(DB_SEARCH_CONTEXT), cx)),
+        .map(|key| {
+            one_core::keybindings::load_dynamic_keybinding(
+                &key,
+                SelectAllObjects,
+                Some(DB_SEARCH_CONTEXT),
+                cx,
+            )
+        }),
     );
     keybindings
 }

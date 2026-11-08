@@ -411,10 +411,7 @@ mod tests {
                 "redis",
                 include_str!("../../redis_view/src/redis_form_window.rs"),
             ),
-            (
-                "ssh",
-                include_str!("../../ssh_form/src/ssh_form_window.rs"),
-            ),
+            ("ssh", include_str!("../../ssh_form/src/ssh_form_window.rs")),
             (
                 "serial",
                 include_str!("../../terminal_view/src/serial_form_window.rs"),

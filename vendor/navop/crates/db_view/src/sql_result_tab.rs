@@ -771,7 +771,12 @@ impl SqlResultTabContainer {
                                 plan,
                             )
                             .await;
-                        emit_invalidation_events(cx, notifier.as_ref(), &request.connection_id, scopes);
+                        emit_invalidation_events(
+                            cx,
+                            notifier.as_ref(),
+                            &request.connection_id,
+                            scopes,
+                        );
                     }
                     SessionSchemaInvalidation::Deferred(pending) => {
                         pending.lock().merge(plan);

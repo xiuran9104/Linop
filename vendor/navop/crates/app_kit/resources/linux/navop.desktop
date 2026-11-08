@@ -1,5 +1,5 @@
 [Desktop Entry]
-Name=Navop
+Name=Linop
 Comment=Navop - Database, SSH, Terminal, AI Tools
 Exec=navop %F
 Icon=navop

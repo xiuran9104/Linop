@@ -566,9 +566,10 @@ impl SettingsPanel {
             return;
         }
         self.suggestion_popup_opacity = opacity;
-        self.suggestion_popup_opacity_slider.update(cx, |slider, cx| {
-            slider.set_value(opacity, window, cx);
-        });
+        self.suggestion_popup_opacity_slider
+            .update(cx, |slider, cx| {
+                slider.set_value(opacity, window, cx);
+            });
         cx.notify();
     }
 
@@ -1162,8 +1163,13 @@ impl SettingsPanel {
         let autocomplete_enabled = self.autocomplete_enabled;
         let suggestion_popup_enabled = self.suggestion_popup_enabled;
         // 百分比读数直接取滑块 state：拖动中面板要跟手，写入设置则等松手。
-        let suggestion_popup_opacity_percent =
-            (self.suggestion_popup_opacity_slider.read(cx).value().start() * 100.0).round() as i32;
+        let suggestion_popup_opacity_percent = (self
+            .suggestion_popup_opacity_slider
+            .read(cx)
+            .value()
+            .start()
+            * 100.0)
+            .round() as i32;
         let middle_click_paste = self.middle_click_paste;
         let right_click_paste = self.right_click_paste;
         let paste_image_upload = self.paste_image_upload;
@@ -1322,12 +1328,10 @@ impl SettingsPanel {
                                             .text_sm()
                                             .child(t!("Settings.suggestion_popup_opacity")),
                                     )
-                                    .child(
-                                        div().text_xs().text_color(muted_fg).child(t!(
-                                            "Settings.suggestion_popup_opacity_value",
-                                            percent = suggestion_popup_opacity_percent
-                                        )),
-                                    ),
+                                    .child(div().text_xs().text_color(muted_fg).child(t!(
+                                        "Settings.suggestion_popup_opacity_value",
+                                        percent = suggestion_popup_opacity_percent
+                                    ))),
                             )
                             .child(
                                 Slider::new(&self.suggestion_popup_opacity_slider)

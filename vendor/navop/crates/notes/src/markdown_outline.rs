@@ -5,11 +5,11 @@
 //! navigates by, so a click jumps to the owning block.
 
 use crate::NotesView;
+use gpui::StatefulInteractiveElement;
 use gpui::{
     AnyElement, App, Context, InteractiveElement, IntoElement, ParentElement, SharedString, Styled,
     div, px,
 };
-use gpui::StatefulInteractiveElement;
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::{ActiveTheme, h_flex, v_flex};
 use markdown_editor::OutlineEntry;
@@ -187,7 +187,14 @@ impl NotesView {
                     .min_h_0()
                     .min_w_0()
                     .overflow_hidden()
-                    .child(v_flex().size_full().p_1().gap_1().overflow_y_scrollbar().children(rows)),
+                    .child(
+                        v_flex()
+                            .size_full()
+                            .p_1()
+                            .gap_1()
+                            .overflow_y_scrollbar()
+                            .children(rows),
+                    ),
             )
             .into_any_element()
     }

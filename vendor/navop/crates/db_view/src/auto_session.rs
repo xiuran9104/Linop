@@ -5,8 +5,8 @@
 //! 执行管线与 `execute_session` 的 pin 语义（`in_flight` 不归零，连接不会
 //! 被 idle 回收），由编辑器持有引用并在 scope/连接/模式变化时释放。
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::sql_editor_view::SqlExecutionScope;
 

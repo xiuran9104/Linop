@@ -311,8 +311,7 @@ fn runs_from_source_build(executable: &Path) -> bool {
         return true;
     }
 
-    dirs::home_dir()
-        .is_some_and(|home| executable.starts_with(home.join(".cargo").join("bin")))
+    dirs::home_dir().is_some_and(|home| executable.starts_with(home.join(".cargo").join("bin")))
 }
 
 fn development_paths(root: PathBuf) -> AppPaths {

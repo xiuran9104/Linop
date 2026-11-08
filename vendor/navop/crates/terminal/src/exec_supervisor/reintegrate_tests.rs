@@ -3,10 +3,10 @@
 //! 覆盖：supervisor 门控（fail closed，不抢 exec）、SSH actor 写入注入命令、
 //! local actor 不支持时拒绝、`readiness_before` 对 reintegrate 为 `None`。
 
+use crate::TerminalControlError;
 use crate::exec_supervisor::tests::{ready_supervisor, request, submit};
 use crate::exec_supervisor::{ExecEffect, ShellCommandReadiness, TerminalInputSource};
 use crate::osc::OscEvent;
-use crate::TerminalControlError;
 
 // ---- supervisor 门控（纯状态机层） ----
 

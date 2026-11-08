@@ -239,8 +239,11 @@ mod tests {
     /// 一定是分隔符，剥完要原样留下用户那段（而不是在用户自己写的标记处再切一刀）。
     #[test]
     fn unwrapping_keeps_a_marker_the_user_typed_themselves() {
-        let context = SkillContext::new()
-            .with_available_skill(SkillSummary::new("demo", "Demo", "/tmp/demo/SKILL.md"));
+        let context = SkillContext::new().with_available_skill(SkillSummary::new(
+            "demo",
+            "Demo",
+            "/tmp/demo/SKILL.md",
+        ));
 
         let typed = "原文里带一段：\n\nUser request:\n这行是用户自己写的";
         let wrapped = context.wrap_user_prompt(typed);

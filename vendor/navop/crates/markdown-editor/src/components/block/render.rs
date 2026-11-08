@@ -1857,7 +1857,11 @@ impl Block {
                     .w_full()
                     .flex()
                     .flex_col()
-                    .gap(px(if has_markdown_children { d.block_gap } else { 0.0 }))
+                    .gap(px(if has_markdown_children {
+                        d.block_gap
+                    } else {
+                        0.0
+                    }))
                     .text_size(px(node_style.computed.font_size))
                     .text_color(node_style.computed.color)
                     .children(self.render_html_div_children(

@@ -2616,10 +2616,9 @@ mod tests {
 
         assert!(dock.apply_persisted_placements(&persisted).is_empty());
 
-        assert!(dock.update_available_panels([
-            SidebarPanel::Settings,
-            SidebarPanel::ServerMonitor,
-        ]));
+        assert!(
+            dock.update_available_panels([SidebarPanel::Settings, SidebarPanel::ServerMonitor,])
+        );
         assert_eq!(
             dock.apply_persisted_placements(&persisted),
             vec![SidebarPanel::ServerMonitor]

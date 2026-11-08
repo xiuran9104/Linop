@@ -1,0 +1,91 @@
+# Agent Protocol v2: Multi-session runtimes
+
+Protocol v2 allows one Agent process to serve multiple isolated database sessions. Pooled JDBC Agents that use the common structured error producer advertise `protocolVersion: 2`, `multi_session`, and `structured_error_v1`. Generic/custom v2 handlers may advertise only `multi_session`. DBX falls back to the v1 one-process-per-pool lifecycle when `multi_session` is absent.
+
+## Session lifecycle
+
+- `open_session` creates one logical database session. Parameters contain the normal connection fields plus `agentSessionId` and an optional `sessionRole`.
+- Every connection-scoped RPC contains `agentSessionId`.
+- `validate_session` validates and, where supported, reconnects only that session.
+- `cancel_session` cancels active statements and cursor fetches for only that session; other sessions in the runtime continue normally.
+- `close_session` closes the session resources, query cursors, and table-read cursors without affecting other sessions.
+- `shutdown` closes all sessions and terminates the runtime.
+
+## Manual (interactive) transactions
+
+When a runtime advertises the `transaction` capability and supports sticky sessions, DBX may open a dedicated workload session and call:
+
+- `begin_manual_transaction` `{ schema? }` — pin one physical connection / start an open transaction
+- `execute_query` (and related query methods) — run on the open transaction until commit/rollback
+- `commit_manual_transaction` / `rollback_manual_transaction` — end the interactive transaction
+
+This is separate from one-shot `execute_transaction`, which begins, runs a statement list, and commits/rolls back inside a single RPC. Runtimes that reconnect a session (`validate_session`) must clear any open manual transaction on that session.
+
+`agentSessionId` identifies a logical database connection. Existing `sessionId` fields remain pagination cursor identifiers and must not be used as logical connection identifiers.
+
+`sessionRole` is `workload` by default. DBX sends `metadata` for object-tree, completion, and isolated background tasks, including an operation-owned native Job session. The role selects resource isolation, not database write authorization; Core checks write protection before native Job mutations. New runtimes use this role to preserve metadata checkout capacity; older runtimes may ignore the field.
+
+## Native Job physical sessions
+
+Drivers that opt in to `native_job_session_v1` may use `MultiSessionJsonRpcServer.withNativeJobSessions(YourAgent::new)` and implement `supportsNativeJobSessions()`. The default JDBC and legacy v1 handshakes do not advertise this capability.
+
+During confirmed apply, Core opens a private metadata logical session, then calls `open_native_job_session` with its `operationId`. The result contains the same `operationId`, an opaque `sessionToken`, and `phase: opened`. This reserves one non-pooled physical connection with automatic commit disabled. Existing runtime physical-connection limits and opening/closing watchdogs still apply. An editor transaction, pinned connection, cursor, or retained result prevents reservation without altering that existing state.
+
+All subsequent `execute_query` and `connection_info` requests on the reservation carry `nativeJobOperationId` and `nativeJobSessionToken`. Other operations, changed configuration, automatic reconnect, and foreign or stale tokens are rejected before SQL. Native procedures may commit internally without releasing or replacing this physical connection. Core continues to own SQL plans, job-configuration phases, cancellation of remaining steps, and dispatch deduplication.
+
+After the operation, Core calls `close_native_job_session` with `operationId` and `sessionToken` before retiring the metadata route. If the open response was lost, the exact operation may omit the token to close only its own connection; a replacement logical session cannot claim that ownership. Closing returns `phase: closed` only after the physical close is acknowledged. A failed close returns and retains `phase: unknown`, including on duplicate close and outer logical cleanup. Cleanup never submits a commit, native configuration commit, or activation. Closing the connection does not prove that already committed configuration changes were rolled back or that native configuration completed.
+
+The Generic JDBC plugin advertises the same capability through `jdbcSessionProtocol` and accepts both `openNativeJobSession` / `closeNativeJobSession` and the snake-case method names. It supports the private default process and existing logical sessions. The connection and selected driver remain immutable during ownership, and native SQL bypasses ordinary SQL trimming, rewriting, automatic-commit restoration, and result-query retries. Ordinary JDBC requests retain their existing behavior.
+
+## Concurrency
+
+Requests for different sessions may execute concurrently. Requests for the same session are serialized because connection state, transactions, schema changes, and driver connections are not generally safe for concurrent use. JSON-RPC responses may be returned out of order and are correlated by request `id`.
+
+All Java JDBC runtimes share HikariCP pools by immutable connection identity through `AbstractJdbcAgent`. Stateless requests borrow and return connections. Paged cursors and explicit session-state SQL pin a connection to the logical session, and stateful connections are evicted when that session closes so state cannot leak across sessions. Custom URL construction, transport fallback, connection initialization, and native-driver access remain behind shared lifecycle hooks.
+
+DBX uses unique short-lived logical sessions for independent Agent metadata tasks so they do not queue behind editor execution. These sessions close after completion, and cancellation-safe cleanup closes them when the caller is dropped.
+
+## Runtime compatibility
+
+Runtime reuse keys include the Agent driver key, executable or JAR path, launch arguments, working directory, JRE selection, JVM options, classpath-affecting options, and native executable version boundary. Host, account, schema, and credentials belong to sessions and are not part of the runtime key.
+
+ZooKeeper retains the legacy single-session path because its Agent does not advertise the `multi_session` capability; etcd Agents (v3 and v2) run on the shared multi-session path like the SQL Agents. Older Agent binaries and JARs also remain on the legacy path.
+
+### ZooKeeper endpoint routes
+
+ZooKeeper Agents may advertise the optional `zookeeper_endpoint_routes` capability without changing their protocol version or single-session lifecycle. When transport layers are configured, DBX preserves the logical `zookeeper_connect_string` (including its ensemble and chroot) and supplies a runtime-only `zookeeper_endpoint_routes` object mapping each logical `host:port` to a loopback `IP:port`. All reachability, session/reconnect, and server-info dials must use this map; missing or invalid routes fail without a direct-dial fallback. TLS verifies the logical host, not the loopback destination.
+
+DBX requires this advertised capability before sending a routed connect, test, or open-session request. DBX rejects Agents that do not advertise it with an update-driver error before sending the RPC, instead of bypassing transport. The protocol's `allCapabilities` registry records the optional capability; default SQL/Java handshake capability lists do not advertise ZooKeeper routing.
+
+## Resource limits and recovery
+
+A runtime accepts at most 256 logical sessions. Closing the final session starts a 30-second grace period before the process exits, preventing rapid tab open/close cycles from repeatedly starting a runtime. Process EOF fails all pending requests; the failed runtime is removed from reuse and recreated on demand. Connection validation and reconnect operate on a single logical session.
+
+JSON-RPC failures may include structured recovery data:
+
+```json
+{
+  "contractVersion": 1,
+  "category": "timeout|canceled|connection|protocol|resource|sql",
+  "retryable": false,
+  "sessionDisposition": "keep|quarantine|replace_runtime",
+  "agentSessionId": "optional-session-id",
+  "stage": "request|checkout|connect|validate|execute|fetch|cancel|close",
+  "operationOutcome": "not_started|unknown",
+  "sqlState": "optional-jdbc-sql-state",
+  "vendorCode": 0,
+  "exceptionClass": "optional-java-exception-class"
+}
+```
+
+`contractVersion: 1` is guaranteed only when the handshake advertises `structured_error_v1`. Unknown extra fields are allowed, but unknown enum values, missing required fields, invalid types, or an `agentSessionId` that does not match the current request are contract violations. `operationOutcome` describes whether the user operation may have reached the database; `retryable` is an internal hint and never authorizes automatic SQL replay.
+
+`keep` preserves the logical session, `quarantine` removes only that session from routing, and `replace_runtime` requires DBX to atomically remove every pool sharing the runtime before terminating it. Agent code reports the disposition but must not independently terminate a shared runtime because it does not own DBX routing state. Temporary workload checkout backpressure uses `category=resource`, `retryable=true`, and `sessionDisposition=keep`; only unrecoverable runtime or cleanup saturation requests `replace_runtime`.
+
+The complete JDBC pool checkout runs under a bounded runtime executor, including HikariCP idle-connection validation, physical connection creation, and driver setup. Workload admission, the runtime-wide physical connection budget, physical creation, and checkout consume one absolute deadline rather than restarting the timeout at each stage. Connection return, eviction, and physical close use separate bounded executors so they cannot deadlock checkout or creation. If a driver call outlives its boundary, or cleanup cannot confirm the physical connection state, the connection identity is poisoned and returns `category=resource` with `sessionDisposition=replace_runtime` on the current or next checkout. A late connection must be evicted and closed instead of published, and DBX must not replay the timed-out user operation automatically.
+
+## Driver author guidance
+
+Use `MultiSessionJsonRpcServer(YourAgent::new)` for Java SQL Agents so each logical session receives a new `DatabaseAgent` with isolated connection state. The shared runtime owns the physical JDBC pools. Do not store connection, statement, cursor, transaction, or schema state in static mutable fields. Use the session execution context for paged query resources. Native Agents must provide equivalent per-session state and synchronized stdout writes.
+
+The Xugu native Agent keeps one database connection per logical session plus one shared control connection per database endpoint. Because `go-xugu-driver` does not interrupt network reads through `context.Context`, cancellation records the server-side session ID and calls `DBMS_DBA.KILL_SESSION_TRANS` through the shared control connection.

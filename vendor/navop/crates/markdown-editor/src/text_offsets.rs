@@ -88,7 +88,8 @@ mod tests {
 
     #[test]
     fn unicode_ranges_always_land_on_scalar_boundaries() {
-        for text in ["*测试", "中文😀かな", "e\u{301}", "👨‍👩‍👧‍👦", "བོད་"] {
+        for text in ["*测试", "中文😀かな", "e\u{301}", "👨‍👩‍👧‍👦", "བོད་"]
+        {
             for start in 0..=text.len() + 1 {
                 for end in 0..=text.len() + 1 {
                     let range = normalize_utf8_range(text, start..end);

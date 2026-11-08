@@ -1,0 +1,303 @@
+import { strict as assert } from "node:assert";
+import { test } from "vitest";
+import { insertSidebarTableSearchControls, resolveLocalTableSearchParent } from "../../apps/desktop/src/lib/sidebar/sidebarTableSearchControl.ts";
+import { appendFlatTreeRenderKey, type FlatTreeNode } from "../../apps/desktop/src/composables/useFlatTree.ts";
+import type { TreeNode } from "../../apps/desktop/src/types/database.ts";
+
+function flat(node: TreeNode, depth = 0): FlatTreeNode {
+  return {
+    node,
+    depth,
+    id: node.id,
+    renderKey: appendFlatTreeRenderKey("", node),
+    type: node.type,
+    poolType: node.type,
+  };
+}
+
+test("inserts a local table search control above simple table children", () => {
+  const database: TreeNode = {
+    id: "conn:app",
+    label: "app",
+    type: "database",
+    connectionId: "conn",
+    database: "app",
+    isExpanded: true,
+    children: [{ id: "conn:app:orders", label: "orders", type: "table", connectionId: "conn", database: "app" }],
+  };
+  const table = database.children![0];
+
+  const nodes = insertSidebarTableSearchControls([flat(database), flat(table, 1)], {
+    enabled: true,
+    sidebarObjectDisplay: "simple",
+    activeQueries: {},
+  });
+
+  assert.deepEqual(
+    nodes.map((item) => item.node.type),
+    ["database", "table-search-control", "table"],
+  );
+  assert.equal(nodes[1].node.tableSearchParentId, "conn:app");
+  assert.equal(nodes[1].depth, 1);
+  assert.equal(nodes[1].renderKey, appendFlatTreeRenderKey(nodes[0].renderKey, nodes[1].node));
+});
+
+test("keeps a simple local table search control visible when the current search has no results", () => {
+  const database: TreeNode = {
+    id: "conn:app",
+    label: "app",
+    type: "database",
+    connectionId: "conn",
+    database: "app",
+    isExpanded: true,
+    children: [],
+  };
+
+  const nodes = insertSidebarTableSearchControls([flat(database)], {
+    enabled: true,
+    sidebarObjectDisplay: "simple",
+    activeQueries: { "conn:app": "invoice" },
+  });
+
+  assert.deepEqual(
+    nodes.map((item) => item.node.type),
+    ["database", "table-search-control"],
+  );
+});
+
+test("inserts a grouped local table search control only for expanded table groups", () => {
+  const tableGroup: TreeNode = {
+    id: "conn:app:__tables",
+    label: "tree.tables",
+    type: "group-tables",
+    connectionId: "conn",
+    database: "app",
+    isExpanded: true,
+    children: [{ id: "conn:app:orders", label: "orders", type: "table", connectionId: "conn", database: "app" }],
+  };
+  const viewGroup: TreeNode = {
+    id: "conn:app:__views",
+    label: "tree.views",
+    type: "group-views",
+    connectionId: "conn",
+    database: "app",
+    isExpanded: true,
+    children: [],
+  };
+
+  const nodes = insertSidebarTableSearchControls([flat(tableGroup, 1), flat(viewGroup, 1)], {
+    enabled: true,
+    sidebarObjectDisplay: "grouped",
+    activeQueries: {},
+  });
+
+  assert.deepEqual(
+    nodes.map((item) => item.node.type),
+    ["group-tables", "table-search-control", "group-views"],
+  );
+  assert.equal(nodes[1].node.tableSearchParentId, "conn:app:__tables");
+});
+
+test("does not insert a local table search control for empty table scopes", () => {
+  const tableGroup: TreeNode = {
+    id: "conn:app:__tables",
+    label: "tree.tables",
+    type: "group-tables",
+    connectionId: "conn",
+    database: "app",
+    isExpanded: true,
+    children: [],
+  };
+  const routineOnlySchema: TreeNode = {
+    id: "conn:app:public",
+    label: "public",
+    type: "schema",
+    connectionId: "conn",
+    database: "app",
+    schema: "public",
+    isExpanded: true,
+    children: [{ id: "conn:app:public:sync_orders", label: "sync_orders", type: "procedure", connectionId: "conn", database: "app", schema: "public" }],
+  };
+
+  const groupedNodes = insertSidebarTableSearchControls([flat(tableGroup, 1)], {
+    enabled: true,
+    sidebarObjectDisplay: "grouped",
+    activeQueries: {},
+  });
+  const simpleNodes = insertSidebarTableSearchControls([flat(routineOnlySchema, 1)], {
+    enabled: true,
+    sidebarObjectDisplay: "simple",
+    activeQueries: {},
+  });
+
+  assert.deepEqual(
+    groupedNodes.map((item) => item.node.type),
+    ["group-tables"],
+  );
+  assert.deepEqual(
+    simpleNodes.map((item) => item.node.type),
+    ["schema"],
+  );
+});
+
+test("keeps a grouped local table search control visible when the current search has no results", () => {
+  const tableGroup: TreeNode = {
+    id: "conn:app:__tables",
+    label: "tree.tables",
+    type: "group-tables",
+    connectionId: "conn",
+    database: "app",
+    isExpanded: true,
+    children: [],
+  };
+
+  const nodes = insertSidebarTableSearchControls([flat(tableGroup, 1)], {
+    enabled: true,
+    sidebarObjectDisplay: "grouped",
+    activeQueries: { "conn:app:__tables": "invoice" },
+  });
+
+  assert.deepEqual(
+    nodes.map((item) => item.node.type),
+    ["group-tables", "table-search-control"],
+  );
+});
+
+test("uses isolated virtual scroller pools for each local table search input", () => {
+  const first: TreeNode = {
+    id: "conn:first:__tables",
+    label: "tree.tables",
+    type: "group-tables",
+    connectionId: "conn",
+    database: "first",
+    isExpanded: true,
+    children: [{ id: "conn:first:orders", label: "orders", type: "table", connectionId: "conn", database: "first" }],
+  };
+  const second: TreeNode = {
+    id: "conn:second:__tables",
+    label: "tree.tables",
+    type: "group-tables",
+    connectionId: "conn",
+    database: "second",
+    isExpanded: true,
+    children: [{ id: "conn:second:orders", label: "orders", type: "table", connectionId: "conn", database: "second" }],
+  };
+
+  const nodes = insertSidebarTableSearchControls([flat(first, 1), flat(second, 1)], {
+    enabled: true,
+    sidebarObjectDisplay: "grouped",
+    activeQueries: {},
+  });
+
+  const pools = nodes.filter((item) => item.node.type === "table-search-control").map((item) => item.poolType);
+  assert.equal(pools.length, 2);
+  assert.equal(new Set(pools).size, 2);
+});
+
+test("hides local table search controls while global sidebar filtering is active", () => {
+  const database: TreeNode = {
+    id: "conn:app",
+    label: "app",
+    type: "database",
+    connectionId: "conn",
+    database: "app",
+    isExpanded: true,
+    children: [{ id: "conn:app:orders", label: "orders", type: "table", connectionId: "conn", database: "app" }],
+  };
+
+  const nodes = insertSidebarTableSearchControls([flat(database)], {
+    enabled: false,
+    sidebarObjectDisplay: "simple",
+    activeQueries: { "conn:app": "orders" },
+  });
+
+  assert.deepEqual(
+    nodes.map((item) => item.node.type),
+    ["database"],
+  );
+});
+
+test("does not insert local table search controls when the user setting is disabled", () => {
+  const tableGroup: TreeNode = {
+    id: "conn:app:__tables",
+    label: "tree.tables",
+    type: "group-tables",
+    connectionId: "conn",
+    database: "app",
+    isExpanded: true,
+    children: [{ id: "conn:app:orders", label: "orders", type: "table", connectionId: "conn", database: "app" }],
+  };
+
+  const nodes = insertSidebarTableSearchControls([flat(tableGroup, 1)], {
+    enabled: false,
+    sidebarObjectDisplay: "grouped",
+    activeQueries: { "conn:app:__tables": "orders" },
+  });
+
+  assert.deepEqual(
+    nodes.map((item) => item.node.type),
+    ["group-tables"],
+  );
+});
+
+test("resolves local table search parent from active tree node id", () => {
+  const tree: TreeNode = {
+    id: "conn",
+    label: "conn",
+    type: "connection",
+    connectionId: "conn",
+    children: [
+      {
+        id: "conn:db1",
+        label: "db1",
+        type: "database",
+        connectionId: "conn",
+        database: "db1",
+        children: [{ id: "conn:db1:tbl", label: "tbl", type: "table", connectionId: "conn", database: "db1" }],
+      },
+      {
+        id: "conn:db2",
+        label: "db2",
+        type: "database",
+        connectionId: "conn",
+        database: "db2",
+        children: [
+          {
+            id: "conn:db2:__tables",
+            label: "tables",
+            type: "group-tables",
+            connectionId: "conn",
+            database: "db2",
+            children: [{ id: "conn:db2:orders", label: "orders", type: "table", connectionId: "conn", database: "db2" }],
+          },
+        ],
+      },
+      {
+        id: "conn:db_routines",
+        label: "db_routines",
+        type: "database",
+        connectionId: "conn",
+        database: "db_routines",
+        children: [
+          {
+            id: "conn:db_routines:__procs",
+            label: "procedures",
+            type: "group-procedures",
+            connectionId: "conn",
+            database: "db_routines",
+            children: [{ id: "conn:db_routines:p1", label: "p1", type: "procedure", connectionId: "conn", database: "db_routines" }],
+          },
+        ],
+      },
+    ],
+  };
+
+  assert.equal(resolveLocalTableSearchParent([tree], "conn:db1:tbl", "simple")?.id, "conn:db1");
+  assert.equal(resolveLocalTableSearchParent([tree], "conn:db1", "simple")?.id, "conn:db1");
+  assert.equal(resolveLocalTableSearchParent([tree], "conn:db2:orders", "grouped")?.id, "conn:db2:__tables");
+  assert.equal(resolveLocalTableSearchParent([tree], "conn:db2", "grouped")?.id, "conn:db2:__tables");
+  assert.equal(resolveLocalTableSearchParent([tree], "conn:db_routines", "grouped"), null);
+  assert.equal(resolveLocalTableSearchParent([tree], "conn:db_routines:__procs", "grouped"), null);
+  assert.equal(resolveLocalTableSearchParent([tree], "conn:db_routines:p1", "grouped"), null);
+  assert.equal(resolveLocalTableSearchParent([tree], "conn", "simple"), null);
+});

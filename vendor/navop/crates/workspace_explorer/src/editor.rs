@@ -42,10 +42,20 @@ fn load_shortcut<A: Action>(
     context: Option<&str>,
     cx: &App,
 ) -> KeyBinding {
-    let context_predicate =
-        context.map(|context| gpui::KeyBindingContextPredicate::parse(context).unwrap().into());
-    KeyBinding::load(keystrokes, Box::new(action), context_predicate, true, None, cx)
-        .unwrap_or_else(|error| panic!("invalid shortcut {keystrokes:?}: {error}"))
+    let context_predicate = context.map(|context| {
+        gpui::KeyBindingContextPredicate::parse(context)
+            .unwrap()
+            .into()
+    });
+    KeyBinding::load(
+        keystrokes,
+        Box::new(action),
+        context_predicate,
+        true,
+        None,
+        cx,
+    )
+    .unwrap_or_else(|error| panic!("invalid shortcut {keystrokes:?}: {error}"))
 }
 
 #[derive(Clone, Debug)]

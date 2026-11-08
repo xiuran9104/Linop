@@ -151,10 +151,7 @@ fn terminal_control_reintegrate_returns_structured_result() {
     .expect("terminal.control reintegrate should run");
 
     assert_eq!(json!(true), result.structured_content["sent"]);
-    assert_eq!(
-        json!("reintegrate"),
-        result.structured_content["action"]
-    );
+    assert_eq!(json!("reintegrate"), result.structured_content["action"]);
     // reintegrate 不依赖 readiness，结果里必须显式为 null，不碰巧伪装成某个运行态。
     assert_eq!(json!(null), result.structured_content["readiness_before"]);
     let requests = terminal.requests.lock().unwrap();
@@ -175,5 +172,9 @@ fn terminal_control_rejects_unknown_action() {
     ))
     .expect_err("unknown action must fail");
 
-    assert!(error.to_string().contains("unsupported terminal control action"));
+    assert!(
+        error
+            .to_string()
+            .contains("unsupported terminal control action")
+    );
 }

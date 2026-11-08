@@ -516,7 +516,9 @@ impl ConnectionSession {
     fn try_lock_connection(
         &self,
     ) -> Result<OwnedMutexGuard<Box<dyn DbConnection + Send + Sync>>, ()> {
-        Arc::clone(&self.connection).try_lock_owned().map_err(|_| ())
+        Arc::clone(&self.connection)
+            .try_lock_owned()
+            .map_err(|_| ())
     }
 
     /// Validate that this session can serve `config` before it is reused.
@@ -1091,9 +1093,8 @@ impl ConnectionManager {
                     // 被钉住的会话由执行入口的前置探测处理：连接死了就地重连，
                     // 活着就继续用（粘性会话的连接级状态比 lifetime 策略更重要）。
                     // idle 超时已由 `is_expired` 内的 `in_flight == 0` 保护。
-                    let should_remove =
-                        (session.is_expired(idle_timeout) && !session.in_use())
-                            || (session.is_lifetime_expired(max_lifetime) && !session.in_use());
+                    let should_remove = (session.is_expired(idle_timeout) && !session.in_use())
+                        || (session.is_lifetime_expired(max_lifetime) && !session.in_use());
 
                     if should_remove {
                         let session = session_list.remove(i);
@@ -7028,11 +7029,7 @@ mod tests {
             created_configs.lock().unwrap().len(),
             "死连接应就地重连一次（首次建连 + 重连）"
         );
-        assert_eq!(
-            1,
-            results.len(),
-            "重放后应返回新连接上的执行结果"
-        );
+        assert_eq!(1, results.len(), "重放后应返回新连接上的执行结果");
         assert!(!results[0].is_error(), "重放应在新活连接上成功");
     }
 
@@ -7054,13 +7051,14 @@ mod tests {
         let session_id = format!("{}:session:1", config.id);
         {
             let mut sessions = state.connection_manager.sessions.write().await;
-            sessions.entry(config.id.clone()).or_default().push(Arc::new(
-                ConnectionSession::new(
+            sessions
+                .entry(config.id.clone())
+                .or_default()
+                .push(Arc::new(ConnectionSession::new(
                     Box::new(MockConnection::new(config.clone(), false)),
                     session_id.clone(),
                     false,
-                ),
-            ));
+                )));
         }
         assert_eq!(
             SessionLiveness::Dead,
@@ -7074,13 +7072,14 @@ mod tests {
         let live_session_id = format!("{}:session:1", config_live.id);
         {
             let mut sessions = state.connection_manager.sessions.write().await;
-            sessions.entry(config_live.id.clone()).or_default().push(Arc::new(
-                ConnectionSession::new(
+            sessions
+                .entry(config_live.id.clone())
+                .or_default()
+                .push(Arc::new(ConnectionSession::new(
                     Box::new(MockConnection::new(config_live.clone(), true)),
                     live_session_id.clone(),
                     false,
-                ),
-            ));
+                )));
         }
         assert_eq!(
             SessionLiveness::Alive,
@@ -7099,20 +7098,21 @@ mod tests {
         let config = test_config("reconnect-bare-closed");
         state.register_connection(config.clone());
         let created_configs = Arc::new(StdMutex::new(Vec::new()));
-        state.db_manager.postgresql = Arc::new(SlowOpenPlugin::recording_postgres(
-            Arc::clone(&created_configs),
-        ));
+        state.db_manager.postgresql = Arc::new(SlowOpenPlugin::recording_postgres(Arc::clone(
+            &created_configs,
+        )));
         // 手插 unhealthy 死连接（ping 会失败）：断连的真实形态。
         let session_id = format!("{}:session:1", config.id);
         {
             let mut sessions = state.connection_manager.sessions.write().await;
-            sessions.entry(config.id.clone()).or_default().push(Arc::new(
-                ConnectionSession::new(
+            sessions
+                .entry(config.id.clone())
+                .or_default()
+                .push(Arc::new(ConnectionSession::new(
                     Box::new(MockConnection::new(config.clone(), false)),
                     session_id.clone(),
                     false,
-                ),
-            ));
+                )));
         }
 
         let results = state
@@ -7146,19 +7146,20 @@ mod tests {
         let config = test_config("reconnect-flag-off");
         state.register_connection(config.clone());
         let created_configs = Arc::new(StdMutex::new(Vec::new()));
-        state.db_manager.postgresql = Arc::new(SlowOpenPlugin::recording_postgres(
-            Arc::clone(&created_configs),
-        ));
+        state.db_manager.postgresql = Arc::new(SlowOpenPlugin::recording_postgres(Arc::clone(
+            &created_configs,
+        )));
         let session_id = format!("{}:session:1", config.id);
         {
             let mut sessions = state.connection_manager.sessions.write().await;
-            sessions.entry(config.id.clone()).or_default().push(Arc::new(
-                ConnectionSession::new(
+            sessions
+                .entry(config.id.clone())
+                .or_default()
+                .push(Arc::new(ConnectionSession::new(
                     Box::new(MockConnection::new(config.clone(), false)),
                     session_id.clone(),
                     false,
-                ),
-            ));
+                )));
         }
 
         let results = state

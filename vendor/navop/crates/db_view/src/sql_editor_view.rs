@@ -181,7 +181,14 @@ fn init_keybindings(cx: &App) -> Vec<KeyBinding> {
     );
     let mut keybindings = current_shortcuts
         .iter()
-        .map(|key| one_core::keybindings::load_dynamic_keybinding(&key, RunCurrentQuery, Some(SQL_EDITOR_CONTEXT), cx))
+        .map(|key| {
+            one_core::keybindings::load_dynamic_keybinding(
+                &key,
+                RunCurrentQuery,
+                Some(SQL_EDITOR_CONTEXT),
+                cx,
+            )
+        })
         .collect::<Vec<_>>();
     keybindings.push(secondary_enter_binding(&current_shortcuts, cx));
     keybindings.extend(
@@ -191,13 +198,23 @@ fn init_keybindings(cx: &App) -> Vec<KeyBinding> {
             &RUN_ALL_QUERY_KEY_BINDINGS,
         )
         .into_iter()
-        .map(|key| one_core::keybindings::load_dynamic_keybinding(&key, RunAllQuery, Some(SQL_EDITOR_CONTEXT), cx)),
+        .map(|key| {
+            one_core::keybindings::load_dynamic_keybinding(
+                &key,
+                RunAllQuery,
+                Some(SQL_EDITOR_CONTEXT),
+                cx,
+            )
+        }),
     );
-    keybindings.extend(
-        toggle_line_comment_shortcuts(cx)
-            .into_iter()
-            .map(|key| one_core::keybindings::load_dynamic_keybinding(&key, ToggleLineComment, Some(SQL_EDITOR_INPUT_CONTEXT), cx)),
-    );
+    keybindings.extend(toggle_line_comment_shortcuts(cx).into_iter().map(|key| {
+        one_core::keybindings::load_dynamic_keybinding(
+            &key,
+            ToggleLineComment,
+            Some(SQL_EDITOR_INPUT_CONTEXT),
+            cx,
+        )
+    }));
     keybindings
 }
 
@@ -1696,24 +1713,22 @@ impl SqlEditorTab {
         instance.bind_editor_input_observe(window, cx);
         instance.bind_connection_data_event(window, cx);
         // 页签关闭时释放粘性会话：连接归还池中关闭，不再占用数据库连接。
-        instance._auto_session_release = Some(cx.on_release(
-            |this: &mut SqlEditorTab, cx: &mut App| {
+        instance._auto_session_release =
+            Some(cx.on_release(|this: &mut SqlEditorTab, cx: &mut App| {
                 this.auto_session_generation.fetch_add(1, Ordering::SeqCst);
                 this.auto_session_starting = false;
                 if let Some(session) = this.auto_session.take() {
                     let global_state = cx.global::<GlobalDbState>().clone();
                     let session_id = session.session_id().to_string();
                     cx.spawn(async move |cx: &mut AsyncApp| {
-                        if let Err(error) =
-                            global_state.close_session(cx, session_id.clone()).await
+                        if let Err(error) = global_state.close_session(cx, session_id.clone()).await
                         {
                             error!("Failed to close auto session on release: {:?}", error);
                         }
                     })
                     .detach();
                 }
-            },
-        ));
+            }));
         instance.refresh_statement_snapshot(cx);
         instance.run_diagnostics(cx);
         instance.load_databases_async(
@@ -3584,36 +3599,36 @@ impl SqlEditorTab {
         let transaction_generation = self.auto_session_generation.clone();
 
         cx.spawn(async move |entity: WeakEntity<Self>, cx: &mut AsyncApp| {
-            let session_id =
-                match global_state.create_session(cx, connection_id.clone(), scope.database.clone())
-                    .await
-                {
-                    Ok(session_id) => session_id,
-                    Err(error) => {
-                        let is_current = entity
-                            .update(cx, |this, cx| {
-                                this.sql_result_tab_container.update(cx, |container, cx| {
-                                    container.end_run_pending(pending_run, cx);
-                                });
-                                if transaction_generation.load(Ordering::SeqCst) != generation {
-                                    return false;
-                                }
-                                this.auto_session_starting = false;
-                                this.finalize_execution_marker(SqlGutterMarkerState::Failed, cx);
-                                cx.notify();
-                                true
-                            })
-                            .unwrap_or(false);
-                        if is_current {
-                            Self::notify_async(
-                                cx,
-                                t!("Query.auto_session_start_failed", error = error.to_string())
-                                    .to_string(),
-                            );
-                        }
-                        return;
+            let session_id = match global_state
+                .create_session(cx, connection_id.clone(), scope.database.clone())
+                .await
+            {
+                Ok(session_id) => session_id,
+                Err(error) => {
+                    let is_current = entity
+                        .update(cx, |this, cx| {
+                            this.sql_result_tab_container.update(cx, |container, cx| {
+                                container.end_run_pending(pending_run, cx);
+                            });
+                            if transaction_generation.load(Ordering::SeqCst) != generation {
+                                return false;
+                            }
+                            this.auto_session_starting = false;
+                            this.finalize_execution_marker(SqlGutterMarkerState::Failed, cx);
+                            cx.notify();
+                            true
+                        })
+                        .unwrap_or(false);
+                    if is_current {
+                        Self::notify_async(
+                            cx,
+                            t!("Query.auto_session_start_failed", error = error.to_string())
+                                .to_string(),
+                        );
                     }
-                };
+                    return;
+                }
+            };
 
             if transaction_generation.load(Ordering::SeqCst) != generation
                 || context_generation_guard.load(Ordering::SeqCst) != context_generation
@@ -4858,7 +4873,8 @@ impl SqlEditorTab {
         let has_results = self.sql_result_tab_container.read(cx).has_results(cx);
         let results_visible = self.sql_result_tab_container.read(cx).is_visible(cx);
         let is_query_executing = self.sql_result_tab_container.read(cx).is_executing(cx);
-        let results_hidden = !result_panel_visible(has_results, results_visible, is_query_executing);
+        let results_hidden =
+            !result_panel_visible(has_results, results_visible, is_query_executing);
 
         v_flex()
             .size_full()
@@ -5452,11 +5468,11 @@ mod tests {
         match_sql_to_statement_marker, metadata_scope_selection, preferred_default_database,
         query_connection_context_label, query_connection_ids, query_file_path_for_name,
         query_toolbar_action, result_panel_visible, schema_changed_event_matches_scope,
-        should_render_schema_select,
-        sql_text_for_run_all, sql_text_for_toolbar_run, statement_for_gutter_marker,
-        statement_marker_id, supports_manual_transactions, toggle_line_comment_defaults,
-        toggle_sql_line_comments, transaction_action_loading, transaction_liveness,
-        unquote_sql_identifier, viewport_statement_scan_input, write_new_sql_file, write_sql_file,
+        should_render_schema_select, sql_text_for_run_all, sql_text_for_toolbar_run,
+        statement_for_gutter_marker, statement_marker_id, supports_manual_transactions,
+        toggle_line_comment_defaults, toggle_sql_line_comments, transaction_action_loading,
+        transaction_liveness, unquote_sql_identifier, viewport_statement_scan_input,
+        write_new_sql_file, write_sql_file,
     };
     use crate::sql_editor::SqlEditor;
     use db::DbManager;
@@ -5906,7 +5922,9 @@ mod tests {
 
         assert_eq!(
             2,
-            production.matches("container.begin_run_pending(cx)").count(),
+            production
+                .matches("container.begin_run_pending(cx)")
+                .count(),
             "Auto 与 Manual 两条建会话路径都要进入运行态"
         );
 

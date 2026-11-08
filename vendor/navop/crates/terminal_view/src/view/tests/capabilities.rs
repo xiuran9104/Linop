@@ -912,14 +912,14 @@ fn copy_writes_to_clipboard_before_dropping_the_selection() {
 fn sidebar_panel_placements_persist_through_settings() {
     let settings = include_str!("../../../../core/src/settings.rs");
     assert!(
-        settings
-            .contains("pub terminal_tool_panel_placements: BTreeMap<String, SidebarPlacement>"),
+        settings.contains("pub terminal_tool_panel_placements: BTreeMap<String, SidebarPlacement>"),
         "「移动到」之后的停靠位置必须落在 AppSettings 里才谈得上持久化"
     );
 
     let sidebar = include_str!("../../sidebar/mod.rs");
     assert!(
-        sidebar.contains("pub fn tool_panel_placements(&self) -> BTreeMap<String, SidebarPlacement>"),
+        sidebar
+            .contains("pub fn tool_panel_placements(&self) -> BTreeMap<String, SidebarPlacement>"),
         "侧栏要能把各面板的停靠位置快照成设置里的键值"
     );
     assert!(

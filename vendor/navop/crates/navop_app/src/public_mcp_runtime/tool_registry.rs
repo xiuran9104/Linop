@@ -778,7 +778,7 @@ mod tests {
 
         assert_eq!(
             Some(json!({
-                "name": "Navop",
+                "name": "Linop",
                 "version": env!("CARGO_PKG_VERSION")
             })),
             result.structured_content

@@ -109,7 +109,7 @@ fn change_dialog_body(
         .p_4()
         .child(
             div().text_sm().text_color(cx.theme().warning).child(
-                "修改主密钥会重新加密本地连接、钥匙串条目与团队密钥缓存，并用新密钥重写已同步的云端数据。请保持 Navop 打开直至完成。",
+                "修改主密钥会重新加密本地连接、钥匙串条目与团队密钥缓存，并用新密钥重写已同步的云端数据。请保持 Linop 打开直至完成。",
             ),
         )
         .child(key_field("旧主密钥：", old))
@@ -259,7 +259,7 @@ fn submit_reset(state: &ResetOk, window: &mut Window, cx: &mut App) -> bool {
         Ok(outcome) => {
             tracing::info!("主密钥重置完成：已删除 {} 项", outcome.deleted.len());
             let message = if outcome.failed.is_empty() {
-                "重置完成，Navop 已回到初始设置状态。".to_string()
+                "重置完成，Linop 已回到初始设置状态。".to_string()
             } else {
                 format!("以下内容未能删除：{}", outcome.failed.join("; "))
             };

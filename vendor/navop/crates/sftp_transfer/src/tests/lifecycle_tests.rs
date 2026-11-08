@@ -185,10 +185,7 @@ fn background_manager_cancel_of_queued_task_finishes_cancelled(cx: &mut TestAppC
             executor.snapshot(first).unwrap().state == SftpTransferState::Succeeded
         })
     });
-    assert!(started_matches(
-        &provider,
-        &[first, filler, filler_two]
-    ));
+    assert!(started_matches(&provider, &[first, filler, filler_two]));
 }
 
 #[gpui::test]

@@ -1,12 +1,10 @@
 //! 工具声明进 transcript 的集成测试。
 
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use agent_runtime::history::HistoryItem;
-use agent_runtime::model::{
-    ModelClient, ModelRequest, ModelResponse, ModelStream,
-};
+use agent_runtime::model::{ModelClient, ModelRequest, ModelResponse, ModelStream};
 use agent_runtime::tools::{ToolRegistry, ToolRouter};
 use agent_runtime::{Runtime, RuntimeServices, TaskKind};
 use async_trait::async_trait;
@@ -15,11 +13,17 @@ struct AnswerModel(AtomicUsize);
 
 #[async_trait]
 impl ModelClient for AnswerModel {
-    async fn complete(&self, _request: ModelRequest) -> Result<ModelResponse, agent_runtime::RuntimeError> {
+    async fn complete(
+        &self,
+        _request: ModelRequest,
+    ) -> Result<ModelResponse, agent_runtime::RuntimeError> {
         Ok(ModelResponse::text("unused"))
     }
 
-    async fn complete_stream(&self, _request: ModelRequest) -> Result<ModelStream, agent_runtime::RuntimeError> {
+    async fn complete_stream(
+        &self,
+        _request: ModelRequest,
+    ) -> Result<ModelStream, agent_runtime::RuntimeError> {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(agent_runtime::model::model_response_into_stream(
             ModelResponse::text("回答。"),

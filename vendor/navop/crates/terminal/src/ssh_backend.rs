@@ -1034,20 +1034,20 @@ impl SshBackend {
                                                     .context("failed to send Ctrl-C over SSH")
                                                 {
                                                     Ok(()) => {
-                                                        let _ = result.send(
-                                                            Ok(TerminalControlOutput {
+                                                        let _ = result.send(Ok(
+                                                            TerminalControlOutput {
                                                                 action: request.action,
                                                                 sent: true,
                                                                 readiness_before: Some(
                                                                     readiness_before,
                                                                 ),
-                                                            }),
-                                                        );
+                                                            },
+                                                        ));
                                                     }
                                                     Err(error) => {
-                                                        let _ = result.send(
-                                                            Err(TerminalControlError::Disconnected),
-                                                        );
+                                                        let _ = result.send(Err(
+                                                            TerminalControlError::Disconnected,
+                                                        ));
                                                         disconnect_error = Some(error);
                                                         break;
                                                     }

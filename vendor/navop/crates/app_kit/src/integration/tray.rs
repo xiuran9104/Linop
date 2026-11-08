@@ -91,7 +91,7 @@ pub struct TrayHost {
 
 /// 产品自己的托盘外观与菜单开关。
 pub struct TrayConfig {
-    /// 菜单文案里的产品名（「显示 Navop」「退出 Navop」）。
+    /// 菜单文案里的产品名（「显示 Linop」「退出 Linop」）。
     pub display_name: String,
     /// 托盘悬停提示。
     pub tooltip: String,
@@ -163,7 +163,7 @@ fn host() -> &'static TrayHost {
 }
 
 pub(super) fn config() -> &'static TrayConfig {
-    CONFIG.get_or_init(|| TrayConfig::new("Navop"))
+    CONFIG.get_or_init(|| TrayConfig::new("Linop"))
 }
 
 /// 初始化系统托盘，返回托盘是否可用。重复调用返回已有状态。

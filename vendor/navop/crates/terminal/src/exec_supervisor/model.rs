@@ -79,9 +79,7 @@ impl TerminalExecError {
 impl fmt::Display for TerminalExecError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::BusyContext { readiness } => {
-                formatter.write_str(&Self::recovery_hint(readiness))
-            }
+            Self::BusyContext { readiness } => formatter.write_str(&Self::recovery_hint(readiness)),
             Self::Busy => formatter.write_str("terminal_busy"),
             Self::ReadinessUnknown => formatter.write_str("readiness_unknown"),
             Self::Disconnected => formatter.write_str("terminal_disconnected"),

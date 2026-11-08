@@ -1,0 +1,290 @@
+import { normalizeSidebarHoverDelay } from "@/lib/sidebar/sidebarHoverSettings";
+import type { EditorSettings } from "@/stores/settingsStore";
+import { normalizeBackgroundImageSettings } from "@/lib/app/appBackgroundImage";
+import { normalizeResultPageSize } from "@/lib/dataGrid/paginationPageSize";
+import { normalizeQueryResultMaxRows } from "@/lib/dataGrid/queryResultRowLimit";
+import { normalizeExternalSqlEditorMaxMb } from "@/lib/sql/sqlFileOpen";
+import { normalizeCompletionTriggerMode } from "@/lib/sql/sqlCompletionTriggerPolicy";
+import { normalizeCompletionMatchMode } from "@/lib/sql/sqlCompletionMatchMode";
+import { normalizeExcludedCompletionItems } from "@/lib/editor/excludedCompletions";
+import { normalizeSqlTableCompletionSchemaQualification } from "@/lib/sql/sqlCompletionSchemaQualification";
+import { normalizeTableHoverLookupMode } from "@/lib/editor/hoverTableLookup";
+import { normalizeRedisKeyTemplates } from "@/lib/redis/redisKeyTemplates";
+import { normalizeCsvNullMode } from "@/lib/export/csvNullMode";
+import { normalizeAiSqlApplyTargetMode } from "@/lib/ai/aiSqlTargetTab";
+import { normalizeConnectTimeoutSecs, normalizeQueryTimeoutSecs } from "@/lib/connection/timeoutLimits";
+
+export const EDITOR_SETTINGS_DRAFT_KEYS = [
+  "fontFamily",
+  "fontSize",
+  "tableFontFamily",
+  "uiFontFamily",
+  "uiScale",
+  "fontSmoothing",
+  "theme",
+  "backgroundImage",
+  "customThemes",
+  "activeCustomThemeId",
+  "executeMode",
+  "executeAllOnBlankLine",
+  "showExecutionTargetPicker",
+  "showStatementRunButtons",
+  "locateCursorOnGutterExecute",
+  "showLineNumbers",
+  "showCurrentStatementFrame",
+  "showInsertValueHints",
+  "showConnectionGroupPath",
+  "autoAliasTables",
+  "batchColumnSelectionIncludeComments",
+  "tableCompletionSchemaQualification",
+  "insertSpaceAfterCompletion",
+  "sqlServerSpaceConfirmsCompletion",
+  "functionCompletionIncludeParams",
+  "sequenceCompletionEnabled",
+  "snippetTriggerKey",
+  "sortCompletionColumnsAlphabetically",
+  "selectFirstCompletionOnOpen",
+  "wordWrap",
+  "showWhitespace",
+  "ddlOpenMode",
+  "vimModeEnabled",
+  "caretBrowsingEnabled",
+  "doubleClickStringSelectionMode",
+  "autoCloseBrackets",
+  "restoreSqlFromSourcePasteEnabled",
+  "sqlSemanticDiagnosticsMode",
+  "confirmDangerousSqlExecution",
+  "confirmUnsavedSqlClose",
+  "appCloseUnsavedTabsMode",
+  "savedSqlOpenTargetMode",
+  "aiSqlApplyTargetMode",
+  "welcomePageMode",
+  "appLayout",
+  "webLogoPosition",
+  "tabLayout",
+  "tabPlacement",
+  "colorizeConnectionTabs",
+  "colorizeConnectionTabsScope",
+  "tabGroupMode",
+  "tabSortMode",
+  "tabMaxWidth",
+  "tabDoubleClickAction",
+  "tabGroupRows",
+  "showColumnCommentsInHeader",
+  "dataGridColumnCommentsInInfoArea",
+  "showColumnTypesInHeader",
+  "showColumnHeaderTooltips",
+  "showResultSourceDatabase",
+  "resultTabNamingMode",
+  "resultTabPreferComments",
+  "dataGridShowTransposeFieldMetadata",
+  "dataGridTransposeMetadataInInfoColumn",
+  "colorizeDataGridCellTypes",
+  "dataGridTypeColorSchemes",
+  "activeDataGridTypeColorSchemeId",
+  "showIndexIndicatorsInHeader",
+  "compactColumnHeaderActions",
+  "dataGridQuickEntry",
+  "dataGridFilterEditorView",
+  "dataGridToolbarLayout",
+  "dataGridKeepFilterEditorExpanded",
+  "dataGridTextFilterPanelHeight",
+  "defaultAutoKeepResults",
+  "pinResultTabOnClick",
+  "multiStatementDefaultView",
+  "defaultExplainView",
+  "dataGridAutoTransposeSingleRow",
+  "dataGridCellDetailButtonVisible",
+  "dataGridCellDetailDialogDefault",
+  "dataGridCrosshairHighlight",
+  "dataGridCrosshairRowBg",
+  "dataGridCrosshairColBg",
+  "dataGridStripedRows",
+  "dataGridZebraRowBg",
+  "pageSize",
+  "tableOpenPageSize",
+  "tableOpenSortMode",
+  "tableDatabaseSortDirection",
+  "tableLocalSortDirection",
+  "queryResultMaxRowsEnabled",
+  "queryResultMaxRows",
+  "externalSqlEditorMaxMb",
+  "infiniteScroll",
+  "regexMaxMatchCount",
+  "autoCalculateTotalRows",
+  "flatteningMultiLineText",
+  "dataGridShowWhitespace",
+  "modelGenerationTemplates",
+  "tableColumnTemplateFields",
+  "shortcuts",
+  "sqlFormatter",
+  "sidebarActivation",
+  "sidebarObjectDisplay",
+  "routineSourceOpenMode",
+  "sidebarTableSearchEnabled",
+  "sidebarSearchOpenedDatabasesOnly",
+  "autoSelectActiveSidebarNode",
+  "sidebarPinDefaultDatabase",
+  "sidebarBrowseObjectsOnDatabaseActivation",
+  "openTabsRestoreMode",
+  "autoReloadRestoredDataTabsOnOpen",
+  "disconnectTabHandlingMode",
+  "deleteConnectionTabHandlingMode",
+  "rememberConnectionDatabaseOnDelete",
+  "deepLinkConnectionConfirmMode",
+  "duplicateTabTitleMode",
+  "dataTabReuseMode",
+  "openDataTabsNextToActive",
+  "openTablesInDetachedWindow",
+  "prefillNewQueryWithSelect",
+  "openQueryOnConnectionOpen",
+  "generateSqlIncludeDatabaseName",
+  "generateSqlQuoteIdentifiers",
+  "formatSqlOnSqlFileSave",
+  "showTableDdlHoverPreview",
+  "tableHoverLookupMode",
+  "updateNotificationsEnabled",
+  "autoDownloadUpdates",
+  "autoUpdateApp",
+  "autoUpdateDrivers",
+  "autoUpdateJdbc",
+  "autoUpdateMcp",
+  "autoUpdatePlugins",
+  "sidebarObjectInfoMode",
+  "sidebarAllowHorizontalScroll",
+  "sidebarShowConnectionEndpoints",
+  "sidebarHoverEnabled",
+  "sidebarHoverDelay",
+  "sidebarShowTooltips",
+  "sidebarIndent",
+  "sidebarFontSize",
+  "sidebarDensity",
+  "sidebarHiddenTablePrefixes",
+  "sidebarCopyTableNameSeparator",
+  "sidebarCopyTableNameIncludeSchema",
+  "redisKeyTemplates",
+  "redisDatabaseDisplayLimit",
+  "exportBatchSize",
+  "preferredExportPath",
+  "damengClientBinDir",
+  "autoOpenExportFolder",
+  "applyColumnFormattersOnExport",
+  "csvWithoutBom",
+  "csvQuoteMode",
+  "csvNullMode",
+  "queryResultExportFileNameSource",
+  "exportRowLimitEnabled",
+  "exportRowLimit",
+  "queryExportKeysetOptimizationEnabled",
+  "globalDateTimeDisplayFormat",
+  "globalDateTimeExportFormat",
+  "globalDateTimeImportFormat",
+  "updateDownloadSource",
+  "updateChannel",
+  "toolbarItems",
+  "snippets",
+  "sqlShortcuts",
+  "sqlVariableSubstitutionEnabled",
+  "sqlVariableSyntaxOverrides",
+  "continueOnErrorOnBatch",
+  "clickTableNavigationTarget",
+  "objectBrowserAutoOpenDetailPanel",
+  "completionTriggerMode",
+  "completionMatchMode",
+  "excludedCompletionItems",
+  "defaultTransactionMode",
+  "keepExplicitTransactionInAutoCommit",
+  "globalConnectTimeoutSecs",
+  "globalQueryTimeoutSecs",
+] as const satisfies readonly (keyof EditorSettings)[];
+
+export type EditorSettingsDraftKey = (typeof EDITOR_SETTINGS_DRAFT_KEYS)[number];
+export type EditorSettingsDraft = Pick<EditorSettings, EditorSettingsDraftKey>;
+
+function cloneDraftValue<T>(value: T): T {
+  if (value === null || typeof value !== "object") return value;
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+export function normalizeTableOpenPageSizeDraft(value: unknown): number {
+  // Match persistence so legacy, invalid, and fractional values cannot leave the dialog dirty after apply.
+  return normalizeResultPageSize(value);
+}
+
+export function normalizeQueryResultMaxRowsDraft(value: unknown): number {
+  return normalizeQueryResultMaxRows(value);
+}
+
+function normalizedDraftValue(key: EditorSettingsDraftKey, value: unknown): unknown {
+  if (key === "sidebarHoverDelay") return normalizeSidebarHoverDelay(value);
+  if (key === "pageSize" || key === "tableOpenPageSize") return normalizeTableOpenPageSizeDraft(value);
+  if (key === "queryResultMaxRows") return normalizeQueryResultMaxRowsDraft(value);
+  if (key === "externalSqlEditorMaxMb") return normalizeExternalSqlEditorMaxMb(value);
+  if (key === "completionTriggerMode") return normalizeCompletionTriggerMode(value);
+  if (key === "completionMatchMode") return normalizeCompletionMatchMode(value);
+  if (key === "excludedCompletionItems") return normalizeExcludedCompletionItems(value);
+  if (key === "tableCompletionSchemaQualification") return normalizeSqlTableCompletionSchemaQualification(value);
+  if (key === "tableHoverLookupMode") return normalizeTableHoverLookupMode(value);
+  if (key === "redisKeyTemplates") return normalizeRedisKeyTemplates(value);
+  if (key === "csvNullMode") return normalizeCsvNullMode(value);
+  if (key === "backgroundImage") return normalizeBackgroundImageSettings(value);
+  if (key === "snippetTriggerKey") return value === "space" || value === "both" ? value : "tab";
+  if (key === "tabDoubleClickAction") return value === "close" ? "close" : "default";
+  if (key === "webLogoPosition") return value === "right" || value === "hidden" ? value : "left";
+  if (key === "aiSqlApplyTargetMode") return normalizeAiSqlApplyTargetMode(value);
+  if (key === "colorizeConnectionTabsScope") return value === "active" ? "active" : "all";
+  // 全局连接/查询超时与连接编辑对话框「全局」档共用同一落盘口径（1~300 / 0~3600，0=不限），
+  // 草稿比较与回填都走同一 normalize，避免输入框残留越界值导致面板卡在“未保存”。
+  if (key === "globalConnectTimeoutSecs") return normalizeConnectTimeoutSecs(value);
+  if (key === "globalQueryTimeoutSecs") return normalizeQueryTimeoutSecs(value);
+  return value;
+}
+
+function draftValueChanged(key: EditorSettingsDraftKey, a: unknown, b: unknown): boolean {
+  return JSON.stringify(normalizedDraftValue(key, a)) !== JSON.stringify(normalizedDraftValue(key, b));
+}
+
+export function editorSettingsDraftFromSettings(settings: EditorSettings): EditorSettingsDraft {
+  const draft = {} as EditorSettingsDraft;
+  for (const key of EDITOR_SETTINGS_DRAFT_KEYS) {
+    draft[key] = cloneDraftValue(normalizedDraftValue(key, settings[key])) as never;
+  }
+  return draft;
+}
+
+/**
+ * Draft-shaped, per-key-normalized values for exactly the keys present in
+ * `settings`. Used for partial updates (e.g. settings import) where keys the
+ * input does not contain must leave the target state untouched.
+ */
+export function editorSettingsDraftPatchFromSettings(settings: Partial<EditorSettings>): Partial<EditorSettingsDraft> {
+  const patch: Partial<EditorSettingsDraft> = {};
+  for (const key of EDITOR_SETTINGS_DRAFT_KEYS) {
+    if (!(key in settings)) continue;
+    (patch as Record<string, unknown>)[key] = cloneDraftValue(normalizedDraftValue(key, settings[key])) as never;
+  }
+  return patch;
+}
+
+export function editorSettingsPatchFromDraft(draft: EditorSettingsDraft, base: EditorSettingsDraft): Partial<EditorSettings> {
+  const patch: Partial<EditorSettings> = {};
+  for (const key of EDITOR_SETTINGS_DRAFT_KEYS) {
+    if (draftValueChanged(key, draft[key], base[key])) {
+      patch[key] = cloneDraftValue(normalizedDraftValue(key, draft[key])) as never;
+    }
+  }
+  return patch;
+}
+
+export function editorSettingsDraftChanged(draft: EditorSettingsDraft, base: EditorSettingsDraft): boolean {
+  return EDITOR_SETTINGS_DRAFT_KEYS.some((key) => draftValueChanged(key, draft[key], base[key]));
+}
+
+// Closing the settings dialog (Escape, clicking outside, the X button, or the
+// "Close" footer button) must never silently drop an unapplied draft — the
+// dialog only persists shortcuts/sidebarActivation/etc. to the store on an
+// explicit Apply. Route every close attempt through this check so an unsaved
+// draft always surfaces a confirmation instead of vanishing.
+export function shouldConfirmEditorSettingsDialogClose(nextOpen: boolean, hasUnsavedChanges: boolean): boolean {
+  return nextOpen === false && hasUnsavedChanges;
+}

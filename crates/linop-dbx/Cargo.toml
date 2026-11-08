@@ -1,0 +1,22 @@
+[package]
+name = "linop-dbx"
+description = "Database module backed by DBX (dbx-core vendored): shared connection store, query, UI launch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+thiserror = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+dbx-mcp = { path = "../../vendor/dbx/crates/dbx-mcp" }
+dbx-types = { path = "../../vendor/dbx/crates/dbx-types" }
+dbx-core = { path = "../../vendor/dbx/crates/dbx-core" }
+
+[[bin]]
+name = "linop-dbx"
+path = "src/main.rs"
+
+[dev-dependencies]
+tempfile = "3"

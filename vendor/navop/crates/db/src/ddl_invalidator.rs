@@ -201,8 +201,7 @@ impl DdlInvalidator {
 
         for statement in parser {
             let statement = statement?;
-            if Self::starts_with_ddl_keyword(&statement) || Self::is_full_table_delete(&statement)
-            {
+            if Self::starts_with_ddl_keyword(&statement) || Self::is_full_table_delete(&statement) {
                 candidates.push(statement);
             }
         }
@@ -525,14 +524,13 @@ impl DdlInvalidator {
                     sqlparser::ast::FromTable::WithFromKeyword(tables) => tables.first(),
                     sqlparser::ast::FromTable::WithoutKeyword(tables) => tables.first(),
                 };
-                let table = first_table.and_then(|table_with_joins| {
-                    match &table_with_joins.relation {
+                let table =
+                    first_table.and_then(|table_with_joins| match &table_with_joins.relation {
                         sqlparser::ast::TableFactor::Table { name, .. } => {
                             Some(Self::extract_object_name_from_ast(name))
                         }
                         _ => None,
-                    }
-                });
+                    });
                 match (is_unconditional, table) {
                     (true, Some(table)) => Some(DdlEvent::DeleteAllRows {
                         database: current_database.to_string(),
@@ -1413,21 +1411,15 @@ mod tests {
     fn test_parse_full_table_delete() {
         // 无 WHERE 的 DELETE：与 TRUNCATE 等价的整表清空（SQLite/DuckDB 生成）
         let event = DdlInvalidator::parse_ddl_event("DELETE FROM users", "mydb", None);
-        assert!(
-            matches!(event, Some(DdlEvent::DeleteAllRows { table, .. }) if table == "users")
-        );
+        assert!(matches!(event, Some(DdlEvent::DeleteAllRows { table, .. }) if table == "users"));
 
         // schema 限定：表名取最后一段
         let event = DdlInvalidator::parse_ddl_event("DELETE FROM public.users", "mydb", None);
-        assert!(
-            matches!(event, Some(DdlEvent::DeleteAllRows { table, .. }) if table == "users")
-        );
+        assert!(matches!(event, Some(DdlEvent::DeleteAllRows { table, .. }) if table == "users"));
 
         // 带引号标识符
         let event = DdlInvalidator::parse_ddl_event("DELETE FROM `users`", "mydb", None);
-        assert!(
-            matches!(event, Some(DdlEvent::DeleteAllRows { table, .. }) if table == "users")
-        );
+        assert!(matches!(event, Some(DdlEvent::DeleteAllRows { table, .. }) if table == "users"));
 
         // 大小写不敏感
         let event = DdlInvalidator::parse_ddl_event("delete from users", "mydb", None);
@@ -1443,8 +1435,7 @@ mod tests {
     #[test]
     fn test_conditional_delete_is_not_detected() {
         // 带 WHERE 的条件删除不属于整表清空，不应产生任何事件
-        let event =
-            DdlInvalidator::parse_ddl_event("DELETE FROM users WHERE id = 1", "mydb", None);
+        let event = DdlInvalidator::parse_ddl_event("DELETE FROM users WHERE id = 1", "mydb", None);
         assert!(event.is_none());
 
         // 候选预筛必须排除带 WHERE 的删除，避免为大体积条件删除构建 AST

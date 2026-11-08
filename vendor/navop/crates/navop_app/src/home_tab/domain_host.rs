@@ -133,10 +133,10 @@ impl HomeContext for HomePage {
 
 /// 全量产品的 shell 宿主：领域事件回到当前 `HomePage`。
 #[cfg(feature = "shell")]
-pub(crate) struct NavopShellHost;
+pub(crate) struct LinopShellHost;
 
 #[cfg(feature = "shell")]
-impl app_kit::ShellHost for NavopShellHost {
+impl app_kit::ShellHost for LinopShellHost {
     fn open_sftp(&self, connection: StoredConnection, window: &mut Window, cx: &mut App) {
         let Some(home) = cx
             .try_global::<crate::navop_app::GlobalHomePage>()

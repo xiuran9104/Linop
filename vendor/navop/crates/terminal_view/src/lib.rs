@@ -18,7 +18,6 @@ pub mod serial_form_window;
 pub mod settings;
 pub mod sidebar;
 
-
 pub mod telnet_form_window;
 pub mod terminal_element;
 mod theme;

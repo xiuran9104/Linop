@@ -19,9 +19,7 @@ use agent_runtime::tools::{
     ObservationData, Tool, ToolInvocation, ToolName, ToolObservation, ToolRegistry, ToolRouter,
     ToolSpec,
 };
-use agent_runtime::{
-    Runtime, RuntimeEvent, RuntimeServices, TaskKind, UserInput,
-};
+use agent_runtime::{Runtime, RuntimeEvent, RuntimeServices, TaskKind, UserInput};
 use async_trait::async_trait;
 use serde_json::json;
 use tokio::sync::Notify;
@@ -51,11 +49,17 @@ impl ToolThenAnswerModel {
 
 #[async_trait]
 impl ModelClient for ToolThenAnswerModel {
-    async fn complete(&self, _request: ModelRequest) -> Result<ModelResponse, agent_runtime::RuntimeError> {
+    async fn complete(
+        &self,
+        _request: ModelRequest,
+    ) -> Result<ModelResponse, agent_runtime::RuntimeError> {
         Ok(ModelResponse::text("unused"))
     }
 
-    async fn complete_stream(&self, request: ModelRequest) -> Result<ModelStream, agent_runtime::RuntimeError> {
+    async fn complete_stream(
+        &self,
+        request: ModelRequest,
+    ) -> Result<ModelStream, agent_runtime::RuntimeError> {
         self.requests.lock().expect("requests lock").push(request);
         match self.count.fetch_add(1, Ordering::SeqCst) {
             0 => {
@@ -66,7 +70,9 @@ impl ModelClient for ToolThenAnswerModel {
                     Ok(ModelStreamEvent::Completed(ModelResponse::tool_call(call))),
                 ])))
             }
-            _ => Ok(model_response_into_stream(ModelResponse::text("后续回答。"))),
+            _ => Ok(model_response_into_stream(ModelResponse::text(
+                "后续回答。",
+            ))),
         }
     }
 

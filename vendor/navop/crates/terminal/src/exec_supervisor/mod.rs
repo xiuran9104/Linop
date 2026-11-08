@@ -102,9 +102,12 @@ impl ExecSupervisor {
     pub(crate) fn start(&mut self, id: u64, request: TerminalExecRequest) -> Vec<ExecEffect> {
         if self.active.is_some() {
             // 另一个 exec 在途，readiness 上下文意义不大，但保持同一富化出口。
-            return fail(id, TerminalExecError::BusyContext {
-                readiness: format!("exec_in_flight {:?}", self.readiness),
-            });
+            return fail(
+                id,
+                TerminalExecError::BusyContext {
+                    readiness: format!("exec_in_flight {:?}", self.readiness),
+                },
+            );
         }
         if matches!(self.readiness, ShellCommandReadiness::Ready { .. }) {
             return if self.input_dirty {
@@ -122,9 +125,12 @@ impl ExecSupervisor {
         if !request.ready_timeout.is_zero() {
             return self.start_ready_wait(id, request);
         }
-        fail(id, TerminalExecError::BusyContext {
-            readiness: format!("{:?}", self.readiness),
-        })
+        fail(
+            id,
+            TerminalExecError::BusyContext {
+                readiness: format!("{:?}", self.readiness),
+            },
+        )
     }
 
     pub(crate) fn on_input(&mut self, source: TerminalInputSource, data: &[u8]) -> Vec<ExecEffect> {

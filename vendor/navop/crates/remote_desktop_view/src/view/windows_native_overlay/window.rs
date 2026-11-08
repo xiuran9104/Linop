@@ -283,8 +283,7 @@ pub(super) fn set_overlay_layered(
         unsafe {
             SetLastError(ERROR_SUCCESS);
         }
-        if unsafe { SetLayeredWindowAttributes(window, 0, OVERLAY_LAYERED_ALPHA, LWA_ALPHA) } == 0
-        {
+        if unsafe { SetLayeredWindowAttributes(window, 0, OVERLAY_LAYERED_ALPHA, LWA_ALPHA) } == 0 {
             let error = unsafe { GetLastError() };
             return Err(last_error_code("activate_overlay_layered", error));
         }

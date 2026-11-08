@@ -13,8 +13,8 @@ use gpui::{
     App, AppContext as _, AsyncApp, Bounds, ClipboardItem, Context, ElementInputHandler, Entity,
     EntityInputHandler, EventEmitter, FocusHandle, Focusable, FontFallbacks, InteractiveElement,
     IntoElement, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    ParentElement, Pixels, Point, Render, ScrollEvent, SharedString, Styled, Task,
-    UTF16Selection, Window, actions, canvas, div, px, size,
+    ParentElement, Pixels, Point, Render, ScrollEvent, SharedString, Styled, Task, UTF16Selection,
+    Window, actions, canvas, div, px, size,
 };
 use gpui_component::{
     ActiveTheme, Icon, Sizable, Size,
@@ -363,7 +363,14 @@ fn init_keybindings(cx: &App) -> Vec<gpui::KeyBinding> {
     keybindings.extend(
         shortcuts_for(cx, action_id::REDIS_CLEAR_OUTPUT, &["ctrl-l"])
             .into_iter()
-            .map(|key| one_core::keybindings::load_dynamic_keybinding(&key, ClearOutput, Some(REDIS_CLI_CONTEXT), cx)),
+            .map(|key| {
+                one_core::keybindings::load_dynamic_keybinding(
+                    &key,
+                    ClearOutput,
+                    Some(REDIS_CLI_CONTEXT),
+                    cx,
+                )
+            }),
     );
     keybindings.extend(
         shortcuts_for(
@@ -372,7 +379,9 @@ fn init_keybindings(cx: &App) -> Vec<gpui::KeyBinding> {
             &[redis_platform_shortcut("cmd-c", "ctrl-c")],
         )
         .into_iter()
-        .map(|key| one_core::keybindings::load_dynamic_keybinding(&key, Copy, Some(REDIS_CLI_CONTEXT), cx)),
+        .map(|key| {
+            one_core::keybindings::load_dynamic_keybinding(&key, Copy, Some(REDIS_CLI_CONTEXT), cx)
+        }),
     );
     keybindings.extend(
         shortcuts_for(
@@ -381,7 +390,9 @@ fn init_keybindings(cx: &App) -> Vec<gpui::KeyBinding> {
             &[redis_platform_shortcut("cmd-v", "ctrl-v")],
         )
         .into_iter()
-        .map(|key| one_core::keybindings::load_dynamic_keybinding(&key, Paste, Some(REDIS_CLI_CONTEXT), cx)),
+        .map(|key| {
+            one_core::keybindings::load_dynamic_keybinding(&key, Paste, Some(REDIS_CLI_CONTEXT), cx)
+        }),
     );
     keybindings.extend(
         shortcuts_for(
@@ -390,12 +401,26 @@ fn init_keybindings(cx: &App) -> Vec<gpui::KeyBinding> {
             &[redis_platform_shortcut("cmd-a", "ctrl-a")],
         )
         .into_iter()
-        .map(|key| one_core::keybindings::load_dynamic_keybinding(&key, SelectAll, Some(REDIS_CLI_CONTEXT), cx)),
+        .map(|key| {
+            one_core::keybindings::load_dynamic_keybinding(
+                &key,
+                SelectAll,
+                Some(REDIS_CLI_CONTEXT),
+                cx,
+            )
+        }),
     );
     keybindings.extend(
         shortcuts_for(cx, action_id::REDIS_CLEAR_SELECTION, &["escape"])
             .into_iter()
-            .map(|key| one_core::keybindings::load_dynamic_keybinding(&key, ClearSelection, Some(REDIS_CLI_CONTEXT), cx)),
+            .map(|key| {
+                one_core::keybindings::load_dynamic_keybinding(
+                    &key,
+                    ClearSelection,
+                    Some(REDIS_CLI_CONTEXT),
+                    cx,
+                )
+            }),
     );
     keybindings.extend([
         // 光标移动
@@ -425,7 +450,14 @@ fn init_keybindings(cx: &App) -> Vec<gpui::KeyBinding> {
     keybindings.extend(
         shortcuts_for(cx, action_id::REDIS_COMPLETE_COMMAND, &["tab"])
             .into_iter()
-            .map(|key| one_core::keybindings::load_dynamic_keybinding(&key, CompleteCommand, Some(REDIS_CLI_CONTEXT), cx)),
+            .map(|key| {
+                one_core::keybindings::load_dynamic_keybinding(
+                    &key,
+                    CompleteCommand,
+                    Some(REDIS_CLI_CONTEXT),
+                    cx,
+                )
+            }),
     );
     keybindings
 }
@@ -1445,12 +1477,7 @@ impl RedisCliView {
     }
 
     /// 处理滚轮事件
-    fn handle_scroll(
-        &mut self,
-        event: &ScrollEvent,
-        _window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
+    fn handle_scroll(&mut self, event: &ScrollEvent, _window: &mut Window, cx: &mut Context<Self>) {
         let total_lines = self.build_render_lines().len();
         let line_height = self.line_height();
         let max_scroll = self.max_scroll_for(total_lines, line_height);

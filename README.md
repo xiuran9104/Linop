@@ -129,9 +129,25 @@ Linop 自研部分(`crates/linop-*`、`apps/linop` TUI)与 navop 源码相互独
 `linop-i18n` / `linop-theme` / `linop-sync` 三个 crate 为同能力的轻量实现,
 可供任意前端(含 navop fork)复用。
 
-## 数据库:集成 DBX
+## 数据库:直接复用 DBX(已并入本仓)
 
-数据库管理能力不再自研(历史 SQLite/Postgres/Redis 浏览层已移除),
-统一交给 [DBX](https://dbxio.com/cn) —— 25MB、100+ 数据库引擎的
-开源客户端(桌面/Docker/CLI 三形态,支持 MySQL/PostgreSQL/Redis/
-MongoDB/达梦等,内置 AI 与 MCP)。集成方式见 `crates/linop-dbx`(规划中)。
+数据库管理不再自研,改为**整体复用 [DBX](https://github.com/t8y2/dbx)**
+(Tauri+Rust,Apache-2.0,100+ 数据库引擎,桌面/Docker/CLI/MCP 四形态)。
+vendored 于 `vendor/dbx/`,与 navop 同法本地化(gaussdb/mysql_async fork
+改 `file://` bare 仓库,patch 上移至根 workspace)。
+
+- **`crates/linop-dbx`** —— Linop 的数据库模块,后端直接编译 DBX 的
+  `dbx-core`/`dbx-mcp`(与 DBX 桌面/CLI/MCP 共享同一 `dbx.db` 连接库,
+  `DBX_DATA_DIR` 可重定向):`connections` / `list_tables` / `query`
+  (风控与截断复用 DBX 执行路径)+ `launch-web` 拉起 DBX Web UI;
+  CLI 桥 `linop-dbx connections|tables|query|launch-web`。
+- **russh 已统一**:dbx 侧升级 0.60→0.65(与 navop 侧同版本,
+  ed25519-dalek 3 冲突消失),为 navop+dbx 合并清障;移植面仅
+  `check_server_key` 回调签名一处。
+- **品牌**:navop 的 display_name(窗口标题/托盘等)已改为 **Linop**
+  (数据目录 `~/.navop-dev` 暂保留以延续既有数据);DBX 显示名随
+  合并阶段统一,内部 crate 名(dbx-core 等)在合并时一次性机械重命名。
+- **合并路线**:navop(GUI 壳)⊕ dbx(数据库内核)→ 统一 Linop;
+  两棵 vendored 树已在本 workspace 共存(russh/ed25519 对齐)。
+
+> 注:DBX 许可证以仓库 LICENSE 为准(Apache-2.0)。

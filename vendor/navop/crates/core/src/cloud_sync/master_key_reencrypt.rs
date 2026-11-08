@@ -172,7 +172,7 @@ pub async fn reencrypt_personal<S: PersonalSyncStore>(
 
 #[cfg(test)]
 mod tests {
-    use super::{CloudReencryptStats, new_user_config, is_personal_record, re_encrypt_records};
+    use super::{CloudReencryptStats, is_personal_record, new_user_config, re_encrypt_records};
     use crate::cloud_sync::models::CloudSyncData;
     use crate::cloud_sync::service::CloudSyncService;
     use crate::crypto;
@@ -228,7 +228,12 @@ mod tests {
         let team_record = record("team-1", Some("team-1"), "team-secret", "team-data-key");
 
         assert!(!is_personal_record(&team_record));
-        assert!(is_personal_record(&record("personal-1", None, "secret", "old-key")));
+        assert!(is_personal_record(&record(
+            "personal-1",
+            None,
+            "secret",
+            "old-key"
+        )));
     }
 
     #[test]

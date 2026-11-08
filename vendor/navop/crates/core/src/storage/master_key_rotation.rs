@@ -267,11 +267,7 @@ fn rotate_personal_conflicts(
 ///
 /// 快照是 `CloudSyncData` 的 JSON 序列化，其中 `encrypted_data` 由主密钥加密。
 /// 非 JSON 或不带 `encrypted_data` 的快照原样保留。
-fn rotate_snapshot(
-    snapshot: Option<&str>,
-    old_key: &str,
-    new_key: &str,
-) -> Result<Option<String>> {
+fn rotate_snapshot(snapshot: Option<&str>, old_key: &str, new_key: &str) -> Result<Option<String>> {
     let Some(snapshot) = snapshot else {
         return Ok(None);
     };

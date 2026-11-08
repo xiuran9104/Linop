@@ -313,11 +313,10 @@ impl TableColumnLayout {
         theme: &Theme,
         code_font: &Font,
     ) -> Self {
-        let preferred_widths =
-            measure_preferred_column_widths(table, window, theme, code_font)
-                .into_iter()
-                .map(f32::from)
-                .collect::<Vec<_>>();
+        let preferred_widths = measure_preferred_column_widths(table, window, theme, code_font)
+            .into_iter()
+            .map(f32::from)
+            .collect::<Vec<_>>();
         Self::from_preferred_widths(&preferred_widths, table_width, minimum_column_width(theme))
     }
 

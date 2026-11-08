@@ -630,26 +630,33 @@ async fn load_lineage_table_columns_on_runtime(
     }
 
     let result = Tokio::spawn_result(cx, async move {
-        Ok(futures::future::join_all(tables.into_iter().map(|table_name| {
-            let global_state = global_state.clone();
-            let connection_id = connection_id.clone();
-            let database_name = database_name.clone();
-            let schema_name = schema_name.clone();
-            async move {
-                let (database_name, schema_name, table_name) = resolve_metadata_table_identity(
-                    &global_state,
-                    &connection_id,
-                    database_name,
-                    schema_name,
-                    table_name,
-                );
-                global_state
-                    .list_columns_direct(&connection_id, &database_name, schema_name, &table_name)
-                    .await
-                    .ok()
-            }
-        }))
-        .await)
+        Ok(
+            futures::future::join_all(tables.into_iter().map(|table_name| {
+                let global_state = global_state.clone();
+                let connection_id = connection_id.clone();
+                let database_name = database_name.clone();
+                let schema_name = schema_name.clone();
+                async move {
+                    let (database_name, schema_name, table_name) = resolve_metadata_table_identity(
+                        &global_state,
+                        &connection_id,
+                        database_name,
+                        schema_name,
+                        table_name,
+                    );
+                    global_state
+                        .list_columns_direct(
+                            &connection_id,
+                            &database_name,
+                            schema_name,
+                            &table_name,
+                        )
+                        .await
+                        .ok()
+                }
+            }))
+            .await,
+        )
     })
     .await;
 
@@ -5438,10 +5445,7 @@ mod tests {
 
     #[test]
     fn incomplete_lineage_with_missing_metadata_falls_back_to_no_comment() {
-        let table_columns = vec![
-            Some(vec![sample_column("name", Some("名称"))]),
-            None,
-        ];
+        let table_columns = vec![Some(vec![sample_column("name", Some("名称"))]), None];
         let lineage = sample_lineage(vec!["users", "orders"], vec![], false);
 
         assert_eq!(

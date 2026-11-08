@@ -55,11 +55,7 @@ impl ExecutionHistoryPanel {
     /// 返回 `AnyElement` 而不是 `impl IntoElement`：`uniform_list` 的渲染回调
     /// 只能返回一个固定类型，带生命周期的 opaque 类型会让每个可见行各自
     /// 实例化一个 `R`，编译不过。
-    fn render_record(
-        index: usize,
-        record: &ExecutionRecord,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn render_record(index: usize, record: &ExecutionRecord, cx: &mut Context<Self>) -> AnyElement {
         let (status_color, status_icon) = match record.status {
             ExecutionStatus::Success => (cx.theme().success, IconName::CircleCheck),
             ExecutionStatus::Error => (cx.theme().danger, IconName::TriangleAlert),
@@ -304,17 +300,15 @@ impl Render for ExecutionHistoryPanel {
             uniform_list(
                 "database-execution-history-list",
                 visible_count,
-                cx.processor(
-                    move |panel: &mut Self, range: Range<usize>, _window, cx| {
-                        range
-                            .filter_map(|row_ix| {
-                                let record_ix = visible_indices.get(row_ix).copied()?;
-                                let record = panel.history.records().get(record_ix)?;
-                                Some(Self::render_record(record_ix, record, cx))
-                            })
-                            .collect::<Vec<_>>()
-                    },
-                ),
+                cx.processor(move |panel: &mut Self, range: Range<usize>, _window, cx| {
+                    range
+                        .filter_map(|row_ix| {
+                            let record_ix = visible_indices.get(row_ix).copied()?;
+                            let record = panel.history.records().get(record_ix)?;
+                            Some(Self::render_record(record_ix, record, cx))
+                        })
+                        .collect::<Vec<_>>()
+                }),
             )
             .size_full()
             .into_any_element()
@@ -382,12 +376,10 @@ impl Render for ExecutionHistoryPanel {
                         cx,
                     )),
             )
-            .child(
-                div().flex_1().h_full().min_h_0().overflow_hidden().child(
-                    // 保留原来的 8px 内边距；滚动交给 `uniform_list` 自己。
-                    div().size_full().min_h_0().min_w_0().p_2().child(list),
-                ),
-            )
+            .child(div().flex_1().h_full().min_h_0().overflow_hidden().child(
+                // 保留原来的 8px 内边距；滚动交给 `uniform_list` 自己。
+                div().size_full().min_h_0().min_w_0().p_2().child(list),
+            ))
     }
 }
 

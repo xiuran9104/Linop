@@ -19,8 +19,8 @@ pub mod new_connection;
 pub mod settings;
 pub mod tabs;
 pub mod update;
-pub mod visuals;
 pub mod vault;
+pub mod visuals;
 
 pub use connection_actions::{
     delete_connection, duplicate_connection, edit_connection, open_new_connection,

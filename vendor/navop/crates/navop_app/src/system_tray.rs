@@ -5,7 +5,7 @@
 //! 1. 注入平台相关回调 —— 原生 order-front 必须发生在 GPUI 借用之外，只有 main
 //!    知道 `window_visibility` 与 `navop_app` 的那套实现；
 //! 2. 保持菜单 / 关闭按钮语义不变：`show_quick_actions(false)`，菜单仍是
-//!    「会话 … → 显示 Navop → 退出 Navop」，关闭按钮行为仍由
+//!    「会话 … → 显示 Linop → 退出 Linop」，关闭按钮行为仍由
 //!    [`main_window_close_action`] 决定。
 //!
 //! 五个已经踩实的坑（菜单回调不碰 GPUI、恢复窗口必须在借用外、退出不能绕过既有
@@ -27,7 +27,7 @@ fn config() -> app_kit::integration::tray::TrayConfig {
     // 托盘文案跟随产品身份：三个产品同机运行时，菜单里必须能区分「这是哪个应用」。
     let display_name = app_kit::identity()
         .map(|identity| identity.display_name)
-        .unwrap_or("Navop");
+        .unwrap_or("Linop");
     let badge = app_kit::identity().and_then(|identity| match identity.app_id {
         "com.navop.shell" => Some([59, 130, 246, 255]),
         "com.navop.data" => Some([16, 185, 129, 255]),
@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn system_tray_menu_semantics_are_unchanged_for_the_full_product() {
-        assert!(SHIM_SOURCE.contains(r#"TrayConfig::new("Navop").show_quick_actions(false)"#));
+        assert!(SHIM_SOURCE.contains(r#"TrayConfig::new("Linop").show_quick_actions(false)"#));
         assert!(
             SHIM_SOURCE.contains("pub(crate) fn init(cx: &mut App) -> bool"),
             "lib.rs 的生命周期契约仍按 `system_tray::init(cx)` 扫描"

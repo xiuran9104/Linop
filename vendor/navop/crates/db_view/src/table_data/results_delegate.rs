@@ -812,7 +812,10 @@ impl EditorTableDelegate {
             return;
         }
         for (meta, comment) in self.column_meta.iter_mut().zip(comments) {
-            if let Some(comment) = comment.as_ref().filter(|comment| !comment.trim().is_empty()) {
+            if let Some(comment) = comment
+                .as_ref()
+                .filter(|comment| !comment.trim().is_empty())
+            {
                 meta.comment = Some(comment.clone());
             }
         }

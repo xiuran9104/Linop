@@ -94,7 +94,9 @@ impl NativeSession {
             // A layered window that nothing composes is invisible rather than
             // merely uncomposed, so the style has to come back off.
             if let Err(restore) = self.overlay.set_layered(false) {
-                println!("composition: warning could not drop WS_EX_LAYERED after failure: {restore}");
+                println!(
+                    "composition: warning could not drop WS_EX_LAYERED after failure: {restore}"
+                );
             }
             return Err(format!("{stage}: {error}"));
         }
@@ -102,7 +104,11 @@ impl NativeSession {
         println!(
             "composition: stage={stage} overlay_hwnd=0x{:016X} layered_applied=true cloak={}",
             self.overlay.hwnd(),
-            if cloak_immediately() { "immediate" } else { "deferred" }
+            if cloak_immediately() {
+                "immediate"
+            } else {
+                "deferred"
+            }
         );
         if cloak_immediately() {
             // Negative control for the ordering above: cloaking right here is the
@@ -137,16 +143,20 @@ impl NativeSession {
     /// cloaks.
     fn finish_cloak(&mut self, stage: &str) -> Result<(), String> {
         if let Err(error) = self.overlay.redraw() {
-            return Err(format!("{stage}: painting the overlay at its final size failed: {error}"));
+            return Err(format!(
+                "{stage}: painting the overlay at its final size failed: {error}"
+            ));
         }
         if let Err(error) = self.overlay.set_cloaked(true) {
-            return Err(format!("{stage}: cloaking the composed overlay failed: {error}"));
+            return Err(format!(
+                "{stage}: cloaking the composed overlay failed: {error}"
+            ));
         }
         self.pending_cloak = false;
-        let cloaked = self
-            .overlay
-            .cloaked_state()
-            .map_or_else(|error| format!("unreadable({error})"), |value| value.to_string());
+        let cloaked = self.overlay.cloaked_state().map_or_else(
+            |error| format!("unreadable({error})"),
+            |value| value.to_string(),
+        );
         println!(
             "composition: stage={stage} overlay_hwnd=0x{:016X} layered_applied=true cloaked_state={cloaked}",
             self.overlay.hwnd()
@@ -182,7 +192,9 @@ impl NativeSession {
             println!("composition: warning could not uncloak while falling back: {error}");
         }
         if let Err(error) = self.overlay.set_layered(false) {
-            println!("composition: warning could not drop WS_EX_LAYERED while falling back: {error}");
+            println!(
+                "composition: warning could not drop WS_EX_LAYERED while falling back: {error}"
+            );
         }
     }
 }
@@ -208,7 +220,10 @@ fn enable_composition_surface(window: &Window) -> Option<WindowCompositionSurfac
 pub(super) fn initialize(config: Config, window: &Window) -> Initialization {
     log_config(&config);
     let mode = compose_mode();
-    println!("composition: mode={mode:?} compose_env={:?}", std::env::var("SMOKE_RDP_COMPOSE").ok());
+    println!(
+        "composition: mode={mode:?} compose_env={:?}",
+        std::env::var("SMOKE_RDP_COMPOSE").ok()
+    );
     let credentials = build_credentials(&config);
     let connection_options = match build_connection_options(&config) {
         Ok(options) => options,

@@ -212,7 +212,7 @@ pub(super) const RESET_SCOPE_ROWS: &[(&str, &str, &str)] = &[
     (
         "reset-scope-cloud-sync",
         "云同步数据与版本信息",
-        "Navop Cloud 或已配置同步目标中的同步记录与版本信息",
+        "Linop Cloud 或已配置同步目标中的同步记录与版本信息",
     ),
 ];
 

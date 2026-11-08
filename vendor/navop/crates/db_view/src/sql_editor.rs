@@ -3316,10 +3316,8 @@ mod tests {
     fn isolate_test_app_paths() {
         static INIT: std::sync::Once = std::sync::Once::new();
         INIT.call_once(|| {
-            let root = std::env::temp_dir().join(format!(
-                "navop-db-view-tests-{}",
-                std::process::id()
-            ));
+            let root =
+                std::env::temp_dir().join(format!("navop-db-view-tests-{}", std::process::id()));
             let Ok(context) = one_core::app_paths::process_context() else {
                 return;
             };
@@ -3542,7 +3540,11 @@ mod tests {
         visual.simulate_mouse_move(point, Option::<MouseButton>::None, secondary);
         settle(visual);
 
-        visual.simulate_mouse_down(point, MouseButton::Left, visual.read(|cx| Modifiers::secondary_key(cx)));
+        visual.simulate_mouse_down(
+            point,
+            MouseButton::Left,
+            visual.read(|cx| Modifiers::secondary_key(cx)),
+        );
         settle(visual);
         let tabs = visual.read(|cx| details_tabs(&fixture, cx));
         assert_eq!(1, tabs.len(), "Cmd/Ctrl+click opens the details tab");
@@ -3562,7 +3564,11 @@ mod tests {
         });
 
         // Re-resolving the same object must reuse its tab, not stack a copy.
-        visual.simulate_mouse_down(point, MouseButton::Left, visual.read(|cx| Modifiers::secondary_key(cx)));
+        visual.simulate_mouse_down(
+            point,
+            MouseButton::Left,
+            visual.read(|cx| Modifiers::secondary_key(cx)),
+        );
         settle(visual);
         visual.read(|cx| {
             assert_eq!(1, details_tabs(&fixture, cx).len(), "details tabs reuse");

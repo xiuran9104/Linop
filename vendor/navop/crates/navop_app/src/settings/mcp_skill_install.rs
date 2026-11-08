@@ -137,7 +137,7 @@ fn install_skill(target: SkillTarget, force: bool, window: &mut Window, cx: &mut
     if !one_core::app_paths::is_installed() {
         tracing::info!(
             target = target.id(),
-            "Skipping Navop Skill installation: development build"
+            "Skipping Linop Skill installation: development build"
         );
         window.push_notification(
             Notification::warning(

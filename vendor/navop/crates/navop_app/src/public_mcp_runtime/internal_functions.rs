@@ -37,10 +37,10 @@ pub(super) fn definitions(cx: &App) -> Vec<InternalFunctionDefinition> {
 fn app_info_function() -> InternalFunctionDefinition {
     InternalFunctionDefinition::read_only(
         "onetcli.app_info",
-        "Read Navop app metadata.",
+        "Read Linop app metadata.",
         |_| async {
             Ok(json!({
-                "name": "Navop",
+                "name": "Linop",
                 "version": env!("CARGO_PKG_VERSION")
             }))
         },
