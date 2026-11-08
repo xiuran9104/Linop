@@ -122,7 +122,7 @@ fn open_panel(
         window,
         cx,
         Box::new(move |window, cx| {
-            let view = cx.new(|cx| panel::DbxPanel::new(kind, window, cx));
+            let view = cx.new(|cx| panel::DbxPanel::new(window, cx));
             one_core::tab_container::TabItem::from_dyn(item_id, "dbx", std::sync::Arc::new(view))
         }),
     );

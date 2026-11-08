@@ -22,7 +22,7 @@ async fn main() {
         "connections" => {
             run(async {
                 let dbx = open().await?;
-                let list = dbx.connections();
+                let list = dbx.connections().await;
                 serde_json::to_string_pretty(&list).map_err(|e| e.to_string())
             })
             .await

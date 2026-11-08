@@ -46,9 +46,9 @@ pub struct DbxConnectionSummary {
 /// DBX 执行运行时。**非 Send 友好**:AppState 持 tokio 资源,
 /// 使用时保持在创建它的 runtime 上(或 Arc 化后跨 await 共享)。
 pub struct Dbx {
-    state: AppState,
+    state: std::sync::Arc<tokio::sync::Mutex<AppState>>,
     /// 连接配置(Linop databases.toml 注入的镜像)。
-    profiles: Vec<linop_core::DbProfile>,
+    profiles: tokio::sync::Mutex<Vec<linop_core::DbProfile>>,
     data_dir: PathBuf,
 }
 
@@ -70,7 +70,7 @@ impl Dbx {
         let storage = Storage::open_unmigrated(store_path)
             .await
             .map_err(DbxError::Dbx)?;
-        let state = AppState::new(storage);
+        let state = std::sync::Arc::new(tokio::sync::Mutex::new(AppState::new(storage)));
         // 核心方言注册(linop-db-web 同款全局初始化)。
         linop_db_core::sql_dialect::dialect_loader::register_core_dialects();
         for profile in &profiles {
@@ -78,13 +78,13 @@ impl Dbx {
         }
         Ok(Self {
             state,
-            profiles,
+            profiles: tokio::sync::Mutex::new(profiles),
             data_dir: store_path.to_path_buf(),
         })
     }
 
     /// 把 Linop profile 构造成 DBX ConnectionConfig 并注入运行时。
-    async fn inject(state: &AppState, profile: &linop_core::DbProfile) -> Result<()> {
+    async fn inject(state: &std::sync::Arc<tokio::sync::Mutex<AppState>>, profile: &linop_core::DbProfile) -> Result<()> {
         let config: ConnectionConfig = serde_json::from_value(serde_json::json!({
             "id": format!("linop:{}", profile.name),
             "name": profile.name,
@@ -102,6 +102,8 @@ impl Dbx {
             "ssl": false,
         }))?;
         state
+            .lock()
+            .await
             .configs
             .write()
             .await
@@ -109,17 +111,19 @@ impl Dbx {
         Ok(())
     }
 
-    fn connection_id(&self, name: &str) -> Result<String> {
-        let profile = self
-            .profiles
+    async fn connection_id(&self, name: &str) -> Result<String> {
+        let guard = self.profiles.lock().await;
+        let profile = guard
             .iter()
             .find(|p| p.name == name)
             .ok_or_else(|| DbxError::UnknownConnection(name.to_string()))?;
         Ok(format!("linop:{}", profile.name))
     }
 
-    fn database_of(&self, name: &str) -> String {
+    async fn database_of(&self, name: &str) -> String {
         self.profiles
+            .lock()
+            .await
             .iter()
             .find(|p| p.name == name)
             .and_then(|p| p.database.clone())
@@ -127,8 +131,10 @@ impl Dbx {
     }
 
     /// 连接摘要。
-    pub fn connections(&self) -> Vec<DbxConnectionSummary> {
+    pub async fn connections(&self) -> Vec<DbxConnectionSummary> {
         self.profiles
+            .lock()
+            .await
             .iter()
             .map(|p| DbxConnectionSummary {
                 name: p.name.clone(),
@@ -140,12 +146,20 @@ impl Dbx {
             .collect()
     }
 
+    /// 会话内追加一个连接(不入库;连接配置持久化归 databases.toml)。
+    pub async fn add_profile(&self, profile: linop_core::DbProfile) -> Result<()> {
+        Self::inject(&self.state, &profile).await?;
+        self.profiles.lock().await.push(profile);
+        Ok(())
+    }
+
     /// 表列表(走 DBX 驱动的元数据路径)。
     pub async fn list_tables(&self, name: &str) -> Result<Vec<linop_db_core::types::TableInfo>> {
-        let id = self.connection_id(name)?;
-        let database = self.database_of(name);
+        let id = self.connection_id(name).await?;
+        let database = self.database_of(name).await;
+        let guard = self.state.lock().await;
         linop_db_core::schema::list_tables_core(
-            &self.state,
+            &guard,
             &id,
             &database,
             "",
@@ -161,9 +175,10 @@ impl Dbx {
 
     /// 执行 SQL(默认只读风控、超时与取消都来自 DBX 执行路径)。
     pub async fn query(&self, name: &str, sql: &str) -> Result<linop_db_core::db::QueryResult> {
-        let id = self.connection_id(name)?;
-        let database = self.database_of(name);
-        linop_db_core::query::execute_sql_statement(&self.state, &id, &database, sql, None, None)
+        let id = self.connection_id(name).await?;
+        let database = self.database_of(name).await;
+        let guard = self.state.lock().await;
+        linop_db_core::query::execute_sql_statement(&guard, &id, &database, sql, None, None)
             .await
             .map_err(DbxError::Dbx)
     }
@@ -193,7 +208,7 @@ mod tests {
         )];
         let dbx = Dbx::open(&store, profiles).await.unwrap();
         assert!(store.exists(), "open 应创建技术性 dbx.db");
-        let conns = dbx.connections();
+        let conns = dbx.connections().await;
         assert_eq!(conns.len(), 1);
         assert_eq!(conns[0].name, "pg");
         assert_eq!(conns[0].driver, "postgres");
@@ -206,7 +221,7 @@ mod tests {
         let dbx = Dbx::open(&dir.path().join("dbx.db"), Vec::new())
             .await
             .unwrap();
-        let err = dbx.connection_id("nope").unwrap_err();
+        let err = dbx.connection_id("nope").await.unwrap_err();
         assert!(err.to_string().contains("nope"));
     }
 }
