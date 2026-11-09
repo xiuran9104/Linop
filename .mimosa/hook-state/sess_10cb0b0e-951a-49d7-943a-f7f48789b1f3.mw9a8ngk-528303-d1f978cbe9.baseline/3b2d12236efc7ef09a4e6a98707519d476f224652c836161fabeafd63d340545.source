@@ -116,6 +116,7 @@ fn open_dialog(
         });
         dialog
             .width(px(DIALOG_WIDTH))
+            .close_button(false)
             .content(move |content, _window, _cx| {
                 content.child(view.clone().into_any_element())
             })
@@ -303,6 +304,7 @@ pub fn open_form(request: ConnectionFormRequest, window: &mut Window, cx: &mut A
         let form = form_for_dialog.clone();
         dialog
             .width(px(DIALOG_WIDTH))
+            .close_button(false)
             .content(move |content, _window, _cx| {
                 content.child(form.clone().into_any_element())
             })
