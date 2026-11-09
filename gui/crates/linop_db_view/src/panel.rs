@@ -425,13 +425,6 @@ impl DbxPanel {
     }
 }
 
-fn quote_table(name: &str) -> String {
-    name.split('.')
-        .map(|part| format!("\"{}\"", part.replace('"', "\"\"")))
-        .collect::<Vec<_>>()
-        .join(".")
-}
-
 /// 后台加载共享运行时与连接清单(gpui_tokio 的 Tokio runtime 上执行)。
 async fn load_runtime() -> anyhow::Result<(Arc<DbxRuntime>, Vec<linop_dbx::DbxConnectionSummary>)> {
     let runtime = DbxRuntime::shared().await?;
@@ -450,30 +443,56 @@ impl Render for DbxPanel {
         let status_text = self.status.clone();
         let selected_name = self.selected.clone();
         let selected_table = self.selected_table.clone();
+        let pending_delete = self.pending_delete.clone();
 
-        let connection_row: Vec<_> = profiles.iter().map(|p| {
-            let name = p.name.clone();
-            let is_selected = selected_name.as_deref() == Some(name.as_str());
-            div()
-                .id(SharedString::from(format!("conn-{name}")))
-                .cursor_pointer()
-                .px_2()
-                .py_1()
-                .rounded_sm()
-                .text_size(px(13.0))
-                .when(is_selected, |style| {
-                    style.bg(theme.colors.accent).text_color(theme.colors.accent_foreground)
-                })
-                .when(!is_selected, |style| style.hover(|s| s.bg(theme.colors.selection)))
-                .child(format!("{} ({})", p.name, p.driver))
-                .on_click(cx.listener({
-                    let name = name.clone();
-                    move |panel, _ev, _window, cx| {
-                        panel.select_profile(&name, cx);
-                    }
-                }))
-        })
-        .collect();
+        let connection_row: Vec<_> = profiles
+            .iter()
+            .map(|p| {
+                let name = p.name.clone();
+                let is_selected = selected_name.as_deref() == Some(name.as_str());
+                let confirming = pending_delete.as_deref() == Some(name.as_str());
+                h_flex()
+                    .gap_0p5()
+                    .items_center()
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("conn-{name}")))
+                            .cursor_pointer()
+                            .px_2()
+                            .py_1()
+                            .rounded_sm()
+                            .text_size(px(13.0))
+                            .when(is_selected, |style| {
+                                style.bg(theme.colors.accent).text_color(theme.colors.accent_foreground)
+                            })
+                            .when(!is_selected, |style| {
+                                style.hover(|s| s.bg(theme.colors.selection))
+                            })
+                            .child(format!("{} ({})", p.name, p.driver))
+                            .on_click(cx.listener({
+                                let name = name.clone();
+                                move |panel, _ev, _window, cx| {
+                                    panel.select_profile(&name, cx);
+                                }
+                            })),
+                    )
+                    .child(
+                        Button::new(SharedString::from(format!("del-{name}")))
+                            .label(if confirming { "确认删除" } else { "删除" })
+                            .small()
+                            .when(confirming, |b| {
+                                b.bg(theme.colors.danger)
+                                    .text_color(theme.colors.danger_foreground)
+                            })
+                            .on_click(cx.listener({
+                                let name = name.clone();
+                                move |panel, _ev, _window, cx| {
+                                    panel.delete_profile(&name, cx);
+                                }
+                            })),
+                    )
+            })
+            .collect();
 
         let table_rows: Vec<_> = tables.iter().map(|t| {
             let name = t.name.clone();
