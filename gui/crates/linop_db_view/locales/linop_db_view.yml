@@ -32,6 +32,54 @@ ConnectionForm:
       en: DuckDB (file)
       zh-CN: DuckDB(文件)
       zh-HK: DuckDB(檔案)
+    clickhouse:
+      en: ClickHouse
+      zh-CN: ClickHouse
+      zh-HK: ClickHouse
+    doris:
+      en: Apache Doris
+      zh-CN: Apache Doris
+      zh-HK: Apache Doris
+    starrocks:
+      en: StarRocks
+      zh-CN: StarRocks
+      zh-HK: StarRocks
+    manticoresearch:
+      en: Manticore Search
+      zh-CN: Manticore Search
+      zh-HK: Manticore Search
+    questdb:
+      en: QuestDB
+      zh-CN: QuestDB
+      zh-HK: QuestDB
+    influxdb:
+      en: InfluxDB
+      zh-CN: InfluxDB
+      zh-HK: InfluxDB
+    influxdb3:
+      en: InfluxDB 3
+      zh-CN: InfluxDB 3
+      zh-HK: InfluxDB 3
+    victoriametrics:
+      en: VictoriaMetrics
+      zh-CN: VictoriaMetrics
+      zh-HK: VictoriaMetrics
+    solr:
+      en: Apache Solr
+      zh-CN: Apache Solr
+      zh-HK: Apache Solr
+    meilisearch:
+      en: Meilisearch
+      zh-CN: Meilisearch
+      zh-HK: Meilisearch
+    easysearch:
+      en: Easysearch
+      zh-CN: Easysearch
+      zh-HK: Easysearch
+    couchdb:
+      en: CouchDB
+      zh-CN: CouchDB
+      zh-HK: CouchDB
 
 DbxForm:
   cancel:

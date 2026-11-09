@@ -122,10 +122,10 @@ fn is_numeric_type(data_type: &str) -> bool {
 }
 
 fn quote_ident(driver: DbDriver, name: &str) -> String {
-    match driver {
-        DbDriver::MySql => format!("`{}`", name.replace('`', "``")),
-        _ => format!("\"{}\"", name.replace('"', "\"\"")),
+    if driver.is_mysql_family() || driver.is_clickhouse() {
+        return format!("`{}`", name.replace('`', "``"));
     }
+    format!("\"{}\"", name.replace('"', "\"\""))
 }
 
 /// 数据页实体:工具栏 + 可编辑网格 + 分页。

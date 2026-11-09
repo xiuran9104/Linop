@@ -96,14 +96,17 @@ fn append_dbx_profile_resources(pool: ResourcePool) -> ResourcePool {
         .fold(pool, |pool, profile| {
             let kind = match profile.driver {
                 linop_core::DbDriver::Postgres => ResourceKind::Postgres,
-                linop_core::DbDriver::MySql => ResourceKind::Mysql,
-                linop_core::DbDriver::Sqlite => ResourceKind::Sqlite,
+                linop_core::DbDriver::MySql
+                | linop_core::DbDriver::Doris
+                | linop_core::DbDriver::StarRocks
+                | linop_core::DbDriver::ManticoreSearch => ResourceKind::Mysql,
+                linop_core::DbDriver::Sqlite | linop_core::DbDriver::DuckDb => {
+                    ResourceKind::Sqlite
+                }
                 linop_core::DbDriver::Redis => ResourceKind::Redis,
-                // 其余驱动复用最近语义的资源类型(target 解析按 kind 兼容)。
                 linop_core::DbDriver::Mongo => ResourceKind::Mongo,
-                linop_core::DbDriver::SqlServer => ResourceKind::Other("sqlserver".into()),
-                linop_core::DbDriver::Elastic => ResourceKind::Other("elasticsearch".into()),
-                linop_core::DbDriver::DuckDb => ResourceKind::Sqlite,
+                // 其余驱动按 DBX dbType 名做 Other 资源(target 解析原样透传)。
+                other => ResourceKind::Other(other.as_str().to_string()),
             };
             let mut resource = ResourceRef::new(profile.name.clone(), kind, profile.name.clone());
             resource = resource.with_capability(ResourceCapability::DatabaseQuery);

@@ -30,20 +30,39 @@ pub struct DbProfile {
     pub via: Option<String>,
 }
 
+/// 已编译进 linop-db-drivers 的驱动全集(db/mod.rs + 核心路由覆盖;
+/// as_str 即 DBX DatabaseType 的 serde 名,注入后按其路由到驱动)。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DbDriver {
     Sqlite,
     Redis,
     Postgres,
     MySql,
-    /// MongoDB(原生命令通道;经 linop-db-driver-mongodb)。
     Mongo,
-    /// SQL Server(tiberius)。
     SqlServer,
-    /// Elasticsearch(REST DSL)。
     Elastic,
-    /// DuckDB(嵌入式文件库,与 SQLite 同为文件路径语义)。
     DuckDb,
+    // ---- MySQL 协议家族 ----
+    Doris,
+    StarRocks,
+    ManticoreSearch,
+    // ---- ClickHouse / 时序 ----
+    ClickHouse,
+    QuestDB,
+    InfluxDB,
+    InfluxDB3,
+    VictoriaMetrics,
+    // ---- 搜索 ----
+    Solr,
+    Meilisearch,
+    EasySearch,
+    CouchDB,
+    // ---- 其他 ----
+    HBase,
+    RQLite,
+    Turso,
+    CloudflareD1,
+    DynamoDB,
 }
 
 impl DbDriver {
@@ -57,10 +76,27 @@ impl DbDriver {
             DbDriver::SqlServer => "sqlserver",
             DbDriver::Elastic => "elasticsearch",
             DbDriver::DuckDb => "duckdb",
+            DbDriver::Doris => "doris",
+            DbDriver::StarRocks => "starrocks",
+            DbDriver::ManticoreSearch => "manticoresearch",
+            DbDriver::ClickHouse => "clickhouse",
+            DbDriver::QuestDB => "questdb",
+            DbDriver::InfluxDB => "influxdb",
+            DbDriver::InfluxDB3 => "influxdb3",
+            DbDriver::VictoriaMetrics => "victoriametrics",
+            DbDriver::Solr => "solr",
+            DbDriver::Meilisearch => "meilisearch",
+            DbDriver::EasySearch => "easysearch",
+            DbDriver::CouchDB => "couchdb",
+            DbDriver::HBase => "hbase",
+            DbDriver::RQLite => "rqlite",
+            DbDriver::Turso => "turso",
+            DbDriver::CloudflareD1 => "cloudflare-d1",
+            DbDriver::DynamoDB => "dynamodb",
         }
     }
 
-    /// 未显式填端口时的驱动缺省端口;文件型驱动(0)不走端口。
+    /// 未显式填端口时的驱动缺省端口;文件/云/特殊通道(0)不走常规端口。
     pub fn default_port(self) -> u16 {
         match self {
             DbDriver::Sqlite | DbDriver::DuckDb => 0,
@@ -69,13 +105,44 @@ impl DbDriver {
             DbDriver::MySql => 3306,
             DbDriver::Mongo => 27017,
             DbDriver::SqlServer => 1433,
-            DbDriver::Elastic => 9200,
+            DbDriver::Elastic | DbDriver::EasySearch => 9200,
+            DbDriver::Doris | DbDriver::StarRocks => 9030,
+            DbDriver::ManticoreSearch => 9306,
+            DbDriver::ClickHouse => 8123,
+            DbDriver::QuestDB => 8812,
+            DbDriver::InfluxDB => 8086,
+            DbDriver::InfluxDB3 => 8181,
+            DbDriver::VictoriaMetrics => 8428,
+            DbDriver::Solr => 8983,
+            DbDriver::Meilisearch => 7700,
+            DbDriver::CouchDB => 5984,
+            DbDriver::RQLite => 4001,
+            DbDriver::HBase
+            | DbDriver::Turso
+            | DbDriver::CloudflareD1
+            | DbDriver::DynamoDB => 0,
         }
     }
 
     /// 文件型驱动(路径即库,无主机端口)。
     pub fn is_file_based(self) -> bool {
         matches!(self, DbDriver::Sqlite | DbDriver::DuckDb)
+    }
+
+    /// MySQL 协议家族(标识符引用用反引号)。
+    pub fn is_mysql_family(self) -> bool {
+        matches!(
+            self,
+            DbDriver::MySql
+                | DbDriver::Doris
+                | DbDriver::StarRocks
+                | DbDriver::ManticoreSearch
+        )
+    }
+
+    /// ClickHouse(标识符引用用反引号,字符串字面量单引号)。
+    pub fn is_clickhouse(self) -> bool {
+        matches!(self, DbDriver::ClickHouse)
     }
 
     pub fn parse(value: &str) -> Option<Self> {
@@ -88,6 +155,23 @@ impl DbDriver {
             "mongo" | "mongodb" => Some(DbDriver::Mongo),
             "sqlserver" | "mssql" => Some(DbDriver::SqlServer),
             "elastic" | "elasticsearch" => Some(DbDriver::Elastic),
+            "doris" => Some(DbDriver::Doris),
+            "starrocks" => Some(DbDriver::StarRocks),
+            "manticore" | "manticoresearch" => Some(DbDriver::ManticoreSearch),
+            "clickhouse" | "ch" => Some(DbDriver::ClickHouse),
+            "questdb" => Some(DbDriver::QuestDB),
+            "influxdb" | "influx" => Some(DbDriver::InfluxDB),
+            "influxdb3" | "influx3" => Some(DbDriver::InfluxDB3),
+            "victoriametrics" | "vm" => Some(DbDriver::VictoriaMetrics),
+            "solr" => Some(DbDriver::Solr),
+            "meilisearch" | "meili" => Some(DbDriver::Meilisearch),
+            "easysearch" => Some(DbDriver::EasySearch),
+            "couchdb" => Some(DbDriver::CouchDB),
+            "hbase" => Some(DbDriver::HBase),
+            "rqlite" => Some(DbDriver::RQLite),
+            "turso" => Some(DbDriver::Turso),
+            "cloudflare-d1" | "d1" => Some(DbDriver::CloudflareD1),
+            "dynamodb" => Some(DbDriver::DynamoDB),
             _ => None,
         }
     }

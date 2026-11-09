@@ -100,6 +100,27 @@ impl ToolHandler for DatabaseToolProvider {
             ResourceKind::Mysql,
             ResourceKind::Sqlite,
             ResourceKind::Redis,
+            ResourceKind::Mongo,
+            // 已编译其余驱动经 resource_pool 映射为 Other(<dbType>)。
+            ResourceKind::Other("sqlserver".into()),
+            ResourceKind::Other("elasticsearch".into()),
+            ResourceKind::Other("clickhouse".into()),
+            ResourceKind::Other("doris".into()),
+            ResourceKind::Other("starrocks".into()),
+            ResourceKind::Other("manticoresearch".into()),
+            ResourceKind::Other("questdb".into()),
+            ResourceKind::Other("influxdb".into()),
+            ResourceKind::Other("influxdb3".into()),
+            ResourceKind::Other("victoriametrics".into()),
+            ResourceKind::Other("solr".into()),
+            ResourceKind::Other("meilisearch".into()),
+            ResourceKind::Other("easysearch".into()),
+            ResourceKind::Other("couchdb".into()),
+            ResourceKind::Other("hbase".into()),
+            ResourceKind::Other("rqlite".into()),
+            ResourceKind::Other("turso".into()),
+            ResourceKind::Other("cloudflare-d1".into()),
+            ResourceKind::Other("dynamodb".into()),
         ])
     }
 }

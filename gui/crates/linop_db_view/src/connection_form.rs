@@ -20,8 +20,10 @@ use crate::DbxRuntime;
 /// 数据库连接种类 id 前缀(向导左栏「数据库」分组);后缀 = 驱动名。
 pub(crate) const KIND_PREFIX: &str = "database:";
 
-/// (驱动, i18n 标签键)按向导展示顺序;MySQL 兼容 MariaDB/Doris/StarRocks。
-const KIND_ENTRIES: [(DbDriver, &'static str); 8] = [
+/// (驱动, i18n 标签键)按向导展示顺序。常规主机/文件连接型;
+/// 云凭证型(dynamodb/cloudflare-d1/turso/hbase)字段语义不同,
+/// 不上向导,可在 databases.toml 手写(driver 名可被 parse 识别)。
+const KIND_ENTRIES: [(DbDriver, &'static str); 20] = [
     (DbDriver::Postgres, "postgres"),
     (DbDriver::MySql, "mysql"),
     (DbDriver::Sqlite, "sqlite"),
@@ -30,6 +32,18 @@ const KIND_ENTRIES: [(DbDriver, &'static str); 8] = [
     (DbDriver::Mongo, "mongodb"),
     (DbDriver::Elastic, "elasticsearch"),
     (DbDriver::DuckDb, "duckdb"),
+    (DbDriver::ClickHouse, "clickhouse"),
+    (DbDriver::Doris, "doris"),
+    (DbDriver::StarRocks, "starrocks"),
+    (DbDriver::ManticoreSearch, "manticoresearch"),
+    (DbDriver::QuestDB, "questdb"),
+    (DbDriver::InfluxDB, "influxdb"),
+    (DbDriver::InfluxDB3, "influxdb3"),
+    (DbDriver::VictoriaMetrics, "victoriametrics"),
+    (DbDriver::Solr, "solr"),
+    (DbDriver::Meilisearch, "meilisearch"),
+    (DbDriver::EasySearch, "easysearch"),
+    (DbDriver::CouchDB, "couchdb"),
 ];
 
 fn kind_label_fn(key: &'static str) -> fn(&App) -> SharedString {
@@ -41,7 +55,23 @@ fn kind_label_fn(key: &'static str) -> fn(&App) -> SharedString {
         "sqlserver" => |_: &App| t!("ConnectionForm.kind.sqlserver").to_string().into(),
         "mongodb" => |_: &App| t!("ConnectionForm.kind.mongodb").to_string().into(),
         "elasticsearch" => |_: &App| t!("ConnectionForm.kind.elasticsearch").to_string().into(),
-        _ => |_: &App| t!("ConnectionForm.kind.duckdb").to_string().into(),
+        "duckdb" => |_: &App| t!("ConnectionForm.kind.duckdb").to_string().into(),
+        "clickhouse" => |_: &App| t!("ConnectionForm.kind.clickhouse").to_string().into(),
+        "doris" => |_: &App| t!("ConnectionForm.kind.doris").to_string().into(),
+        "starrocks" => |_: &App| t!("ConnectionForm.kind.starrocks").to_string().into(),
+        "manticoresearch" => |_: &App| {
+            t!("ConnectionForm.kind.manticoresearch").to_string().into()
+        },
+        "questdb" => |_: &App| t!("ConnectionForm.kind.questdb").to_string().into(),
+        "influxdb" => |_: &App| t!("ConnectionForm.kind.influxdb").to_string().into(),
+        "influxdb3" => |_: &App| t!("ConnectionForm.kind.influxdb3").to_string().into(),
+        "victoriametrics" => |_: &App| {
+            t!("ConnectionForm.kind.victoriametrics").to_string().into()
+        },
+        "solr" => |_: &App| t!("ConnectionForm.kind.solr").to_string().into(),
+        "meilisearch" => |_: &App| t!("ConnectionForm.kind.meilisearch").to_string().into(),
+        "easysearch" => |_: &App| t!("ConnectionForm.kind.easysearch").to_string().into(),
+        _ => |_: &App| t!("ConnectionForm.kind.couchdb").to_string().into(),
     }
 }
 
