@@ -146,6 +146,34 @@ impl Dbx {
         ))
     }
 
+    /// 出站代理 URL → DBX transport_layers(缺省无代理层)。
+    fn proxy_transport_layers(
+        profile: &linop_core::DbProfile,
+    ) -> serde_json::Value {
+        let Some(url) = profile.proxy.as_deref().map(str::trim).filter(|s| !s.is_empty())
+        else {
+            return serde_json::json!([]);
+        };
+        let (kind, rest) = url
+            .split_once("://")
+            .map(|(k, r)| (k.to_ascii_lowercase(), r))
+            .unwrap_or_else(|| ("socks5".into(), url));
+        let host_port = rest.split(['/', '?']).next().unwrap_or(rest);
+        let (host, port) = match host_port.rsplit_once(':') {
+            Some((h, p)) => (h.to_string(), p.parse().unwrap_or(0_u16)),
+            None => (host_port.to_string(), 0_u16),
+        };
+        let proxy_type = if kind == "http" { "http" } else { "socks5" };
+        serde_json::json!([{
+            "type": "proxy",
+            "enabled": true,
+            "proxy_type": proxy_type,
+            "host": host,
+            "port": port,
+            "name": format!("wizard-{proxy_type}"),
+        }])
+    }
+
     /// 把 Linop profile 构造为 DBX ConnectionConfig 并注入运行时。
     /// `profile` 已是改写后的有效端点(直连原样 / 隧道本地地址)。
     async fn inject(
@@ -166,6 +194,7 @@ impl Dbx {
             "password": profile.password.clone().unwrap_or_default(),
             "database": profile.database.clone().unwrap_or_default(),
             "ssl": false,
+            "transport_layers": Self::proxy_transport_layers(profile),
         }))?;
         state
             .lock()
@@ -279,6 +308,43 @@ impl Dbx {
         linop_db_core::schema::exact_metadata::ddl(&guard, &id, &database, "", table, None, false)
             .await
             .map_err(DbxError::Dbx)
+    }
+
+    /// 连接测试:临时运行时注入(含 via 隧道与代理)后跑探测语句。
+    /// 不落盘、不进任何共享状态;返回带耗时的成功描述或错误信息。
+    pub async fn test_profile(
+        profile: linop_core::DbProfile,
+        connections: &linop_core::Registry,
+    ) -> Result<String> {
+        use std::sync::Arc;
+        use std::time::Instant;
+        let started = Instant::now();
+        let dir = std::env::temp_dir().join(format!(
+            "linop-test-{}-{}",
+            std::process::id(),
+            profile.name.replace(['/', '\\', ':'], "_")
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir)?;
+        let store = dir.join("dbx.db");
+        let probe = match profile.driver {
+            linop_core::DbDriver::Redis => "PING".to_string(),
+            linop_core::DbDriver::Mongo => "db.adminCommand({ ping: 1 })".to_string(),
+            _ => "SELECT 1".to_string(),
+        };
+        let result = match Dbx::open(&store, vec![profile.clone()], connections).await {
+            Ok(dbx) => {
+                let inner = dbx.query(&profile.name, &probe).await;
+                drop(dbx);
+                inner
+            }
+            Err(e) => Err(e),
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        match result {
+            Ok(_) => Ok(format!("连接成功({:.1}s)", started.elapsed().as_secs_f32())),
+            Err(e) => Err(DbxError::Dbx(format!("{}({:.1}s)", e, started.elapsed().as_secs_f32()))),
+        }
     }
 
     /// 会话内移除连接(不入库;databases.toml 的持久化删除由调用方做)。

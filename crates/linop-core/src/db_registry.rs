@@ -28,6 +28,8 @@ pub struct DbProfile {
     pub database: Option<String>,
     /// 经由哪条 SSH 连接(profile 名)建隧道访问;None = 直连。
     pub via: Option<String>,
+    /// 出站代理 URL:http://host:port 或 socks5://host:port;None = 直连。
+    pub proxy: Option<String>,
 }
 
 /// 已编译进 linop-db-drivers 的驱动全集(db/mod.rs + 核心路由覆盖;
@@ -189,6 +191,7 @@ impl DbProfile {
             user: None,
             database: None,
             via: None,
+            proxy: None,
         }
     }
 
@@ -208,6 +211,7 @@ impl DbProfile {
             user: None,
             database: None,
             via: None,
+            proxy: None,
         }
     }
 
@@ -229,6 +233,7 @@ impl DbProfile {
             user: Some(user.into()),
             database,
             via: None,
+            proxy: None,
         }
     }
 
@@ -250,6 +255,7 @@ impl DbProfile {
             user: Some(user.into()),
             database,
             via: None,
+            proxy: None,
         }
     }
 
@@ -306,6 +312,8 @@ struct RawDb {
     database: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     via: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    proxy: Option<String>,
 }
 
 /// 默认数据库配置路径:`~/.config/linop/databases.toml`。
@@ -382,6 +390,7 @@ impl DbRegistry {
                 user: entry.user,
                 database: entry.database,
                 via: entry.via,
+                proxy: entry.proxy,
             });
         }
         profiles.sort_by(|a, b| a.name.cmp(&b.name));
@@ -412,6 +421,7 @@ impl DbRegistry {
                         user: p.user.clone(),
                         database: p.database.clone(),
                         via: p.via.clone(),
+                        proxy: p.proxy.clone(),
                     },
                 )
             })

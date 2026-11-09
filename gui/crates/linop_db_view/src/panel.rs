@@ -379,6 +379,7 @@ impl DbxPanel {
             user: (!user.is_empty()).then_some(user),
             database: (!database.is_empty()).then_some(database),
             via: None,
+            proxy: None,
         };
 
         // 持久化到 databases.toml。

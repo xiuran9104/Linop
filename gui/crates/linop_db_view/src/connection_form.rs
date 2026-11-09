@@ -134,6 +134,10 @@ struct DbxConnectionForm {
     /// 经由哪条 SSH 跳板(connections.toml 的连接名);None = 直连。
     via: Option<String>,
     via_candidates: Vec<String>,
+    /// 出站代理 URL(http/socks5);None = 直连。
+    proxy: gpui::Entity<InputState>,
+    /// 连接测试进行中。
+    testing: bool,
     status: Option<String>,
     saving: bool,
 }
@@ -163,32 +167,32 @@ impl DbxConnectionForm {
             database: mk("库名", window, cx),
             via: None,
             via_candidates,
+            proxy: mk("http://host:port 或 socks5://host:port(留空直连)", window, cx),
             status: None,
             saving: false,
+            testing: false,
         }
     }
 
-    fn save(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+    /// 从表单读出 profile;校验失败给出提示。
+    fn build_profile(
+        &self,
+        cx: &Context<Self>,
+    ) -> Result<DbProfile, &'static str> {
         let read = |e: &gpui::Entity<InputState>| e.read(cx).value().trim().to_string();
         let name = read(&self.name);
         if name.is_empty() {
-            self.status = Some("名称必填".into());
-            cx.notify();
-            return;
+            return Err("名称必填");
         }
         let host = read(&self.host);
         let path = read(&self.path);
         if self.driver.is_file_based() && path.is_empty() {
-            self.status = Some(format!("{} 需要数据库文件路径", self.driver.as_str()));
-            cx.notify();
-            return;
+            return Err("文件型驱动需要数据库文件路径");
         }
         if !self.driver.is_file_based() && host.is_empty() {
-            self.status = Some("主机必填".into());
-            cx.notify();
-            return;
+            return Err("主机必填");
         }
-        let profile = DbProfile {
+        Ok(DbProfile {
             name: name.clone(),
             driver: self.driver,
             path: path.into(),
@@ -207,7 +211,54 @@ impl DbxConnectionForm {
                 (!d.is_empty()).then_some(d)
             },
             via: self.via.clone(),
+            proxy: {
+                let p = read(&self.proxy);
+                (!p.is_empty()).then_some(p)
+            },
+        })
+    }
+
+    fn test_connection(&mut self, cx: &mut Context<Self>) {
+        let profile = match self.build_profile(cx) {
+            Ok(p) => p,
+            Err(msg) => {
+                self.status = Some(msg.to_string());
+                cx.notify();
+                return;
+            }
         };
+        self.testing = true;
+        self.status = Some("测试中…".into());
+        cx.notify();
+        let task = Tokio::spawn(cx, async move {
+            let conns = linop_core::Registry::load_default().unwrap_or_default();
+            linop_dbx::Dbx::test_profile(profile, &conns).await
+        });
+        cx.spawn(async move |this, cx| {
+            let outcome = task.await;
+            let _ = this.update(cx, |this, cx| {
+                this.testing = false;
+                this.status = Some(match outcome {
+                    Ok(Ok(msg)) => format!("✓ {msg}"),
+                    Ok(Err(e)) => format!("✗ {e}"),
+                    Err(join) => format!("✗ 测试任务失败:{join}"),
+                });
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn save(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        let profile = match self.build_profile(cx) {
+            Ok(p) => p,
+            Err(msg) => {
+                self.status = Some(msg.to_string());
+                cx.notify();
+                return;
+            }
+        };
+        let name = profile.name.clone();
 
         // 持久化到 databases.toml。
         let mut registry = DbRegistry::load_default().unwrap_or_default();
@@ -347,6 +398,7 @@ impl Render for DbxConnectionForm {
             .child(form_row("用户名", field(&self.user)))
             .child(form_row("密码", field(&self.password)))
             .child(form_row("库名", field(&self.database)))
+            .child(form_row("代理", field(&self.proxy)))
             .child(form_row("SSH 跳板(via)", via_row))
             .when(self.status.is_some(), |col| {
                 col.child(
@@ -366,6 +418,15 @@ impl Render for DbxConnectionForm {
                             .small()
                             .on_click(cx.listener(|_, _ev, window, cx| {
                                 let _ = one_core::window_close::close_window_for_reuse(window, cx);
+                            })),
+                    )
+                    .child(
+                        Button::new("dbx-form-test")
+                            .label(if self.testing { "测试中…" } else { "测试连接" })
+                            .small()
+                            .disabled(self.testing || self.saving)
+                            .on_click(cx.listener(|form, _ev, _window, cx| {
+                                form.test_connection(cx);
                             })),
                     )
                     .child(

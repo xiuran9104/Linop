@@ -123,6 +123,8 @@ pub struct ConnectionFormDialog {
     kinds: Vec<ConnectionKindDescriptor>,
     /// 左栏类型检索(按显示名/id 子串,大小写不敏感)。
     kind_filter: gpui::Entity<gpui_component::input::InputState>,
+    /// 列表滚动句柄(overflow_y_scroll 必须配 track_scroll,滚轮才生效)。
+    list_scroll: gpui::ScrollHandle,
     selected_kind: Option<SharedString>,
     form: Option<AnyView>,
     mode: ConnectionFormMode,
@@ -158,12 +160,14 @@ impl ConnectionFormDialog {
             gpui_component::input::InputState::new(window, cx)
                 .placeholder("搜索连接类型…")
         });
+        let list_scroll = gpui::ScrollHandle::new();
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
         Self {
             focus_handle,
             kinds,
             kind_filter,
+            list_scroll,
             selected_kind,
             form,
             mode,
@@ -198,6 +202,7 @@ impl ConnectionFormDialog {
             .to_ascii_lowercase();
         let mut list = v_flex()
             .id("connection-kind-list")
+            .track_scroll(&self.list_scroll)
             .w(px(200.0))
             .h_full()
             .p_2()
