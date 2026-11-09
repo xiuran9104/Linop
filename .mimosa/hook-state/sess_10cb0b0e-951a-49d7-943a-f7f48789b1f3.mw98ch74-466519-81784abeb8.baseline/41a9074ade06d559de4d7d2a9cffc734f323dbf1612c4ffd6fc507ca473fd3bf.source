@@ -630,13 +630,17 @@ fn open_popup_window_inner(
             return Ok(());
         }
 
-        let window_bounds = if options.fullscreen {
-            WindowBounds::Fullscreen(window_bounds)
+        // Wayland 下 xdg_toplevel 的初始位置由合成器决定,传入坐标不仅无效,
+        // 还可能把窗口摆到屏幕外(级联锚点失真);交给 Weston 摆位 + 系统标题栏。
+        let window_bounds = if is_wayland_backend() {
+            None
+        } else if options.fullscreen {
+            Some(WindowBounds::Fullscreen(window_bounds))
         } else {
-            WindowBounds::Windowed(window_bounds)
+            Some(WindowBounds::Windowed(window_bounds))
         };
         let window_opts = WindowOptions {
-            window_bounds: Some(window_bounds),
+            window_bounds,
             titlebar: Some(TitleBar::title_bar_options()),
             window_min_size: Some(Size {
                 width: px(options.min_width),
@@ -770,7 +774,7 @@ impl Render for PopupWindowContent {
         // 自绘条叠加会形成双标题 —— 直接让位。
         let server_decorated = matches!(
             window.window_decorations(),
-            gpui::WindowDecorations::Server
+            gpui::Decorations::Server
         );
 
         v_flex()

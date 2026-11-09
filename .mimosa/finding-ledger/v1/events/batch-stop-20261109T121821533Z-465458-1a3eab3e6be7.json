@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20261109T121821533Z-465458-1a3eab3e6be7",
+  "runId": "20261109T121821533Z-465458-1a3eab3e6be7",
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "f59f09ef7c964939fd9f6458613090ab945510bd",
+  "diffHash": "5736fc3009b56bcdd3fcbf5155c80c7adba70506a2b9b512247864ebfb492a45",
+  "rulesVersion": "unavailable",
+  "sessionHash": "e3e0fc9d6e1f5b92fae44dfc97784cc7424bfc2352d810e1a9284305c5985e88",
+  "reportRef": ".mimosa/reports/task-review-sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3-20261109T121821533Z-465458-1a3eab3e6be7.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "gui/crates/core/src/popup_window.rs",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "gui/crates/app_kit/src/new_connection.rs",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-11-09T12:18:21.817Z"
+}

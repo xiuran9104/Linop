@@ -630,13 +630,17 @@ fn open_popup_window_inner(
             return Ok(());
         }
 
-        let window_bounds = if options.fullscreen {
-            WindowBounds::Fullscreen(window_bounds)
+        // Wayland 下 xdg_toplevel 的初始位置由合成器决定,传入坐标不仅无效,
+        // 还可能把窗口摆到屏幕外(级联锚点失真);交给 Weston 摆位 + 系统标题栏。
+        let window_bounds = if is_wayland_backend() {
+            None
+        } else if options.fullscreen {
+            Some(WindowBounds::Fullscreen(window_bounds))
         } else {
-            WindowBounds::Windowed(window_bounds)
+            Some(WindowBounds::Windowed(window_bounds))
         };
         let window_opts = WindowOptions {
-            window_bounds: Some(window_bounds),
+            window_bounds,
             titlebar: Some(TitleBar::title_bar_options()),
             window_min_size: Some(Size {
                 width: px(options.min_width),
@@ -645,14 +649,10 @@ fn open_popup_window_inner(
             display_id: parent_display_id,
             kind: WindowKind::Normal,
             window_background: gpui::WindowBackgroundAppearance::Transparent,
-            // Wayland(WSLg):交给 Weston 画标题栏(Server),避免系统条与
-            // 自绘条叠加;X11 维持 Client(gpui 自绘,WM 装饰残缺)。
+            // Wayland(WSLg)与 X11 一致:应用自绘标题条(无系统条)。
+            // Wayland 的初始摆位交合成器(window_bounds 为 None)。
             #[cfg(target_os = "linux")]
-            window_decorations: Some(if is_wayland_backend() {
-                gpui::WindowDecorations::Server
-            } else {
-                gpui::WindowDecorations::Client
-            }),
+            window_decorations: Some(gpui::WindowDecorations::Client),
             ..Default::default()
         };
 
