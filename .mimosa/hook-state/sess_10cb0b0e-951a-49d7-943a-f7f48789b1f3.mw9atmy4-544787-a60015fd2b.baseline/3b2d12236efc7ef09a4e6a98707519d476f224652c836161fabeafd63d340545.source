@@ -108,12 +108,13 @@ fn open_dialog(
     }
     // 主窗内对话框层(非独立窗):无系统标题条、居中遮罩、随主窗。
     // 表单的关闭/保存后关闭语义由 window_close 统一重定向到该对话框层。
-    window.open_dialog(cx, move |dialog, window, cx| {
-        let mode = mode.clone();
-        let preset = preset.clone();
-        let view = cx.new(|cx| {
-            ConnectionFormDialog::new(mode, preset, workspace_id, window, cx)
-        });
+    // view 实体在 builder 外创建:builder 渲染契约可重入,反复 cx.new 会
+    // 重建实体并抢焦点,导致浮层交互目标漂移(全部点不动)。
+    let view = cx.new(|cx| {
+        ConnectionFormDialog::new(mode.clone(), preset.clone(), workspace_id, window, cx)
+    });
+    window.open_dialog(cx, move |dialog, _window, _cx| {
+        let view = view.clone();
         dialog
             .width(px(DIALOG_WIDTH))
             .close_button(false)

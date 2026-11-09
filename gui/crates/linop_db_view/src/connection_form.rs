@@ -9,8 +9,8 @@ use domain_api::{
 };
 use gpui::{AnyView, App, AppContext, Context, FocusHandle, Focusable, IntoElement, ParentElement,
     Render, SharedString, Styled, Window, div, prelude::FluentBuilder as _, px};
-use gpui_component::{ActiveTheme, Disableable, Sizable, button::Button, h_flex, input::Input,
-    input::InputState, v_flex};
+use gpui_component::{ActiveTheme, Disableable, Sizable, button::Button, checkbox::Checkbox,
+    h_flex, input::Input, input::InputState, v_flex};
 use linop_core::{DbDriver, DbProfile, DbRegistry};
 use one_core::gpui_tokio::Tokio;
 use rust_i18n::t;
@@ -132,10 +132,16 @@ struct DbxConnectionForm {
     password: gpui::Entity<InputState>,
     database: gpui::Entity<InputState>,
     /// 经由哪条 SSH 跳板(connections.toml 的连接名);None = 直连。
+    /// 与 SSH 表单一致:Checkbox 启用 + 候选连接单选。
+    use_jump: bool,
     via: Option<String>,
     via_candidates: Vec<String>,
-    /// 出站代理 URL(http/socks5);None = 直连。
-    proxy: gpui::Entity<InputState>,
+    /// 出站代理(与 SSH「代理设置」同形态):启用 + 类型 + 主机 + 端口;
+    /// 内部合成 URL 存入 DbProfile.proxy。
+    proxy_enabled: bool,
+    proxy_is_http: bool,
+    proxy_host: gpui::Entity<InputState>,
+    proxy_port: gpui::Entity<InputState>,
     /// 连接测试进行中。
     testing: bool,
     status: Option<String>,
@@ -165,9 +171,13 @@ impl DbxConnectionForm {
             user: mk("用户名", window, cx),
             password: mk("密码", window, cx),
             database: mk("库名", window, cx),
+            use_jump: false,
             via: None,
             via_candidates,
-            proxy: mk("http://host:port 或 socks5://host:port(留空直连)", window, cx),
+            proxy_enabled: false,
+            proxy_is_http: false,
+            proxy_host: mk("代理服务器地址", window, cx),
+            proxy_port: mk("端口(HTTP 8080 / SOCKS5 1080)", window, cx),
             status: None,
             saving: false,
             testing: false,
@@ -212,8 +222,20 @@ impl DbxConnectionForm {
             },
             via: self.via.clone(),
             proxy: {
-                let p = read(&self.proxy);
-                (!p.is_empty()).then_some(p)
+                if !self.proxy_enabled {
+                    None
+                } else {
+                    let host = read(&self.proxy_host);
+                    if host.is_empty() {
+                        return Err("启用代理时需要代理服务器地址");
+                    }
+                    let port = read(&self.proxy_port);
+                    if port.parse::<u16>().is_err() {
+                        return Err("代理端口无效");
+                    }
+                    let scheme = if self.proxy_is_http { "http" } else { "socks5" };
+                    Some(format!("{scheme}://{host}:{port}"))
+                }
             },
         })
     }
@@ -258,7 +280,6 @@ impl DbxConnectionForm {
                 return;
             }
         };
-        let name = profile.name.clone();
 
         // 持久化到 databases.toml。
         let mut registry = DbRegistry::load_default().unwrap_or_default();
@@ -331,36 +352,79 @@ impl Render for DbxConnectionForm {
 
         let driver_label = self.driver.as_str();
 
-        let mut via_row = h_flex().flex_1().flex_wrap().gap_1();
-        via_row = via_row.child(
-            Button::new("via-direct")
-                .label("直连")
-                .small()
-                .when(self.via.is_none(), |b| {
-                    b.bg(theme.colors.accent)
-                        .text_color(theme.colors.accent_foreground)
-                })
-                .on_click(cx.listener(|form, _ev, _window, cx| {
-                    form.via = None;
-                    cx.notify();
-                })),
-        );
-        for candidate in self.via_candidates.clone() {
-            let selected = self.via.as_deref() == Some(candidate.as_str());
-            via_row = via_row.child(
-                Button::new(SharedString::from(format!("via-{candidate}")))
-                    .label(candidate.clone())
-                    .small()
-                    .when(selected, |b| {
-                        b.bg(theme.colors.accent)
-                            .text_color(theme.colors.accent_foreground)
-                    })
-                    .on_click(cx.listener(move |form, _ev, _window, cx| {
-                        form.via = Some(candidate.clone());
-                        cx.notify();
-                    })),
-            );
-        }
+        let jump_enabled = self.use_jump;
+        let jump_selected = self.via.clone().or_else(|| self.via_candidates.first().cloned());
+        let proxy_enabled = self.proxy_enabled;
+        let proxy_is_http = self.proxy_is_http;
+
+        let jump_controls: Option<gpui::AnyElement> = if !jump_enabled {
+            None
+        } else if self.via_candidates.is_empty() {
+            Some(
+                form_row(
+                    "跳板连接",
+                    div()
+                        .text_sm()
+                        .text_color(theme.colors.muted_foreground)
+                        .child("connections.toml 中没有可用的 SSH 连接"),
+                )
+                .into_any_element(),
+            )
+        } else {
+            let mut row = h_flex().flex_1().flex_wrap().gap_1();
+            for candidate in self.via_candidates.clone() {
+                let selected = jump_selected.as_deref() == Some(candidate.as_str());
+                row = row.child(
+                    Button::new(SharedString::from(format!("via-{candidate}")))
+                        .label(candidate.clone())
+                        .small()
+                        .when(selected, |b| {
+                            b.bg(theme.colors.accent)
+                                .text_color(theme.colors.accent_foreground)
+                        })
+                        .on_click(cx.listener(move |form, _ev, _window, cx| {
+                            form.via = Some(candidate.clone());
+                            cx.notify();
+                        })),
+                );
+            }
+            Some(form_row("跳板连接", row).into_any_element())
+        };
+
+        let proxy_controls: Option<gpui::AnyElement> = if !proxy_enabled {
+            None
+        } else {
+            Some(
+                v_flex()
+                    .gap_2()
+                    .child(form_row(
+                        "类型",
+                        h_flex()
+                            .gap_4()
+                            .child(
+                                Checkbox::new("proxy-http")
+                                    .label("HTTP")
+                                    .checked(proxy_is_http)
+                                    .on_click(cx.listener(|form, _ev, _window, cx| {
+                                        form.proxy_is_http = true;
+                                        cx.notify();
+                                    })),
+                            )
+                            .child(
+                                Checkbox::new("proxy-socks5")
+                                    .label("SOCKS5")
+                                    .checked(!proxy_is_http)
+                                    .on_click(cx.listener(|form, _ev, _window, cx| {
+                                        form.proxy_is_http = false;
+                                        cx.notify();
+                                    })),
+                            ),
+                    ))
+                    .child(form_row("代理地址", field(&self.proxy_host)))
+                    .child(form_row("代理端口", field(&self.proxy_port)))
+                    .into_any_element(),
+            )
+        };
 
         v_flex()
             .size_full()
@@ -398,8 +462,31 @@ impl Render for DbxConnectionForm {
             .child(form_row("用户名", field(&self.user)))
             .child(form_row("密码", field(&self.password)))
             .child(form_row("库名", field(&self.database)))
-            .child(form_row("代理", field(&self.proxy)))
-            .child(form_row("SSH 跳板(via)", via_row))
+            .child(form_row(
+                "SSH 跳板",
+                Checkbox::new("use-jump")
+                    .label(if jump_enabled { "已启用" } else { "不使用" })
+                    .checked(jump_enabled)
+                    .on_click(cx.listener(|form, _ev, _window, cx| {
+                        form.use_jump = !form.use_jump;
+                        if form.use_jump && form.via.is_none() {
+                            form.via = form.via_candidates.first().cloned();
+                        }
+                        cx.notify();
+                    })),
+            ))
+            .children(jump_controls)
+            .child(form_row(
+                "代理",
+                Checkbox::new("use-proxy")
+                    .label(if proxy_enabled { "已启用" } else { "不使用" })
+                    .checked(proxy_enabled)
+                    .on_click(cx.listener(|form, _ev, _window, cx| {
+                        form.proxy_enabled = !form.proxy_enabled;
+                        cx.notify();
+                    })),
+            ))
+            .children(proxy_controls)
             .when(self.status.is_some(), |col| {
                 col.child(
                     div()
