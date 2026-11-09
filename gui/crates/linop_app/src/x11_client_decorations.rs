@@ -64,6 +64,53 @@ pub fn announce_fake_compositor() {
     if conn.set_selection_owner(win, atom, x11rb::CURRENT_TIME).is_err() {
         return;
     }
+    // gpui 还要求 root 的 _NET_SUPPORTED 通告 _GTK_FRAME_EXTENTS,
+    // 否则 CSD 判定不支持而回退服务端装饰(外壳窗)。WSLg Weston 不通告,
+    // 这里代为写入(保留既有列表追加)。
+    let Ok(net_supported) = conn
+        .intern_atom(false, "_NET_SUPPORTED".as_bytes())
+        .map(|r| r.reply().map(|reply| reply.atom))
+        .map(|inner| inner.unwrap_or(0))
+    else {
+        return;
+    };
+    let Ok(gtk_frame_extents) = conn
+        .intern_atom(false, "_GTK_FRAME_EXTENTS".as_bytes())
+        .map(|r| r.reply().map(|reply| reply.atom))
+        .map(|inner| inner.unwrap_or(0))
+    else {
+        return;
+    };
+    if net_supported != 0 && gtk_frame_extents != 0 {
+        let mut supported: Vec<u32> = conn
+            .get_property(false, root, net_supported, AtomEnum::ATOM, 0, 1024)
+            .ok()
+            .and_then(|cookie| cookie.reply().ok())
+            .map(|reply| {
+                reply
+                    .value
+                    .chunks_exact(4)
+                    .filter_map(|c| c.try_into().ok().map(u32::from_ne_bytes))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if !supported.contains(&gtk_frame_extents) {
+            supported.push(gtk_frame_extents);
+            let bytes: Vec<u8> = supported
+                .iter()
+                .flat_map(|a| a.to_ne_bytes())
+                .collect();
+            let _ = conn.change_property(
+                PropMode::REPLACE,
+                root,
+                net_supported,
+                AtomEnum::ATOM,
+                32,
+                supported.len() as u32,
+                &bytes,
+            );
+        }
+    }
     // 连接必须存活以维持选择器所有权;有意泄漏到进程结束。
     std::mem::forget(conn);
     let _ = LEASED.set(());
