@@ -239,6 +239,12 @@ pub enum WindowCloseOutcome {
 ///
 /// 参数里有 `cx` 就是因为第 2 步必须能更新内容实体；只有 `&mut Window` 的接口做不到。
 pub fn close_window_for_reuse(window: &mut Window, cx: &mut App) -> WindowCloseOutcome {
+    // 表单跑在主窗内对话框层(如 Wayland 的「新建连接」)时,关闭语义重定向到
+    // 最顶层对话框 —— 若仍走关窗逻辑会把主窗一起藏掉。
+    if gpui_component::active_dialog_count(window, cx) > 0 {
+        window.close_dialog(cx);
+        return WindowCloseOutcome::Destroyed;
+    }
     let is_popup = crate::popup_window::is_popup_window(window.window_handle().window_id());
     // 不是弹窗时**不能**调 `hide_for_reuse` —— 那会把主窗口、编辑器窗口这类不该复用的
     // 窗口一起藏起来。
