@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20261109T135824053Z-570283-24cbc90c88e3",
+  "runId": "20261109T135824053Z-570283-24cbc90c88e3",
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "4c146bf378558656c99ce32900cd2cd1950f103e",
+  "diffHash": "f7135d7f3d8c32618bfa67e0ab268609699e25b8b76e6eb0195a23e73ca90f81",
+  "rulesVersion": "unavailable",
+  "sessionHash": "e3e0fc9d6e1f5b92fae44dfc97784cc7424bfc2352d810e1a9284305c5985e88",
+  "reportRef": ".mimosa/reports/task-review-sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3-20261109T135824053Z-570283-24cbc90c88e3.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "crates/linop-dbx/src/lib.rs",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-11-09T13:58:24.329Z"
+}

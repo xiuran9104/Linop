@@ -72,6 +72,34 @@ pub fn default_store_path() -> Result<PathBuf> {
     Ok(home.join(".linop-dev").join("linop-db-data").join("dbx.db"))
 }
 
+/// 出站代理 URL → DBX transport_layers(缺省无代理层)。
+pub fn proxy_transport_layers(
+    profile: &linop_core::DbProfile,
+) -> serde_json::Value {
+    let Some(url) = profile.proxy.as_deref().map(str::trim).filter(|s| !s.is_empty())
+    else {
+        return serde_json::json!([]);
+    };
+    let (kind, rest) = url
+        .split_once("://")
+        .map(|(k, r)| (k.to_ascii_lowercase(), r))
+        .unwrap_or_else(|| ("socks5".into(), url));
+    let host_port = rest.split(['/', '?']).next().unwrap_or(rest);
+    let (host, port) = match host_port.rsplit_once(':') {
+        Some((h, p)) => (h.to_string(), p.parse().unwrap_or(0_u16)),
+        None => (host_port.to_string(), 0_u16),
+    };
+    let proxy_type = if kind == "http" { "http" } else { "socks5" };
+    serde_json::json!([{
+        "type": "proxy",
+        "enabled": true,
+        "proxy_type": proxy_type,
+        "host": host,
+        "port": port,
+        "name": format!("wizard-{proxy_type}"),
+    }])
+}
+
 impl Dbx {
     /// 打开运行时:`store_path` 是技术性 dbx.db(空库即可);
     /// `profiles` 来自 linop-core 的 databases.toml,会话内注入。
@@ -146,33 +174,6 @@ impl Dbx {
         ))
     }
 
-    /// 出站代理 URL → DBX transport_layers(缺省无代理层)。
-    fn proxy_transport_layers(
-        profile: &linop_core::DbProfile,
-    ) -> serde_json::Value {
-        let Some(url) = profile.proxy.as_deref().map(str::trim).filter(|s| !s.is_empty())
-        else {
-            return serde_json::json!([]);
-        };
-        let (kind, rest) = url
-            .split_once("://")
-            .map(|(k, r)| (k.to_ascii_lowercase(), r))
-            .unwrap_or_else(|| ("socks5".into(), url));
-        let host_port = rest.split(['/', '?']).next().unwrap_or(rest);
-        let (host, port) = match host_port.rsplit_once(':') {
-            Some((h, p)) => (h.to_string(), p.parse().unwrap_or(0_u16)),
-            None => (host_port.to_string(), 0_u16),
-        };
-        let proxy_type = if kind == "http" { "http" } else { "socks5" };
-        serde_json::json!([{
-            "type": "proxy",
-            "enabled": true,
-            "proxy_type": proxy_type,
-            "host": host,
-            "port": port,
-            "name": format!("wizard-{proxy_type}"),
-        }])
-    }
 
     /// 把 Linop profile 构造为 DBX ConnectionConfig 并注入运行时。
     /// `profile` 已是改写后的有效端点(直连原样 / 隧道本地地址)。
@@ -194,7 +195,7 @@ impl Dbx {
             "password": profile.password.clone().unwrap_or_default(),
             "database": profile.database.clone().unwrap_or_default(),
             "ssl": false,
-            "transport_layers": Self::proxy_transport_layers(profile),
+            "transport_layers": proxy_transport_layers(profile),
         }))?;
         state
             .lock()
@@ -373,6 +374,62 @@ impl Dbx {
     /// 活动隧道列表(诊断/GUI 展示)。
     pub async fn tunnel_names(&self) -> Vec<String> {
         self.tunnels.lock().await.iter().map(|t| t.profile_name.clone()).collect()
+    }
+}
+
+#[cfg(test)]
+mod proxy_transport_tests {
+    use super::*;
+    use linop_core::DbDriver;
+
+    /// 代理配置经 inject 的 JSON 形状必须能被 ConnectionConfig 反序列化
+    /// 为 Proxy transport layer(与 DBX 桌面版同一语义)。
+    #[test]
+    fn proxy_url_becomes_proxy_transport_layer() {
+        let mut profile = linop_core::DbProfile::postgres(
+            "pg-proxy",
+            "10.0.0.5",
+            5432,
+            "postgres",
+            None,
+            None,
+        );
+        profile.proxy = Some("http://1.2.3.4:8080".into());
+        let layers = proxy_transport_layers(&profile);
+        assert_eq!(layers.as_array().unwrap().len(), 1);
+        assert_eq!(layers[0]["type"], "proxy");
+        assert_eq!(layers[0]["proxy_type"], "http");
+        assert_eq!(layers[0]["host"], "1.2.3.4");
+        assert_eq!(layers[0]["port"], 8080);
+
+        let config: linop_db_types::models::connection::ConnectionConfig =
+            serde_json::from_value(serde_json::json!({
+                "id": "linop:pg-proxy",
+                "name": "pg-proxy",
+                "db_type": "postgres",
+                "host": "10.0.0.5",
+                "port": 5432,
+                "username": "",
+                "password": "",
+                "database": "",
+                "ssl": false,
+                "transport_layers": layers,
+            }))
+            .expect("ConnectionConfig 应接受 transport_layers");
+        assert_eq!(config.transport_layers.len(), 1);
+    }
+
+    #[test]
+    fn no_proxy_yields_empty_layers() {
+        let profile = linop_core::DbProfile::postgres(
+            "pg-direct",
+            "10.0.0.5",
+            5432,
+            "postgres",
+            None,
+            None,
+        );
+        assert!(proxy_transport_layers(&profile).as_array().unwrap().is_empty());
     }
 }
 
