@@ -1,0 +1,215 @@
+{
+  "schema_version": "mimosa-task-review/v2",
+  "run_id": "20261109T122819045Z-479782-3d8210f27b04",
+  "run_status": "inconclusive",
+  "errors": [
+    {
+      "stage": "baseline",
+      "target": ".",
+      "reason": "baseline_partial: baseline capture had enumeration or snapshot errors"
+    },
+    {
+      "stage": "scan",
+      "target": "gui/crates/core/src/popup_window.rs",
+      "reason": "scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "gui/crates/app_kit/src/new_connection.rs",
+      "reason": "scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT"
+    }
+  ],
+  "coverage": {
+    "schema_version": "mimosa-hook-coverage/v1",
+    "status": "partial",
+    "scope": "hook_observed_diff",
+    "baseline": {
+      "complete": false,
+      "captured_files": 1941,
+      "candidate_limit": 5000,
+      "truncated": false,
+      "enumeration_error_count": 1,
+      "snapshot_error_count": 0,
+      "compensated_target_count": 2
+    },
+    "change_tracking": {
+      "touched_observed": 0,
+      "touched_retained": 0,
+      "truncated": false,
+      "bash_mutation": true,
+      "bash_discovered": 2,
+      "bash_discovery_limit": 80,
+      "bash_discovery_truncated": false
+    },
+    "candidates": {
+      "eligible_files": 2,
+      "selected_files": 2,
+      "limit": 20,
+      "truncated": false
+    },
+    "scanning": {
+      "required_files": 2,
+      "scanned_files": 0,
+      "skipped_files": 0,
+      "failed_files": 2,
+      "project_checks_required": 0,
+      "project_checks_completed": 0
+    },
+    "notification": {
+      "eligible_findings": 0,
+      "detailed_findings": 0,
+      "detail_limit": 3,
+      "truncated": false
+    },
+    "reason_counts": {
+      "baseline_partial": 1,
+      "scanner_failed": 2,
+      "project_check_failed": 3
+    },
+    "reasons": [
+      {
+        "code": "baseline_partial",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline capture had enumeration or snapshot errors",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "gui/crates/core/src/popup_window.rs",
+        "detail": "spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "gui/crates/app_kit/src/new_connection.rs",
+        "detail": "spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline_partial: baseline capture had enumeration or snapshot errors",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "gui/crates/core/src/popup_window.rs",
+        "detail": "scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "gui/crates/app_kit/src/new_connection.rs",
+        "detail": "scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affects_completion": true
+      }
+    ],
+    "reasons_truncated": false
+  },
+  "generated_at": "2026-11-09T12:28:19.045Z",
+  "session_id": "sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3",
+  "target": ".",
+  "revision": "85360f9c465dc57ad8cfb92518030b154c944460",
+  "rules_version": "unavailable",
+  "diff_hash": "02ff31bba88fc5bfbd8bfa96f0a76719f61dd8659dac5083e74d2ff19da2bbaa",
+  "diff": {
+    "algorithm": "sha256",
+    "changed_file_count": 2,
+    "changed_files": [
+      {
+        "file": "gui/crates/app_kit/src/new_connection.rs",
+        "ranges": [
+          {
+            "start": 336,
+            "end": 336
+          },
+          {
+            "start": 347,
+            "end": 357
+          },
+          {
+            "start": 359,
+            "end": 366
+          },
+          {
+            "start": 371,
+            "end": 371
+          }
+        ],
+        "before_hash": "467cd214afc138735da775967096c641ae47299871991e0a6fce739699be6a1a",
+        "after_hash": "089ca31be9adbb6e155aba005833f5b67ccf0247b008246ac8d2310715ca207b"
+      },
+      {
+        "file": "gui/crates/core/src/popup_window.rs",
+        "ranges": [
+          {
+            "start": 652,
+            "end": 653
+          },
+          {
+            "start": 655,
+            "end": 655
+          }
+        ],
+        "before_hash": "f885462929b41e192d38ae40b1ba6757ea49d39a3a78e7ce0ce2c852d19e8fe4",
+        "after_hash": "9d59f394f10f56bfa30c97933566cab0108285b3bdea7846c4f043d02164aa0c"
+      }
+    ]
+  },
+  "timing": {
+    "started_at": "2026-11-09T12:28:16.305Z",
+    "completed_at": "2026-11-09T12:28:19.045Z",
+    "duration_ms": 2740,
+    "measurement": "hook_wall_clock"
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "model_calls": 0,
+    "measurement": "known-zero"
+  },
+  "telemetry": {
+    "schemaVersion": "mimosa-gate-telemetry/v1",
+    "profile": "gate",
+    "operation": "Stop",
+    "outcome": "partial/INCONCLUSIVE",
+    "latencyMs": 2740,
+    "peakMemoryBytes": 157466624,
+    "memoryMeasurement": "max-observed-process-rss",
+    "scannedFiles": 0,
+    "cache": {
+      "hits": 0,
+      "misses": 0,
+      "measurement": "not-applicable"
+    },
+    "denyCount": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "modelCalls": 0,
+      "measurement": "known-zero"
+    }
+  },
+  "finding_count": 0,
+  "rewake_finding_count": 0,
+  "evidence_boundary": {
+    "scan": "candidate",
+    "static_fix_verification": "observed_static_only",
+    "runtime_verification": "not_performed"
+  },
+  "finding_events": [],
+  "findings": [],
+  "artifacts": {
+    "immutable_report": ".mimosa/reports/task-review-sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3-20261109T122819045Z-479782-3d8210f27b04.json",
+    "latest_report": ".mimosa/reports/task-review-sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3.json",
+    "history_summary": ".mimosa/history/run-20261109T122819045Z-479782-3d8210f27b04.json"
+  }
+}

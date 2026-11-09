@@ -1,18 +1,34 @@
 {
   "schema_version": "mimosa-task-review/v2",
-  "run_id": "20261109T121821533Z-465458-1a3eab3e6be7",
-  "run_status": "completed",
-  "errors": [],
+  "run_id": "20261109T122819045Z-479782-3d8210f27b04",
+  "run_status": "inconclusive",
+  "errors": [
+    {
+      "stage": "baseline",
+      "target": ".",
+      "reason": "baseline_partial: baseline capture had enumeration or snapshot errors"
+    },
+    {
+      "stage": "scan",
+      "target": "gui/crates/core/src/popup_window.rs",
+      "reason": "scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "gui/crates/app_kit/src/new_connection.rs",
+      "reason": "scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT"
+    }
+  ],
   "coverage": {
     "schema_version": "mimosa-hook-coverage/v1",
-    "status": "complete",
+    "status": "partial",
     "scope": "hook_observed_diff",
     "baseline": {
-      "complete": true,
+      "complete": false,
       "captured_files": 1941,
       "candidate_limit": 5000,
       "truncated": false,
-      "enumeration_error_count": 0,
+      "enumeration_error_count": 1,
       "snapshot_error_count": 0,
       "compensated_target_count": 2
     },
@@ -33,9 +49,9 @@
     },
     "scanning": {
       "required_files": 2,
-      "scanned_files": 2,
+      "scanned_files": 0,
       "skipped_files": 0,
-      "failed_files": 0,
+      "failed_files": 2,
       "project_checks_required": 0,
       "project_checks_completed": 0
     },
@@ -45,16 +61,63 @@
       "detail_limit": 3,
       "truncated": false
     },
-    "reason_counts": {},
-    "reasons": [],
+    "reason_counts": {
+      "baseline_partial": 1,
+      "scanner_failed": 2,
+      "project_check_failed": 3
+    },
+    "reasons": [
+      {
+        "code": "baseline_partial",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline capture had enumeration or snapshot errors",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "gui/crates/core/src/popup_window.rs",
+        "detail": "spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "gui/crates/app_kit/src/new_connection.rs",
+        "detail": "spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline",
+        "target": ".",
+        "detail": "baseline_partial: baseline capture had enumeration or snapshot errors",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "gui/crates/core/src/popup_window.rs",
+        "detail": "scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "gui/crates/app_kit/src/new_connection.rs",
+        "detail": "scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affects_completion": true
+      }
+    ],
     "reasons_truncated": false
   },
-  "generated_at": "2026-11-09T12:18:21.533Z",
+  "generated_at": "2026-11-09T12:28:19.045Z",
   "session_id": "sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3",
   "target": ".",
-  "revision": "f59f09ef7c964939fd9f6458613090ab945510bd",
+  "revision": "85360f9c465dc57ad8cfb92518030b154c944460",
   "rules_version": "unavailable",
-  "diff_hash": "5736fc3009b56bcdd3fcbf5155c80c7adba70506a2b9b512247864ebfb492a45",
+  "diff_hash": "02ff31bba88fc5bfbd8bfa96f0a76719f61dd8659dac5083e74d2ff19da2bbaa",
   "diff": {
     "algorithm": "sha256",
     "changed_file_count": 2,
@@ -63,54 +126,46 @@
         "file": "gui/crates/app_kit/src/new_connection.rs",
         "ranges": [
           {
-            "start": 203,
-            "end": 204
+            "start": 336,
+            "end": 336
           },
           {
-            "start": 210,
-            "end": 213
+            "start": 347,
+            "end": 357
           },
           {
-            "start": 225,
-            "end": 233
+            "start": 359,
+            "end": 366
           },
           {
-            "start": 235,
-            "end": 235
-          },
-          {
-            "start": 237,
-            "end": 237
-          },
-          {
-            "start": 275,
-            "end": 275
-          },
-          {
-            "start": 279,
-            "end": 279
+            "start": 371,
+            "end": 371
           }
         ],
-        "before_hash": "38a778538dff16927cf4f9d776d40c38aaeaaf0f323ff311ced7fcaf556b15c2",
+        "before_hash": "467cd214afc138735da775967096c641ae47299871991e0a6fce739699be6a1a",
         "after_hash": "089ca31be9adbb6e155aba005833f5b67ccf0247b008246ac8d2310715ca207b"
       },
       {
         "file": "gui/crates/core/src/popup_window.rs",
         "ranges": [
           {
-            "start": 773,
-            "end": 773
+            "start": 652,
+            "end": 653
+          },
+          {
+            "start": 655,
+            "end": 655
           }
         ],
-        "before_hash": "edc50aae7063d91da1eb7a3020666e49d546c36738303856ce5b755025e489d6",
-        "after_hash": "949ff09e184e566a4fc8db0a7c50b7877ec4d38646fc77721c3c7a1c596f4a84"
+        "before_hash": "f885462929b41e192d38ae40b1ba6757ea49d39a3a78e7ce0ce2c852d19e8fe4",
+        "after_hash": "9d59f394f10f56bfa30c97933566cab0108285b3bdea7846c4f043d02164aa0c"
       }
     ]
   },
   "timing": {
-    "started_at": "2026-11-09T12:18:19.563Z",
-    "completed_at": "2026-11-09T12:18:21.533Z",
-    "duration_ms": 1970,
+    "started_at": "2026-11-09T12:28:16.305Z",
+    "completed_at": "2026-11-09T12:28:19.045Z",
+    "duration_ms": 2740,
     "measurement": "hook_wall_clock"
   },
   "tokens": {
@@ -124,11 +179,11 @@
     "schemaVersion": "mimosa-gate-telemetry/v1",
     "profile": "gate",
     "operation": "Stop",
-    "outcome": "complete",
-    "latencyMs": 1970,
-    "peakMemoryBytes": 185712640,
+    "outcome": "partial/INCONCLUSIVE",
+    "latencyMs": 2740,
+    "peakMemoryBytes": 157466624,
     "memoryMeasurement": "max-observed-process-rss",
-    "scannedFiles": 2,
+    "scannedFiles": 0,
     "cache": {
       "hits": 0,
       "misses": 0,
@@ -153,8 +208,8 @@
   "finding_events": [],
   "findings": [],
   "artifacts": {
-    "immutable_report": ".mimosa/reports/task-review-sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3-20261109T121821533Z-465458-1a3eab3e6be7.json",
+    "immutable_report": ".mimosa/reports/task-review-sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3-20261109T122819045Z-479782-3d8210f27b04.json",
     "latest_report": ".mimosa/reports/task-review-sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3.json",
-    "history_summary": ".mimosa/history/run-20261109T121821533Z-465458-1a3eab3e6be7.json"
+    "history_summary": ".mimosa/history/run-20261109T122819045Z-479782-3d8210f27b04.json"
   }
 }

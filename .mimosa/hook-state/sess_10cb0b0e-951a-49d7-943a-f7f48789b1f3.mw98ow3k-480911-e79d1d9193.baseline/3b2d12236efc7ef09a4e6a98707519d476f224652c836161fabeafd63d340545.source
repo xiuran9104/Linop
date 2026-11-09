@@ -333,13 +333,7 @@ impl Focusable for ConnectionFormDialog {
 }
 
 impl Render for ConnectionFormDialog {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // Wayland(Server 装饰)下系统标题栏已提供「新建连接」标题与关闭钮,
-        // 应用内再画一条会形成双标题 —— 让位给系统条。
-        let server_decorated = matches!(
-            window.window_decorations(),
-            gpui::Decorations::Server
-        );
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let content = match self.form.clone() {
             Some(form) => div().flex_1().min_h_0().min_w_0().child(form),
             None => v_flex()
@@ -350,37 +344,31 @@ impl Render for ConnectionFormDialog {
                 .text_color(cx.theme().muted_foreground)
                 .child("当前产品没有可新建的连接类型"),
         };
-        let header = if server_decorated {
-            None
-        } else {
-            Some(
-                h_flex()
-                    .h(px(44.0))
-                    .px_3()
-                    .items_center()
-                    .justify_between()
-                    .border_b_1()
-                    .border_color(cx.theme().border)
-                    .child(
-                        div()
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .child(self.mode.title()),
-                    )
-                    .child(
-                        Button::new("connection-form-close")
-                            .small()
-                            .label("关闭")
-                            .on_click(cx.listener(|_, _, window, cx| {
-                                let _ = one_core::window_close::close_window_for_reuse(window, cx);
-                            })),
-                    ),
+        let header = h_flex()
+            .h(px(44.0))
+            .px_3()
+            .items_center()
+            .justify_between()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .child(
+                div()
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .child(self.mode.title()),
             )
-        };
+            .child(
+                Button::new("connection-form-close")
+                    .small()
+                    .label("关闭")
+                    .on_click(cx.listener(|_, _, window, cx| {
+                        let _ = one_core::window_close::close_window_for_reuse(window, cx);
+                    })),
+            );
         v_flex()
             .size_full()
             .track_focus(&self.focus_handle)
             .bg(cx.theme().background)
-            .children(header)
+            .child(header)
             .child(
                 h_flex()
                     .flex_1()

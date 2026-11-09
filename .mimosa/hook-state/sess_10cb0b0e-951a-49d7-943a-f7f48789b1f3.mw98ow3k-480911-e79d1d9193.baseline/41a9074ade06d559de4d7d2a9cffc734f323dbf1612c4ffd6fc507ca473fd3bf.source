@@ -649,14 +649,10 @@ fn open_popup_window_inner(
             display_id: parent_display_id,
             kind: WindowKind::Normal,
             window_background: gpui::WindowBackgroundAppearance::Transparent,
-            // Wayland(WSLg):交给 Weston 画标题栏(Server),避免系统条与
-            // 自绘条叠加;X11 维持 Client(gpui 自绘,WM 装饰残缺)。
+            // Wayland(WSLg)与 X11 一致:应用自绘标题条(无系统条)。
+            // Wayland 的初始摆位交合成器(window_bounds 为 None)。
             #[cfg(target_os = "linux")]
-            window_decorations: Some(if is_wayland_backend() {
-                gpui::WindowDecorations::Server
-            } else {
-                gpui::WindowDecorations::Client
-            }),
+            window_decorations: Some(gpui::WindowDecorations::Client),
             ..Default::default()
         };
 
