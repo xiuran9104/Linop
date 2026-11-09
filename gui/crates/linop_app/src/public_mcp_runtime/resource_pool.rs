@@ -76,7 +76,37 @@ fn resource_pool_from_sources(
     }
     #[cfg(not(feature = "database"))]
     let _ = &active_redis_ids;
+    pool = append_dbx_profile_resources(pool);
     Ok(pool)
+}
+
+/// 把 databases.toml 里的 dbx 连接(linop-dbx 执行层,经 db.* 工具访问)
+/// 注入资源池:id = profile 名,kind 按驱动。dbx profile 不在 app 存储,
+/// 没有 per-connection AI 策略,视同允许(与 linop-dbx CLI 同权)。
+fn append_dbx_profile_resources(pool: ResourcePool) -> ResourcePool {
+    let profiles = match linop_core::DbRegistry::load_default() {
+        Ok(registry) => registry.profiles().to_vec(),
+        Err(error) => {
+            tracing::warn!(error = %error, "databases.toml 读取失败,dbx 连接不入资源池");
+            return pool;
+        }
+    };
+    profiles
+        .into_iter()
+        .fold(pool, |pool, profile| {
+            let kind = match profile.driver {
+                linop_core::DbDriver::Postgres => ResourceKind::Postgres,
+                linop_core::DbDriver::MySql => ResourceKind::Mysql,
+                linop_core::DbDriver::Sqlite => ResourceKind::Sqlite,
+                linop_core::DbDriver::Redis => ResourceKind::Redis,
+            };
+            let mut resource = ResourceRef::new(profile.name.clone(), kind, profile.name.clone());
+            resource = resource.with_capability(ResourceCapability::DatabaseQuery);
+            if !matches!(profile.driver, linop_core::DbDriver::Redis) {
+                resource = resource.with_capability(ResourceCapability::DatabaseExecute);
+            }
+            pool.with_resource(resource)
+        })
 }
 
 /// 读取连接级 AI 访问策略；没有可用的连接仓库时视为全部允许。

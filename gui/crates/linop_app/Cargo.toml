@@ -54,6 +54,7 @@ mcp_host.workspace = true
 mcp_approval.workspace = true
 app_kit.workspace = true
 one-ui.workspace = true
+linop-core = { path = "../../../crates/linop-core" }
 linop_db_view = { path = "../linop_db_view" }
 linop_runtime = { workspace = true }
 reqwest_client.workspace = true

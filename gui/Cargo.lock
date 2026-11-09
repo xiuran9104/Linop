@@ -7961,6 +7961,7 @@ dependencies = [
  "gpui-pre-reqwest-client",
  "image",
  "json_view",
+ "linop-core",
  "linop_db_view",
  "linop_runtime",
  "mcp_approval",
