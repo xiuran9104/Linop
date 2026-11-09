@@ -1,3 +1,5 @@
+_version: 2
+
 ConnectionForm:
   kind:
     postgres:
@@ -5,13 +7,13 @@ ConnectionForm:
       zh-CN: PostgreSQL
       zh-HK: PostgreSQL
     mysql:
-      en: MySQL (MariaDB / Doris / StarRocks compatible)
-      zh-CN: MySQL(兼容 MariaDB / Doris / StarRocks)
-      zh-HK: MySQL(兼容 MariaDB / Doris / StarRocks)
+      en: MySQL
+      zh-CN: MySQL
+      zh-HK: MySQL
     sqlite:
-      en: SQLite (file)
-      zh-CN: SQLite(文件)
-      zh-HK: SQLite(檔案)
+      en: SQLite
+      zh-CN: SQLite
+      zh-HK: SQLite
     redis:
       en: Redis
       zh-CN: Redis
@@ -29,25 +31,25 @@ ConnectionForm:
       zh-CN: Elasticsearch
       zh-HK: Elasticsearch
     duckdb:
-      en: DuckDB (file)
-      zh-CN: DuckDB(文件)
-      zh-HK: DuckDB(檔案)
+      en: DuckDB
+      zh-CN: DuckDB
+      zh-HK: DuckDB
     clickhouse:
       en: ClickHouse
       zh-CN: ClickHouse
       zh-HK: ClickHouse
     doris:
-      en: Apache Doris
-      zh-CN: Apache Doris
-      zh-HK: Apache Doris
+      en: Doris
+      zh-CN: Doris
+      zh-HK: Doris
     starrocks:
       en: StarRocks
       zh-CN: StarRocks
       zh-HK: StarRocks
     manticoresearch:
-      en: Manticore Search
-      zh-CN: Manticore Search
-      zh-HK: Manticore Search
+      en: Manticore
+      zh-CN: Manticore
+      zh-HK: Manticore
     questdb:
       en: QuestDB
       zh-CN: QuestDB
@@ -65,9 +67,9 @@ ConnectionForm:
       zh-CN: VictoriaMetrics
       zh-HK: VictoriaMetrics
     solr:
-      en: Apache Solr
-      zh-CN: Apache Solr
-      zh-HK: Apache Solr
+      en: Solr
+      zh-CN: Solr
+      zh-HK: Solr
     meilisearch:
       en: Meilisearch
       zh-CN: Meilisearch
@@ -90,3 +92,9 @@ DbxForm:
     en: Save
     zh-CN: 保存
     zh-HK: 儲存
+
+DbxFormHint:
+  mysql_family:
+    en: "MySQL protocol compatible: MariaDB, Doris, StarRocks, TiDB"
+    zh-CN: "MySQL 协议兼容:MariaDB、Doris、StarRocks、TiDB"
+    zh-HK: "MySQL 協議兼容:MariaDB、Doris、StarRocks、TiDB"

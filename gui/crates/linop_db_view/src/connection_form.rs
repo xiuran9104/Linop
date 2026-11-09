@@ -317,6 +317,15 @@ impl Render for DbxConnectionForm {
             .gap_3()
             .child(form_row("名称", field(&self.name)))
             .child(form_row("驱动", div().text_sm().child(driver_label)))
+            .when(self.driver.is_mysql_family(), |col| {
+                col.child(form_row(
+                    "",
+                    div()
+                        .text_xs()
+                        .text_color(theme.colors.muted_foreground)
+                        .child(t!("DbxFormHint.mysql_family").to_string()),
+                ))
+            })
             .child(
                 form_row(
                     "SQLite 文件",

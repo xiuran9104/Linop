@@ -171,3 +171,27 @@ fn open_panel(
     true
 }
 
+
+#[cfg(test)]
+mod i18n_probe_tests {
+    use rust_i18n::t;
+
+    /// 嵌入探针:locales 目录的键必须能解析,不能回落 key 本身。
+    #[test]
+    fn wizard_kind_labels_resolve() {
+        rust_i18n::set_locale("zh-CN");
+        for key in [
+            "ConnectionForm.kind.postgres",
+            "ConnectionForm.kind.mysql",
+            "ConnectionForm.kind.clickhouse",
+            "ConnectionForm.kind.doris",
+            "ConnectionForm.kind.couchdb",
+            "DbxForm.save",
+        ] {
+            let v = t!(key).to_string();
+            assert!(!v.contains("ConnectionForm.kind") && !v.contains("DbxForm"), "key {key} 未解析: {v}");
+        }
+        rust_i18n::set_locale("en");
+        assert_eq!("PostgreSQL", t!("ConnectionForm.kind.postgres").to_string());
+    }
+}
