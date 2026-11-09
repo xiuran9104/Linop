@@ -29,30 +29,24 @@ fn agent_runtime_tool_registry_uses_native_database_tools(cx: &mut TestAppContex
         .map(|name| name.to_string())
         .collect::<Vec<_>>();
 
+    // dbx 支持的 db.* 工具集(经共享 linop-dbx 运行时)。
+    assert!(names.contains(&"db_list_connections".to_string()));
+    assert!(names.contains(&"db_list_tables".to_string()));
     assert!(names.contains(&"db_query".to_string()));
-    assert!(names.contains(&"db_schema".to_string()));
-    assert!(names.contains(&"db_tables".to_string()));
-    assert!(names.contains(&"db_describe_table".to_string()));
-    assert!(names.contains(&"db_sample_rows".to_string()));
-    assert!(names.contains(&"db_exec".to_string()));
-    assert!(!names.contains(&"db_execute_sql".to_string()));
-    assert!(!names.contains(&"db_list_tables".to_string()));
 
     let db_query = registry
         .get(&ToolName::new("db.query"))
         .expect("runtime-backed db.query should be registered");
     let spec = db_query.spec(&ResourceContext::new());
-    assert_eq!(RiskLevel::Read, spec.risk);
+    // SQL 可能变更数据:标注 mutating(高风险),走审批门。
+    assert_eq!(RiskLevel::High, spec.risk);
     assert!(
-        spec.description
-            .contains("Run read-only SQL through a saved database connection"),
+        spec.description.contains("Execute one SQL statement"),
         "db_query should be backed by tool_runtime db.query descriptor"
     );
     assert_agent_target_schema(&registry, "db.query", serde_json::json!(["target", "sql"]));
-    assert_tool_risk(&registry, "db.tables", RiskLevel::Read);
-    assert_tool_risk(&registry, "db.describe_table", RiskLevel::Read);
-    assert_tool_risk(&registry, "db.sample_rows", RiskLevel::Read);
-    assert_tool_risk(&registry, "db.exec", RiskLevel::High);
+    assert_tool_risk(&registry, "db.list_connections", RiskLevel::Read);
+    assert_tool_risk(&registry, "db.list_tables", RiskLevel::Read);
 }
 
 #[gpui::test]
@@ -81,11 +75,12 @@ fn agent_runtime_tool_registry_ignores_public_mcp_toolset_exposure(cx: &mut Test
         .map(|name| name.to_string())
         .collect::<Vec<_>>();
 
+    // agent 默认工具集与 public MCP 开关无关;redis/mongo 随旧数据域删除
+    // (Redis 经 db.* driver=redis 承载)。
     assert!(names.contains(&"connections_save".to_string()));
     assert!(names.contains(&"internal_functions_call".to_string()));
     assert!(names.contains(&"db_query".to_string()));
-    assert!(names.contains(&"redis_get".to_string()));
-    assert!(names.contains(&"mongo_find".to_string()));
+    assert!(names.contains(&"db_list_connections".to_string()));
     assert!(names.contains(&"sftp_read".to_string()));
 }
 
@@ -122,78 +117,7 @@ fn agent_runtime_tool_registry_respects_agent_tool_exposure(cx: &mut TestAppCont
     assert!(!names.contains(&"sftp_read".to_string()));
 }
 
-#[gpui::test]
-fn agent_runtime_tool_registry_uses_native_redis_tools(cx: &mut TestAppContext) {
-    let registry = cx.update(|cx| {
-        register_connection_repository(cx);
-        let mut settings = AppSettings::default();
-        settings.tool_exposure.agent = ToolExposureToolsetSettings {
-            terminal: false,
-            connections: false,
-            redis: true,
-            ..Default::default()
-        };
-        cx.set_global(settings);
-
-        agent_runtime_tool_registry(cx).expect("agent registry should build")
-    });
-    let names = registry
-        .names()
-        .into_iter()
-        .map(|name| name.to_string())
-        .collect::<Vec<_>>();
-
-    assert!(names.contains(&"redis_command".to_string()));
-    assert!(names.contains(&"redis_keys".to_string()));
-    assert!(names.contains(&"redis_get".to_string()));
-    assert!(names.contains(&"redis_set".to_string()));
-    assert!(!names.contains(&"redis_execute_command".to_string()));
-    assert!(!names.contains(&"redis.execute_command".to_string()));
-    assert_agent_target_schema(
-        &registry,
-        "redis.command",
-        serde_json::json!(["target", "command"]),
-    );
-    assert_tool_risk(&registry, "redis.command", RiskLevel::High);
-    assert_tool_risk(&registry, "redis.keys", RiskLevel::Medium);
-    assert_tool_risk(&registry, "redis.get", RiskLevel::Low);
-    assert_tool_risk(&registry, "redis.set", RiskLevel::High);
-}
-
-#[gpui::test]
-fn agent_runtime_tool_registry_uses_rust_hosted_mongo_tools(cx: &mut TestAppContext) {
-    let registry = cx.update(|cx| {
-        register_connection_repository(cx);
-        let mut settings = AppSettings::default();
-        settings.tool_exposure.agent = ToolExposureToolsetSettings {
-            terminal: false,
-            connections: false,
-            mongo: true,
-            ..Default::default()
-        };
-        cx.set_global(settings);
-
-        agent_runtime_tool_registry(cx).expect("agent registry should build")
-    });
-    let names = registry
-        .names()
-        .into_iter()
-        .map(|name| name.to_string())
-        .collect::<Vec<_>>();
-
-    assert!(names.contains(&"mongo_find".to_string()));
-    assert!(names.contains(&"mongo_aggregate".to_string()));
-    assert!(names.contains(&"mongo_insert".to_string()));
-    assert!(names.contains(&"mongo_delete".to_string()));
-    assert_agent_target_schema(
-        &registry,
-        "mongo.find",
-        serde_json::json!(["target", "database", "collection"]),
-    );
-    assert_tool_risk(&registry, "mongo.find", RiskLevel::Read);
-    assert_tool_risk(&registry, "mongo.insert", RiskLevel::High);
-    assert_tool_risk(&registry, "mongo.drop_database", RiskLevel::High);
-}
+// 注:redis/mongo 独立工具集随旧数据域删除;Redis 访问经 db.*(driver=redis)承载。
 
 #[gpui::test]
 fn agent_runtime_tool_registry_uses_native_ssh_sftp_tools(cx: &mut TestAppContext) {

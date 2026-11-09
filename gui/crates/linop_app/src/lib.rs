@@ -1177,23 +1177,14 @@ mod native_driver_feature_contract_tests {
     #[test]
     fn standalone_products_only_enable_their_own_domain_feature() {
         let shell_manifest = include_str!("../../../apps/linop-shell/Cargo.toml");
-        let data_manifest = include_str!("../../../apps/linop-data/Cargo.toml");
         let shell_line = app_shell_dependency_line(shell_manifest, "linop_app")
             .expect("linop-shell depends on linop_app");
-        let data_line = app_shell_dependency_line(data_manifest, "linop_app")
-            .expect("linop-data depends on linop_app");
 
         assert!(shell_line.contains("default-features = false"));
         assert!(shell_line.contains("\"shell\""));
         assert!(
             !shell_line.contains("\"database\""),
             "linop-shell must not enable the database domain"
-        );
-        assert!(data_line.contains("default-features = false"));
-        assert!(data_line.contains("\"database\""));
-        assert!(
-            !data_line.contains("\"shell\""),
-            "linop-data must not enable the shell domain"
         );
     }
 
@@ -1210,14 +1201,9 @@ mod native_driver_feature_contract_tests {
             &rest[..=end]
         }
 
-        let database = feature_entry(features, "database");
+        // `database` feature 已随旧数据域删除(数据库能力 = linop-dbx,无 feature 门)。
         let shell = feature_entry(features, "shell");
 
-        assert!(database.contains("dep:db_view") && !database.contains("dep:data_domain"));
-        assert!(!database.contains("dep:terminal_view") && !database.contains("dep:shell_domain"));
-        // `linop_app` 不再装配领域包（`ShellDomain` 由 apps 提供），shell feature 只剩
-        // UI/后端依赖；`data_domain` 仍在 database feature 里，因为公共 MCP 的
-        // Redis/Mongo 工具集实现暂时还留在 data_domain。
         assert!(shell.contains("dep:terminal_view"));
         assert!(!shell.contains("dep:shell_domain"));
         assert!(!shell.contains("dep:db_view") && !shell.contains("dep:data_domain"));
@@ -1236,18 +1222,7 @@ mod native_driver_feature_contract_tests {
         }
     }
 
-    #[test]
-    fn builtin_mongodb_feature_is_declared_and_default_off() {
-        let manifest = include_str!("../Cargo.toml");
-        let features = feature_block(manifest);
-        let default_line = features
-            .lines()
-            .find(|line| line.trim_start().starts_with("default ="))
-            .expect("main must declare default features");
-
-        assert!(features.contains("builtin-mongodb ="));
-        assert!(!default_line.contains("builtin-mongodb"));
-    }
+    // 注:builtin-mongodb feature 契约测试随旧数据域删除(mongo 工具集已不在)。
 
     #[test]
     fn windows_native_rdp_feature_is_declared_and_enabled_by_default() {
@@ -1292,16 +1267,12 @@ mod native_driver_feature_contract_tests {
 
     #[test]
     fn direct_native_database_sdks_are_optional_or_absent() {
-        let redis_view = include_str!("../../../crates/redis_view/Cargo.toml");
-        let mongodb_view = include_str!("../../../crates/mongodb_view/Cargo.toml");
         let linop_runtime = include_str!("../../../crates/linop_runtime/Cargo.toml");
 
-        assert!(dependency_is_optional_or_absent(redis_view, "redis_client"));
         assert!(dependency_is_optional_or_absent(
             linop_runtime,
             "redis_client"
         ));
-        assert!(dependency_is_optional_or_absent(mongodb_view, "mongodb"));
     }
 }
 

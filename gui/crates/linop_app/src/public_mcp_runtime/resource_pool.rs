@@ -329,34 +329,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn active_redis_resources_are_added_to_pool() {
-        let pool = append_active_redis_resources(
-            ResourcePool::new(),
-            vec!["redis-a".to_string()],
-            &no_levels(),
-        );
-
-        let resource = pool.resolve_target("redis-a").unwrap();
-        assert_eq!(ResourceKind::Redis, resource.kind);
-        assert_eq!(ResourceOrigin::ActiveSession, resource.origin);
-        assert!(resource.capabilities.contains(&ResourceCapability::Execute));
-    }
-
-    #[test]
-    fn active_redis_resource_merges_with_saved_redis_resource() {
-        let pool = ResourcePool::new().with_resource(
-            ResourceRef::new("21", ResourceKind::Redis, "cache-prod").with_alias("10.2.4.54"),
-        );
-
-        let pool = append_active_redis_resources(pool, vec!["21".to_string()], &no_levels());
-
-        assert_eq!(1, pool.resources.len());
-        let resource = pool.resolve_target("10.2.4.54").unwrap();
-        assert_eq!("21", resource.id.as_str());
-        assert!(resource.capabilities.contains(&ResourceCapability::Execute));
-    }
-
-    #[test]
     fn terminal_session_resource_preserves_registry_capabilities() {
         let resource = terminal_session_resource(
             public_mcp::registry::PublicMcpSessionInfo {
@@ -628,32 +600,6 @@ mod tests {
             resource
                 .capabilities
                 .contains(&ResourceCapability::TerminalExec)
-        );
-    }
-
-    #[test]
-    fn active_redis_resources_apply_connection_policy() {
-        let levels = ai_levels(&[(21, AiAccessLevel::Denied)]);
-
-        let pool = append_active_redis_resources(
-            ResourcePool::new(),
-            vec!["21".to_string(), "redis-a".to_string()],
-            &levels,
-        );
-        assert!(
-            pool.resolve_target("21").is_err(),
-            "被禁止连接的 Redis 活动资源不应出现"
-        );
-        assert!(pool.resolve_target("redis-a").is_ok());
-
-        let levels = ai_levels(&[(21, AiAccessLevel::ReadOnly)]);
-        let pool =
-            append_active_redis_resources(ResourcePool::new(), vec!["21".to_string()], &levels);
-        let resource = pool.resolve_target("21").expect("只读连接仍应可见");
-        assert!(
-            !resource.capabilities.contains(&ResourceCapability::Execute),
-            "只读连接不应暴露 Redis 执行能力: {:?}",
-            resource.capabilities
         );
     }
 

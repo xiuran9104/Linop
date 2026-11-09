@@ -144,14 +144,12 @@ pub fn agent_runtime_tool_registry(cx: &mut App) -> anyhow::Result<agent_runtime
         PublicMcpEnvOverride::from_env(),
     );
     let mut agent_toolsets = settings.tool_exposure.agent.clone();
-    #[cfg(feature = "database")]
-    let agent_database_enabled = agent_toolsets.database;
-    #[cfg(feature = "database")]
-    let agent_redis_enabled = agent_toolsets.redis;
     #[cfg(feature = "shell")]
     let agent_sftp_enabled = agent_toolsets.sftp;
-    agent_toolsets.database = false;
+    // 数据库工具(db.*,经共享 linop-dbx 运行时)随统一装配注册,不再单独补挂;
+    // redis/mongo 独立工具集已随旧数据域删除(Redis 经 db.* driver=redis 承载)。
     agent_toolsets.redis = false;
+    agent_toolsets.mongo = false;
     agent_toolsets.sftp = false;
     let registry = build_agent_tool_registry(cx, &agent_toolsets)?;
     let mut agent_registry = public_mcp::tools::agent_runtime_tool_registry(
@@ -159,24 +157,6 @@ pub fn agent_runtime_tool_registry(cx: &mut App) -> anyhow::Result<agent_runtime
         config.permission_mode,
         build_approval_manager(cx),
     );
-    #[cfg(feature = "database")]
-    if agent_database_enabled {
-        if let Some(repo) = connection_repository(cx) {
-            let runtime_db_registry = linop_runtime::database_tools::database_tool_registry(repo)
-                .with_optional_access_guard(access_guard::connection_ai_access_guard(cx));
-            let runtime_agent_db_registry = agent_runtime::tools::tool_runtime_agent_tool_registry(
-                runtime_db_registry,
-                tool_runtime::ToolAdapter::FunctionCalling,
-            );
-            agent_registry.try_extend(runtime_agent_db_registry)?;
-        } else {
-            tracing::warn!("Agent database tools enabled without ConnectionRepository");
-        }
-    }
-    #[cfg(feature = "database")]
-    if agent_redis_enabled {
-        register_runtime_redis_tools(cx, &mut agent_registry)?;
-    }
     #[cfg(feature = "shell")]
     if agent_sftp_enabled {
         if let Some(repo) = connection_repository(cx) {
@@ -186,25 +166,6 @@ pub fn agent_runtime_tool_registry(cx: &mut App) -> anyhow::Result<agent_runtime
         }
     }
     Ok(agent_registry)
-}
-
-#[cfg(feature = "database")]
-fn register_runtime_redis_tools(
-    cx: &App,
-    agent_registry: &mut agent_runtime::ToolRegistry,
-) -> anyhow::Result<()> {
-    let Some(repo) = connection_repository(cx) else {
-        tracing::warn!("Agent Redis runtime tools enabled without ConnectionRepository");
-        return Ok(());
-    };
-    let runtime_redis_registry = linop_runtime::redis_tools::redis_tool_registry(repo)
-        .with_optional_access_guard(access_guard::connection_ai_access_guard(cx));
-    let runtime_agent_redis_registry = agent_runtime::tools::tool_runtime_agent_tool_registry(
-        runtime_redis_registry,
-        tool_runtime::ToolAdapter::FunctionCalling,
-    );
-    agent_registry.try_extend(runtime_agent_redis_registry)?;
-    Ok(())
 }
 
 #[cfg(feature = "shell")]

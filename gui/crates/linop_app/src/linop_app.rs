@@ -1753,60 +1753,9 @@ mod tests {
     };
     use std::io::Write;
 
-    /// gpui 的绑定优先级：**无 context 的绑定等价于最深的 context**，同深度
-    /// 后注册者胜。`notes::init`（main.rs 里排在 `linop_app::init` 之后）把
-    /// `secondary-/` 全局绑到了「切换源码模式」上，而 `linop_app::init` 里的
-    /// `sql_editor_view::init` 排在它前面 —— 于是焦点落在 SQL 编辑器里按
-    /// cmd+/ 时，先匹配到的是 notes 的动作，注释快捷键看起来「没绑上」。
-    #[gpui::test]
-    fn sql_editor_comment_shortcut_is_not_shadowed_by_notes_global_shortcut(
-        cx: &mut gpui::TestAppContext,
-    ) {
-        let winner = cx.update(|cx| {
-            gpui_component::init(cx);
-            // 复刻真实启动顺序：linop_app::init（内含 sql_editor_view::init）→ notes::init
-            db_view::sql_editor_view::init(cx);
-            notes::init(cx);
-            // main.rs 在同一位置再登记一次（见 sql_editor_keybindings_are_registered_after_notes_init）
-            db_view::sql_editor_view::refresh_keybindings(cx);
-            comment_shortcut_winner(cx)
-        });
+    // 注:旧 SQL 编辑器(db_view::sql_editor_view)的快捷键行为测试随旧数据库域删除;
+    // 下方源码顺序守卫仍在,保证领域快捷键在 notes 之后重新登记。
 
-        assert!(
-            winner.as_ref().is_some_and(|binding| binding
-                .action()
-                .partial_eq(&db_view::sql_editor_view::ToggleLineComment)),
-            "焦点在 SQL 编辑器里按注释快捷键，第一个匹配的绑定必须是注释动作，实际是：{}",
-            winner
-                .map(|binding| binding.action().name().to_string())
-                .unwrap_or_else(|| "<无绑定>".to_string())
-        );
-    }
-
-    /// 焦点落在「SqlEditor > Input」时，注释快捷键的第一个匹配绑定。
-    ///
-    /// 直接向 keymap 要优先级列表：这比模拟按键先一步，能看出到底是谁赢了
-    /// 同深度的平局（`bindings_for_input` 已按优先级排好序）。
-    fn comment_shortcut_winner(cx: &gpui::App) -> Option<gpui::KeyBinding> {
-        let contexts = vec![
-            gpui::KeyContext::parse("Root").expect("valid context"),
-            gpui::KeyContext::parse("SqlEditor").expect("valid context"),
-            gpui::KeyContext::parse("Input").expect("valid context"),
-        ];
-        let keystroke = gpui::Keystroke::parse(comment_shortcut_spec()).expect("valid keystroke");
-        let keymap = cx.key_bindings();
-        let keymap = keymap.borrow();
-        let (bindings, _) = keymap.bindings_for_input(&[keystroke], &contexts);
-        bindings.first().cloned()
-    }
-
-    fn comment_shortcut_spec() -> &'static str {
-        if cfg!(target_os = "macos") {
-            "cmd-/"
-        } else {
-            "ctrl-/"
-        }
-    }
 
     /// 守卫：main.rs 里的登记顺序不能被改回去。
     ///

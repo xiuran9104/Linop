@@ -146,21 +146,10 @@ fn build_tool_registry_for_surface(
             tracing::warn!("Public MCP SFTP tools enabled before storage is initialized");
         }
     }
-    #[cfg(feature = "database")]
     if toolsets.database {
-        if let Some(storage) = cx.try_global::<one_core::storage::GlobalStorageState>() {
-            if let Some(repo) = storage
-                .storage
-                .get::<one_core::storage::ConnectionRepository>()
-            {
-                runtime_registries
-                    .push(linop_runtime::database_tools::database_tool_registry(repo));
-            } else {
-                tracing::warn!("Public MCP database tools enabled without ConnectionRepository");
-            }
-        } else {
-            tracing::warn!("Public MCP database tools enabled before storage is initialized");
-        }
+        // 数据库工具 = linop-dbx(DBX 驱动执行层,via 隧道)共享运行时;
+        // 与旧域(ConnectionRepository 驱动)无关,工具调用时惰性初始化。
+        runtime_registries.push(linop_db_view::mcp::shared_database_tool_registry());
     }
     if !runtime_registries.is_empty() {
         // 连接级 AI 访问策略：合并后的 registry 不继承子 registry 的 guard，这里统一挂一次。
@@ -245,74 +234,7 @@ mod tests {
         );
     }
 
-    #[gpui::test]
-    fn build_tool_registry_includes_redis_tools(cx: &mut TestAppContext) {
-        let toolsets = ToolExposureToolsetSettings {
-            terminal: false,
-            connections: false,
-            redis: true,
-            ..Default::default()
-        };
-
-        let tools = cx.update(|cx| {
-            build_tool_registry(cx, &toolsets)
-                .expect("redis registry should build")
-                .tools()
-        });
-
-        assert!(
-            tools
-                .iter()
-                .any(|tool| tool.name == "redis.list_connections")
-        );
-        assert!(tools.iter().any(|tool| tool.name == "redis.command"));
-        assert!(tools.iter().any(|tool| tool.name == "redis.keys"));
-        assert!(tools.iter().any(|tool| tool.name == "redis.get"));
-        assert!(tools.iter().any(|tool| tool.name == "redis.set"));
-    }
-
-    #[gpui::test]
-    fn build_tool_registry_includes_mongo_tools(cx: &mut TestAppContext) {
-        let toolsets = ToolExposureToolsetSettings {
-            terminal: false,
-            connections: false,
-            mongo: true,
-            ..Default::default()
-        };
-
-        let tools = cx.update(|cx| {
-            cx.set_global(mongodb_view::GlobalMongoState::new());
-            build_tool_registry(cx, &toolsets)
-                .expect("MongoDB registry should build")
-                .tools()
-        });
-
-        for expected in [
-            "mongo.list_connections",
-            "mongo.list_databases",
-            "mongo.list_collections",
-            "mongo.find",
-            "mongo.aggregate",
-            "mongo.count",
-            "mongo.list_indexes",
-            "mongo.create_index",
-            "mongo.drop_index",
-            "mongo.create_collection",
-            "mongo.drop_database",
-            "mongo.get_validation",
-            "mongo.set_validation",
-            "mongo.insert",
-            "mongo.replace",
-            "mongo.update",
-            "mongo.delete",
-            "mongo.explain",
-        ] {
-            assert!(
-                tools.iter().any(|tool| tool.name == expected),
-                "missing {expected}"
-            );
-        }
-    }
+    // 注:redis.* 独立工具集随旧数据域删除(Redis 经 db.* driver=redis 承载)。
 
     #[gpui::test]
     fn build_tool_registry_includes_connection_tools(cx: &mut TestAppContext) {
@@ -340,7 +262,8 @@ mod tests {
         assert!(tools.iter().any(|tool| tool.name == "connections.find"));
         assert!(tools.iter().any(|tool| tool.name == "connections.save"));
         assert!(tools.iter().any(|tool| tool.name == "connections.delete"));
-        assert!(tools.iter().any(|tool| tool.name == "connections.test"));
+        // connections.test/list_kinds/get_schema 挂在 linop_runtime 的 database
+        // feature 死门后(旧域删除),当前不注册。
         assert!(
             tools
                 .iter()
@@ -460,49 +383,14 @@ mod tests {
                 .tools()
         });
 
-        assert!(tools.iter().any(|tool| tool.name == "db.schema"));
+        // dbx 支持的新工具集(共享 linop-dbx 运行时,调用时惰性初始化)。
+        assert!(tools.iter().any(|tool| tool.name == "db.list_connections"));
+        assert!(tools.iter().any(|tool| tool.name == "db.list_tables"));
         assert!(tools.iter().any(|tool| tool.name == "db.query"));
-        assert!(tools.iter().any(|tool| tool.name == "db.exec"));
     }
 
-    #[gpui::test]
-    fn build_tool_registry_resolves_saved_connection_target_alias(cx: &mut TestAppContext) {
-        let toolsets = ToolExposureToolsetSettings {
-            terminal: false,
-            connections: false,
-            database: true,
-            ..Default::default()
-        };
-
-        let registry = cx.update(|cx| {
-            let repo = register_connection_repository(cx);
-            insert_database_connection(&repo, "prod-db", "127.0.0.1");
-            build_tool_registry(cx, &toolsets).expect("database registry should build")
-        });
-
-        let error = futures::executor::block_on(registry.call_tool(
-            "db.query",
-            Some(serde_json::Map::from_iter([
-                ("target".to_string(), json!("127.0.0.1")),
-                (
-                    "sql".to_string(),
-                    json!("create table unsafe_write(id integer)"),
-                ),
-            ])),
-            PublicMcpToolContext {
-                permission_mode: PermissionMode::Deny,
-                approver: Default::default(),
-            },
-        ))
-        .expect_err("resolved target should reach db.query validation");
-
-        assert!(
-            error
-                .to_string()
-                .contains("db.query only accepts query statements"),
-            "unexpected error: {error}"
-        );
-    }
+    // 注:旧的 target-alias 写校验测试已随旧数据库域删除;target 解析语义由
+    // public_mcp 的 database_tools 契约测试与 resource_pool 测试覆盖。
 
     #[gpui::test]
     fn build_tool_registry_terminal_toolset_includes_terminal_exec(cx: &mut TestAppContext) {

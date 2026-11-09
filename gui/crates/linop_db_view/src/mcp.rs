@@ -69,7 +69,9 @@ fn failed(error: impl std::fmt::Display) -> ToolError {
     ToolError::Failed { message: error.to_string() }
 }
 
-/// 注册 Database 工具集(DbxDomain::register 调用一次)。
+/// 注册 Database 工具集(DbxDomain::register 调用一次;mcp_host 托管的
+/// 独立产品线使用。全量产品由 linop_app::public_mcp_runtime 直接装配
+/// `shared_database_tool_registry`)。
 pub fn register_mcp_toolsets() {
     mcp_host::register_toolset(
         mcp_host::McpToolset::Database,
@@ -79,9 +81,13 @@ pub fn register_mcp_toolsets() {
                 let _ = DbxRuntime::shared().await;
             })
             .detach();
-            vec![mcp_host::runtime_provider(database_tool_registry(Arc::new(
-                DbxToolRuntime,
-            )))]
+            vec![mcp_host::runtime_provider(shared_database_tool_registry())]
         }),
     );
+}
+
+/// db.* 工具注册表(共享运行时,惰性初始化):全量产品的
+/// public_mcp_runtime 在 toolsets.database 打开时装配。
+pub fn shared_database_tool_registry() -> tool_runtime::ToolRegistry {
+    database_tool_registry(Arc::new(DbxToolRuntime))
 }
