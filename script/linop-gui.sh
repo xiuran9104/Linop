@@ -19,11 +19,12 @@ case "${1:-start}" in
     ;;
   start)
     docker rm -f "$NAME" 2>/dev/null || true
-    # 渲染注意:镜像须含 Vulkan 栈(libtulkan1 + mesa-vulkan-drivers/lavapipe,
-    # 已 commit 进 linop-build:1)。GPU 直通本机仅 CUDA 通道(README 渲染后端),
-    # wgpu 需落在 Vulkan 软渲染(lavapipe)才能正常呈现;缺 Vulkan 时 wgpu 落
-    # GL 后端,XSHM 呈现失败("MESA: error: Failed to attach to x11 shm")
-    # → 窗口在但全黑。--ipc=host/--shm-size 为 GL 回退路径的兜底。
+    # 渲染注意:镜像须含 Vulkan 栈(libtulkan1 + mesa-vulkan-drivers/lavapipe)
+    # 与 CJK 字体(fonts-noto-cjk,否则中文乱码),均已 commit 进 linop-build:1。
+    # GPU 直通本机仅 CUDA 通道(README 渲染后端),wgpu 需落在 Vulkan 软渲染
+    # (lavapipe)才能正常呈现;缺 Vulkan 时 wgpu 落 GL 后端,XSHM 呈现失败
+    # ("MESA: error: Failed to attach to x11 shm")→ 窗口在但全黑。
+    # --ipc=host/--shm-size 为 GL 回退路径的兜底。
     docker run -d --name "$NAME" \
       --ipc=host \
       --shm-size=1g \
