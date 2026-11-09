@@ -19,22 +19,25 @@ case "${1:-start}" in
     ;;
   start)
     docker rm -f "$NAME" 2>/dev/null || true
-    # 渲染注意:镜像须含 Vulkan 栈(libtulkan1 + mesa-vulkan-drivers/lavapipe)
-    # 与 CJK 字体(fonts-noto-cjk,否则中文乱码),均已 commit 进 linop-build:1。
-    # GPU 直通本机仅 CUDA 通道(README 渲染后端),wgpu 需落在 Vulkan 软渲染
-    # (lavapipe)才能正常呈现;缺 Vulkan 时 wgpu 落 GL 后端,XSHM 呈现失败
-    # ("MESA: error: Failed to attach to x11 shm")→ 窗口在但全黑。
-    # --ipc=host/--shm-size 为 GL 回退路径的兜底。
+    # 渲染注意:镜像须含 Vulkan 栈(lavapipe)与 CJK 字体(fonts-noto-cjk)。
+    # 后端:默认 Wayland(WSLg 原生,单窗无 X11 外壳装饰框;WSLg Weston 直接
+    # 管理,拖动/关闭走 Wayland)。LINOP_BACKEND=x11 回退 X11 —— 注意 X11 会
+    # 出现 Weston SSD 外壳窗(双层窗口)+ 需 Vulkan CSD 链路。
+    BACKEND="${LINOP_BACKEND:-wayland}"
+    if [ "$BACKEND" = "wayland" ]; then
+      EXTRA_ENV="-e WAYLAND_DISPLAY=wayland-0 -e XDG_RUNTIME_DIR=/mnt/wslg/runtime-dir"
+    else
+      EXTRA_ENV="-e DISPLAY=:0 -v /tmp/.X11-unix:/tmp/.X11-unix"
+    fi
     docker run -d --name "$NAME" \
       --ipc=host \
       --shm-size=1g \
       -v "$REPO":/home/xiuran/Linop \
-      -v /tmp/.X11-unix:/tmp/.X11-unix \
       -v /mnt/wslg:/mnt/wslg \
       --device /dev/dri \
-      -e DISPLAY=:0 \
+      $EXTRA_ENV \
       "$IMAGE" bash -c "exec /home/xiuran/Linop/gui/target/release/linop"
-    echo "Linop GUI 已启动(Windows 桌面应出现 Linop 窗口)"
+    echo "Linop GUI 已启动(backend=$BACKEND;Windows 桌面应出现 Linop 窗口)"
     ;;
   stop)
     docker rm -f "$NAME"
