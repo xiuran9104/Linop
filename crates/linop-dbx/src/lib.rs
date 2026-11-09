@@ -161,7 +161,11 @@ impl Dbx {
             "id": format!("linop:{}", profile.name),
             "name": profile.name,
             "db_type": profile.driver.as_str(),
-            "host": profile.host.clone().unwrap_or_default(),
+            // SQLite 的 DBX 语义:host = 数据库文件路径(连接 URL 按 host?mode=rwc 生成)。
+            "host": match profile.driver {
+                linop_core::DbDriver::Sqlite => profile.path.to_string_lossy(),
+                _ => profile.host.clone().unwrap_or_default().into(),
+            },
             "port": profile.port.unwrap_or(match profile.driver {
                 linop_core::DbDriver::Postgres => 5432,
                 linop_core::DbDriver::MySql => 3306,
