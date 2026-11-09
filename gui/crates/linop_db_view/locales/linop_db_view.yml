@@ -83,6 +83,35 @@ ConnectionForm:
       zh-CN: CouchDB
       zh-HK: CouchDB
 
+    gaussdb:
+      en: GaussDB
+      zh-CN: GaussDB(华为)
+      zh-HK: GaussDB(華為)
+    opengauss:
+      en: openGauss
+      zh-CN: openGauss
+      zh-HK: openGauss
+    kingbase:
+      en: KingbaseES (人大金仓)
+      zh-CN: KingbaseES (人大金仓)
+      zh-HK: KingbaseES (人大金倉)
+    vastbase:
+      en: Vastbase (海量)
+      zh-CN: Vastbase (海量)
+      zh-HK: Vastbase (海量)
+    highgo:
+      en: HighGo (瀚高)
+      zh-CN: HighGo (瀚高)
+      zh-HK: HighGo (瀚高)
+    uxdb:
+      en: UXDB (优炫)
+      zh-CN: UXDB (优炫)
+      zh-HK: UXDB (優炫)
+    goldendb:
+      en: GoldenDB
+      zh-CN: GoldenDB
+      zh-HK: GoldenDB
+
 DbxForm:
   cancel:
     en: Cancel

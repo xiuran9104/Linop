@@ -95,11 +95,18 @@ fn append_dbx_profile_resources(pool: ResourcePool) -> ResourcePool {
         .into_iter()
         .fold(pool, |pool, profile| {
             let kind = match profile.driver {
-                linop_core::DbDriver::Postgres => ResourceKind::Postgres,
+                linop_core::DbDriver::Postgres
+                | linop_core::DbDriver::GaussDB
+                | linop_core::DbDriver::OpenGauss
+                | linop_core::DbDriver::Kingbase
+                | linop_core::DbDriver::Vastbase
+                | linop_core::DbDriver::HighGo
+                | linop_core::DbDriver::UxDB => ResourceKind::Postgres,
                 linop_core::DbDriver::MySql
                 | linop_core::DbDriver::Doris
                 | linop_core::DbDriver::StarRocks
-                | linop_core::DbDriver::ManticoreSearch => ResourceKind::Mysql,
+                | linop_core::DbDriver::ManticoreSearch
+                | linop_core::DbDriver::GoldenDB => ResourceKind::Mysql,
                 linop_core::DbDriver::Sqlite | linop_core::DbDriver::DuckDb => {
                     ResourceKind::Sqlite
                 }

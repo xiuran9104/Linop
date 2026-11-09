@@ -1,0 +1,38 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20261109T140921995Z-585077-317bca408682",
+  "runId": "20261109T140921995Z-585077-317bca408682",
+  "runStatus": "inconclusive",
+  "coverage": {
+    "status": "partial",
+    "reasons": [
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "gui/crates/linop_db_view/src/connection_form.rs",
+        "detail": "spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "gui/crates/linop_db_view/src/connection_form.rs",
+        "detail": "scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      }
+    ]
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "d49939b15e00539e00ddb61936dd3d509edc6687",
+  "diffHash": "a77db0242cfd7d4940d8a9c5a31041cf5ecb970cbe8a7be4a19460d90aa4c5a2",
+  "rulesVersion": "unavailable",
+  "sessionHash": "e3e0fc9d6e1f5b92fae44dfc97784cc7424bfc2352d810e1a9284305c5985e88",
+  "reportRef": ".mimosa/reports/task-review-sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3-20261109T140921995Z-585077-317bca408682.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [],
+  "recordedAt": "2026-11-09T14:09:22.285Z"
+}

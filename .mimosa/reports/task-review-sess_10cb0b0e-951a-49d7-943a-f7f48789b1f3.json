@@ -1,11 +1,17 @@
 {
   "schema_version": "mimosa-task-review/v2",
-  "run_id": "20261109T135824053Z-570283-24cbc90c88e3",
-  "run_status": "completed",
-  "errors": [],
+  "run_id": "20261109T140921995Z-585077-317bca408682",
+  "run_status": "inconclusive",
+  "errors": [
+    {
+      "stage": "scan",
+      "target": "gui/crates/linop_db_view/src/connection_form.rs",
+      "reason": "scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT"
+    }
+  ],
   "coverage": {
     "schema_version": "mimosa-hook-coverage/v1",
-    "status": "complete",
+    "status": "partial",
     "scope": "hook_observed_diff",
     "baseline": {
       "complete": true,
@@ -33,9 +39,9 @@
     },
     "scanning": {
       "required_files": 1,
-      "scanned_files": 1,
+      "scanned_files": 0,
       "skipped_files": 0,
-      "failed_files": 0,
+      "failed_files": 1,
       "project_checks_required": 0,
       "project_checks_completed": 0
     },
@@ -45,45 +51,55 @@
       "detail_limit": 3,
       "truncated": false
     },
-    "reason_counts": {},
-    "reasons": [],
+    "reason_counts": {
+      "scanner_failed": 1,
+      "project_check_failed": 1
+    },
+    "reasons": [
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "gui/crates/linop_db_view/src/connection_form.rs",
+        "detail": "spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "gui/crates/linop_db_view/src/connection_form.rs",
+        "detail": "scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affects_completion": true
+      }
+    ],
     "reasons_truncated": false
   },
-  "generated_at": "2026-11-09T13:58:24.053Z",
+  "generated_at": "2026-11-09T14:09:21.995Z",
   "session_id": "sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3",
   "target": ".",
-  "revision": "4c146bf378558656c99ce32900cd2cd1950f103e",
+  "revision": "d49939b15e00539e00ddb61936dd3d509edc6687",
   "rules_version": "unavailable",
-  "diff_hash": "f7135d7f3d8c32618bfa67e0ab268609699e25b8b76e6eb0195a23e73ca90f81",
+  "diff_hash": "a77db0242cfd7d4940d8a9c5a31041cf5ecb970cbe8a7be4a19460d90aa4c5a2",
   "diff": {
     "algorithm": "sha256",
     "changed_file_count": 1,
     "changed_files": [
       {
-        "file": "crates/linop-dbx/src/lib.rs",
+        "file": "gui/crates/linop_db_view/src/connection_form.rs",
         "ranges": [
           {
-            "start": 75,
-            "end": 102
-          },
-          {
-            "start": 198,
-            "end": 198
-          },
-          {
-            "start": 380,
-            "end": 435
+            "start": 444,
+            "end": 470
           }
         ],
-        "before_hash": "e7903d7cf930006770399c4d69ea83a7464abac100b2e16b76d9270ccc829e0b",
-        "after_hash": "bd7dca008c71d48047a98a7c522ee926e24931aebfd006065d3b0a4cdfd02fff"
+        "before_hash": "5619662ed2747e4bd5783b6bef4276eee8022a173d6c66c85e23d798735f2e1c",
+        "after_hash": "e91762f2c254c3dc1763acf05cbde7decba29a5ff8d4048fe87c76bdcf6d8ed7"
       }
     ]
   },
   "timing": {
-    "started_at": "2026-11-09T13:58:22.403Z",
-    "completed_at": "2026-11-09T13:58:24.053Z",
-    "duration_ms": 1650,
+    "started_at": "2026-11-09T14:09:17.834Z",
+    "completed_at": "2026-11-09T14:09:21.995Z",
+    "duration_ms": 4161,
     "measurement": "hook_wall_clock"
   },
   "tokens": {
@@ -97,11 +113,11 @@
     "schemaVersion": "mimosa-gate-telemetry/v1",
     "profile": "gate",
     "operation": "Stop",
-    "outcome": "complete",
-    "latencyMs": 1650,
-    "peakMemoryBytes": 191705088,
+    "outcome": "partial/INCONCLUSIVE",
+    "latencyMs": 4161,
+    "peakMemoryBytes": 195289088,
     "memoryMeasurement": "max-observed-process-rss",
-    "scannedFiles": 1,
+    "scannedFiles": 0,
     "cache": {
       "hits": 0,
       "misses": 0,
@@ -126,8 +142,8 @@
   "finding_events": [],
   "findings": [],
   "artifacts": {
-    "immutable_report": ".mimosa/reports/task-review-sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3-20261109T135824053Z-570283-24cbc90c88e3.json",
+    "immutable_report": ".mimosa/reports/task-review-sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3-20261109T140921995Z-585077-317bca408682.json",
     "latest_report": ".mimosa/reports/task-review-sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3.json",
-    "history_summary": ".mimosa/history/run-20261109T135824053Z-570283-24cbc90c88e3.json"
+    "history_summary": ".mimosa/history/run-20261109T140921995Z-585077-317bca408682.json"
   }
 }

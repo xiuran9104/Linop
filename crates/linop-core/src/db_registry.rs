@@ -65,6 +65,14 @@ pub enum DbDriver {
     Turso,
     CloudflareD1,
     DynamoDB,
+    // ---- 协议兼容家族(无独立原生驱动,走 PG/MySQL 协议与兼容路由)----
+    GaussDB,
+    OpenGauss,
+    Kingbase,
+    Vastbase,
+    HighGo,
+    UxDB,
+    GoldenDB,
 }
 
 impl DbDriver {
@@ -95,6 +103,13 @@ impl DbDriver {
             DbDriver::Turso => "turso",
             DbDriver::CloudflareD1 => "cloudflare-d1",
             DbDriver::DynamoDB => "dynamodb",
+            DbDriver::GaussDB => "gaussdb",
+            DbDriver::OpenGauss => "opengauss",
+            DbDriver::Kingbase => "kingbase",
+            DbDriver::Vastbase => "vastbase",
+            DbDriver::HighGo => "highgo",
+            DbDriver::UxDB => "uxdb",
+            DbDriver::GoldenDB => "goldendb",
         }
     }
 
@@ -123,6 +138,13 @@ impl DbDriver {
             | DbDriver::Turso
             | DbDriver::CloudflareD1
             | DbDriver::DynamoDB => 0,
+            DbDriver::GaussDB => 8000,
+            DbDriver::OpenGauss
+            | DbDriver::Vastbase
+            | DbDriver::UxDB => 5432,
+            DbDriver::Kingbase => 54321,
+            DbDriver::HighGo => 5866,
+            DbDriver::GoldenDB => 3306,
         }
     }
 
@@ -139,6 +161,7 @@ impl DbDriver {
                 | DbDriver::Doris
                 | DbDriver::StarRocks
                 | DbDriver::ManticoreSearch
+                | DbDriver::GoldenDB
         )
     }
 
@@ -174,6 +197,13 @@ impl DbDriver {
             "turso" => Some(DbDriver::Turso),
             "cloudflare-d1" | "d1" => Some(DbDriver::CloudflareD1),
             "dynamodb" => Some(DbDriver::DynamoDB),
+            "gaussdb" => Some(DbDriver::GaussDB),
+            "opengauss" => Some(DbDriver::OpenGauss),
+            "kingbase" | "kingbasees" => Some(DbDriver::Kingbase),
+            "vastbase" => Some(DbDriver::Vastbase),
+            "highgo" => Some(DbDriver::HighGo),
+            "uxdb" => Some(DbDriver::UxDB),
+            "goldendb" => Some(DbDriver::GoldenDB),
             _ => None,
         }
     }

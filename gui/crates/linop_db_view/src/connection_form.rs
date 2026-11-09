@@ -23,7 +23,7 @@ pub(crate) const KIND_PREFIX: &str = "database:";
 /// (驱动, i18n 标签键)按向导展示顺序。常规主机/文件连接型;
 /// 云凭证型(dynamodb/cloudflare-d1/turso/hbase)字段语义不同,
 /// 不上向导,可在 databases.toml 手写(driver 名可被 parse 识别)。
-const KIND_ENTRIES: [(DbDriver, &'static str); 20] = [
+const KIND_ENTRIES: [(DbDriver, &'static str); 27] = [
     (DbDriver::Postgres, "postgres"),
     (DbDriver::MySql, "mysql"),
     (DbDriver::Sqlite, "sqlite"),
@@ -44,6 +44,14 @@ const KIND_ENTRIES: [(DbDriver, &'static str); 20] = [
     (DbDriver::Meilisearch, "meilisearch"),
     (DbDriver::EasySearch, "easysearch"),
     (DbDriver::CouchDB, "couchdb"),
+    // 协议兼容家族(PostgreSQL / MySQL 协议)
+    (DbDriver::GaussDB, "gaussdb"),
+    (DbDriver::OpenGauss, "opengauss"),
+    (DbDriver::Kingbase, "kingbase"),
+    (DbDriver::Vastbase, "vastbase"),
+    (DbDriver::HighGo, "highgo"),
+    (DbDriver::UxDB, "uxdb"),
+    (DbDriver::GoldenDB, "goldendb"),
 ];
 
 fn kind_label_fn(key: &'static str) -> fn(&App) -> SharedString {
@@ -71,6 +79,12 @@ fn kind_label_fn(key: &'static str) -> fn(&App) -> SharedString {
         "solr" => |_: &App| t!("ConnectionForm.kind.solr").to_string().into(),
         "meilisearch" => |_: &App| t!("ConnectionForm.kind.meilisearch").to_string().into(),
         "easysearch" => |_: &App| t!("ConnectionForm.kind.easysearch").to_string().into(),
+        "gaussdb" => |_: &App| t!("ConnectionForm.kind.gaussdb").to_string().into(),
+        "opengauss" => |_: &App| t!("ConnectionForm.kind.opengauss").to_string().into(),
+        "kingbase" => |_: &App| t!("ConnectionForm.kind.kingbase").to_string().into(),
+        "vastbase" => |_: &App| t!("ConnectionForm.kind.vastbase").to_string().into(),
+        "highgo" => |_: &App| t!("ConnectionForm.kind.highgo").to_string().into(),
+        "uxdb" => |_: &App| t!("ConnectionForm.kind.uxdb").to_string().into(),
         _ => |_: &App| t!("ConnectionForm.kind.couchdb").to_string().into(),
     }
 }

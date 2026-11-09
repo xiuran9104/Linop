@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "mimosa-finding-history/v1",
+  "runId": "20261109T140921995Z-585077-317bca408682",
+  "runStatus": "inconclusive",
+  "errors": [
+    "scan:gui/crates/linop_db_view/src/connection_form.rs: scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT"
+  ],
+  "target": ".",
+  "revision": "d49939b15e00539e00ddb61936dd3d509edc6687",
+  "diffHash": "a77db0242cfd7d4940d8a9c5a31041cf5ecb970cbe8a7be4a19460d90aa4c5a2",
+  "rulesVersion": "unavailable",
+  "recordedAt": "2026-11-09T14:09:21.995Z",
+  "timing": {
+    "startedAt": "2026-11-09T14:09:17.834Z",
+    "completedAt": "2026-11-09T14:09:21.995Z",
+    "durationMs": 4161
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "modelCalls": 0,
+    "measurement": "known-zero"
+  },
+  "findings": {
+    "total": 0,
+    "bySeverity": {},
+    "byStatus": {}
+  },
+  "coverage": {
+    "status": "partial",
+    "reasonCounts": {
+      "scanner_failed": 1,
+      "project_check_failed": 1
+    }
+  },
+  "evidenceBoundary": "static_only",
+  "immutableReport": ".mimosa/reports/task-review-sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3-20261109T140921995Z-585077-317bca408682.json"
+}

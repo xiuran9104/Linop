@@ -441,24 +441,33 @@ impl Render for DbxConnectionForm {
                         .child(t!("DbxFormHint.mysql_family").to_string()),
                 ))
             })
-            .child(
-                form_row(
-                    "SQLite 文件",
-                    h_flex()
-                        .flex_1()
-                        .items_center()
-                        .gap_2()
-                        .child(field(&self.path))
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(theme.colors.muted_foreground)
-                                .child("文件型驱动(sqlite/duckdb)必填"),
-                        ),
-                ),
-            )
-            .child(form_row("主机", field(&self.host)))
-            .child(form_row("端口", field(&self.port)))
+            // 文件路径行仅文件型驱动(sqlite/duckdb)显示,其余驱动不相关。
+            .when(self.driver.is_file_based(), |col| {
+                col.child(
+                    form_row(
+                        if self.driver == DbDriver::Sqlite {
+                            "SQLite 文件"
+                        } else {
+                            "DuckDB 文件"
+                        },
+                        h_flex()
+                            .flex_1()
+                            .items_center()
+                            .gap_2()
+                            .child(field(&self.path))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(theme.colors.muted_foreground)
+                                    .child("必填"),
+                            ),
+                    ),
+                )
+            })
+            .when(!self.driver.is_file_based(), |col| {
+                col.child(form_row("主机", field(&self.host)))
+                    .child(form_row("端口", field(&self.port)))
+            })
             .child(form_row("用户名", field(&self.user)))
             .child(form_row("密码", field(&self.password)))
             .child(form_row("库名", field(&self.database)))
