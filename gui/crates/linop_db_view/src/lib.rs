@@ -3,8 +3,11 @@
 rust_i18n::i18n!("locales", fallback = "en");
 
 pub mod connection_form;
+pub mod console_tab;
+pub mod data_tab;
 pub mod mcp;
 pub mod panel;
+pub mod structure_tab;
 
 use std::path::PathBuf;
 use std::sync::Arc;

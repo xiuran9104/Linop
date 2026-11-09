@@ -4,8 +4,6 @@
 //! StoredConnection;保存后注入共享 DbxRuntime(面板与 MCP 立即可用,
 //! 带 via 跳板的连接此时建立隧道)。
 
-use std::sync::Arc;
-
 use domain_api::{
     ConnectionFormProvider, ConnectionFormRequest, ConnectionKindDescriptor, ConnectionKindGroup,
 };
@@ -107,7 +105,7 @@ impl DbxConnectionForm {
         }
     }
 
-    fn save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn save(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
         let read = |e: &gpui::Entity<InputState>| e.read(cx).value().trim().to_string();
         let name = read(&self.name);
         if name.is_empty() {

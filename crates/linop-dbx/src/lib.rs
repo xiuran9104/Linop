@@ -253,6 +253,52 @@ impl Dbx {
         .map_err(DbxError::Dbx)
     }
 
+    /// 表列清单(名称/类型/可空/主键/默认/注释)。
+    pub async fn table_columns(
+        &self,
+        name: &str,
+        table: &str,
+    ) -> Result<Vec<linop_db_core::db::ColumnInfo>> {
+        let id = self.connection_id(name).await?;
+        let database = self.database_of(name).await;
+        let guard = self.state.lock().await;
+        linop_db_core::schema::exact_metadata::columns(&guard, &id, &database, "", table, None)
+            .await
+            .map_err(DbxError::Dbx)
+    }
+
+    /// 表索引清单。
+    pub async fn table_indexes(
+        &self,
+        name: &str,
+        table: &str,
+    ) -> Result<Vec<linop_db_core::db::IndexInfo>> {
+        let id = self.connection_id(name).await?;
+        let database = self.database_of(name).await;
+        let guard = self.state.lock().await;
+        linop_db_core::schema::exact_metadata::indexes(&guard, &id, &database, "", table)
+            .await
+            .map_err(DbxError::Dbx)
+    }
+
+    /// 表 DDL(CREATE TABLE)。
+    pub async fn table_ddl(&self, name: &str, table: &str) -> Result<String> {
+        let id = self.connection_id(name).await?;
+        let database = self.database_of(name).await;
+        let guard = self.state.lock().await;
+        linop_db_core::schema::exact_metadata::ddl(&guard, &id, &database, "", table, None, false)
+            .await
+            .map_err(DbxError::Dbx)
+    }
+
+    /// 会话内移除连接(不入库;databases.toml 的持久化删除由调用方做)。
+    /// 隧道句柄随之丢弃,SSH 会话/转发经 RAII 关闭。
+    /// GPUI 主线程调用(非 tokio 上下文),`blocking_lock` 安全。
+    pub fn remove_profile_blocking(&self, name: &str) {
+        self.profiles.blocking_lock().retain(|p| p.name != name);
+        self.tunnels.blocking_lock().retain(|t| t.profile_name != name);
+    }
+
     /// 执行 SQL(默认只读风控、超时与取消都来自 DBX 执行路径)。
     pub async fn query(&self, name: &str, sql: &str) -> Result<linop_db_core::db::QueryResult> {
         let id = self.connection_id(name).await?;
