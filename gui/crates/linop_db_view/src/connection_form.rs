@@ -1,4 +1,4 @@
-//! 新建连接向导的数据库表单(kind = "database")。
+//! 新建连接向导的数据库表单(kind = "database:<驱动>")。
 //!
 //! 连接配置归 Linop 的 databases.toml(DbProfile),不走 one-hub.db 的
 //! StoredConnection;保存后注入共享 DbxRuntime(面板与 MCP 立即可用,
@@ -17,24 +17,61 @@ use rust_i18n::t;
 
 use crate::DbxRuntime;
 
-/// 数据库连接种类 id(向导左栏「数据库」分组)。
-pub(crate) const KIND_DATABASE: &str = "database";
+/// 数据库连接种类 id 前缀(向导左栏「数据库」分组);后缀 = 驱动名。
+pub(crate) const KIND_PREFIX: &str = "database:";
 
-fn database_kind_label(_cx: &App) -> SharedString {
-    t!("ConnectionForm.kind.database").to_string().into()
+/// (驱动, i18n 标签键)按向导展示顺序;MySQL 兼容 MariaDB/Doris/StarRocks。
+const KIND_ENTRIES: [(DbDriver, &'static str); 8] = [
+    (DbDriver::Postgres, "postgres"),
+    (DbDriver::MySql, "mysql"),
+    (DbDriver::Sqlite, "sqlite"),
+    (DbDriver::Redis, "redis"),
+    (DbDriver::SqlServer, "sqlserver"),
+    (DbDriver::Mongo, "mongodb"),
+    (DbDriver::Elastic, "elasticsearch"),
+    (DbDriver::DuckDb, "duckdb"),
+];
+
+fn kind_label_fn(key: &'static str) -> fn(&App) -> SharedString {
+    match key {
+        "postgres" => |_: &App| t!("ConnectionForm.kind.postgres").to_string().into(),
+        "mysql" => |_: &App| t!("ConnectionForm.kind.mysql").to_string().into(),
+        "sqlite" => |_: &App| t!("ConnectionForm.kind.sqlite").to_string().into(),
+        "redis" => |_: &App| t!("ConnectionForm.kind.redis").to_string().into(),
+        "sqlserver" => |_: &App| t!("ConnectionForm.kind.sqlserver").to_string().into(),
+        "mongodb" => |_: &App| t!("ConnectionForm.kind.mongodb").to_string().into(),
+        "elasticsearch" => |_: &App| t!("ConnectionForm.kind.elasticsearch").to_string().into(),
+        _ => |_: &App| t!("ConnectionForm.kind.duckdb").to_string().into(),
+    }
 }
 
-/// 数据库表单提供者:向「新建连接」声明数据库种类并构造表单。
+fn port_placeholder(driver: DbDriver) -> &'static str {
+    match driver.default_port() {
+        0 => "端口(文件型驱动留空)",
+        _ => match driver {
+            DbDriver::MySql => "端口(缺省 3306;MariaDB/Doris/StarRocks 同协议)",
+            _ => "",
+        },
+    }
+}
+
+/// 数据库表单提供者:向「新建连接」逐条声明各驱动种类(DBX 同款列举)。
 pub struct DbxConnectionFormProvider;
 
 impl ConnectionFormProvider for DbxConnectionFormProvider {
     fn kinds(&self, _cx: &App) -> Vec<ConnectionKindDescriptor> {
-        vec![ConnectionKindDescriptor::new(
-            KIND_DATABASE,
-            database_kind_label,
-            ConnectionKindGroup::Database,
-            0,
-        )]
+        KIND_ENTRIES
+            .iter()
+            .enumerate()
+            .map(|(order, (driver, label_key))| {
+                ConnectionKindDescriptor::new(
+                    format!("{KIND_PREFIX}{}", driver.as_str()),
+                    kind_label_fn(label_key),
+                    ConnectionKindGroup::Database,
+                    order as i32,
+                )
+            })
+            .collect()
     }
 
     fn build(
@@ -43,16 +80,19 @@ impl ConnectionFormProvider for DbxConnectionFormProvider {
         window: &mut Window,
         cx: &mut App,
     ) -> Option<AnyView> {
-        if request.kind_id.as_ref() != KIND_DATABASE {
-            return None;
-        }
-        Some(cx.new(|cx| DbxConnectionForm::new(window, cx)).into())
+        let driver = request
+            .kind_id
+            .as_ref()
+            .strip_prefix(KIND_PREFIX)
+            .and_then(DbDriver::parse)?;
+        Some(cx.new(|cx| DbxConnectionForm::new(driver, window, cx)).into())
     }
 }
 
 struct DbxConnectionForm {
     focus: FocusHandle,
     name: gpui::Entity<InputState>,
+    /// 由向导条目决定的固定驱动(表单内不可切换)。
     driver: DbDriver,
     host: gpui::Entity<InputState>,
     port: gpui::Entity<InputState>,
@@ -68,15 +108,8 @@ struct DbxConnectionForm {
     saving: bool,
 }
 
-const DRIVERS: [DbDriver; 4] = [
-    DbDriver::Postgres,
-    DbDriver::MySql,
-    DbDriver::Sqlite,
-    DbDriver::Redis,
-];
-
 impl DbxConnectionForm {
-    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+    fn new(driver: DbDriver, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mk = |placeholder: &'static str, window: &mut Window, cx: &mut Context<Self>| {
             cx.new(|cx| InputState::new(window, cx).placeholder(placeholder))
         };
@@ -91,10 +124,10 @@ impl DbxConnectionForm {
         Self {
             focus: cx.focus_handle(),
             name: mk("名称(必填)", window, cx),
-            driver: DbDriver::Postgres,
+            driver,
             host: mk("主机(如 10.0.0.5)", window, cx),
-            port: mk("端口(缺省 5432/3306)", window, cx),
-            path: mk("/root/data/app.db(sqlite 必填)", window, cx),
+            port: mk(port_placeholder(driver), window, cx),
+            path: mk("/path/to/app.db(文件型驱动必填)", window, cx),
             user: mk("用户名", window, cx),
             password: mk("密码", window, cx),
             database: mk("库名", window, cx),
@@ -115,12 +148,12 @@ impl DbxConnectionForm {
         }
         let host = read(&self.host);
         let path = read(&self.path);
-        if self.driver == DbDriver::Sqlite && path.is_empty() {
-            self.status = Some("SQLite 需要数据库文件路径".into());
+        if self.driver.is_file_based() && path.is_empty() {
+            self.status = Some(format!("{} 需要数据库文件路径", self.driver.as_str()));
             cx.notify();
             return;
         }
-        if self.driver != DbDriver::Sqlite && host.is_empty() {
+        if !self.driver.is_file_based() && host.is_empty() {
             self.status = Some("主机必填".into());
             cx.notify();
             return;
@@ -215,22 +248,7 @@ impl Render for DbxConnectionForm {
         let theme = cx.theme().clone();
         let field = |input: &gpui::Entity<InputState>| Input::new(input).small().flex_1();
 
-        let driver_buttons = DRIVERS.iter().map(|driver| {
-            let selected = self.driver == *driver;
-            let label = driver.as_str();
-            let driver = *driver;
-            Button::new(SharedString::from(format!("driver-{label}")))
-                .label(label)
-                .small()
-                .when(selected, |b| {
-                    b.bg(theme.colors.accent)
-                        .text_color(theme.colors.accent_foreground)
-                })
-                .on_click(cx.listener(move |form, _ev, _window, cx| {
-                    form.driver = driver;
-                    cx.notify();
-                }))
-        });
+        let driver_label = self.driver.as_str();
 
         let mut via_row = h_flex().flex_1().flex_wrap().gap_1();
         via_row = via_row.child(
@@ -268,12 +286,7 @@ impl Render for DbxConnectionForm {
             .p_4()
             .gap_3()
             .child(form_row("名称", field(&self.name)))
-            .child(
-                form_row(
-                    "驱动",
-                    h_flex().flex_1().gap_1().children(driver_buttons),
-                ),
-            )
+            .child(form_row("驱动", div().text_sm().child(driver_label)))
             .child(
                 form_row(
                     "SQLite 文件",
@@ -286,7 +299,7 @@ impl Render for DbxConnectionForm {
                             div()
                                 .text_xs()
                                 .text_color(theme.colors.muted_foreground)
-                                .child("仅 sqlite;其余驱动忽略"),
+                                .child("文件型驱动(sqlite/duckdb)必填"),
                         ),
                 ),
             )

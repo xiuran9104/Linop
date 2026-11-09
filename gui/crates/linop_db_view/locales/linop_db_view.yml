@@ -1,9 +1,37 @@
 ConnectionForm:
   kind:
-    database:
-      en: Database (SQL / Redis)
-      zh-CN: 数据库 (SQL / Redis)
-      zh-HK: 資料庫 (SQL / Redis)
+    postgres:
+      en: PostgreSQL
+      zh-CN: PostgreSQL
+      zh-HK: PostgreSQL
+    mysql:
+      en: MySQL (MariaDB / Doris / StarRocks compatible)
+      zh-CN: MySQL(兼容 MariaDB / Doris / StarRocks)
+      zh-HK: MySQL(兼容 MariaDB / Doris / StarRocks)
+    sqlite:
+      en: SQLite (file)
+      zh-CN: SQLite(文件)
+      zh-HK: SQLite(檔案)
+    redis:
+      en: Redis
+      zh-CN: Redis
+      zh-HK: Redis
+    sqlserver:
+      en: SQL Server
+      zh-CN: SQL Server
+      zh-HK: SQL Server
+    mongodb:
+      en: MongoDB
+      zh-CN: MongoDB
+      zh-HK: MongoDB
+    elasticsearch:
+      en: Elasticsearch
+      zh-CN: Elasticsearch
+      zh-HK: Elasticsearch
+    duckdb:
+      en: DuckDB (file)
+      zh-CN: DuckDB(文件)
+      zh-HK: DuckDB(檔案)
 
 DbxForm:
   cancel:

@@ -121,6 +121,8 @@ fn open_dialog(
 pub struct ConnectionFormDialog {
     focus_handle: FocusHandle,
     kinds: Vec<ConnectionKindDescriptor>,
+    /// 左栏类型检索(按显示名/id 子串,大小写不敏感)。
+    kind_filter: gpui::Entity<gpui_component::input::InputState>,
     selected_kind: Option<SharedString>,
     form: Option<AnyView>,
     mode: ConnectionFormMode,
@@ -152,11 +154,16 @@ impl ConnectionFormDialog {
                 cx,
             )
         });
+        let kind_filter = cx.new(|cx| {
+            gpui_component::input::InputState::new(window, cx)
+                .placeholder("搜索连接类型…")
+        });
         let focus_handle = cx.focus_handle();
         focus_handle.focus(window, cx);
         Self {
             focus_handle,
             kinds,
+            kind_filter,
             selected_kind,
             form,
             mode,
@@ -183,6 +190,12 @@ impl ConnectionFormDialog {
     }
 
     fn render_kind_list(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let query = self
+            .kind_filter
+            .read(cx)
+            .value()
+            .trim()
+            .to_ascii_lowercase();
         let mut list = v_flex()
             .id("connection-kind-list")
             .w(px(200.0))
@@ -191,9 +204,33 @@ impl ConnectionFormDialog {
             .gap_0p5()
             .overflow_y_scroll()
             .border_r_1()
-            .border_color(cx.theme().border);
+            .border_color(cx.theme().border)
+            .child(
+                gpui_component::input::Input::new(&self.kind_filter)
+                    .small()
+                    .mb_1(),
+            );
+        let filtered: Vec<_> = self
+            .kinds
+            .iter()
+            .filter(|kind| {
+                query.is_empty()
+                    || kind.display_label(cx).to_lowercase().contains(&query)
+                    || kind.id.to_lowercase().contains(&query)
+            })
+            .cloned()
+            .collect();
+        if filtered.is_empty() {
+            return list.child(
+                div()
+                    .mt_2()
+                    .text_sm()
+                    .text_color(cx.theme().muted_foreground)
+                    .child("没有匹配的连接类型"),
+            );
+        }
         let mut last_group: Option<ConnectionKindGroup> = None;
-        for kind in self.kinds.clone() {
+        for kind in filtered {
             if last_group != Some(kind.group) {
                 list = list.child(
                     div()

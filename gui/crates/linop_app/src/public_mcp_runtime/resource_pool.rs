@@ -99,6 +99,11 @@ fn append_dbx_profile_resources(pool: ResourcePool) -> ResourcePool {
                 linop_core::DbDriver::MySql => ResourceKind::Mysql,
                 linop_core::DbDriver::Sqlite => ResourceKind::Sqlite,
                 linop_core::DbDriver::Redis => ResourceKind::Redis,
+                // 其余驱动复用最近语义的资源类型(target 解析按 kind 兼容)。
+                linop_core::DbDriver::Mongo => ResourceKind::Mongo,
+                linop_core::DbDriver::SqlServer => ResourceKind::Other("sqlserver".into()),
+                linop_core::DbDriver::Elastic => ResourceKind::Other("elasticsearch".into()),
+                linop_core::DbDriver::DuckDb => ResourceKind::Sqlite,
             };
             let mut resource = ResourceRef::new(profile.name.clone(), kind, profile.name.clone());
             resource = resource.with_capability(ResourceCapability::DatabaseQuery);

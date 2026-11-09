@@ -130,12 +130,7 @@ impl Dbx {
         let rule = linop_core::PortForward::new(
             0, // 内核分配本地端口
             profile.host.clone().unwrap_or_default(),
-            profile.port.unwrap_or(match profile.driver {
-                linop_core::DbDriver::Postgres => 5432,
-                linop_core::DbDriver::MySql => 3306,
-                linop_core::DbDriver::Redis => 6379,
-                linop_core::DbDriver::Sqlite => 0,
-            }),
+            profile.port.unwrap_or(profile.driver.default_port()),
         );
         let forward = ssh
             .open_local_forward(&rule)
@@ -161,17 +156,12 @@ impl Dbx {
             "id": format!("linop:{}", profile.name),
             "name": profile.name,
             "db_type": profile.driver.as_str(),
-            // SQLite 的 DBX 语义:host = 数据库文件路径(连接 URL 按 host?mode=rwc 生成)。
+            // SQLite/DuckDB 的 DBX 语义:host = 数据库文件路径(URL 按 host?mode=rwc 生成)。
             "host": match profile.driver {
-                linop_core::DbDriver::Sqlite => profile.path.to_string_lossy(),
+                d if d.is_file_based() => profile.path.to_string_lossy(),
                 _ => profile.host.clone().unwrap_or_default().into(),
             },
-            "port": profile.port.unwrap_or(match profile.driver {
-                linop_core::DbDriver::Postgres => 5432,
-                linop_core::DbDriver::MySql => 3306,
-                linop_core::DbDriver::Redis => 6379,
-                linop_core::DbDriver::Sqlite => 0,
-            }),
+            "port": profile.port.unwrap_or(profile.driver.default_port()),
             "username": profile.user.clone().unwrap_or_default(),
             "password": profile.password.clone().unwrap_or_default(),
             "database": profile.database.clone().unwrap_or_default(),

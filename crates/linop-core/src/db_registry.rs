@@ -36,6 +36,14 @@ pub enum DbDriver {
     Redis,
     Postgres,
     MySql,
+    /// MongoDB(原生命令通道;经 linop-db-driver-mongodb)。
+    Mongo,
+    /// SQL Server(tiberius)。
+    SqlServer,
+    /// Elasticsearch(REST DSL)。
+    Elastic,
+    /// DuckDB(嵌入式文件库,与 SQLite 同为文件路径语义)。
+    DuckDb,
 }
 
 impl DbDriver {
@@ -45,15 +53,41 @@ impl DbDriver {
             DbDriver::Redis => "redis",
             DbDriver::Postgres => "postgres",
             DbDriver::MySql => "mysql",
+            DbDriver::Mongo => "mongodb",
+            DbDriver::SqlServer => "sqlserver",
+            DbDriver::Elastic => "elasticsearch",
+            DbDriver::DuckDb => "duckdb",
         }
+    }
+
+    /// 未显式填端口时的驱动缺省端口;文件型驱动(0)不走端口。
+    pub fn default_port(self) -> u16 {
+        match self {
+            DbDriver::Sqlite | DbDriver::DuckDb => 0,
+            DbDriver::Redis => 6379,
+            DbDriver::Postgres => 5432,
+            DbDriver::MySql => 3306,
+            DbDriver::Mongo => 27017,
+            DbDriver::SqlServer => 1433,
+            DbDriver::Elastic => 9200,
+        }
+    }
+
+    /// 文件型驱动(路径即库,无主机端口)。
+    pub fn is_file_based(self) -> bool {
+        matches!(self, DbDriver::Sqlite | DbDriver::DuckDb)
     }
 
     pub fn parse(value: &str) -> Option<Self> {
         match value.trim().to_ascii_lowercase().as_str() {
             "sqlite" => Some(DbDriver::Sqlite),
+            "duckdb" => Some(DbDriver::DuckDb),
             "redis" => Some(DbDriver::Redis),
             "postgres" | "postgresql" => Some(DbDriver::Postgres),
             "mysql" | "mariadb" => Some(DbDriver::MySql),
+            "mongo" | "mongodb" => Some(DbDriver::Mongo),
+            "sqlserver" | "mssql" => Some(DbDriver::SqlServer),
+            "elastic" | "elasticsearch" => Some(DbDriver::Elastic),
             _ => None,
         }
     }
@@ -349,6 +383,11 @@ mod tests {
     fn driver_parse() {
         assert_eq!(DbDriver::parse("SQLite"), Some(DbDriver::Sqlite));
         assert_eq!(DbDriver::parse("Redis"), Some(DbDriver::Redis));
+        assert_eq!(DbDriver::parse("mongodb"), Some(DbDriver::Mongo));
+        assert_eq!(DbDriver::parse("MSSQL"), Some(DbDriver::SqlServer));
+        assert_eq!(DbDriver::parse("elastic"), Some(DbDriver::Elastic));
+        assert_eq!(DbDriver::parse("duckdb"), Some(DbDriver::DuckDb));
+        assert_eq!(DbDriver::parse("mariadb"), Some(DbDriver::MySql));
         assert_eq!(DbDriver::parse("oracle"), None);
     }
 

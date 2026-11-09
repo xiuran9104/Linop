@@ -12,9 +12,10 @@ pub enum ConnectionKindGroup {
 impl ConnectionKindGroup {
     pub fn order(self) -> i32 {
         match self {
-            Self::Database => 0,
-            Self::Terminal => 1,
-            Self::Remote => 2,
+            // 数据库种类多(Drivers 8+),放列表末尾避免淹没常用入口。
+            Self::Terminal => 0,
+            Self::Remote => 1,
+            Self::Database => 2,
             Self::Extension => 3,
         }
     }
@@ -60,8 +61,9 @@ mod tests {
 
     #[test]
     fn group_order_is_stable() {
-        assert_eq!(0, ConnectionKindGroup::Database.order());
+        assert_eq!(2, ConnectionKindGroup::Database.order());
         assert_eq!(3, ConnectionKindGroup::Extension.order());
+        assert_eq!(0, ConnectionKindGroup::Terminal.order());
     }
 
     #[test]
