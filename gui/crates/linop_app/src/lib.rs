@@ -49,6 +49,10 @@ mod window_visibility;
 #[cfg(any(target_os = "windows", test))]
 mod windows_single_instance;
 
+/// WSLg/X11 客户端装饰通告(CSD 单窗,剔除 Weston SSD 外壳框)。
+#[cfg(target_os = "linux")]
+pub mod x11_client_decorations;
+
 use crate::linop_app::LinopApp;
 
 /// 共享应用初始化：三个产品 crate 的 `Product::init` 都调用它。

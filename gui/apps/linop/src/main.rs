@@ -44,5 +44,9 @@ impl Product for FullProduct {
 }
 
 fn main() {
+    // Linux/WSLg:通告合成器存在,让 gpui 走 CSD 单窗(剔除 Weston SSD 外壳框)。
+    // LINOP_X11_SSD=1 可回退服务端装饰(保留系统标题栏按钮)。
+    #[cfg(target_os = "linux")]
+    linop_app::x11_client_decorations::announce_fake_compositor();
     linop_app::run_with(FullProduct, env!("CARGO_PKG_VERSION"));
 }
