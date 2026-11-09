@@ -1,0 +1,52 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20261109T125747802Z-513681-9feb960d9822",
+  "runId": "20261109T125747802Z-513681-9feb960d9822",
+  "runStatus": "inconclusive",
+  "coverage": {
+    "status": "partial",
+    "reasons": [
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "gui/crates/app_kit/src/new_connection.rs",
+        "detail": "spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "gui/crates/core/src/window_close.rs",
+        "detail": "spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "gui/crates/app_kit/src/new_connection.rs",
+        "detail": "scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "gui/crates/core/src/window_close.rs",
+        "detail": "scanner_failed: spawnSync /home/xiuran/.local/share/mise/installs/node/24.22.1/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      }
+    ]
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "008c0a12bcb914ae907f650e2956fda9f0625218",
+  "diffHash": "29926c2a9e282c8b925d2ae53f653871e3ea2f0f8903b2e247159d0567f6a2cf",
+  "rulesVersion": "unavailable",
+  "sessionHash": "e3e0fc9d6e1f5b92fae44dfc97784cc7424bfc2352d810e1a9284305c5985e88",
+  "reportRef": ".mimosa/reports/task-review-sess_10cb0b0e-951a-49d7-943a-f7f48789b1f3-20261109T125747802Z-513681-9feb960d9822.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [],
+  "recordedAt": "2026-11-09T12:57:48.104Z"
+}

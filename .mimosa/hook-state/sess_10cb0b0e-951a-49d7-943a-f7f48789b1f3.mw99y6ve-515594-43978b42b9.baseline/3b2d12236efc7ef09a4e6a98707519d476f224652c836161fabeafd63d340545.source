@@ -106,15 +106,20 @@ fn open_dialog(
     if !crate::vault::ensure_master_key_ready(window, cx) {
         return;
     }
-    open_reusable_popup_window(
-        PopupWindowOptions::new(mode.title()).size(DIALOG_WIDTH, DIALOG_HEIGHT),
-        DIALOG_REUSE_KEY,
-        move |window, cx| {
-            cx.new(|cx| ConnectionFormDialog::new(mode, preset.clone(), workspace_id, window, cx))
-        },
-        Some(window),
-        cx,
-    );
+    // 主窗内对话框层(非独立窗):无系统标题条、居中遮罩、随主窗。
+    // 表单的关闭/保存后关闭语义由 window_close 统一重定向到该对话框层。
+    window.open_dialog(cx, move |dialog, window, cx| {
+        let mode = mode.clone();
+        let preset = preset.clone();
+        let view = cx.new(|cx| {
+            ConnectionFormDialog::new(mode, preset, workspace_id, window, cx)
+        });
+        dialog
+            .width(px(DIALOG_WIDTH))
+            .content(move |content, _window, _cx| {
+                content.child(view.clone().into_any_element())
+            })
+    });
 }
 
 /// 表单弹窗视图。
@@ -292,14 +297,16 @@ pub fn open_form(request: ConnectionFormRequest, window: &mut Window, cx: &mut A
         );
         return false;
     };
-    let reuse_key = format!("{DIALOG_REUSE_KEY}:{kind_id}");
-    let _ = open_reusable_popup_window(
-        PopupWindowOptions::new("连接").size(DIALOG_WIDTH, DIALOG_HEIGHT),
-        reuse_key,
-        move |_window, _cx| form.clone(),
-        Some(window),
-        cx,
-    );
+    // 主窗内对话框层(同 open_dialog;导入草稿等宿主复用入口)。
+    let form_for_dialog = form.clone();
+    window.open_dialog(cx, move |dialog, _window, _cx| {
+        let form = form_for_dialog.clone();
+        dialog
+            .width(px(DIALOG_WIDTH))
+            .content(move |content, _window, _cx| {
+                content.child(form.clone().into_any_element())
+            })
+    });
     true
 }
 
