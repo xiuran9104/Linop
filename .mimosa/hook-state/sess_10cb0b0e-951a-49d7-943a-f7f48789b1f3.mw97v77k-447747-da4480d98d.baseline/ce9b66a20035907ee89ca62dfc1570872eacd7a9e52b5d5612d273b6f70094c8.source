@@ -1,0 +1,19 @@
+[package]
+name = "linop-sftp"
+description = "SFTP filesystem operations over a russh channel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+russh = { workspace = true }
+russh-sftp = { workspace = true }
+thiserror = { workspace = true }
+linop-ssh = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+tempfile = "3"
+linop-core = { workspace = true }
+linop-testsupport = { path = "../linop-testsupport" }

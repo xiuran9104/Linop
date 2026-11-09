@@ -1,0 +1,365 @@
+use std::ffi::c_void;
+use std::marker::PhantomData;
+use std::ptr;
+
+use super::ffi::*;
+use super::window::{
+    create_overlay_window, ensure_owner_clips_children, last_error, position_overlay_window,
+    redraw_overlay_window, set_overlay_cloaked, set_overlay_layered, verify_overlay_parent,
+};
+use super::{
+    WindowsNativeOverlay, WindowsNativeOverlayBounds, WindowsNativeOverlayError, diagnostics,
+    window_pointer,
+};
+
+const SW_HIDE: i32 = 0;
+const SW_SHOWNA: i32 = 8;
+
+impl WindowsNativeOverlay {
+    pub(crate) fn create(owner: usize, generation: u64) -> Result<Self, WindowsNativeOverlayError> {
+        let owner_window = window_pointer(owner);
+        validate_owner(owner_window)?;
+        let owner_thread = owner_thread(owner_window)?;
+        validate_thread(owner_thread, "create_child_overlay")?;
+        ensure_owner_clips_children(owner_window)?;
+
+        let instance = unsafe { GetModuleHandleW(ptr::null()) };
+        if instance.is_null() {
+            return Err(last_error("get_current_module"));
+        }
+        let overlay = create_overlay_window(owner_window, instance)?;
+        verify_overlay_parent(overlay, owner_window)?;
+
+        let overlay = Self {
+            owner,
+            window: overlay as usize,
+            owner_thread,
+            generation,
+            last_bounds: None,
+            requested_visible: false,
+            cloaked: false,
+            layered: false,
+            _thread_affinity: PhantomData,
+        };
+        diagnostics::log_created(&overlay);
+        windows_rdp_host::lifecycle_counters().record_overlay_created();
+        Ok(overlay)
+    }
+
+    pub(crate) fn hwnd(&self) -> usize {
+        self.window
+    }
+
+    /// Whether the overlay HWND is actually visible right now, independent of
+    /// any requested visibility. A destroyed overlay reports false.
+    pub(crate) fn is_actually_visible(&self) -> bool {
+        self.window != 0 && unsafe { IsWindowVisible(window_pointer(self.window)) } != 0
+    }
+
+    pub(crate) fn set_bounds(
+        &mut self,
+        requested: WindowsNativeOverlayBounds,
+    ) -> Result<Option<WindowsNativeOverlayBounds>, WindowsNativeOverlayError> {
+        self.validate_mutation("set_bounds")?;
+        let Some(bounds) = self.clipped_bounds(requested)? else {
+            self.last_bounds = None;
+            self.hide_actual()?;
+            diagnostics::log_bounds(self, requested, None);
+            return Ok(None);
+        };
+
+        position_overlay_window(window_pointer(self.window), bounds)?;
+        self.last_bounds = Some(bounds);
+        if self.requested_visible {
+            self.show_actual()?;
+        }
+        diagnostics::log_bounds(self, requested, Some(bounds));
+        Ok(Some(bounds))
+    }
+
+    pub(crate) fn show(&mut self) -> Result<(), WindowsNativeOverlayError> {
+        self.validate_mutation("show")?;
+        self.requested_visible = true;
+        if self.last_bounds.is_some() && self.owner_can_present() {
+            self.show_actual()?;
+        }
+        diagnostics::log_visibility(self, "show");
+        Ok(())
+    }
+
+    pub(crate) fn hide(&mut self) -> Result<(), WindowsNativeOverlayError> {
+        if self.window == 0 {
+            return Ok(());
+        }
+        self.validate_mutation("hide")?;
+        self.requested_visible = false;
+        self.hide_actual()?;
+        diagnostics::log_visibility(self, "hide");
+        Ok(())
+    }
+
+    /// Hides the window from the screen while keeping its rasterization live in
+    /// the composition tree, or restores the plain child window.
+    ///
+    /// The caller must only cloak after the overlay's content has been attached
+    /// to a composition visual, and only after the window has been on screen at
+    /// its final size and painted once: cloaking earlier leaves the composition
+    /// surface permanently empty, and no later paint recovers it. Use `redraw`
+    /// immediately beforehand, once the window is positioned and visible.
+    pub(crate) fn set_cloaked(&mut self, cloaked: bool) -> Result<(), WindowsNativeOverlayError> {
+        if self.window == 0 || self.cloaked == cloaked {
+            return Ok(());
+        }
+        self.validate_mutation(if cloaked {
+            "cloak_child_overlay"
+        } else {
+            "uncloak_child_overlay"
+        })?;
+        set_overlay_cloaked(window_pointer(self.window), cloaked)?;
+        self.cloaked = cloaked;
+        tracing::info!(
+            stage = "overlay_cloak",
+            generation = self.generation,
+            overlay_hwnd = self.window,
+            cloaked,
+            "updated Windows native RDP overlay cloak state"
+        );
+        Ok(())
+    }
+
+    /// Paints the overlay at its current size, synchronously.
+    ///
+    /// The precondition for a safe cloak: the window must have been shown at its
+    /// final size and painted at least once, otherwise cloaking leaves the
+    /// composition surface empty for good. Returns whether the overlay is in a
+    /// state where the paint is meaningful — a hidden or destroyed window cannot
+    /// be painted, so its caller must not cloak yet.
+    pub(crate) fn redraw(&mut self) -> Result<(), WindowsNativeOverlayError> {
+        if self.window == 0 || !self.is_actually_visible() {
+            return Ok(());
+        }
+        self.validate_mutation("redraw_child_overlay")?;
+        redraw_overlay_window(window_pointer(self.window))
+    }
+
+    /// Applies or removes `WS_EX_LAYERED` on the overlay window.
+    ///
+    /// Only a composed session may be layered: the style is required by
+    /// `CreateSurfaceFromHwnd`, but a layered window that nothing composes never
+    /// becomes visible. Callers must pair it with a successful attach, and take
+    /// it back whenever composition does not happen.
+    pub(crate) fn set_layered(&mut self, layered: bool) -> Result<(), WindowsNativeOverlayError> {
+        if self.window == 0 || self.layered == layered {
+            return Ok(());
+        }
+        self.validate_mutation(if layered {
+            "add_overlay_layered"
+        } else {
+            "remove_overlay_layered"
+        })?;
+        set_overlay_layered(window_pointer(self.window), layered)?;
+        self.layered = layered;
+        tracing::info!(
+            stage = "overlay_layered",
+            generation = self.generation,
+            overlay_hwnd = self.window,
+            layered,
+            "updated Windows native RDP overlay layered state"
+        );
+        Ok(())
+    }
+
+    pub(crate) fn log_composition_diagnostics(&self, reason: &'static str) {
+        diagnostics::log_composition_diagnostics(self, reason);
+    }
+
+    pub(crate) fn close(&mut self) -> Result<(), WindowsNativeOverlayError> {
+        if self.window == 0 {
+            return Ok(());
+        }
+        if let Err(error) = validate_thread(self.owner_thread, "destroy_child_overlay") {
+            // The overlay HWND survives, and it can only ever be destroyed from
+            // its owner thread, so this is a real leak rather than a retryable
+            // failure.
+            windows_rdp_host::lifecycle_counters().record_overlay_destroy_failed();
+            return Err(error);
+        }
+        self.requested_visible = false;
+        let hide_error = self.hide_actual().err();
+
+        let window = window_pointer(self.window);
+        if unsafe { IsWindow(window) } != 0 && unsafe { DestroyWindow(window) } == 0 {
+            let destroy_error = last_error("destroy_child_overlay");
+            windows_rdp_host::lifecycle_counters().record_overlay_destroy_failed();
+            if let Some(error) = hide_error {
+                tracing::warn!(
+                    ?error,
+                    ?destroy_error,
+                    "failed to hide Windows native RDP overlay before destroy also failed"
+                );
+            }
+            return Err(destroy_error);
+        }
+        if let Some(error) = hide_error {
+            tracing::warn!(
+                ?error,
+                "failed to hide Windows native RDP overlay before destroy"
+            );
+        }
+        tracing::info!(
+            stage = "overlay_destroyed",
+            generation = self.generation,
+            owner_hwnd = self.owner,
+            overlay_hwnd = self.window,
+            "destroyed Windows native RDP overlay"
+        );
+        windows_rdp_host::lifecycle_counters().record_overlay_destroyed();
+        self.window = 0;
+        self.last_bounds = None;
+        Ok(())
+    }
+
+    pub(crate) fn abandon(&mut self, reason: &'static str) {
+        if self.window == 0 {
+            return;
+        }
+        windows_rdp_host::lifecycle_counters().record_overlay_abandoned();
+        tracing::error!(
+            stage = "overlay_abandoned",
+            generation = self.generation,
+            owner_hwnd = self.owner,
+            overlay_hwnd = self.window,
+            reason,
+            "leaking Windows native RDP overlay to preserve the live host parent"
+        );
+        self.window = 0;
+        self.last_bounds = None;
+    }
+
+    fn validate_mutation(&self, stage: &'static str) -> Result<(), WindowsNativeOverlayError> {
+        validate_thread(self.owner_thread, stage)?;
+        if unsafe { IsWindow(window_pointer(self.window)) } == 0 {
+            return Err(WindowsNativeOverlayError::new(
+                stage,
+                "overlay HWND is no longer live".to_owned(),
+            ));
+        }
+        if unsafe { IsWindow(window_pointer(self.owner)) } == 0 {
+            return Err(WindowsNativeOverlayError::new(
+                stage,
+                "GPUI owner HWND was destroyed before the overlay".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn clipped_bounds(
+        &self,
+        requested: WindowsNativeOverlayBounds,
+    ) -> Result<Option<WindowsNativeOverlayBounds>, WindowsNativeOverlayError> {
+        if requested.width <= 0 || requested.height <= 0 || !self.owner_can_present() {
+            return Ok(None);
+        }
+        let mut client = Rect::default();
+        if unsafe { GetClientRect(window_pointer(self.owner), &mut client) } == 0 {
+            return Err(last_error("read_owner_client_bounds"));
+        }
+        Ok(intersect_bounds(requested, client))
+    }
+
+    fn owner_can_present(&self) -> bool {
+        let owner = window_pointer(self.owner);
+        unsafe { IsWindowVisible(owner) != 0 && IsIconic(owner) == 0 }
+    }
+
+    fn show_actual(&self) -> Result<(), WindowsNativeOverlayError> {
+        let window = window_pointer(self.window);
+        unsafe {
+            ShowWindow(window, SW_SHOWNA);
+        }
+        if unsafe { IsWindowVisible(window) } == 0 {
+            return Err(WindowsNativeOverlayError::new(
+                "show_child_overlay",
+                "ShowWindow(SW_SHOWNA) left the overlay hidden".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn hide_actual(&self) -> Result<(), WindowsNativeOverlayError> {
+        let window = window_pointer(self.window);
+        if unsafe { IsWindowVisible(window) } == 0 {
+            return Ok(());
+        }
+        unsafe {
+            ShowWindow(window, SW_HIDE);
+        }
+        if unsafe { IsWindowVisible(window) } != 0 {
+            return Err(WindowsNativeOverlayError::new(
+                "hide_child_overlay",
+                "ShowWindow(SW_HIDE) left the overlay visible".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+impl Drop for WindowsNativeOverlay {
+    fn drop(&mut self) {
+        if let Err(error) = self.close() {
+            tracing::error!(
+                stage = "drop_child_overlay",
+                generation = self.generation,
+                owner_hwnd = self.owner,
+                overlay_hwnd = self.window,
+                ?error,
+                "failed to destroy Windows native RDP overlay during drop"
+            );
+        }
+    }
+}
+
+fn validate_owner(owner: *mut c_void) -> Result<(), WindowsNativeOverlayError> {
+    if owner.is_null() || unsafe { IsWindow(owner) } == 0 {
+        return Err(WindowsNativeOverlayError::new(
+            "validate_owner",
+            "GPUI owner HWND is not a live window".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+fn owner_thread(owner: *mut c_void) -> Result<u32, WindowsNativeOverlayError> {
+    let thread = unsafe { GetWindowThreadProcessId(owner, ptr::null_mut()) };
+    if thread == 0 {
+        return Err(last_error("read_owner_thread"));
+    }
+    Ok(thread)
+}
+
+fn validate_thread(expected: u32, stage: &'static str) -> Result<(), WindowsNativeOverlayError> {
+    let actual = unsafe { GetCurrentThreadId() };
+    if actual == expected {
+        return Ok(());
+    }
+    Err(WindowsNativeOverlayError::new(
+        stage,
+        format!("wrong UI thread: expected={expected}, actual={actual}"),
+    ))
+}
+
+fn intersect_bounds(
+    requested: WindowsNativeOverlayBounds,
+    client: Rect,
+) -> Option<WindowsNativeOverlayBounds> {
+    let left = requested.x.max(client.left);
+    let top = requested.y.max(client.top);
+    let right = requested.right().min(client.right);
+    let bottom = requested.bottom().min(client.bottom);
+    (right > left && bottom > top).then_some(WindowsNativeOverlayBounds {
+        x: left,
+        y: top,
+        width: right - left,
+        height: bottom - top,
+    })
+}

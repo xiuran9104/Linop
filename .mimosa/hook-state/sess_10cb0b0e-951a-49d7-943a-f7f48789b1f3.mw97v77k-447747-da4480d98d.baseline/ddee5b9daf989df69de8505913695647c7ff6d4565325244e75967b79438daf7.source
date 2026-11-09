@@ -1,0 +1,287 @@
+use super::*;
+
+#[test]
+fn suggestions_prioritize_quick_commands_and_deduplicate_history() {
+    let quick_commands = vec![
+        command("git status", Some("Status"), Some("Git"), true, 1),
+        command("git log --oneline", None, Some("Git"), false, 2),
+    ];
+    let history = vec![
+        "git status".to_string(),
+        "git switch main".to_string(),
+        "pwd".to_string(),
+    ];
+
+    let suggestions = build_command_suggestions("git", &quick_commands, &history);
+
+    assert_eq!(3, suggestions.len());
+    assert_eq!("git status", suggestions[0].command);
+    assert_eq!(CommandSuggestionKind::QuickCommand, suggestions[0].kind);
+    assert_eq!("git log --oneline", suggestions[1].command);
+    assert_eq!("git switch main", suggestions[2].command);
+    assert_eq!(CommandSuggestionKind::History, suggestions[2].kind);
+}
+
+#[test]
+fn suggestions_match_name_description_and_command_case_insensitively() {
+    let mut deploy = command(
+        "kubectl rollout status deployment/app",
+        Some("Deploy Status"),
+        Some("Kubernetes"),
+        false,
+        0,
+    );
+    deploy.description = Some("Check production rollout".to_string());
+
+    let suggestions = build_command_suggestions("PRODUCTION", &[deploy], &[]);
+
+    assert_eq!(1, suggestions.len());
+    assert_eq!("Deploy Status", suggestions[0].label);
+}
+
+#[test]
+fn suggestions_normalize_recorded_line_endings_before_display() {
+    let history = vec![
+        "docker system df\\n".to_string(),
+        "df -h\r\n".to_string(),
+        "\n\t".to_string(),
+    ];
+
+    let suggestions = build_command_suggestions("df", &[], &history);
+
+    assert_eq!(2, suggestions.len());
+    assert_eq!("docker system df", suggestions[0].command);
+    assert_eq!("docker system df", suggestions[0].label);
+    assert_eq!("df -h", suggestions[1].command);
+}
+
+#[test]
+fn inline_suffix_uses_the_first_prefix_completion_only() {
+    let suggestions = build_command_suggestions(
+        "df",
+        &[command(
+            "df -h",
+            Some("Disk Usage"),
+            Some("System"),
+            true,
+            0,
+        )],
+        &["docker system df".to_string()],
+    );
+
+    assert_eq!(
+        Some(" -h".to_string()),
+        command_inline_suffix("df", &suggestions)
+    );
+    assert_eq!(None, command_inline_suffix("DF", &suggestions));
+}
+
+#[test]
+fn inline_suffix_is_hidden_for_complete_or_multiline_input() {
+    let suggestions = build_command_suggestions(
+        "git status",
+        &[command("git status", Some("Status"), Some("Git"), true, 0)],
+        &[],
+    );
+
+    assert_eq!(None, command_inline_suffix("git status", &suggestions));
+    assert_eq!(None, command_inline_suffix("git\nstatus", &suggestions));
+}
+
+#[test]
+fn grouped_quick_commands_keep_named_groups_and_ungrouped_items() {
+    let commands = vec![
+        command("git status", Some("Status"), Some("Git"), true, 0),
+        command("docker ps", None, Some("Docker"), false, 1),
+        command("pwd", None, None, false, 2),
+    ];
+
+    let groups = group_quick_commands(&commands, "");
+
+    assert_eq!(3, groups.len());
+    assert_eq!(Some("Git"), groups[0].name.as_deref());
+    assert_eq!(Some("Docker"), groups[1].name.as_deref());
+    assert_eq!(None, groups[2].name);
+    assert_eq!("pwd", groups[2].commands[0].command);
+}
+
+#[test]
+fn grouped_quick_commands_filter_across_metadata() {
+    let mut command = command(
+        "docker compose up -d",
+        Some("Start stack"),
+        Some("Containers"),
+        false,
+        0,
+    );
+    command.description = Some("Launch local services".to_string());
+
+    let groups = group_quick_commands(&[command], "SERVICES");
+
+    assert_eq!(1, groups.len());
+    assert_eq!("docker compose up -d", groups[0].commands[0].command);
+}
+
+#[test]
+fn command_history_navigation_moves_back_and_restores_the_draft() {
+    let mut navigation = CommandHistoryNavigation::new(
+        vec![
+            "cargo test".to_string(),
+            "git status".to_string(),
+            "pwd".to_string(),
+        ],
+        "git ".to_string(),
+    );
+
+    assert_eq!(Some("cargo test"), navigation.previous());
+    assert_eq!(Some("git status"), navigation.previous());
+    assert_eq!(Some("pwd"), navigation.previous());
+    assert_eq!(Some("pwd"), navigation.previous());
+    assert_eq!(Some("git status"), navigation.next());
+    assert_eq!(Some("cargo test"), navigation.next());
+    assert_eq!(Some("git "), navigation.next());
+    assert_eq!(None, navigation.next());
+}
+
+#[test]
+fn command_history_navigation_ignores_empty_history() {
+    let mut navigation = CommandHistoryNavigation::new(Vec::new(), "draft".to_string());
+
+    assert_eq!(None, navigation.previous());
+    assert_eq!(None, navigation.next());
+}
+
+#[test]
+fn quick_command_selection_stops_at_list_boundaries() {
+    assert_eq!(
+        Some(0),
+        bounded_selection(3, None, SelectionDirection::Next)
+    );
+    assert_eq!(
+        Some(2),
+        bounded_selection(3, None, SelectionDirection::Previous)
+    );
+    assert_eq!(
+        Some(2),
+        bounded_selection(3, Some(2), SelectionDirection::Next)
+    );
+    assert_eq!(
+        Some(0),
+        bounded_selection(3, Some(0), SelectionDirection::Previous)
+    );
+    assert_eq!(
+        None,
+        bounded_selection(0, Some(0), SelectionDirection::Next)
+    );
+}
+
+#[test]
+fn quick_command_enter_uses_highlight_or_first_visible_command() {
+    let commands = vec![
+        command("pwd", Some("PWD"), Some("Files"), false, 0),
+        command("git status", Some("Status"), Some("Git"), false, 1),
+    ];
+
+    assert_eq!(
+        Some("pwd".to_string()),
+        selected_quick_command(&commands, None)
+    );
+    assert_eq!(
+        Some("git status".to_string()),
+        selected_quick_command(&commands, Some(1))
+    );
+    assert_eq!(None, selected_quick_command(&commands, Some(2)));
+    assert_eq!(None, selected_quick_command(&[], None));
+}
+
+#[test]
+fn command_submission_trims_outer_whitespace_and_appends_enter() {
+    assert_eq!(
+        Some(b"printf 'hello'\r".to_vec()),
+        command_submission_bytes("  printf 'hello' \n")
+    );
+    assert_eq!(None, command_submission_bytes(" \n\t "));
+}
+
+#[test]
+fn quick_command_click_executes_only_for_explicit_trailing_enter() {
+    assert!(quick_command_executes_on_click("echo hello\n"));
+    assert!(quick_command_executes_on_click("echo hello\r"));
+    assert!(!quick_command_executes_on_click("echo hello"));
+    assert!(!quick_command_executes_on_click("echo \\\nhello"));
+}
+
+#[test]
+fn command_batch_lines_split_trim_and_drop_empty_lines() {
+    assert_eq!(
+        vec![
+            "ls -la".to_string(),
+            "echo hi".to_string(),
+            "pwd".to_string()
+        ],
+        command_batch_lines("  ls -la  \n\n echo hi \r\npwd\n  ")
+    );
+    assert_eq!(vec!["ls".to_string()], command_batch_lines("ls"));
+    assert!(command_batch_lines(" \n\t \n").is_empty());
+}
+
+#[test]
+fn quick_command_shortcut_prefers_the_current_connection_over_global() {
+    let mut global = command("echo global", Some("Global"), None, false, 0);
+    global.shortcut = Some("ctrl-alt-g".to_string());
+    let mut connection = command("echo connection", Some("Connection"), None, false, 1);
+    connection.connection_id = Some(42);
+    connection.shortcut = Some("ctrl-alt-g".to_string());
+
+    assert_eq!(
+        Some("echo connection".to_string()),
+        quick_command_for_shortcut(
+            &[global, connection],
+            Some(42),
+            &gpui::Keystroke::parse("ctrl-alt-g").expect("parse shortcut"),
+        )
+    );
+}
+
+#[test]
+fn quick_command_shortcut_falls_back_to_global_and_matches_modifiers_exactly() {
+    let mut global = command("echo global", Some("Global"), None, false, 0);
+    global.shortcut = Some("ctrl-alt-g".to_string());
+    let mut other_connection = command("echo other", Some("Other"), None, false, 1);
+    other_connection.connection_id = Some(7);
+    other_connection.shortcut = Some("ctrl-alt-g".to_string());
+    let commands = [other_connection, global];
+
+    assert_eq!(
+        Some("echo global".to_string()),
+        quick_command_for_shortcut(
+            &commands,
+            None,
+            &gpui::Keystroke::parse("ctrl-alt-g").expect("parse shortcut"),
+        )
+    );
+    assert_eq!(
+        None,
+        quick_command_for_shortcut(
+            &commands,
+            None,
+            &gpui::Keystroke::parse("ctrl-g").expect("parse shortcut"),
+        )
+    );
+}
+
+fn command(
+    value: &str,
+    name: Option<&str>,
+    group: Option<&str>,
+    pinned: bool,
+    sort_order: i32,
+) -> QuickCommand {
+    let mut command = QuickCommand::new(value.to_string());
+    command.name = name.map(str::to_string);
+    command.group_name = group.map(str::to_string);
+    command.group_color = group.map(|_| "blue".to_string());
+    command.pinned = pinned;
+    command.sort_order = sort_order;
+    command
+}

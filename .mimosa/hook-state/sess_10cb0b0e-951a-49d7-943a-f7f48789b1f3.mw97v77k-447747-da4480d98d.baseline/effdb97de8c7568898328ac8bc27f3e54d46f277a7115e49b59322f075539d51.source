@@ -1,0 +1,4392 @@
+use std::{
+    collections::HashSet,
+    ops::{Range, RangeInclusive},
+    rc::Rc,
+    time::Duration,
+};
+
+use super::filter_state::FilterState;
+use super::find::{
+    FindHighlightElement, FindMatch, FindOutcome, HighlightSegment, SearchPanel, SearchPanelEvent,
+    find_highlight_color, mark_current_match_at, normalize_find_query, resolve_find,
+    row_highlight_ranges, row_matches, scroll_target_for_match,
+};
+use super::selection::{CellCoord, TableSelection};
+use super::tsv::{encode_tsv_rows, parse_tsv_rows};
+use super::*;
+use crate::edit_table::filter_panel::FilterPanel;
+use gpui::{
+    AnyElement, AppContext, Axis, Bounds, ClickEvent, ClipboardItem, Context, Div, DragMoveEvent,
+    ElementId, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
+    IsZero, ListSizingBehavior, MouseButton, MouseDownEvent, ParentElement, Pixels, Point, Render,
+    ScrollEvent, ScrollStrategy, SharedString, Stateful, StatefulInteractiveElement as _, Styled,
+    Subscription, Task, UniformListScrollHandle, Window, canvas, div, prelude::FluentBuilder, px,
+    uniform_list,
+};
+use gpui_component::list::{List, ListState};
+use gpui_component::scroll::ScrollbarHandle;
+use gpui_component::{
+    ActiveTheme, Icon, StyleSized as _, StyledExt, VirtualListScrollHandle, h_flex,
+    input::{IndentInline, OutdentInline},
+    menu::{ContextMenuExt, PopupMenu},
+    scroll::{ScrollableMask, Scrollbar, ScrollbarMode},
+    v_flex,
+};
+use one_assets::IconName;
+use rust_i18n::t;
+
+/// 列头行在布局测试里的 debug selector，非 test 构建为空实现。
+pub(crate) const HEAD_ROW_SELECTOR: &str = "edit-table-head-row";
+/// 数据行 debug selector 前缀，后面接行号，例如 `edit-table-row-0`。
+pub(crate) const ROW_SELECTOR_PREFIX: &str = "edit-table-row-";
+
+/// 列宽分隔线本身的宽度。
+const COLUMN_RESIZE_LINE_WIDTH: Pixels = px(1.);
+
+/// 分隔条在列边界两侧各自的抓取区宽度。
+///
+/// 旧实现是「2px、整条都缩在列内、贴着右缘」的一根细带：命中区比指针热区
+/// 还窄，鼠标得像素级对准才碰得到，稍微偏一点光标和悬停高亮就一起没了——
+/// 这正是「表头宽度不好拉」。边界两侧各留这么宽，抓取区才算够得着。
+const COLUMN_RESIZE_GRAB_PADDING: Pixels = px(4.);
+
+/// 拖动时列边界落在指针左侧多远（拖动中的边界始终「跟在指尖后面」）。
+const COLUMN_RESIZE_DRAG_OFFSET: Pixels = px(2.);
+
+fn data_column_selection_bounds(
+    total_column_count: usize,
+    row_number_offset: usize,
+) -> Option<(usize, usize)> {
+    let last_column = total_column_count.checked_sub(1)?;
+    (row_number_offset <= last_column).then_some((row_number_offset, last_column))
+}
+
+fn selected_delegate_column_range(
+    min_col: usize,
+    max_col: usize,
+    row_number_offset: usize,
+) -> Option<RangeInclusive<usize>> {
+    let first_data_col = min_col.max(row_number_offset);
+    (first_data_col <= max_col)
+        .then(|| first_data_col - row_number_offset..=max_col - row_number_offset)
+}
+
+fn batch_edit_changes(
+    cells: impl IntoIterator<Item = CellCoord>,
+    value: String,
+    row_number_offset: usize,
+) -> Vec<(usize, usize, String)> {
+    cells
+        .into_iter()
+        .filter_map(|(row, col)| {
+            (col >= row_number_offset).then(|| (row, col - row_number_offset, value.clone()))
+        })
+        .collect()
+}
+
+/// 单元格参与查找的文本长度（NULL 按 `NULL` 计）。
+fn cell_text_len(cell: &Option<String>) -> usize {
+    cell.as_deref()
+        .unwrap_or(super::find::NULL_TEXT)
+        .chars()
+        .count()
+}
+
+/// 把某一列横向滚进视口所需的偏移量。
+///
+/// 列已经在视口内时返回 `None`（不动视口）；在左侧露出不足时只往左贴边、
+/// 在右侧时只往右贴边，不做居中——居中会让每次切换命中都整屏横移。
+/// 纵向的对应逻辑见 [`super::find::scroll_target_for_match`]。
+fn column_scroll_offset(
+    col_left: Pixels,
+    col_right: Pixels,
+    viewport_left: Pixels,
+    viewport_right: Pixels,
+    offset_x: Pixels,
+) -> Option<Pixels> {
+    if viewport_right <= viewport_left {
+        return None;
+    }
+    if col_left < viewport_left {
+        return Some(offset_x + (viewport_left - col_left));
+    }
+    if col_right > viewport_right {
+        return Some(offset_x + (viewport_right - col_right));
+    }
+    None
+}
+
+/// 决定一次鼠标拖动是否由网格接管为「拖选单元格」。
+///
+/// 有单元格处于编辑态时应返回 `None`：此时用户按下拖动是在**单元格内的编辑器里选文本**，
+/// 若网格同时开始拖选，指针扫过相邻单元格就会把它们纳入选区，而 `commit_cell_edit`
+/// 会把新值批量写回选区内的**所有**单元格 —— 现象就是「不小心把隔壁一起编辑了」（#302）。
+/// 选中态（没有格子在编辑）下拖动照旧多选。
+fn pending_grid_drag(
+    editing_cell: Option<CellCoord>,
+    pending: Option<(usize, usize, bool)>,
+) -> Option<(usize, usize, bool)> {
+    if editing_cell.is_some() {
+        return None;
+    }
+    pending
+}
+
+const SCROLLBAR_WIDTH: Pixels = px(16.);
+const COLUMN_SEPARATOR_WIDTH: Pixels = px(1.);
+
+gpui::actions!(
+    edit_table_internal,
+    [
+        Cancel,
+        Confirm,
+        SelectDown,
+        SelectUp,
+        SelectFirst,
+        SelectLast,
+        SelectPageUp,
+        SelectPageDown,
+        Copy,
+        Paste,
+        SelectAll,
+        Find,
+        FindNext,
+        FindPrevious
+    ]
+);
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum SelectionState {
+    Column,
+    Row,
+    Cell,
+}
+
+#[derive(Clone)]
+pub enum EditTableEvent {
+    SelectRow(usize),
+    DoubleClickedCell(usize, usize),
+    SelectColumn(usize),
+    SelectCell(usize, usize),
+    ColumnWidthsChanged(Vec<Pixels>),
+    MoveColumn(usize, usize),
+    CellEditing(usize, usize),
+    CellEdited(usize, usize),
+    RowAdded,
+    RowDeleted(usize),
+    /// 选区变化事件
+    SelectionChanged(TableSelection),
+    /// 复制数据事件
+    CopyData(Vec<Vec<Option<String>>>),
+    /// 粘贴数据事件
+    PasteData {
+        data: Vec<Vec<String>>,
+        start: CellCoord,
+    },
+    /// 宿主渲染查找输入框时，表格请求宿主把焦点交给它（Cmd/Ctrl+F）
+    FindRequested,
+    /// 查找状态（查询词、命中统计、当前命中）发生变化，宿主应重新渲染计数
+    FindStateChanged,
+}
+
+#[derive(Debug, Default)]
+pub struct TableVisibleRange {
+    rows: Range<usize>,
+    cols: Range<usize>,
+}
+
+impl TableVisibleRange {
+    pub fn rows(&self) -> &Range<usize> {
+        &self.rows
+    }
+
+    pub fn cols(&self) -> &Range<usize> {
+        &self.cols
+    }
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct DeletedRowSelectionCleanup {
+    clear_selection: bool,
+    clear_drag_end: bool,
+    clear_drag_start: bool,
+}
+
+fn deleted_row_selection_cleanup(
+    selected_row: Option<usize>,
+    selected_cell: Option<CellCoord>,
+    selection: &TableSelection,
+    drag_end_cell: Option<CellCoord>,
+    drag_start: Option<(usize, usize, bool)>,
+    row_ix: usize,
+) -> DeletedRowSelectionCleanup {
+    let selected_deleted_row = selected_row == Some(row_ix);
+    let selected_deleted_cell = selected_cell.is_some_and(|(row, _)| row == row_ix);
+    let selection_contains_deleted_row = selection
+        .ranges
+        .iter()
+        .any(|range| range.row_range().contains(&row_ix));
+
+    DeletedRowSelectionCleanup {
+        clear_selection: selected_deleted_row
+            || selected_deleted_cell
+            || selection_contains_deleted_row,
+        clear_drag_end: drag_end_cell.is_some_and(|(row, _)| row == row_ix),
+        clear_drag_start: drag_start.is_some_and(|(row, _, _)| row == row_ix),
+    }
+}
+
+pub struct EditTableState<D: EditTableDelegate> {
+    focus_handle: FocusHandle,
+    delegate: D,
+    pub(super) options: TableOptions,
+    bounds: Bounds<Pixels>,
+    fixed_head_cols_bounds: Bounds<Pixels>,
+
+    col_groups: Vec<ColGroup>,
+
+    pub loop_selection: bool,
+    pub col_selectable: bool,
+    pub row_selectable: bool,
+    pub sortable: bool,
+    pub col_resizable: bool,
+    pub col_movable: bool,
+    pub col_fixed: bool,
+    pub col_filterable: bool,
+
+    pub vertical_scroll_handle: UniformListScrollHandle,
+    pub horizontal_scroll_handle: VirtualListScrollHandle,
+
+    selected_row: Option<usize>,
+    selection_state: SelectionState,
+    right_clicked_row: Option<usize>,
+    right_clicked_col: Option<usize>,
+    selected_col: Option<usize>,
+    /// 「定位到某列」的标记列（`col_groups` 列坐标）。
+    ///
+    /// 与 `selected_col` 分开建模：选中列要给整列染色，而定位只要一个「在这儿」
+    /// 的提示。整列染色要按可见行数逐格绘制，列多、行多的时候滚动成本是线性的；
+    /// 标记只染表头一格。选中态一变化（点格、点头、键盘导航）即清除。
+    located_col: Option<usize>,
+    selected_cell: Option<(usize, usize)>,
+    resizing_col: Option<usize>,
+
+    editing_cell: Option<(usize, usize)>,
+    editing_input: Option<CellEditor>,
+    _subscriptions: Vec<Subscription>,
+
+    visible_range: TableVisibleRange,
+
+    filter_state: FilterState,
+    filter_list: Option<Entity<ListState<FilterPanel>>>,
+    active_filter_col: Option<usize>,
+
+    _measure: Vec<Duration>,
+    _load_more_task: Task<()>,
+
+    /// 多选区状态
+    selection: TableSelection,
+    /// 是否正在拖选
+    is_selecting: bool,
+    /// 拖选结束的单元格位置（用于跳过该单元格的 on_click 事件）
+    drag_end_cell: Option<(usize, usize)>,
+    /// 拖选起始位置和是否添加到选区
+    drag_start: Option<(usize, usize, bool)>,
+    /// 单元格边界缓存（用于拖选时的命中测试）
+    cell_bounds: std::collections::HashMap<(usize, usize), Bounds<Pixels>>,
+
+    /// 表格内查找面板（Cmd/Ctrl+F）
+    find_panel: Entity<SearchPanel>,
+    /// 查找面板是否打开（打开后即使查询词为空也保持可见，等待输入）
+    find_open: bool,
+    /// 查找输入框是否由宿主（例如数据网格工具栏）渲染。
+    ///
+    /// 为真时表格不再浮出查找面板，查询词由宿主通过
+    /// [`Self::set_find_query`] 送入，命中状态通过
+    /// [`EditTableEvent::FindStateChanged`] 通知宿主重新渲染。
+    find_hosted: bool,
+    /// 当前查询词（已规范化），是命中的唯一真源
+    find_query: String,
+    _find_subscription: Option<Subscription>,
+    /// 当前查找的命中统计
+    find_outcome: FindOutcome,
+    /// 当前命中的显示行
+    find_current_row: Option<usize>,
+    /// 当前命中所在的单元格（显示行，`col_groups` 列坐标）。
+    ///
+    /// 单元格是「单行截断」显示的（`overflow_hidden` + `text_ellipsis`），
+    /// 而高亮的横向位置按整行文本算，可以远超单元格宽度——命中落在截断区
+    /// 之后时整条高亮会被裁掉，屏幕上一点提示都没有。所以导航时把命中的
+    /// 单元格记下来，渲染时给这个格子整体描边，用户才看得出是哪个格子。
+    find_current_cell: Option<(usize, usize)>,
+    /// 当前命中在全部命中中的序号（从 1 开始，0 表示尚未开始导航）
+    find_current_index: usize,
+    /// 每行的命中区间缓存（显示行 -> 命中）
+    find_rows: std::collections::HashMap<usize, Vec<FindMatch>>,
+}
+
+impl<D> EditTableState<D>
+where
+    D: EditTableDelegate,
+{
+    pub fn new(delegate: D, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // 面板必须在测试上下文之外也能创建，因此把 window 透传给 InputState。
+        let find_panel = cx.new(|cx| SearchPanel::new(window, cx));
+        let mut this = Self {
+            focus_handle: cx.focus_handle(),
+            options: TableOptions::default(),
+            delegate,
+            col_groups: Vec::new(),
+            horizontal_scroll_handle: VirtualListScrollHandle::new(),
+            vertical_scroll_handle: UniformListScrollHandle::new(),
+            selection_state: SelectionState::Row,
+            selected_row: None,
+            right_clicked_row: None,
+            right_clicked_col: None,
+            selected_col: None,
+            located_col: None,
+            selected_cell: None,
+            resizing_col: None,
+            editing_cell: None,
+            editing_input: None,
+            bounds: Bounds::default(),
+            fixed_head_cols_bounds: Bounds::default(),
+            visible_range: TableVisibleRange::default(),
+            filter_state: FilterState::new(),
+            filter_list: None,
+            active_filter_col: None,
+            loop_selection: true,
+            col_selectable: true,
+            row_selectable: true,
+            sortable: true,
+            col_movable: true,
+            col_resizable: true,
+            col_fixed: true,
+            col_filterable: true,
+            _load_more_task: Task::ready(()),
+            _measure: Vec::new(),
+            _subscriptions: Vec::new(),
+            selection: TableSelection::new(),
+            is_selecting: false,
+            drag_end_cell: None,
+            drag_start: None,
+            cell_bounds: std::collections::HashMap::new(),
+            find_panel: find_panel.clone(),
+            find_open: false,
+            find_hosted: false,
+            find_query: String::new(),
+            _find_subscription: None,
+            find_outcome: FindOutcome::default(),
+            find_current_row: None,
+            find_current_cell: None,
+            find_current_index: 0,
+            find_rows: std::collections::HashMap::new(),
+        };
+
+        this._find_subscription = Some(cx.subscribe_in(
+            &find_panel,
+            window,
+            |this: &mut Self, _, event: &SearchPanelEvent, window, cx| {
+                this.on_find_panel_event(event, window, cx);
+            },
+        ));
+        // 行高与「列头显示字段注释」都是应用级全局，改完不会通知任何 View。
+        // 订阅全局本身，已经打开的表格才能在设置页拨动开关的当下立即重排列头。
+        this._subscriptions
+            .push(cx.observe_global::<crate::TableDisplaySettings>(|_, cx| {
+                cx.notify();
+            }));
+        this.prepare_col_groups(cx);
+        this
+    }
+
+    pub fn delegate(&self) -> &D {
+        &self.delegate
+    }
+
+    pub fn delegate_mut(&mut self) -> &mut D {
+        &mut self.delegate
+    }
+
+    pub fn loop_selection(mut self, loop_selection: bool) -> Self {
+        self.loop_selection = loop_selection;
+        self
+    }
+
+    pub fn col_movable(mut self, col_movable: bool) -> Self {
+        self.col_movable = col_movable;
+        self
+    }
+
+    pub fn col_resizable(mut self, col_resizable: bool) -> Self {
+        self.col_resizable = col_resizable;
+        self
+    }
+
+    pub fn sortable(mut self, sortable: bool) -> Self {
+        self.sortable = sortable;
+        self
+    }
+
+    pub fn row_selectable(mut self, row_selectable: bool) -> Self {
+        self.row_selectable = row_selectable;
+        self
+    }
+
+    pub fn col_selectable(mut self, col_selectable: bool) -> Self {
+        self.col_selectable = col_selectable;
+        self
+    }
+
+    pub fn refresh(&mut self, cx: &mut Context<Self>) {
+        self.prepare_col_groups(cx);
+    }
+
+    pub fn scroll_to_row(&mut self, row_ix: usize, cx: &mut Context<Self>) {
+        self.vertical_scroll_handle
+            .scroll_to_item(row_ix, ScrollStrategy::Top);
+        cx.notify();
+    }
+
+    pub fn scroll_to_col(&mut self, col_ix: usize, cx: &mut Context<Self>) {
+        self.ensure_col_visible(col_ix, cx);
+        cx.notify();
+    }
+
+    fn handle_scroll_wheel(
+        &mut self,
+        event: &ScrollEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let line_height = window.line_height();
+        let delta = event.delta.pixel_delta(line_height);
+        if delta.y.is_zero() {
+            return;
+        }
+
+        let base_handle = &self.vertical_scroll_handle.0.borrow().base_handle;
+        let offset_y = base_handle.offset().y;
+        let max_offset_y = -base_handle.max_offset().y;
+        if max_offset_y.is_zero() {
+            return;
+        }
+
+        let tolerance = px(0.5);
+        let at_top = offset_y >= -tolerance;
+        let at_bottom = offset_y <= max_offset_y + tolerance;
+
+        if (delta.y > Pixels::ZERO && !at_top) || (delta.y < Pixels::ZERO && !at_bottom) {
+            cx.stop_propagation();
+        }
+    }
+
+    pub fn selected_row(&self) -> Option<usize> {
+        self.selected_row
+    }
+
+    pub fn set_selected_row(&mut self, row_ix: usize, cx: &mut Context<Self>) {
+        let is_down = match self.selected_row {
+            Some(selected_row) => row_ix > selected_row,
+            None => true,
+        };
+
+        self.selection_state = SelectionState::Row;
+        self.right_clicked_row = None;
+        self.selected_row = Some(row_ix);
+        self.selected_col = None;
+        self.selected_cell = None;
+        // 设置选区为整行，支持复制功能
+        // 列范围从 row_number_offset 开始（跳过行号列），到 col_groups.len() - 1 结束
+        let row_number_offset = if self.delegate.row_number_enabled(cx) {
+            1
+        } else {
+            0
+        };
+        if let Some((start_col, end_col)) =
+            data_column_selection_bounds(self.col_groups.len(), row_number_offset)
+        {
+            self.selection.select_row(row_ix, start_col, end_col);
+        } else {
+            self.selection.clear();
+        }
+        if let Some(row_ix) = self.selected_row {
+            self.vertical_scroll_handle.scroll_to_item(
+                row_ix,
+                if is_down {
+                    ScrollStrategy::Bottom
+                } else {
+                    ScrollStrategy::Top
+                },
+            );
+        }
+        cx.emit(EditTableEvent::SelectRow(row_ix));
+        cx.notify();
+    }
+
+    pub fn extend_row_selection_to(&mut self, row_ix: usize, cx: &mut Context<Self>) {
+        let can_extend =
+            self.selection_state == SelectionState::Row && self.selection.anchor.is_some();
+        let is_down = match self.selected_row {
+            Some(selected_row) => row_ix > selected_row,
+            None => true,
+        };
+        let row_number_offset = if self.delegate.row_number_enabled(cx) {
+            1
+        } else {
+            0
+        };
+        let selection_bounds =
+            data_column_selection_bounds(self.col_groups.len(), row_number_offset);
+
+        self.selection_state = SelectionState::Row;
+        self.right_clicked_row = None;
+        self.selected_row = Some(row_ix);
+        self.selected_col = None;
+        self.selected_cell = None;
+        if let Some((start_col, end_col)) = selection_bounds {
+            if can_extend {
+                self.selection.extend_row_to(row_ix, start_col, end_col);
+            } else {
+                self.selection.select_row(row_ix, start_col, end_col);
+            }
+        } else {
+            self.selection.clear();
+        }
+        self.vertical_scroll_handle.scroll_to_item(
+            row_ix,
+            if is_down {
+                ScrollStrategy::Bottom
+            } else {
+                ScrollStrategy::Top
+            },
+        );
+        cx.emit(EditTableEvent::SelectRow(row_ix));
+        cx.emit(EditTableEvent::SelectionChanged(self.selection.clone()));
+        cx.notify();
+    }
+
+    pub fn selected_col(&self) -> Option<usize> {
+        self.selected_col
+    }
+
+    /// 定位标记当前指向的列（`col_groups` 列坐标）。
+    pub fn located_col(&self) -> Option<usize> {
+        self.located_col
+    }
+
+    /// 把某一列标成「刚定位到的列」，并保证它在视口里。
+    ///
+    /// 只改标记 + 滚动，不动选中态、不发事件：调用方（宿主视图）因此不会被
+    /// `SelectColumn` 之类的回调牵进去重绘，定位这一动作的绘制范围只有表头一格。
+    pub fn set_located_col(&mut self, col_ix: usize, cx: &mut Context<Self>) {
+        self.located_col = Some(col_ix);
+        self.ensure_col_visible(col_ix, cx);
+        cx.notify();
+    }
+
+    pub fn set_selected_col(&mut self, col_ix: usize, cx: &mut Context<Self>) {
+        self.selection_state = SelectionState::Column;
+        self.selected_col = Some(col_ix);
+        self.selected_row = None;
+        self.selected_cell = None;
+        self.located_col = None;
+        // 清除多选区，确保列选中和单元格选中互斥
+        self.selection.clear();
+        if let Some(col_ix) = self.selected_col {
+            self.scroll_to_col(col_ix, cx);
+        }
+        cx.emit(EditTableEvent::SelectColumn(col_ix));
+        cx.notify();
+    }
+
+    pub fn clear_selection(&mut self, cx: &mut Context<Self>) {
+        self.selection_state = SelectionState::Row;
+        self.selected_row = None;
+        self.selected_col = None;
+        self.selected_cell = None;
+        self.located_col = None;
+        // 同时清除多选区
+        self.selection.clear();
+        cx.notify();
+    }
+
+    pub fn selected_cell(&self) -> Option<(usize, usize)> {
+        self.selected_cell
+    }
+
+    pub fn set_selected_cell(&mut self, row_ix: usize, col_ix: usize, cx: &mut Context<Self>) {
+        self.selection_state = SelectionState::Cell;
+        self.selected_cell = Some((row_ix, col_ix));
+        self.selected_col = None;
+        self.selected_row = None;
+        self.queue_cell_scroll(row_ix, col_ix, ScrollStrategy::Center, cx);
+        cx.emit(EditTableEvent::SelectCell(row_ix, col_ix));
+        cx.notify();
+    }
+
+    fn has_cell_selection(&self) -> bool {
+        self.selection_state == SelectionState::Cell
+    }
+
+    fn current_cell_for_navigation(&self) -> Option<(usize, usize)> {
+        self.selection.active.or(self.selected_cell)
+    }
+
+    fn first_data_col_ix(&self, cx: &App) -> usize {
+        if self.delegate.row_number_enabled(cx) {
+            1
+        } else {
+            0
+        }
+    }
+
+    fn last_data_col_ix(&self, cx: &App) -> Option<usize> {
+        let first_col_ix = self.first_data_col_ix(cx);
+        (self.col_groups.len() > first_col_ix).then_some(self.col_groups.len() - 1)
+    }
+
+    fn queue_cell_scroll(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        row_strategy: ScrollStrategy,
+        cx: &mut Context<Self>,
+    ) {
+        self.vertical_scroll_handle
+            .scroll_to_item(row_ix, row_strategy);
+        self.ensure_col_visible(col_ix, cx);
+    }
+
+    fn select_cell_for_navigation(&mut self, row_ix: usize, col_ix: usize, cx: &mut Context<Self>) {
+        self.select_cell(row_ix, col_ix, cx);
+        self.queue_cell_scroll(row_ix, col_ix, ScrollStrategy::Center, cx);
+        cx.notify();
+    }
+
+    fn ensure_col_visible(&mut self, col_ix: usize, cx: &mut Context<Self>) {
+        let fixed_left = self.fixed_left_cols_count();
+        if col_ix < fixed_left {
+            return;
+        }
+
+        let Some(col_group) = self.col_groups.get(col_ix) else {
+            return;
+        };
+
+        if self.bounds.size.width.is_zero() || col_group.bounds.size.width.is_zero() {
+            let scroll_col_ix = col_ix - fixed_left;
+            self.horizontal_scroll_handle
+                .base_handle()
+                .scroll_to_item(scroll_col_ix);
+            return;
+        }
+
+        let mut viewport_left = self.bounds.left();
+        let mut viewport_right = self.bounds.right();
+
+        if fixed_left > 0 {
+            if !self.fixed_head_cols_bounds.size.width.is_zero() {
+                viewport_left = self.fixed_head_cols_bounds.right();
+            } else {
+                let fixed_width = self
+                    .col_groups
+                    .iter()
+                    .filter(|col| col.column.fixed == Some(ColumnFixed::Left))
+                    .fold(px(0.), |acc, col| acc + col.width);
+                viewport_left += fixed_width;
+            }
+        }
+
+        if self.options.scrollbar_visible.right && self.delegate.rows_count(cx) > 0 {
+            viewport_right -= SCROLLBAR_WIDTH;
+        }
+
+        if viewport_right <= viewport_left {
+            return;
+        }
+
+        let col_bounds = col_group.bounds;
+        let Some(offset_x) = column_scroll_offset(
+            col_bounds.left(),
+            col_bounds.right(),
+            viewport_left,
+            viewport_right,
+            self.horizontal_scroll_handle.offset().x,
+        ) else {
+            return;
+        };
+
+        let mut offset = self.horizontal_scroll_handle.offset();
+        offset.x = offset_x;
+        self.horizontal_scroll_handle.set_offset(offset);
+    }
+
+    fn move_to_prev_cell(&mut self, cx: &mut Context<Self>) {
+        let rows_count = self.delegate.rows_count(cx);
+        let Some(last_col_ix) = self.last_data_col_ix(cx) else {
+            return;
+        };
+        if rows_count == 0 {
+            return;
+        }
+
+        let first_col_ix = self.first_data_col_ix(cx);
+        if let Some((row_ix, col_ix)) = self.current_cell_for_navigation() {
+            let current_col_ix = col_ix.clamp(first_col_ix, last_col_ix);
+            let new_col_ix = if current_col_ix > first_col_ix {
+                current_col_ix.saturating_sub(1)
+            } else if self.loop_selection {
+                last_col_ix
+            } else {
+                current_col_ix
+            };
+            self.select_cell_for_navigation(row_ix, new_col_ix, cx);
+        } else {
+            self.select_cell_for_navigation(0, first_col_ix, cx);
+        }
+    }
+
+    fn move_to_next_cell(&mut self, cx: &mut Context<Self>) {
+        let rows_count = self.delegate.rows_count(cx);
+        let Some(last_col_ix) = self.last_data_col_ix(cx) else {
+            return;
+        };
+        if rows_count == 0 {
+            return;
+        }
+
+        let first_col_ix = self.first_data_col_ix(cx);
+        if let Some((row_ix, col_ix)) = self.current_cell_for_navigation() {
+            let current_col_ix = col_ix.clamp(first_col_ix, last_col_ix);
+            let new_col_ix = if current_col_ix < last_col_ix {
+                current_col_ix + 1
+            } else if self.loop_selection {
+                first_col_ix
+            } else {
+                current_col_ix
+            };
+            self.select_cell_for_navigation(row_ix, new_col_ix, cx);
+        } else {
+            self.select_cell_for_navigation(0, first_col_ix, cx);
+        }
+    }
+
+    fn commit_and_move_to_prev_cell(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editing_cell.is_none() {
+            cx.propagate();
+            return;
+        }
+
+        self.commit_cell_edit(window, cx);
+        self.focus_handle.focus(window, cx);
+        self.move_to_prev_cell(cx);
+    }
+
+    fn commit_and_move_to_next_cell(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editing_cell.is_none() {
+            cx.propagate();
+            return;
+        }
+
+        self.commit_cell_edit(window, cx);
+        self.focus_handle.focus(window, cx);
+        self.move_to_next_cell(cx);
+    }
+
+    // ==================== 多选区方法 ====================
+
+    /// 获取当前选区
+    pub fn selection(&self) -> &TableSelection {
+        &self.selection
+    }
+
+    /// 获取可变选区引用
+    pub fn selection_mut(&mut self) -> &mut TableSelection {
+        &mut self.selection
+    }
+
+    /// 表格内部接收键盘的焦点句柄。
+    ///
+    /// 宿主（页签、面板）在激活时应当把焦点交给它：`EditTable` 键盘上下文
+    /// 挂在表格自身节点上，焦点只落在宿主外壳时不在焦点路径里，
+    /// Cmd/Ctrl+F 这类表格快捷键会完全派发不到。
+    pub fn table_focus_handle(&self) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+
+    /// 查找面板是否已打开。
+    ///
+    /// 宿主自己渲染查找输入框时，表格不浮出面板，所以这里恒为 `false`——
+    /// 面板的输入框与宿主的输入框不可能同时存在。
+    pub fn find_panel_open(&self) -> bool {
+        self.find_open && !self.find_hosted
+    }
+
+    /// 选择单个单元格（替换现有选区）
+    pub fn select_cell(&mut self, row_ix: usize, col_ix: usize, cx: &mut Context<Self>) {
+        self.selection.select_single((row_ix, col_ix));
+        self.sync_legacy_selection(cx);
+        cx.emit(EditTableEvent::SelectCell(row_ix, col_ix));
+        cx.emit(EditTableEvent::SelectionChanged(self.selection.clone()));
+        cx.notify();
+    }
+
+    /// 扩展选区到指定单元格（Shift+Click）
+    pub fn extend_selection_to(&mut self, row_ix: usize, col_ix: usize, cx: &mut Context<Self>) {
+        tracing::debug!(
+            "extend_selection_to: row={}, col={}, anchor={:?}",
+            row_ix,
+            col_ix,
+            self.selection.anchor
+        );
+        self.selection.extend_to((row_ix, col_ix));
+        tracing::debug!(
+            "selection after extend: ranges={:?}, active={:?}",
+            self.selection.ranges.len(),
+            self.selection.active
+        );
+        self.sync_legacy_selection(cx);
+        cx.emit(EditTableEvent::SelectionChanged(self.selection.clone()));
+        cx.notify();
+    }
+
+    /// 添加单元格到选区（Ctrl+Click）
+    pub fn add_to_selection(&mut self, row_ix: usize, col_ix: usize, cx: &mut Context<Self>) {
+        tracing::debug!("add_to_selection: row={}, col={}", row_ix, col_ix);
+        self.selection.add((row_ix, col_ix));
+        tracing::debug!(
+            "selection after add: ranges={:?}, active={:?}",
+            self.selection.ranges.len(),
+            self.selection.active
+        );
+        self.sync_legacy_selection(cx);
+        cx.emit(EditTableEvent::SelectionChanged(self.selection.clone()));
+        cx.notify();
+    }
+
+    /// 清除选区
+    pub fn clear_cell_selection(&mut self, cx: &mut Context<Self>) {
+        self.selection.clear();
+        self.sync_legacy_selection(cx);
+        cx.notify();
+    }
+
+    /// 选择所有单元格
+    pub fn select_all_cells(&mut self, cx: &mut Context<Self>) {
+        let row_count = self.delegate.rows_count(cx);
+        let col_count = self.col_groups.len();
+        let row_number_offset = if self.delegate.row_number_enabled(cx) {
+            1
+        } else {
+            0
+        };
+        if let Some((start_col, end_col)) =
+            data_column_selection_bounds(col_count, row_number_offset)
+        {
+            self.selection.select_all(row_count, start_col, end_col);
+        } else {
+            self.selection.clear();
+        }
+        self.sync_legacy_selection(cx);
+        cx.emit(EditTableEvent::SelectionChanged(self.selection.clone()));
+        cx.notify();
+    }
+
+    /// 检查单元格是否在选区内
+    pub fn is_cell_in_selection(&self, row_ix: usize, col_ix: usize) -> bool {
+        self.selection.contains(row_ix, col_ix)
+    }
+
+    fn is_row_in_selection(&self, row_ix: usize) -> bool {
+        self.selection_state == SelectionState::Row && self.selection.contains_row(row_ix)
+    }
+
+    /// 获取活动单元格
+    pub fn active_cell(&self) -> Option<CellCoord> {
+        self.selection.active
+    }
+
+    /// 同步选区状态到旧的单选字段（向后兼容）
+    fn sync_legacy_selection(&mut self, cx: &mut Context<Self>) {
+        self.selection_state = SelectionState::Cell;
+        self.selected_cell = self.selection.active;
+        self.selected_row = None;
+        self.selected_col = None;
+        self.located_col = None;
+
+        // 如果有活动单元格，滚动到可见
+        if let Some((_, col_ix)) = self.selection.active {
+            self.scroll_to_col(col_ix, cx);
+        }
+    }
+
+    /// 准备拖选（记录起始位置，但不立即开始选区）
+    ///
+    /// 编辑态下不记录：此时按下是要在单元格内的编辑器里选文本（#302）。
+    pub fn prepare_drag_selection(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        add_to_selection: bool,
+        _cx: &mut Context<Self>,
+    ) {
+        self.drag_start =
+            pending_grid_drag(self.editing_cell, Some((row_ix, col_ix, add_to_selection)));
+    }
+
+    /// 开始拖选
+    ///
+    /// 与拖选链路其它入口同一规则：编辑态下网格不接管拖动（#302）。
+    pub fn start_drag_selection(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        add_to_selection: bool,
+        cx: &mut Context<Self>,
+    ) {
+        if self.editing_cell.is_some() {
+            self.drag_start = None;
+            return;
+        }
+        self.is_selecting = true;
+        self.drag_start = None;
+        self.selection
+            .start_drag((row_ix, col_ix), add_to_selection);
+        self.sync_legacy_selection(cx);
+        cx.notify();
+    }
+
+    /// 更新拖选
+    ///
+    /// 编辑态下直接早退：拖到一半才进入编辑时，指针扫过的单元格也不该再被纳入选区（#302）。
+    pub fn update_drag_selection(&mut self, row_ix: usize, col_ix: usize, cx: &mut Context<Self>) {
+        if self.editing_cell.is_some() {
+            self.drag_start = None;
+            self.is_selecting = false;
+            return;
+        }
+
+        // 如果有待处理的拖选起始位置（备用路径，正常情况下 on_drag 已经消耗了）
+        if let Some((start_row, start_col, add_to_selection)) = self.drag_start.take() {
+            tracing::debug!(
+                "update_drag_selection: starting drag from ({},{}) to ({},{})",
+                start_row,
+                start_col,
+                row_ix,
+                col_ix
+            );
+            self.is_selecting = true;
+            self.selection
+                .start_drag((start_row, start_col), add_to_selection);
+            // 如果拖动到了不同单元格，更新选区范围
+            if start_row != row_ix || start_col != col_ix {
+                self.selection.update_drag((row_ix, col_ix));
+            }
+            self.sync_legacy_selection(cx);
+            cx.notify();
+        } else if self.is_selecting {
+            tracing::debug!("update_drag_selection: updating to ({},{})", row_ix, col_ix);
+            self.selection.update_drag((row_ix, col_ix));
+            self.sync_legacy_selection(cx);
+            cx.notify();
+        }
+    }
+
+    /// 结束拖选
+    pub fn end_drag_selection(&mut self, cx: &mut Context<Self>) {
+        self.drag_start = None;
+        if self.is_selecting {
+            self.is_selecting = false;
+            // 记录拖选结束的单元格位置，用于跳过该单元格的点击事件
+            self.drag_end_cell = self.selection.active;
+            self.sync_legacy_selection(cx);
+            cx.emit(EditTableEvent::SelectionChanged(self.selection.clone()));
+            cx.notify();
+        }
+    }
+
+    pub fn visible_range(&self) -> &TableVisibleRange {
+        &self.visible_range
+    }
+
+    pub fn filter_state(&self) -> &FilterState {
+        &self.filter_state
+    }
+
+    pub fn filter_state_mut(&mut self) -> &mut FilterState {
+        &mut self.filter_state
+    }
+
+    pub fn set_column_filter(
+        &mut self,
+        col_ix: usize,
+        selected_values: HashSet<FilterValueKey>,
+        cx: &mut Context<Self>,
+    ) {
+        self.filter_state.set_filter(col_ix, selected_values);
+        cx.notify();
+    }
+
+    pub fn set_column_filter_with_all_values(
+        &mut self,
+        col_ix: usize,
+        selected_values: HashSet<FilterValueKey>,
+        cx: &mut Context<Self>,
+    ) {
+        let filter_values = self.delegate.get_column_filter_values(col_ix, cx);
+        let all_values: HashSet<FilterValueKey> =
+            filter_values.iter().map(|fv| fv.key.clone()).collect();
+
+        self.filter_state
+            .set_filter_with_all_values(col_ix, selected_values, all_values);
+        cx.notify();
+    }
+
+    pub fn clear_column_filter(&mut self, col_ix: usize, cx: &mut Context<Self>) {
+        self.filter_state.clear_filter(col_ix);
+        cx.notify();
+    }
+
+    pub fn clear_all_filters(&mut self, cx: &mut Context<Self>) {
+        self.filter_state.clear_all();
+        cx.notify();
+    }
+
+    pub fn open_filter_panel(
+        &mut self,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let filter_values = self.delegate.get_column_filter_values(col_ix, cx);
+        let current_filter = self.filter_state.get_filter(col_ix);
+        let values = filter_values
+            .into_iter()
+            .map(|mut fv| {
+                let checked = current_filter
+                    .map(|f| f.selected_values.contains(&fv.key))
+                    .unwrap_or(false);
+                fv.checked = checked;
+                fv
+            })
+            .collect();
+
+        let table_entity = cx.entity().clone();
+        let filter_panel = FilterPanel::new(values).on_toggle(move |value, window, cx| {
+            table_entity.update(cx, |table, cx| {
+                table.toggle_filter_value_realtime(col_ix, value, window, cx);
+            });
+        });
+
+        self.filter_list =
+            Some(cx.new(|cx| ListState::new(filter_panel, window, cx).searchable(true)));
+        self.active_filter_col = Some(col_ix);
+        cx.notify();
+    }
+
+    pub fn close_filter_panel(&mut self, cx: &mut Context<Self>) {
+        self.active_filter_col = None;
+        self.filter_list = None;
+        cx.notify();
+    }
+
+    pub fn toggle_filter_value_realtime(
+        &mut self,
+        col_ix: usize,
+        value: &FilterValueKey,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.modify_filter_panel_realtime(col_ix, window, cx, |panel| {
+            panel.toggle_value(value);
+        });
+    }
+
+    pub fn filter_panel_select_all_realtime(
+        &mut self,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.modify_filter_panel_realtime(col_ix, window, cx, |panel| {
+            panel.select_all();
+        });
+    }
+
+    pub fn filter_panel_deselect_all_realtime(
+        &mut self,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.modify_filter_panel_realtime(col_ix, window, cx, |panel| {
+            panel.deselect_all();
+        });
+    }
+
+    pub fn filter_panel_reset_realtime(
+        &mut self,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.update_filter_panel(cx, |panel| {
+            panel.select_all();
+        });
+        self.apply_filter_realtime(col_ix, window, cx);
+    }
+
+    fn apply_filter_realtime(
+        &mut self,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(selected) =
+            self.read_filter_panel_with_ctx(cx, |panel| panel.get_selected_values())
+        {
+            if selected.is_empty() {
+                self.clear_column_filter(col_ix, cx);
+                self.delegate.on_column_filter_cleared(col_ix, window, cx);
+            } else {
+                self.set_column_filter_with_all_values(col_ix, selected.clone(), cx);
+                self.delegate
+                    .on_column_filter_changed(col_ix, selected, window, cx);
+            }
+
+            self.refresh(cx);
+        }
+    }
+
+    pub fn toggle_filter_value(&mut self, value: &FilterValueKey, cx: &mut Context<Self>) {
+        self.update_filter_panel(cx, |panel| {
+            panel.toggle_value(value);
+        });
+    }
+
+    pub fn filter_panel_select_all(&mut self, cx: &mut Context<Self>) {
+        self.update_filter_panel(cx, |panel| {
+            panel.select_all();
+        });
+    }
+
+    pub fn filter_panel_deselect_all(&mut self, cx: &mut Context<Self>) {
+        self.update_filter_panel(cx, |panel| {
+            panel.deselect_all();
+        });
+    }
+
+    pub fn filter_panel_reset(&mut self, cx: &mut Context<Self>) {
+        self.update_filter_panel(cx, |panel| {
+            panel.select_all();
+        });
+        cx.notify();
+    }
+
+    pub fn confirm_filter_panel(&mut self, cx: &mut Context<Self>) {
+        if let Some(col_ix) = self.active_filter_col {
+            if let Some(selected) =
+                self.read_filter_panel_with_ctx(cx, |panel| panel.get_selected_values())
+            {
+                if selected.is_empty() {
+                    self.clear_column_filter(col_ix, cx);
+                } else {
+                    self.set_column_filter(col_ix, selected, cx);
+                }
+            }
+
+            self.close_filter_panel(cx);
+        }
+    }
+
+    pub fn filter_panel_selected_count(&self, cx: &gpui::App) -> usize {
+        self.read_filter_panel_with_app(cx, |panel| panel.get_selected_values().len())
+            .unwrap_or(0)
+    }
+
+    pub fn filter_panel_total_count(&self, cx: &gpui::App) -> usize {
+        self.read_filter_panel_with_app(cx, |panel| panel.values.len())
+            .unwrap_or(0)
+    }
+
+    fn modify_filter_panel_realtime<F>(
+        &mut self,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+        f: F,
+    ) where
+        F: FnOnce(&mut FilterPanel),
+    {
+        let mut action = Some(f);
+        self.update_filter_panel(cx, move |panel| {
+            if let Some(func) = action.take() {
+                func(panel);
+            }
+        });
+
+        self.apply_filter_realtime(col_ix, window, cx);
+    }
+
+    fn update_filter_panel<F>(&mut self, cx: &mut Context<Self>, mut f: F)
+    where
+        F: FnMut(&mut FilterPanel),
+    {
+        if let Some(filter_list) = &self.filter_list {
+            filter_list.update(cx, |list_state, cx| {
+                f(list_state.delegate_mut());
+                cx.notify();
+            });
+        }
+    }
+
+    fn read_filter_panel_with_ctx<R, F>(&self, cx: &mut Context<Self>, f: F) -> Option<R>
+    where
+        F: FnOnce(&FilterPanel) -> R,
+    {
+        self.filter_list.as_ref().map(|filter_list| {
+            filter_list.read_with(cx, |list_state: &ListState<FilterPanel>, _| {
+                f(list_state.delegate())
+            })
+        })
+    }
+
+    fn read_filter_panel_with_app<R, F>(&self, cx: &gpui::App, f: F) -> Option<R>
+    where
+        F: FnOnce(&FilterPanel) -> R,
+    {
+        self.filter_list.as_ref().map(|filter_list| {
+            filter_list.read_with(cx, |list_state: &ListState<FilterPanel>, _| {
+                f(list_state.delegate())
+            })
+        })
+    }
+
+    fn prepare_col_groups(&mut self, cx: &mut Context<Self>) {
+        // 列组在这里整套重建（隐藏列、移动列、换页都会走到这儿），旧的列号
+        // 已经不指向同一字段了，留着标记就会染错表头。
+        self.located_col = None;
+
+        let mut col_groups = Vec::new();
+
+        if self.delegate.row_number_enabled(cx) {
+            col_groups.push(ColGroup {
+                width: px(60.),
+                bounds: Bounds::default(),
+                column: Column::new("__row_number__", " ")
+                    .width(px(60.))
+                    .resizable(false)
+                    .movable(false)
+                    .selectable(false)
+                    .text_right(),
+            });
+        }
+
+        col_groups.extend((0..self.delegate.columns_count(cx)).map(|col_ix| {
+            let column = self.delegate().column(col_ix, cx);
+            ColGroup {
+                width: column.width,
+                bounds: Bounds::default(),
+                column: column.clone(),
+            }
+        }));
+
+        self.col_groups = col_groups;
+        cx.notify();
+    }
+
+    // ========================================================================
+    // 表格内查找（Cmd/Ctrl+F）
+    // ========================================================================
+
+    /// 宿主自己渲染查找输入框（例如数据网格工具栏的搜索框）。
+    ///
+    /// 为真时表格不再浮出查找面板：
+    /// - 查询词经 [`Self::set_find_query`] 送入；
+    /// - 命中状态经 [`EditTableEvent::FindStateChanged`] 回报，宿主据此渲染计数；
+    /// - Cmd/Ctrl+F 经 [`EditTableEvent::FindRequested`] 请宿主聚焦它的输入框。
+    pub fn set_find_hosted(&mut self, hosted: bool, cx: &mut Context<Self>) {
+        if self.find_hosted == hosted {
+            return;
+        }
+        self.find_hosted = hosted;
+        cx.notify();
+    }
+
+    /// 宿主设置查询词（空串表示清空查找）。
+    ///
+    /// 面板渲染时的输入走 `SearchPanelEvent::QueryChanged`，这里只服务
+    /// 宿主渲染的输入框；两条路径都汇入 [`Self::apply_find_query`]，
+    /// 命中只按这里保存的查询词计算。
+    pub fn set_find_query(&mut self, raw: &str, cx: &mut Context<Self>) {
+        let query = normalize_find_query(raw);
+        if self.find_hosted {
+            self.find_open = !query.is_empty();
+        }
+        self.apply_find_query(query, cx);
+    }
+
+    /// 查询词（已规范化）。
+    pub fn find_query(&self) -> &str {
+        &self.find_query
+    }
+
+    /// 命中总数。
+    pub fn find_total(&self) -> usize {
+        self.find_outcome.total
+    }
+
+    /// 当前命中序号（从 1 开始，0 表示没有命中或尚未导航）。
+    pub fn find_current(&self) -> usize {
+        self.find_current_index
+    }
+
+    /// 当前命中所在的单元格（显示行，`col_groups` 列坐标）。
+    ///
+    /// 没有命中或尚未导航时为 `None`。
+    pub fn find_current_cell(&self) -> Option<(usize, usize)> {
+        self.find_current_cell
+    }
+
+    /// 打开查找并把焦点交给查询输入框。
+    ///
+    /// 已经在查找时重复按 Cmd/Ctrl+F 只重新聚焦，不清空已有查询词。
+    fn open_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.delegate.find_in_table_enabled(cx) {
+            return;
+        }
+        self.find_open = true;
+        if self.find_hosted {
+            // 输入框在宿主那边，焦点只能由宿主来给。
+            cx.emit(EditTableEvent::FindRequested);
+        } else {
+            self.find_panel
+                .update(cx, |panel, cx| panel.focus(window, cx));
+        }
+        cx.notify();
+    }
+
+    /// 关闭查找并清除查询词、高亮与缓存。
+    fn close_find(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.find_open = false;
+        self.find_query.clear();
+        self.find_panel
+            .update(cx, |panel, cx| panel.clear(window, cx));
+        self.clear_find_state();
+        self.focus_handle.focus(window, cx);
+        cx.emit(EditTableEvent::FindStateChanged);
+        cx.notify();
+    }
+
+    /// 查询词变化后重算命中（查询词进入表格状态的唯一入口）。
+    fn apply_find_query(&mut self, query: String, cx: &mut Context<Self>) {
+        self.find_query = query;
+        self.refresh_find(cx);
+    }
+
+    /// 查找是否在进行中（有非空查询词）。
+    ///
+    /// 与 [`Self::find_panel_visible`] 不同：宿主渲染输入框时面板不显示，
+    /// 但 Cmd+G / Cmd+Shift+G 仍然应当跳到下（上）一个命中。
+    fn find_active(&self) -> bool {
+        !self.find_query.is_empty()
+    }
+
+    fn clear_find_state(&mut self) {
+        self.find_rows.clear();
+        self.find_outcome = FindOutcome::default();
+        self.find_current_row = None;
+        self.find_current_cell = None;
+        self.find_current_index = 0;
+    }
+
+    /// 跳到下一个命中（末尾回绕到第一个）。
+    pub fn find_next(&mut self, cx: &mut Context<Self>) {
+        if self.find_rows.is_empty() {
+            self.refresh_find(cx);
+        }
+        let total = self.find_outcome.total;
+        if total == 0 {
+            return;
+        }
+        let next = if self.find_current_index == 0 || self.find_current_index >= total {
+            1
+        } else {
+            self.find_current_index + 1
+        };
+        self.navigate_to_find_index(next, cx);
+    }
+
+    /// 跳到上一个命中（开头回绕到最后一个）。
+    pub fn find_previous(&mut self, cx: &mut Context<Self>) {
+        if self.find_rows.is_empty() {
+            self.refresh_find(cx);
+        }
+        let total = self.find_outcome.total;
+        if total == 0 {
+            return;
+        }
+        let previous = if self.find_current_index <= 1 {
+            total
+        } else {
+            self.find_current_index - 1
+        };
+        self.navigate_to_find_index(previous, cx);
+    }
+
+    /// 按「第几个命中」定位：同行多个命中也能逐个走到。
+    fn navigate_to_find_index(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some((row, offset)) = self.find_row_of_index(index) else {
+            return;
+        };
+        self.find_current_index = index;
+        self.find_current_row = Some(row);
+        self.find_panel
+            .update(cx, |panel, cx| panel.set_current_match(index, cx));
+        self.focus_find_match(row, offset, cx);
+        cx.emit(EditTableEvent::FindStateChanged);
+        cx.notify();
+    }
+
+    /// 把某个命中带到可见处：纵向滚到它的行，横向把它的列带进视口，
+    /// 并记下它是哪个单元格好让渲染层给它描边。
+    ///
+    /// 只滚行不滚列时，命中在视口右侧以外的列上就只会看到行在动、
+    /// 高亮始终停在屏幕之外；而记下单元格是为了应对「单元格长文本被截断、
+    /// 高亮整条被裁掉」的情况——那时屏幕上唯一还能指认位置的就是这个描边。
+    fn focus_find_match(&mut self, row: usize, offset_in_row: usize, cx: &mut Context<Self>) {
+        self.scroll_to_find_row(row, cx);
+        let col_group_ix = self.find_column_of_match(row, offset_in_row, cx);
+        self.find_current_cell = col_group_ix.map(|col_ix| (row, col_ix));
+        if let Some(col_group_ix) = col_group_ix {
+            self.ensure_col_visible(col_group_ix, cx);
+        }
+    }
+
+    /// 命中所在列的 `col_groups` 坐标（数据列索引 + 行号列偏移）。
+    fn find_column_of_match(&self, row: usize, offset_in_row: usize, cx: &App) -> Option<usize> {
+        let cell_match = self.find_rows.get(&row)?.get(offset_in_row)?;
+        Some(cell_match.col_ix + self.first_data_col_ix(cx))
+    }
+
+    /// 把命中序号映射回（显示行，行内第几个命中）。
+    fn find_row_of_index(&self, index: usize) -> Option<(usize, usize)> {
+        if index == 0 {
+            return None;
+        }
+        let mut remaining = index;
+        for row in &self.find_outcome.rows {
+            let count = self.find_rows.get(row).map_or(0, Vec::len);
+            if remaining <= count {
+                return Some((*row, remaining - 1));
+            }
+            remaining -= count;
+        }
+        None
+    }
+
+    fn scroll_to_find_row(&mut self, row: usize, cx: &mut Context<Self>) {
+        let rows_count = self.delegate.rows_count(cx);
+        let current_top = self.visible_range.rows.start;
+        let visible = self.visible_range.rows.clone();
+        if let Some(target) = scroll_target_for_match(row, &visible, current_top, rows_count) {
+            self.vertical_scroll_handle
+                .scroll_to_item(target, ScrollStrategy::Top);
+        }
+    }
+
+    fn on_find_panel_event(
+        &mut self,
+        event: &SearchPanelEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        match event {
+            SearchPanelEvent::QueryChanged(query) => {
+                self.apply_find_query(query.clone().unwrap_or_default(), cx)
+            }
+            SearchPanelEvent::NextMatch => self.find_next(cx),
+            SearchPanelEvent::PreviousMatch => self.find_previous(cx),
+            SearchPanelEvent::Dismissed => {
+                self.find_open = false;
+                self.find_query.clear();
+                self.clear_find_state();
+                self.focus_handle.focus(window, cx);
+                cx.emit(EditTableEvent::FindStateChanged);
+                cx.notify();
+            }
+        }
+    }
+
+    /// 重新扫描 delegate 的显示行，重建命中缓存并跳到第一个命中。
+    ///
+    /// 命中缓存是「显示行 -> 命中」，数据一换（翻页、刷新、重新查询）就整体
+    /// 失效；查询框会跨页保留，所以宿主替换数据后必须再调一次，否则高亮会落在
+    /// 错误的行上。空查询词时只清缓存，不扫表。
+    pub fn refresh_find(&mut self, cx: &mut Context<Self>) {
+        self.clear_find_state();
+
+        let query = self.find_query.clone();
+        if !self.delegate.find_in_table_enabled(cx) || query.is_empty() {
+            // 空查询不必扫全表，直接回到「没有命中」的状态。
+            self.find_panel.update(cx, |panel, cx| {
+                panel.set_outcome(FindOutcome::default(), cx)
+            });
+            cx.emit(EditTableEvent::FindStateChanged);
+            cx.notify();
+            return;
+        }
+
+        let rows_count = self.delegate.rows_count(cx);
+        let columns_count = self.delegate.columns_count(cx);
+
+        // 先把每行的命中算出来，再交给纯函数做统计与序号解析。
+        let per_row_matches = (0..rows_count)
+            .map(|row| {
+                let row_cells = (0..columns_count)
+                    .map(|col_ix| self.delegate.find_cell_text(row, col_ix, cx))
+                    .collect::<Vec<_>>();
+                (row, row_matches(&row_cells, &query))
+            })
+            .collect::<Vec<_>>();
+
+        let outcome = resolve_find(rows_count, &query, |row| {
+            per_row_matches.get(row).map_or(0, |(_, m)| m.len())
+        });
+        let matches_by_row: std::collections::HashMap<usize, Vec<FindMatch>> = per_row_matches
+            .into_iter()
+            .filter(|(_, matches)| !matches.is_empty())
+            .collect();
+
+        self.find_rows = matches_by_row;
+        self.find_outcome = outcome;
+
+        // 有命中就直接停在第一个命中上，用户不必再按一次 Cmd+G。
+        let first_index = usize::from(self.find_outcome.total > 0);
+        self.find_current_index = first_index;
+        self.find_current_row = self.find_row_of_index(first_index).map(|(row, _)| row);
+
+        let outcome = self.find_outcome.clone();
+        self.find_panel.update(cx, |panel, cx| {
+            panel.set_outcome(outcome, cx);
+            panel.set_current_match(first_index, cx);
+        });
+
+        if let Some((row, offset)) = self.find_row_of_index(first_index) {
+            self.focus_find_match(row, offset, cx);
+        }
+        cx.emit(EditTableEvent::FindStateChanged);
+        cx.notify();
+    }
+
+    /// 该行的高亮片段（按整行文本的字符区间合并相邻命中）。
+    ///
+    /// 当前命中由「全局第几个命中」反解到行内下标，所以同一行里按
+    /// Cmd+G 也能逐个移动当前高亮。
+    fn find_highlight_segments(&self, row_ix: usize) -> Vec<HighlightSegment> {
+        // 先算出「当前命中是不是在本行的第几个」，再借用 find_rows，
+        // 避免同时持有两处不可变借用以外的可变借用。
+        let current_in_row = self
+            .find_row_of_index(self.find_current_index)
+            .and_then(|(row, offset)| (row == row_ix).then_some(offset));
+        let Some(matches) = self.find_rows.get(&row_ix) else {
+            return Vec::new();
+        };
+
+        let mut matches = matches.clone();
+        mark_current_match_at(&mut matches, current_in_row);
+        let char_count = matches
+            .last()
+            .map_or(0, |m| m.row_offset + m.char_range.end);
+        row_highlight_ranges(&matches, char_count)
+            .into_iter()
+            .map(|(char_range, is_current)| HighlightSegment {
+                char_range,
+                is_current,
+            })
+            .collect()
+    }
+
+    /// 查找面板是否可见。
+    ///
+    /// 宿主渲染输入框时只有计数与导航留在宿主那边，表格不再浮出面板。
+    fn find_panel_visible(&self, _cx: &App) -> bool {
+        self.find_panel_open()
+    }
+
+    fn fixed_left_cols_count(&self) -> usize {
+        if !self.col_fixed {
+            return 0;
+        }
+
+        self.col_groups
+            .iter()
+            .filter(|col| col.column.fixed == Some(ColumnFixed::Left))
+            .count()
+    }
+
+    fn page_item_count(&self, cx: &gpui::App) -> usize {
+        let row_height = crate::table_row_height_or(cx, self.options.size.table_row_height());
+        let height = self.bounds.size.height;
+        let count = (height / row_height).floor() as usize;
+        count.saturating_sub(1).max(1)
+    }
+
+    fn on_row_right_click(
+        &mut self,
+        _: &MouseDownEvent,
+        row_ix: usize,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) {
+        self.right_clicked_row = Some(row_ix);
+        self.right_clicked_col = None;
+    }
+
+    fn on_row_left_click(
+        &mut self,
+        e: &ClickEvent,
+        row_ix: usize,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.delegate.multi_select_enabled(cx) && e.modifiers().shift {
+            self.extend_row_selection_to(row_ix, cx);
+        } else {
+            self.set_selected_row(row_ix, cx);
+        }
+        if e.click_count() == 2 {
+            cx.emit(EditTableEvent::DoubleClickedCell(row_ix, 0))
+        }
+    }
+
+    fn on_cell_click(
+        &mut self,
+        e: &ClickEvent,
+        row_ix: usize,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // 如果是拖选刚结束在同一个单元格，跳过这次点击事件
+        if let Some(drag_end) = self.drag_end_cell.take() {
+            if drag_end == (row_ix, col_ix) {
+                return;
+            }
+        }
+
+        let edit_enabled = self.delegate.cell_edit_enabled(cx);
+        let multi_select_enabled = self.delegate.multi_select_enabled(cx);
+        let is_row_number_col = self.delegate.row_number_enabled(cx) && col_ix == 0;
+        let shift_pressed = e.modifiers().shift;
+        let ctrl_pressed = e.modifiers().secondary(cx);
+
+        // 处理正在编辑的单元格
+        if edit_enabled {
+            if let Some((edit_row, edit_col)) = self.editing_cell {
+                if edit_row != row_ix || edit_col != col_ix {
+                    self.commit_cell_edit(window, cx);
+                }
+            }
+        }
+
+        // 双击处理
+        if e.click_count() == 2 {
+            if edit_enabled && !is_row_number_col {
+                self.start_editing(row_ix, col_ix, window, cx);
+            }
+            cx.emit(EditTableEvent::DoubleClickedCell(row_ix, col_ix));
+            return;
+        }
+
+        // 单击处理 - 多选逻辑
+        if is_row_number_col {
+            // 点击行号列，选择整行
+            if multi_select_enabled && shift_pressed {
+                self.extend_row_selection_to(row_ix, cx);
+            } else {
+                self.set_selected_row(row_ix, cx);
+            }
+            return;
+        }
+
+        tracing::debug!(
+            "on_cell_click: row={}, col={}, shift={}, ctrl/cmd={}, multi_select_enabled={}",
+            row_ix,
+            col_ix,
+            shift_pressed,
+            ctrl_pressed,
+            multi_select_enabled
+        );
+
+        if multi_select_enabled && shift_pressed {
+            // Shift+Click: 扩展选区
+            self.extend_selection_to(row_ix, col_ix, cx);
+        } else if multi_select_enabled && ctrl_pressed {
+            // Ctrl/Cmd+Click: 添加到选区
+            self.add_to_selection(row_ix, col_ix, cx);
+        } else {
+            // 单击编辑模式（类似 Navicat）：
+            // 如果单元格已被选中，再次单击则进入编辑模式
+            if edit_enabled
+                && self.delegate.single_click_to_edit(cx)
+                && self.selected_cell == Some((row_ix, col_ix))
+                && self.editing_cell.is_none()
+            {
+                self.start_editing(row_ix, col_ix, window, cx);
+                return;
+            }
+
+            // 普通点击: 选择单个单元格
+            self.select_cell(row_ix, col_ix, cx);
+        }
+    }
+
+    pub fn start_editing(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.editing_cell == Some((row_ix, col_ix)) {
+            return;
+        }
+        if !self.selection.contains(row_ix, col_ix) {
+            self.select_cell(row_ix, col_ix, cx);
+        }
+        let delegate_col_ix = if self.delegate.row_number_enabled(cx) {
+            col_ix.saturating_sub(1)
+        } else {
+            col_ix
+        };
+
+        let input = self
+            .delegate
+            .build_input(row_ix, delegate_col_ix, window, cx);
+        if input.is_some() {
+            self.editing_cell = Some((row_ix, col_ix));
+            let (input, subscriptions) = input.unwrap();
+            self.editing_input = Some(input);
+            self._subscriptions = subscriptions;
+            cx.emit(EditTableEvent::CellEditing(row_ix, col_ix));
+            cx.notify();
+        }
+    }
+
+    pub fn commit_cell_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some((row_ix, col_ix)) = self.editing_cell {
+            let delegate_col_ix = if self.delegate.row_number_enabled(cx) {
+                col_ix.saturating_sub(1)
+            } else {
+                col_ix
+            };
+
+            let new_value = self
+                .editing_input
+                .as_ref()
+                .map(|editor| editor.get_value(cx))
+                .unwrap_or_default();
+
+            let selected_cells = self.selection.all_cells();
+            let accepted = if selected_cells.len() > 1 {
+                let row_number_offset = if self.delegate.row_number_enabled(cx) {
+                    1
+                } else {
+                    0
+                };
+                let changes = batch_edit_changes(selected_cells, new_value, row_number_offset);
+                self.delegate.set_cell_values(changes, window, cx)
+            } else {
+                self.delegate
+                    .on_cell_edited(row_ix, delegate_col_ix, new_value, window, cx)
+            };
+            if accepted {
+                cx.emit(EditTableEvent::CellEdited(row_ix, col_ix));
+            }
+            self.editing_cell = None;
+            self.editing_input = None;
+            self._subscriptions.clear();
+            cx.notify();
+        }
+    }
+
+    pub fn cancel_cell_edit(&mut self, cx: &mut Context<Self>) {
+        if self.editing_cell.is_some() {
+            self.editing_cell = None;
+            self.editing_input = None;
+            self._subscriptions.clear();
+            cx.notify();
+        }
+    }
+
+    pub fn editing_input(&self) -> Option<&CellEditor> {
+        self.editing_input.as_ref()
+    }
+
+    pub fn editing_cell(&self) -> Option<(usize, usize)> {
+        self.editing_cell
+    }
+
+    pub fn add_row(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // 契约：委托返回的是视图层的显示行号，滚动用的也是显示行号。
+        let row_ix = self.delegate.on_row_added(window, cx);
+        self.scroll_to_row(row_ix, cx);
+        cx.emit(EditTableEvent::RowAdded);
+        self.refresh(cx);
+        cx.notify();
+    }
+
+    pub fn delete_row(&mut self, row_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        self.delegate.on_row_deleted(row_ix, window, cx);
+        cx.emit(EditTableEvent::RowDeleted(row_ix));
+        self.clear_deleted_row_selection(row_ix);
+        self.refresh(cx);
+        cx.notify();
+    }
+
+    /// 一次删除多行（`display_row_indices` 是显示层行号）。
+    ///
+    /// 整批交给委托处理：逐行删除时行集与筛选映射会变，后面的显示行号会落到别的行上。
+    pub fn delete_rows(
+        &mut self,
+        display_row_indices: &[usize],
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.delegate
+            .on_rows_deleted(display_row_indices, window, cx);
+        for &row_ix in display_row_indices {
+            cx.emit(EditTableEvent::RowDeleted(row_ix));
+            self.clear_deleted_row_selection(row_ix);
+        }
+        self.refresh(cx);
+        cx.notify();
+    }
+
+    fn clear_deleted_row_selection(&mut self, row_ix: usize) {
+        let cleanup = deleted_row_selection_cleanup(
+            self.selected_row,
+            self.selected_cell,
+            &self.selection,
+            self.drag_end_cell,
+            self.drag_start,
+            row_ix,
+        );
+
+        if cleanup.clear_selection {
+            self.clear_selection_fields();
+        }
+
+        if cleanup.clear_drag_end {
+            self.drag_end_cell = None;
+        }
+
+        if cleanup.clear_drag_start {
+            self.drag_start = None;
+            self.is_selecting = false;
+        }
+    }
+
+    fn clear_selection_fields(&mut self) {
+        self.selection_state = SelectionState::Row;
+        self.selected_row = None;
+        self.selected_col = None;
+        self.selected_cell = None;
+        self.selection.clear();
+    }
+
+    fn on_col_head_click(&mut self, col_ix: usize, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.col_selectable {
+            return;
+        }
+
+        let Some(col_group) = self.col_groups.get(col_ix) else {
+            return;
+        };
+
+        if !col_group.column.selectable {
+            return;
+        }
+
+        self.set_selected_col(col_ix, cx)
+    }
+
+    fn has_selection(&self) -> bool {
+        self.selected_row.is_some() || self.selected_col.is_some()
+    }
+
+    pub(super) fn action_confirm(
+        &mut self,
+        _: &Confirm,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.editing_cell.is_some() {
+            self.commit_cell_edit(window, cx);
+        }
+    }
+
+    pub(super) fn action_find(&mut self, _: &Find, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.delegate.find_in_table_enabled(cx) {
+            // 未开启查找的表格把按键让给外层（例如页签的其它 Cmd/Ctrl+F 语义）。
+            cx.propagate();
+            return;
+        }
+        self.open_find(window, cx);
+    }
+
+    pub(super) fn action_find_next(
+        &mut self,
+        _: &FindNext,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.find_active() {
+            cx.propagate();
+            return;
+        }
+        self.find_next(cx);
+    }
+
+    pub(super) fn action_find_previous(
+        &mut self,
+        _: &FindPrevious,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.find_active() {
+            cx.propagate();
+            return;
+        }
+        self.find_previous(cx);
+    }
+
+    pub(super) fn action_cancel(
+        &mut self,
+        _: &Cancel,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        // 查找面板优先吃掉 Escape：先关查找，再退回到清除选区。
+        if self.find_panel_visible(cx) {
+            self.close_find(window, cx);
+            return;
+        }
+
+        if self.editing_cell.is_some() {
+            self.cancel_cell_edit(cx);
+            return;
+        }
+
+        if self.has_selection() {
+            self.clear_selection(cx);
+            return;
+        }
+        cx.propagate();
+    }
+
+    pub(super) fn action_select_prev(
+        &mut self,
+        _: &SelectUp,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let rows_count = self.delegate.rows_count(cx);
+        if rows_count < 1 {
+            return;
+        }
+
+        if self.has_cell_selection() {
+            let first_col_ix = self.first_data_col_ix(cx);
+            if let Some((row_ix, col_ix)) = self.current_cell_for_navigation() {
+                let new_row_ix = if row_ix > 0 {
+                    row_ix.saturating_sub(1)
+                } else if self.loop_selection {
+                    rows_count.saturating_sub(1)
+                } else {
+                    row_ix
+                };
+                self.select_cell_for_navigation(new_row_ix, col_ix.max(first_col_ix), cx);
+            } else {
+                self.select_cell_for_navigation(0, first_col_ix, cx);
+            }
+            return;
+        }
+
+        let mut selected_row = self.selected_row.unwrap_or(0);
+        if selected_row > 0 {
+            selected_row = selected_row.saturating_sub(1);
+        } else {
+            if self.loop_selection {
+                selected_row = rows_count.saturating_sub(1);
+            }
+        }
+
+        self.set_selected_row(selected_row, cx);
+    }
+
+    pub(super) fn action_select_next(
+        &mut self,
+        _: &SelectDown,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let rows_count = self.delegate.rows_count(cx);
+        if rows_count < 1 {
+            return;
+        }
+
+        if self.has_cell_selection() {
+            let first_col_ix = self.first_data_col_ix(cx);
+            if let Some((row_ix, col_ix)) = self.current_cell_for_navigation() {
+                let new_row_ix = if row_ix < rows_count.saturating_sub(1) {
+                    row_ix + 1
+                } else if self.loop_selection {
+                    0
+                } else {
+                    row_ix
+                };
+                self.select_cell_for_navigation(new_row_ix, col_ix.max(first_col_ix), cx);
+            } else {
+                self.select_cell_for_navigation(0, first_col_ix, cx);
+            }
+            return;
+        }
+
+        let selected_row = match self.selected_row {
+            Some(selected_row) if selected_row < rows_count.saturating_sub(1) => selected_row + 1,
+            Some(selected_row) => {
+                if self.loop_selection {
+                    0
+                } else {
+                    selected_row
+                }
+            }
+            _ => 0,
+        };
+
+        self.set_selected_row(selected_row, cx);
+    }
+
+    pub(super) fn action_select_first_column(
+        &mut self,
+        _: &SelectFirst,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.last_data_col_ix(cx).is_none() {
+            return;
+        }
+        let first_col_ix = self.first_data_col_ix(cx);
+        let rows_count = self.delegate.rows_count(cx);
+
+        if self.has_cell_selection() {
+            if rows_count == 0 {
+                return;
+            }
+
+            if let Some((row_ix, _)) = self.current_cell_for_navigation() {
+                self.select_cell_for_navigation(row_ix, first_col_ix, cx);
+            } else {
+                self.select_cell_for_navigation(0, first_col_ix, cx);
+            }
+            return;
+        }
+
+        self.set_selected_col(first_col_ix, cx);
+    }
+
+    pub(super) fn action_select_last_column(
+        &mut self,
+        _: &SelectLast,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(last_col_ix) = self.last_data_col_ix(cx) else {
+            return;
+        };
+        let rows_count = self.delegate.rows_count(cx);
+
+        if self.has_cell_selection() {
+            if rows_count == 0 {
+                return;
+            }
+
+            if let Some((row_ix, _)) = self.current_cell_for_navigation() {
+                self.select_cell_for_navigation(row_ix, last_col_ix, cx);
+            } else {
+                self.select_cell_for_navigation(0, last_col_ix, cx);
+            }
+            return;
+        }
+
+        self.set_selected_col(last_col_ix, cx);
+    }
+
+    pub(super) fn action_select_page_up(
+        &mut self,
+        _: &SelectPageUp,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let rows_count = self.delegate.rows_count(cx);
+        if rows_count < 1 {
+            return;
+        }
+
+        let step = self.page_item_count(cx);
+        if self.has_cell_selection() {
+            let first_col_ix = self.first_data_col_ix(cx);
+            if let Some((row_ix, col_ix)) = self.current_cell_for_navigation() {
+                let target_row_ix = row_ix.saturating_sub(step);
+                self.select_cell_for_navigation(target_row_ix, col_ix.max(first_col_ix), cx);
+            } else {
+                self.select_cell_for_navigation(0, first_col_ix, cx);
+            }
+            return;
+        }
+
+        let current_row_ix = self.selected_row.unwrap_or(0);
+        let target_row_ix = current_row_ix.saturating_sub(step);
+        self.set_selected_row(target_row_ix, cx);
+    }
+
+    pub(super) fn action_select_page_down(
+        &mut self,
+        _: &SelectPageDown,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let rows_count = self.delegate.rows_count(cx);
+        if rows_count < 1 {
+            return;
+        }
+
+        let step = self.page_item_count(cx);
+        if self.has_cell_selection() {
+            let first_col_ix = self.first_data_col_ix(cx);
+            if let Some((row_ix, col_ix)) = self.current_cell_for_navigation() {
+                let max_row_ix = rows_count.saturating_sub(1);
+                let target_row_ix = (row_ix + step).min(max_row_ix);
+                self.select_cell_for_navigation(target_row_ix, col_ix.max(first_col_ix), cx);
+            } else {
+                self.select_cell_for_navigation(0, first_col_ix, cx);
+            }
+            return;
+        }
+
+        let current_row_ix = self.selected_row.unwrap_or(0);
+        let max_row_ix = rows_count.saturating_sub(1);
+        let target_row_ix = (current_row_ix + step).min(max_row_ix);
+        self.set_selected_row(target_row_ix, cx);
+    }
+
+    pub(super) fn action_select_prev_col(
+        &mut self,
+        _: &SelectPrevColumn,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.has_cell_selection() {
+            self.move_to_prev_cell(cx);
+            return;
+        }
+
+        let Some(last_col_ix) = self.last_data_col_ix(cx) else {
+            return;
+        };
+        let first_col_ix = self.first_data_col_ix(cx);
+        let mut selected_col_ix = self
+            .selected_col
+            .unwrap_or(first_col_ix)
+            .clamp(first_col_ix, last_col_ix);
+        if selected_col_ix > first_col_ix {
+            selected_col_ix = selected_col_ix.saturating_sub(1);
+        } else if self.loop_selection {
+            selected_col_ix = last_col_ix;
+        }
+        self.set_selected_col(selected_col_ix, cx);
+    }
+
+    pub(super) fn action_select_next_col(
+        &mut self,
+        _: &SelectNextColumn,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.has_cell_selection() {
+            self.move_to_next_cell(cx);
+            return;
+        }
+
+        let Some(last_col_ix) = self.last_data_col_ix(cx) else {
+            return;
+        };
+        let first_col_ix = self.first_data_col_ix(cx);
+        let mut selected_col_ix = self
+            .selected_col
+            .unwrap_or(first_col_ix)
+            .clamp(first_col_ix, last_col_ix);
+        if selected_col_ix < last_col_ix {
+            selected_col_ix += 1;
+        } else if self.loop_selection {
+            selected_col_ix = first_col_ix;
+        }
+
+        self.set_selected_col(selected_col_ix, cx);
+    }
+
+    pub(super) fn action_editing_select_prev_col(
+        &mut self,
+        _: &OutdentInline,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.commit_and_move_to_prev_cell(window, cx);
+    }
+
+    pub(super) fn action_editing_select_next_col(
+        &mut self,
+        _: &IndentInline,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.commit_and_move_to_next_cell(window, cx);
+    }
+
+    // ==================== 复制/粘贴/全选 Actions ====================
+
+    /// 获取选中区域的数据（供业务层使用）
+    pub fn get_selection_data(&self, cx: &Context<Self>) -> Option<Vec<Vec<String>>> {
+        if self.selection.is_empty() {
+            return None;
+        }
+
+        let Some(range) = self.selection.first_range() else {
+            return None;
+        };
+
+        let row_number_offset = if self.delegate.row_number_enabled(cx) {
+            1
+        } else {
+            0
+        };
+        let ((min_row, min_col), (max_row, max_col)) = range.normalized();
+        let delegate_columns = selected_delegate_column_range(min_col, max_col, row_number_offset)?;
+
+        let mut data: Vec<Vec<String>> = Vec::new();
+        for row in min_row..=max_row {
+            let mut row_data: Vec<String> = Vec::new();
+            for delegate_col in delegate_columns.clone() {
+                let value = self.delegate.get_cell_value(row, delegate_col, cx);
+                row_data.push(value);
+            }
+            data.push(row_data);
+        }
+
+        if data.is_empty() { None } else { Some(data) }
+    }
+
+    /// 获取选中区域的数据，同时保留 SQL NULL (`None`) 与文本值 (`Some`) 的区别。
+    pub fn get_optional_selection_data(
+        &self,
+        cx: &Context<Self>,
+    ) -> Option<Vec<Vec<Option<String>>>> {
+        if self.selection.is_empty() {
+            return None;
+        }
+
+        let range = self.selection.first_range()?;
+        let row_number_offset = if self.delegate.row_number_enabled(cx) {
+            1
+        } else {
+            0
+        };
+        let ((min_row, min_col), (max_row, max_col)) = range.normalized();
+        let delegate_columns = selected_delegate_column_range(min_col, max_col, row_number_offset)?;
+
+        let mut data = Vec::new();
+        for row in min_row..=max_row {
+            let mut row_data = Vec::new();
+            for delegate_col in delegate_columns.clone() {
+                row_data.push(self.delegate.get_optional_cell_value(row, delegate_col, cx));
+            }
+            data.push(row_data);
+        }
+
+        if data.is_empty() { None } else { Some(data) }
+    }
+
+    /// 获取选中区域的列名（供业务层使用）
+    pub fn get_selection_columns(&self, cx: &Context<Self>) -> Vec<SharedString> {
+        self.get_selection_column_indices(cx)
+            .into_iter()
+            .map(|delegate_col| self.delegate.get_column_name(delegate_col, cx))
+            .collect()
+    }
+
+    /// 获取选中区域的 delegate 列索引（不包含行号列）。
+    pub fn get_selection_column_indices(&self, cx: &Context<Self>) -> Vec<usize> {
+        let Some(range) = self.selection.first_range() else {
+            return Vec::new();
+        };
+
+        let row_number_offset = if self.delegate.row_number_enabled(cx) {
+            1
+        } else {
+            0
+        };
+        let ((_, min_col), (_, max_col)) = range.normalized();
+
+        selected_delegate_column_range(min_col, max_col, row_number_offset)
+            .into_iter()
+            .flatten()
+            .collect()
+    }
+
+    /// 复制选中单元格 (Ctrl+C / Cmd+C)
+    pub(super) fn action_copy(&mut self, _: &Copy, window: &mut Window, cx: &mut Context<Self>) {
+        if self.selection.is_empty() {
+            return;
+        }
+
+        let Some(range) = self.selection.first_range() else {
+            return;
+        };
+
+        let row_number_offset = if self.delegate.row_number_enabled(cx) {
+            1
+        } else {
+            0
+        };
+        let ((min_row, min_col), (max_row, max_col)) = range.normalized();
+        let Some(delegate_columns) =
+            selected_delegate_column_range(min_col, max_col, row_number_offset)
+        else {
+            return;
+        };
+
+        // 收集选中单元格的原始值，保留 SQL NULL 与文本值的区别。
+        let mut data: Vec<Vec<Option<String>>> = Vec::new();
+        for row in min_row..=max_row {
+            let mut row_data: Vec<Option<String>> = Vec::new();
+            for delegate_col in delegate_columns.clone() {
+                let value = self.delegate.get_optional_cell_value(row, delegate_col, cx);
+                row_data.push(value);
+            }
+            data.push(row_data);
+        }
+
+        if data.is_empty() {
+            return;
+        }
+
+        // 转换为 TSV 格式（Tab 分隔，与 Excel 兼容），含分隔符/引号的值会被转义
+        let text = encode_tsv_rows(data.iter().map(|row| {
+            row.iter()
+                .map(|cell| cell.as_deref().unwrap_or("\\N"))
+                .collect::<Vec<_>>()
+        }));
+
+        // 写入剪贴板
+        cx.write_to_clipboard(ClipboardItem::new_string(text));
+
+        // 通知 delegate
+        self.delegate.on_copy(data.clone(), window, cx);
+
+        // 发射事件
+        cx.emit(EditTableEvent::CopyData(data));
+    }
+
+    /// 粘贴内容 (Ctrl+V / Cmd+V)
+    pub(super) fn action_paste(&mut self, _: &Paste, window: &mut Window, cx: &mut Context<Self>) {
+        // 获取活动单元格作为粘贴起点
+        let Some(start) = self.selection.active else {
+            return;
+        };
+
+        // 从剪贴板读取
+        let Some(clipboard) = cx.read_from_clipboard() else {
+            return;
+        };
+        let Some(text) = clipboard.text() else {
+            return;
+        };
+
+        // 解析 TSV 数据（与复制侧的转义对称）
+        let data: Vec<Vec<String>> = parse_tsv_rows(&text);
+
+        if data.is_empty() {
+            return;
+        }
+
+        let row_number_offset = if self.delegate.row_number_enabled(cx) {
+            1
+        } else {
+            0
+        };
+
+        // 构建变更列表
+        let mut changes: Vec<(usize, usize, String)> = Vec::new();
+
+        // 如果剪贴板是单值且有多选区域，则将该值填充到所有选中的单元格
+        let is_single_value =
+            data.len() == 1 && data[0].len() == 1 && self.selection.cell_count() > 1;
+
+        if is_single_value {
+            let value = &data[0][0];
+            for (row, col) in self.selection.all_cells() {
+                let delegate_col = col.saturating_sub(row_number_offset);
+                changes.push((row, delegate_col, value.clone()));
+            }
+        } else {
+            for (row_offset, row_data) in data.iter().enumerate() {
+                for (col_offset, value) in row_data.iter().enumerate() {
+                    let target_row = start.0 + row_offset;
+                    let target_col = start.1 + col_offset;
+                    // 转换为 delegate 的列索引
+                    let delegate_col = target_col.saturating_sub(row_number_offset);
+                    changes.push((target_row, delegate_col, value.clone()));
+                }
+            }
+        }
+
+        // 通过 delegate 应用变更
+        if self.delegate.set_cell_values(changes, window, cx) {
+            // 通知 delegate
+            self.delegate.on_paste(data.clone(), start, window, cx);
+
+            // 发射事件
+            cx.emit(EditTableEvent::PasteData { data, start });
+
+            // 刷新表格
+            self.refresh(cx);
+        }
+    }
+
+    /// 全选 (Ctrl+A / Cmd+A)
+    pub(super) fn action_select_all(
+        &mut self,
+        _: &SelectAll,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.delegate.multi_select_enabled(cx) {
+            return;
+        }
+        self.select_all_cells(cx);
+    }
+
+    fn scroll_table_by_col_resizing(
+        &mut self,
+        mouse_position: Point<Pixels>,
+        col_group: &ColGroup,
+    ) {
+        if mouse_position.x > self.bounds.right() {
+            return;
+        }
+
+        let mut offset = self.horizontal_scroll_handle.offset();
+        let col_bounds = col_group.bounds;
+
+        if mouse_position.x < self.bounds.left()
+            && col_bounds.right() < self.bounds.left() + px(20.)
+        {
+            offset.x += px(1.);
+        } else if mouse_position.x > self.bounds.right()
+            && col_bounds.right() > self.bounds.right() - px(20.)
+        {
+            offset.x -= px(1.);
+        }
+
+        self.horizontal_scroll_handle.set_offset(offset);
+    }
+
+    fn resize_cols(&mut self, ix: usize, size: Pixels, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.col_resizable {
+            return;
+        }
+
+        const MIN_WIDTH: Pixels = px(10.0);
+        const MAX_WIDTH: Pixels = px(1200.0);
+        let Some(col_group) = self.col_groups.get_mut(ix) else {
+            return;
+        };
+
+        if !col_group.is_resizable() {
+            return;
+        }
+        let size = size.floor();
+
+        let old_width = col_group.width;
+        let new_width = size;
+        if new_width < MIN_WIDTH {
+            return;
+        }
+        let changed_width = new_width - old_width;
+        if changed_width > px(-1.0) && changed_width < px(1.0) {
+            return;
+        }
+        col_group.width = new_width.min(MAX_WIDTH);
+
+        cx.notify();
+    }
+
+    fn perform_sort(&mut self, col_ix: usize, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.sortable {
+            return;
+        }
+
+        let sort = self.col_groups.get(col_ix).and_then(|g| g.column.sort);
+        if sort.is_none() {
+            return;
+        }
+
+        let sort = sort.unwrap();
+        let sort = match sort {
+            ColumnSort::Ascending => ColumnSort::Default,
+            ColumnSort::Descending => ColumnSort::Ascending,
+            ColumnSort::Default => ColumnSort::Descending,
+        };
+
+        for (ix, col_group) in self.col_groups.iter_mut().enumerate() {
+            if ix == col_ix {
+                col_group.column.sort = Some(sort);
+            } else {
+                if col_group.column.sort.is_some() {
+                    col_group.column.sort = Some(ColumnSort::Default);
+                }
+            }
+        }
+
+        let delegate_col_ix = if self.delegate.row_number_enabled(cx) {
+            col_ix.saturating_sub(1)
+        } else {
+            col_ix
+        };
+
+        self.delegate_mut()
+            .perform_sort(delegate_col_ix, sort, window, cx);
+
+        cx.notify();
+    }
+
+    fn move_column(
+        &mut self,
+        col_ix: usize,
+        to_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if col_ix == to_ix {
+            return;
+        }
+
+        let row_number_offset = if self.delegate.row_number_enabled(cx) {
+            1
+        } else {
+            0
+        };
+        if row_number_offset > 0 && (col_ix == 0 || to_ix == 0) {
+            return;
+        }
+
+        let delegate_col_ix = col_ix.saturating_sub(row_number_offset);
+        let delegate_to_ix = to_ix.saturating_sub(row_number_offset);
+
+        self.delegate
+            .move_column(delegate_col_ix, delegate_to_ix, window, cx);
+        let col_group = self.col_groups.remove(col_ix);
+        self.col_groups.insert(to_ix, col_group);
+
+        cx.emit(EditTableEvent::MoveColumn(col_ix, to_ix));
+        cx.notify();
+    }
+
+    fn load_more_if_need(
+        &mut self,
+        rows_count: usize,
+        visible_end: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let threshold = self.delegate.load_more_threshold();
+        if visible_end >= rows_count.saturating_sub(threshold) {
+            if !self.delegate.has_more(cx) {
+                return;
+            }
+
+            self._load_more_task = cx.spawn_in(window, async move |view, window| {
+                _ = view.update_in(window, |view, window, cx| {
+                    view.delegate.load_more(window, cx);
+                });
+            });
+        }
+    }
+
+    fn update_visible_range_if_need(
+        &mut self,
+        visible_range: Range<usize>,
+        axis: Axis,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if visible_range.len() <= 1 {
+            return;
+        }
+
+        if axis == Axis::Vertical {
+            if self.visible_range.rows == visible_range {
+                return;
+            }
+            // 清理不可见行的单元格边界缓存
+            self.cell_bounds
+                .retain(|(row, _), _| visible_range.contains(row));
+            self.delegate_mut()
+                .visible_rows_changed(visible_range.clone(), window, cx);
+            self.visible_range.rows = visible_range;
+        } else {
+            if self.visible_range.cols == visible_range {
+                return;
+            }
+            self.delegate_mut()
+                .visible_columns_changed(visible_range.clone(), window, cx);
+            self.visible_range.cols = visible_range;
+        }
+    }
+
+    fn render_cell(
+        &mut self,
+        col_ix: usize,
+        row_ix: Option<usize>,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let cell_font = self.delegate.cell_font(cx);
+        let Some(col_group) = self.col_groups.get(col_ix) else {
+            return div().id("empty-cell");
+        };
+
+        // 检查是否在多选区内（行选中时不显示单元格选区效果）
+        let is_cell_selection_mode = self.selection_state == SelectionState::Cell;
+        let is_in_selection = is_cell_selection_mode
+            && row_ix
+                .map(|r| self.selection.contains(r, col_ix))
+                .unwrap_or(false);
+
+        // 检查是否是活动单元格
+        let is_active_cell = is_cell_selection_mode
+            && row_ix
+                .map(|r| self.selection.active == Some((r, col_ix)))
+                .unwrap_or(false);
+
+        // 是否为多选状态（选区包含多个单元格）
+        let is_multi_selection = is_cell_selection_mode
+            && (self.selection.ranges.len() > 1
+                || self.selection.ranges.iter().any(|r| !r.is_single()));
+
+        // 计算选区边框（只在选区边界显示，且仅限单元格选择模式）
+        let (border_top, border_bottom, border_left, border_right) =
+            if is_in_selection && row_ix.is_some() {
+                let r = row_ix.unwrap();
+                let top = r == 0 || !self.selection.contains(r - 1, col_ix);
+                let bottom = !self.selection.contains(r + 1, col_ix);
+                let left = col_ix == 0 || !self.selection.contains(r, col_ix - 1);
+                let right = !self.selection.contains(r, col_ix + 1);
+                (top, bottom, left, right)
+            } else {
+                (false, false, false, false)
+            };
+
+        // 旧的单选逻辑（向后兼容）
+        let is_select_cell = match self.selected_cell {
+            None => false,
+            Some(cell) => row_ix.is_some() && row_ix.unwrap() == cell.0 && col_ix == cell.1,
+        };
+
+        let col_width = col_group.width;
+        let col_padding = col_group.column.paddings;
+
+        let is_row_number_col = self.delegate.row_number_enabled(cx) && col_ix == 0;
+        let is_modified = if is_row_number_col {
+            false
+        } else {
+            row_ix
+                .map(|r| {
+                    let delegate_col_ix = if self.delegate.row_number_enabled(cx) {
+                        col_ix - 1
+                    } else {
+                        col_ix
+                    };
+                    self.delegate.is_cell_modified(r, delegate_col_ix, cx)
+                })
+                .unwrap_or(false)
+        };
+
+        let cell_id = match row_ix {
+            Some(r) => ("cell", r * 10000 + col_ix),
+            None => ("cell-header", col_ix),
+        };
+
+        let is_editing = row_ix.is_some() && self.editing_cell == Some((row_ix.unwrap(), col_ix));
+        let selection_border_color = cx.theme().table_active_border;
+        // 定位标记只染表头这一格，不染整列（见 `located_col` 字段注释）。
+        let is_located_header = row_ix.is_none() && self.located_col == Some(col_ix);
+
+        let is_single_select_active =
+            (is_active_cell || is_select_cell) && !is_editing && !is_multi_selection;
+        let show_column_separator = !is_editing && !border_right && !is_single_select_active;
+
+        let mut cell = div()
+            .id(cell_id)
+            .w(col_width)
+            .h_full()
+            .relative()
+            .flex_shrink_0()
+            .overflow_hidden()
+            .whitespace_nowrap()
+            .when_some(cell_font, |this, font| this.font(font))
+            .when(show_column_separator, |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .right_0()
+                        .bottom_0()
+                        .w(COLUMN_SEPARATOR_WIDTH)
+                        .bg(cx.theme().border),
+                )
+            })
+            // 选区内的所有单元格使用背景色
+            .when(is_in_selection && !is_editing, |this| {
+                this.bg(cx.theme().table_active)
+            })
+            // 定位标记：只给这一列的表头底色
+            .when(is_located_header, |this| this.bg(cx.theme().table_active))
+            // 选区边框 - 上边界
+            .when(border_top, |this| {
+                this.border_t_2().border_color(selection_border_color)
+            })
+            // 选区边框 - 下边界
+            .when(border_bottom, |this| {
+                this.border_b_2().border_color(selection_border_color)
+            })
+            // 选区边框 - 左边界
+            .when(border_left, |this| {
+                this.border_l_2().border_color(selection_border_color)
+            })
+            // 选区边框 - 右边界
+            .when(border_right, |this| {
+                this.border_r_2().border_color(selection_border_color)
+            })
+            // 活动单元格额外添加完整边框（仅在单选时显示）
+            .when(is_single_select_active, |this| {
+                this.border_2().border_color(selection_border_color)
+            })
+            // 编辑状态的单元格
+            .when(is_editing, |this| {
+                this.bg(cx.theme().background)
+                    .border_2()
+                    .border_color(cx.theme().ring)
+            })
+            .when(is_modified && !is_editing && !is_in_selection, |this| {
+                this.bg(cx.theme().warning.opacity(0.15))
+            });
+
+        // 统一布局：编辑和显示模式使用相同的容器 padding
+        cell = cell.table_cell_size(self.options.size);
+
+        let size_pad = self.options.size.table_cell_padding();
+        let (target_pt, target_pb, target_pl, target_pr) = match col_padding {
+            Some(p) => (p.top, p.bottom, p.left, p.right),
+            None => (size_pad.top, size_pad.bottom, size_pad.left, size_pad.right),
+        };
+
+        // 边框补偿：编辑态始终有 border_2；显示态仅选中时有
+        let (has_t, has_b, has_l, has_r) = if is_editing {
+            (true, true, true, true)
+        } else {
+            (
+                border_top || is_single_select_active,
+                border_bottom || is_single_select_active,
+                border_left || is_single_select_active,
+                border_right || is_single_select_active,
+            )
+        };
+        let b = px(2.);
+        cell = cell
+            .pt(if has_t {
+                (target_pt - b).max(px(0.))
+            } else {
+                target_pt
+            })
+            .pb(if has_b {
+                (target_pb - b).max(px(0.))
+            } else {
+                target_pb
+            })
+            .pl(if has_l {
+                (target_pl - b).max(px(0.))
+            } else {
+                target_pl
+            })
+            .pr(if has_r {
+                (target_pr - b).max(px(0.))
+            } else {
+                target_pr
+            });
+
+        // 编辑模式：嵌入轻量编辑器（无自带样式，由容器控制布局）
+        if is_editing {
+            if let Some(editor) = &self.editing_input {
+                cell = cell.child(editor.render(window, cx));
+            }
+        }
+
+        cell
+    }
+
+    /// 渲染带有交互事件的单元格（拖选、点击等）
+    fn render_interactive_cell(
+        &mut self,
+        col_ix: usize,
+        row_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let entity_id = cx.entity_id();
+        let is_editing = self.editing_cell == Some((row_ix, col_ix));
+        let is_row_number_col = self.delegate.row_number_enabled(cx) && col_ix == 0;
+        let view = cx.entity().clone();
+
+        let cell = self
+            .render_cell(col_ix, Some(row_ix), window, cx)
+            // 点击事件
+            .on_click(cx.listener(move |this, e, window, cx| {
+                this.on_cell_click(e, row_ix, col_ix, window, cx);
+            }))
+            // 鼠标按下准备拖选
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, e: &MouseDownEvent, _window, cx| {
+                    if is_row_number_col {
+                        return;
+                    }
+                    let add_to_selection = e.modifiers.secondary(cx);
+                    this.prepare_drag_selection(row_ix, col_ix, add_to_selection, cx);
+                }),
+            )
+            // 拖动事件 - 用于初始化拖动，立即开始选区
+            .on_drag(DragSelectCell { entity_id }, {
+                let view = view.clone();
+                move |drag, _, _, cx| {
+                    cx.stop_propagation();
+                    // 开始拖动时立即开始选区。编辑态下放弃这次拖选：起点可能是在
+                    // 进入编辑之前就记录下来的，而拖动本身是编辑器在选文本（#302）。
+                    view.update(cx, |this, cx| {
+                        if let Some((start_row, start_col, add_to_selection)) =
+                            pending_grid_drag(this.editing_cell, this.drag_start.take())
+                        {
+                            this.is_selecting = true;
+                            this.selection
+                                .start_drag((start_row, start_col), add_to_selection);
+                            this.sync_legacy_selection(cx);
+                            cx.notify();
+                        }
+                    });
+                    cx.new(|_| drag.clone())
+                }
+            })
+            // 拖动移动事件 - 更新选区（通过命中测试）
+            .on_drag_move(cx.listener(
+                move |this, e: &DragMoveEvent<DragSelectCell>, _window, cx| {
+                    let drag = e.drag(cx);
+                    if drag.entity_id != cx.entity_id() {
+                        return;
+                    }
+                    // 行号列不参与拖选更新
+                    if is_row_number_col {
+                        return;
+                    }
+                    // 检查鼠标位置是否在当前单元格内
+                    if let Some(bounds) = this.cell_bounds.get(&(row_ix, col_ix)) {
+                        if bounds.contains(&e.event.position) {
+                            // 更新拖选到当前单元格
+                            this.update_drag_selection(row_ix, col_ix, cx);
+                        }
+                    }
+                },
+            ))
+            // 鼠标释放结束拖选
+            .on_mouse_up(
+                MouseButton::Left,
+                cx.listener(move |this, _, _window, cx| {
+                    this.end_drag_selection(cx);
+                }),
+            )
+            // 使用 canvas 追踪单元格边界
+            .child({
+                canvas(
+                    move |bounds, _, cx| {
+                        view.update(cx, |state, _| {
+                            state.cell_bounds.insert((row_ix, col_ix), bounds);
+                        });
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .size_full()
+            });
+
+        if is_editing {
+            return cell;
+        }
+
+        // 高亮与 td 内容必须共用同一个坐标系：单元格的 padding 会把内容推离
+        // padding box，而高亮的横向原点取的是自身 bounds，所以两者要一起放进
+        // 「内容区」盒子里，否则整条高亮会左移一个 padding 的宽度。
+        let highlight = self.render_find_highlight(row_ix, col_ix, window, cx);
+        let content = self.measure_render_td(row_ix, col_ix, window, cx);
+
+        let mut cell = cell.child(
+            h_flex()
+                .size_full()
+                .relative()
+                .child(
+                    div()
+                        .absolute()
+                        .inset_0()
+                        .overflow_hidden()
+                        .child(highlight),
+                )
+                .child(content),
+        );
+
+        // 当前命中的单元格整体描边。
+        //
+        // 单元格是单行截断显示的（`nowrap` + `text_ellipsis`），命中落在截断区
+        // 之后时，上面那条高亮会被 `overflow_hidden` 整条裁掉——屏幕上再没有
+        // 任何提示，用户就判断不出命中在哪个格子里。描边用 absolute 叠加，不参与
+        // 布局，所以不会让单元格内容跳动。
+        if self.find_current_cell == Some((row_ix, col_ix)) {
+            let accent = find_highlight_color(cx.theme().selection, true);
+            cell = cell.child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .border_2()
+                    .border_color(accent)
+                    .bg(accent.opacity(0.12)),
+            );
+        }
+
+        cell
+    }
+
+    /// 绘制该单元格内的查找命中高亮。
+    ///
+    /// 命中区间是「整行文本」的**字符**坐标，所以这里按单元格在行内的
+    /// 起始偏移做平移，只把落在本单元格内的片段交给绘制元素；
+    /// 字符 → 字节的换算由 [`super::find::highlight_bands`] 统一负责。
+    fn render_find_highlight(
+        &self,
+        row_ix: usize,
+        col_ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        if self.find_rows.is_empty() {
+            return div().into_any_element();
+        }
+
+        let segments = self.find_highlight_segments(row_ix);
+        if segments.is_empty() {
+            return div().into_any_element();
+        }
+
+        let row_number_offset = if self.delegate.row_number_enabled(cx) {
+            1
+        } else {
+            0
+        };
+        if col_ix < row_number_offset {
+            return div().into_any_element();
+        }
+        let delegate_col_ix = col_ix - row_number_offset;
+
+        let cells: Vec<Option<String>> = (0..self.delegate.columns_count(cx))
+            .map(|ix| self.delegate.find_cell_text(row_ix, ix, cx))
+            .collect();
+        let row_text: SharedString = super::find::row_text(&cells).into();
+        let cell_start: usize = cells
+            .iter()
+            .take(delegate_col_ix)
+            .map(|cell| cell_text_len(cell) + super::find::CELL_SEPARATOR_CHARS)
+            .sum();
+        let cell_char_count = cells.get(delegate_col_ix).map_or(0, cell_text_len);
+        let cell_range = cell_start..cell_start + cell_char_count;
+
+        let visible: Vec<HighlightSegment> = segments
+            .into_iter()
+            .filter_map(|segment| {
+                let start = segment.char_range.start.max(cell_range.start);
+                let end = segment.char_range.end.min(cell_range.end);
+                (start < end).then_some(HighlightSegment {
+                    char_range: start..end,
+                    is_current: segment.is_current,
+                })
+            })
+            .collect();
+        if visible.is_empty() {
+            return div().into_any_element();
+        }
+
+        // 字体/字号由元素在 paint 期从 text_style_stack 现场解析（见 element.rs），
+        // 这里不再传：render 期的环境字体与 td 实际渲染字体不同，会导致高亮漂移。
+        FindHighlightElement::new(
+            row_text,
+            cell_range,
+            std::rc::Rc::new(visible),
+            cx.theme().selection,
+        )
+        .into_any_element()
+    }
+
+    fn render_col_wrap(&self, col_ix: usize, _: &mut Window, cx: &mut Context<Self>) -> Div {
+        let el = h_flex().h_full();
+        let selectable = self.col_selectable
+            && self
+                .col_groups
+                .get(col_ix)
+                .map(|col_group| col_group.column.selectable)
+                .unwrap_or(false);
+
+        if selectable
+            && self.selected_col == Some(col_ix)
+            && self.selection_state == SelectionState::Column
+        {
+            el.bg(cx.theme().table_active)
+        } else {
+            el
+        }
+    }
+
+    /// 列宽分隔条能否拖动：整体允许缩放，且这一列本身可缩放。
+    fn is_col_resizable(&self, ix: usize) -> bool {
+        self.col_resizable
+            && self
+                .col_groups
+                .get(ix)
+                .map(|col| col.is_resizable())
+                .unwrap_or(false)
+    }
+
+    /// 第 `ix - 1` 列与第 `ix` 列的边界是否落在同一个表头分组内。
+    ///
+    /// 表头被拆成「固定列」和「横向滚动列」两组渲染：滚动组的左边缘会随
+    /// 横向滚动跑，固定组的右边缘不动，两者只在未滚动时重合。跨组的边界只能
+    /// 靠左侧那一列自己的右半边抓取，否则会在滚动后留下一条错位的假抓取区。
+    fn boundary_is_inside_one_head_group(&self, ix: usize) -> bool {
+        match (ix.checked_sub(1), self.col_groups.get(ix)) {
+            (Some(prev), Some(current)) => self
+                .col_groups
+                .get(prev)
+                .is_some_and(|prev| prev.column.fixed == current.column.fixed),
+            _ => false,
+        }
+    }
+
+    /// 分隔条的抓取区：只管命中、光标与拖动，位置和外观由调用方决定。
+    ///
+    /// 抓取区被列边界一分为二（左右各 [`COLUMN_RESIZE_GRAB_PADDING`] 宽），
+    /// 所以边界两侧的列各自渲染自己那半边。两半边都压在自己列的内容之上，
+    /// 后画的兄弟节点先拿到鼠标，不会被单元格抢走。
+    fn resize_handle_band(
+        &self,
+        ix: usize,
+        id: ElementId,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        h_flex()
+            .id(id)
+            .occlude()
+            .cursor_col_resize()
+            .on_drag_move(
+                cx.listener(move |view, e: &DragMoveEvent<ResizeColumn>, window, cx| {
+                    match e.drag(cx) {
+                        ResizeColumn((entity_id, ix)) => {
+                            if cx.entity_id() != *entity_id {
+                                return;
+                            }
+
+                            let ix = *ix;
+                            view.resizing_col = Some(ix);
+
+                            let col_group = view
+                                .col_groups
+                                .get(ix)
+                                .expect("BUG: invalid col index")
+                                .clone();
+
+                            view.resize_cols(
+                                ix,
+                                e.event.position.x
+                                    - COLUMN_RESIZE_DRAG_OFFSET
+                                    - col_group.bounds.left(),
+                                window,
+                                cx,
+                            );
+
+                            view.scroll_table_by_col_resizing(e.event.position, &col_group);
+                        }
+                    };
+                }),
+            )
+            .on_drag(ResizeColumn((cx.entity_id(), ix)), |drag, _, _, cx| {
+                cx.stop_propagation();
+                cx.new(|_| drag.clone())
+            })
+            .on_mouse_up_out(
+                MouseButton::Left,
+                cx.listener(|view, _, _, cx| view.finish_column_resize(cx)),
+            )
+    }
+
+    /// 结束一次列宽拖动：清掉拖动态并把新列宽广播给宿主。
+    fn finish_column_resize(&mut self, cx: &mut Context<Self>) {
+        if self.resizing_col.is_none() {
+            return;
+        }
+
+        self.resizing_col = None;
+
+        let new_widths = self.col_groups.iter().map(|g| g.width).collect();
+        cx.emit(EditTableEvent::ColumnWidthsChanged(new_widths));
+        cx.notify();
+    }
+
+    /// 列边界的右半边：贴在第 `ix` 列右缘内侧，并画出分隔线。
+    fn render_resize_handle(
+        &self,
+        ix: usize,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        if !self.is_col_resizable(ix) {
+            return div().into_any_element();
+        }
+
+        let group_id = SharedString::from(format!("resizable-handle:{}", ix));
+        let dragging = self.resizing_col == Some(ix);
+        // 拖动中指针大多已经离开抓取区，悬停态这时不再可信：拖动态必须压过
+        // 它，否则分隔线会在「拖动中」和「悬停」两个颜色之间来回闪。
+        let (line_color, hover_color) = if dragging {
+            (cx.theme().drag_border, cx.theme().drag_border)
+        } else {
+            (cx.theme().table_row_border, cx.theme().border)
+        };
+
+        self.resize_handle_band(ix, ("resizable-handle", ix).into(), cx)
+            .debug_selector(move || format!("resizable-handle-{ix}"))
+            .group(group_id.clone())
+            .h_full()
+            .w(COLUMN_RESIZE_GRAB_PADDING)
+            .ml(-COLUMN_RESIZE_GRAB_PADDING)
+            .justify_end()
+            .items_center()
+            .child(
+                div()
+                    .h_full()
+                    .w(COLUMN_RESIZE_LINE_WIDTH)
+                    .bg(line_color)
+                    .group_hover(group_id, move |this| this.bg(hover_color).h_full()),
+            )
+            .into_any_element()
+    }
+
+    /// 列边界的左半边：贴在第 `ix` 列左缘内侧，也就是第 `ix - 1` 列右边界
+    /// 的另一半抓取区。只负责把鼠标接住，分隔线仍由左侧那一列画。
+    fn render_leading_resize_handle(
+        &self,
+        ix: usize,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let Some(boundary) = ix
+            .checked_sub(1)
+            .filter(|boundary| self.is_col_resizable(*boundary))
+            .filter(|_| self.boundary_is_inside_one_head_group(ix))
+        else {
+            return div().into_any_element();
+        };
+
+        self.resize_handle_band(boundary, ("resizable-handle-leading", ix).into(), cx)
+            .debug_selector(move || format!("resizable-handle-leading-{ix}"))
+            .absolute()
+            .top_0()
+            .left_0()
+            .h_full()
+            .w(COLUMN_RESIZE_GRAB_PADDING)
+            .into_any_element()
+    }
+
+    fn render_sort_icon(
+        &self,
+        col_ix: usize,
+        col_group: &ColGroup,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
+        if !self.sortable {
+            return None;
+        }
+
+        let Some(sort) = col_group.column.sort else {
+            return None;
+        };
+
+        let (icon, is_on) = match sort {
+            ColumnSort::Ascending => (IconName::SortAscending, true),
+            ColumnSort::Descending => (IconName::SortDescending, true),
+            ColumnSort::Default => (IconName::ChevronsUpDown, false),
+        };
+
+        Some(
+            div()
+                .id(("icon-sort", col_ix))
+                .p(px(2.))
+                .rounded(cx.theme().radius / 2.)
+                .map(|this| match is_on {
+                    true => this,
+                    false => this.opacity(0.5),
+                })
+                .hover(|this| this.bg(cx.theme().secondary).opacity(7.))
+                .active(|this| this.bg(cx.theme().secondary_active).opacity(1.))
+                .on_click(
+                    cx.listener(move |table, _, window, cx| table.perform_sort(col_ix, window, cx)),
+                )
+                .child(
+                    Icon::new(icon)
+                        .size_3()
+                        .text_color(cx.theme().secondary_foreground),
+                ),
+        )
+    }
+
+    fn render_filter_icon(
+        &self,
+        col_ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
+        if !self.col_filterable || !self.delegate.column_filter_enabled(cx) {
+            return None;
+        }
+
+        let is_filtered = self.filter_state.is_column_filtered(col_ix);
+        let is_open = self.active_filter_col == Some(col_ix);
+        let table_entity = cx.entity().clone();
+
+        use gpui_component::{
+            Sizable, Size, button::Button, button::ButtonVariants, popover::Popover,
+        };
+
+        let filter_content = if is_open {
+            Some(self.render_filter_panel_content(col_ix, _window, cx))
+        } else {
+            None
+        };
+
+        Some(
+            Popover::new(("filter-popover", col_ix))
+                .trigger(
+                    Button::new(("filter-btn", col_ix))
+                        .icon(IconName::Search)
+                        .ghost()
+                        .with_size(Size::XSmall)
+                        .when(is_filtered, |this| this.primary()),
+                )
+                .open(is_open)
+                .on_open_change({
+                    let entity = table_entity.clone();
+                    move |open, window, cx| {
+                        entity.update(cx, |table, cx| {
+                            if *open {
+                                table.open_filter_panel(col_ix, window, cx);
+                            } else {
+                                table.close_filter_panel(cx);
+                            }
+                        });
+                    }
+                })
+                .p_0()
+                .children(filter_content),
+        )
+    }
+
+    fn render_filter_panel_content(
+        &self,
+        col_ix: usize,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        use gpui_component::{Sizable, Size, button::Button, button::ButtonVariants};
+
+        let table_entity = cx.entity().clone();
+        let selected_count = self.filter_panel_selected_count(cx);
+        let total_count = self.filter_panel_total_count(cx);
+
+        let filter_list = match &self.filter_list {
+            Some(list) => list.clone(),
+            None => return div().into_any_element(),
+        };
+
+        v_flex()
+            .w(px(280.))
+            .max_h(px(400.))
+            .gap_2()
+            .p_2()
+            .child(
+                h_flex()
+                    .w_full()
+                    .justify_between()
+                    .items_center()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(cx.theme().muted_foreground)
+                            .child(
+                                t!(
+                                    "EditTable.selected_count",
+                                    selected = selected_count,
+                                    total = total_count
+                                )
+                                .to_string(),
+                            ),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_1()
+                            .child(
+                                Button::new("filter-select-all")
+                                    .label(t!("EditTable.select_all").to_string())
+                                    .ghost()
+                                    .with_size(Size::XSmall)
+                                    .on_click({
+                                        let entity = table_entity.clone();
+                                        move |_, window, cx| {
+                                            entity.update(cx, |table, cx| {
+                                                table.filter_panel_select_all_realtime(
+                                                    col_ix, window, cx,
+                                                );
+                                            });
+                                        }
+                                    }),
+                            )
+                            .child(
+                                Button::new("filter-deselect-all")
+                                    .label(t!("EditTable.clear").to_string())
+                                    .ghost()
+                                    .with_size(Size::XSmall)
+                                    .on_click({
+                                        let entity = table_entity.clone();
+                                        move |_, window, cx| {
+                                            entity.update(cx, |table, cx| {
+                                                table.filter_panel_deselect_all_realtime(
+                                                    col_ix, window, cx,
+                                                );
+                                            });
+                                        }
+                                    }),
+                            ),
+                    ),
+            )
+            .child(div().h(px(1.)).w_full().bg(cx.theme().border))
+            .child(
+                List::new(&filter_list)
+                    .max_h(px(200.))
+                    .p(px(8.))
+                    .flex_1()
+                    .w_full()
+                    .border_1()
+                    .border_color(cx.theme().border)
+                    .rounded(cx.theme().radius),
+            )
+            .into_any_element()
+    }
+
+    fn render_th(&mut self, col_ix: usize, window: &mut Window, cx: &mut Context<Self>) -> Div {
+        let entity_id = cx.entity_id();
+        let col_group = self
+            .col_groups
+            .get(col_ix)
+            .expect("BUG: invalid col index")
+            .clone();
+
+        let is_row_number_col = self.delegate.row_number_enabled(cx) && col_ix == 0;
+        let movable = self.col_movable && col_group.column.movable && !is_row_number_col;
+        let paddings = col_group.column.paddings;
+        let name = col_group.column.name.clone();
+        let delegate_col_ix = if self.delegate.row_number_enabled(cx) && col_ix > 0 {
+            col_ix - 1
+        } else {
+            col_ix
+        };
+        let delegate_col_ix_menu = delegate_col_ix;
+
+        h_flex()
+            .h_full()
+            .child(
+                self.render_cell(col_ix, None, window, cx)
+                    .id(("col-header", col_ix))
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        this.on_col_head_click(col_ix, window, cx);
+                    }))
+                    .on_mouse_down(
+                        MouseButton::Right,
+                        cx.listener(move |this, _, _, _| {
+                            this.right_clicked_col =
+                                (!is_row_number_col).then_some(delegate_col_ix_menu);
+                            this.right_clicked_row = None;
+                        }),
+                    )
+                    .child(
+                        h_flex()
+                            .size_full()
+                            .justify_between()
+                            .items_center()
+                            .child(if is_row_number_col {
+                                div()
+                                    .size_full()
+                                    .flex()
+                                    .items_center()
+                                    .justify_end()
+                                    .child(col_group.column.name.clone())
+                                    .into_any_element()
+                            } else {
+                                self.delegate
+                                    .render_th(delegate_col_ix, window, cx)
+                                    .into_any_element()
+                            })
+                            .when_some(paddings, |this, paddings| {
+                                let offset_pr =
+                                    self.options.size.table_cell_padding().right - paddings.right;
+                                this.pr(offset_pr.max(px(0.)))
+                            })
+                            .when(!is_row_number_col, |this| {
+                                this.children(self.render_filter_icon(delegate_col_ix, window, cx))
+                            })
+                            .when(!is_row_number_col, |this| {
+                                this.children(self.render_sort_icon(col_ix, &col_group, window, cx))
+                            }),
+                    )
+                    .when(movable, |this| {
+                        this.on_drag(
+                            DragColumn {
+                                entity_id,
+                                col_ix: delegate_col_ix,
+                                name,
+                                width: col_group.width,
+                            },
+                            |drag, _, _, cx| {
+                                cx.stop_propagation();
+                                cx.new(|_| drag.clone())
+                            },
+                        )
+                        .drag_over::<DragColumn>(|this, _, _, cx| {
+                            this.rounded_l_none()
+                                .border_l_2()
+                                .border_r_0()
+                                .border_color(cx.theme().drag_border)
+                        })
+                        .on_drop(cx.listener(
+                            move |table, drag: &DragColumn, window, cx| {
+                                if drag.entity_id != cx.entity_id() {
+                                    return;
+                                }
+
+                                table.move_column(drag.col_ix, delegate_col_ix, window, cx);
+                            },
+                        ))
+                    }),
+            )
+            .child(self.render_resize_handle(col_ix, window, cx))
+            .child(self.render_leading_resize_handle(col_ix, window, cx))
+            .child({
+                let view = cx.entity().clone();
+                canvas(
+                    move |bounds, _, cx| {
+                        view.update(cx, |r, _| r.col_groups[col_ix].bounds = bounds)
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .size_full()
+            })
+    }
+
+    fn render_table_header(
+        &mut self,
+        left_columns_count: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let view = cx.entity().clone();
+        let horizontal_scroll_handle = self.horizontal_scroll_handle.clone();
+
+        if left_columns_count == 0 {
+            self.fixed_head_cols_bounds = Bounds::default();
+        }
+
+        let mut header = self.delegate_mut().render_header(window, cx);
+        let style = header.style().clone();
+
+        header
+            .h_flex()
+            .w_full()
+            .h(crate::table_header_height_or(
+                cx,
+                self.options.size.table_row_height(),
+            ))
+            .debug_selector(|| HEAD_ROW_SELECTOR.to_owned())
+            .flex_shrink_0()
+            .border_b_1()
+            .border_color(cx.theme().border)
+            .text_color(cx.theme().table_head_foreground)
+            .refine_style(&style)
+            .when(left_columns_count > 0, |this| {
+                let view = view.clone();
+                this.child(
+                    h_flex()
+                        .relative()
+                        .h_full()
+                        .bg(cx.theme().table_head)
+                        .children(
+                            self.col_groups
+                                .clone()
+                                .into_iter()
+                                .filter(|col| col.column.fixed == Some(ColumnFixed::Left))
+                                .enumerate()
+                                .map(|(col_ix, _)| self.render_th(col_ix, window, cx)),
+                        )
+                        .child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .right_0()
+                                .bottom_0()
+                                .w_0()
+                                .flex_shrink_0()
+                                .border_r_1()
+                                .border_color(cx.theme().border),
+                        )
+                        .child(
+                            canvas(
+                                move |bounds, _, cx| {
+                                    view.update(cx, |r, _| r.fixed_head_cols_bounds = bounds)
+                                },
+                                |_, _, _, _| {},
+                            )
+                            .absolute()
+                            .size_full(),
+                        ),
+                )
+            })
+            .child(
+                h_flex()
+                    .id("table-head")
+                    .size_full()
+                    .overflow_hidden()
+                    .relative()
+                    .track_scroll(&horizontal_scroll_handle)
+                    .bg(cx.theme().table_head)
+                    .child(
+                        h_flex()
+                            .relative()
+                            .children(
+                                self.col_groups
+                                    .clone()
+                                    .into_iter()
+                                    .skip(left_columns_count)
+                                    .enumerate()
+                                    .map(|(col_ix, _)| {
+                                        self.render_th(left_columns_count + col_ix, window, cx)
+                                    }),
+                            )
+                            .child(self.delegate.render_last_empty_col(window, cx)),
+                    ),
+            )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn render_table_row(
+        &mut self,
+        row_ix: usize,
+        rows_count: usize,
+        left_columns_count: usize,
+        _col_sizes: Rc<Vec<gpui::Size<Pixels>>>,
+        columns_count: usize,
+        is_filled: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let horizontal_scroll_handle = self.horizontal_scroll_handle.clone();
+        let is_stripe_row = self.options.stripe && row_ix % 2 != 0;
+        let is_selected = self.is_row_in_selection(row_ix);
+        let is_row_deleted = self.delegate.is_row_deleted(row_ix, cx);
+        let is_row_added = self.delegate.is_row_added(row_ix, cx);
+        let _view = cx.entity().clone();
+        let row_height = crate::table_row_height_or(cx, self.options.size.table_row_height());
+
+        if row_ix < rows_count {
+            let is_last_row = row_ix + 1 == rows_count;
+            let need_render_border = is_selected || !is_last_row || !is_filled;
+
+            let mut tr = self.delegate.render_tr(row_ix, window, cx);
+            let style = tr.style().clone();
+
+            tr.h_flex()
+                .w_full()
+                .h(row_height)
+                .debug_selector(move || format!("{ROW_SELECTOR_PREFIX}{row_ix}"))
+                .when(need_render_border, |this| {
+                    this.border_b_1().border_color(cx.theme().table_row_border)
+                })
+                .when(is_stripe_row && !is_row_deleted, |this| {
+                    this.bg(cx.theme().table_even)
+                })
+                .when(is_row_deleted, |this| {
+                    this.opacity(0.5)
+                        .line_through()
+                        .bg(cx.theme().warning.opacity(0.1))
+                })
+                .when(is_row_added && !is_row_deleted, |this| {
+                    this.bg(cx.theme().success.opacity(0.1))
+                })
+                .refine_style(&style)
+                .hover(|this| {
+                    if is_row_deleted {
+                        this
+                    } else if is_selected || self.right_clicked_row == Some(row_ix) {
+                        this
+                    } else {
+                        this.bg(cx.theme().table_hover)
+                    }
+                })
+                .when(left_columns_count > 0, |this| {
+                    this.child(
+                        h_flex()
+                            .relative()
+                            .h_full()
+                            .children({
+                                let mut items = Vec::with_capacity(left_columns_count);
+
+                                (0..left_columns_count).for_each(|col_ix| {
+                                    items.push(self.render_col_wrap(col_ix, window, cx).child(
+                                        self.render_interactive_cell(col_ix, row_ix, window, cx),
+                                    ));
+                                });
+
+                                items
+                            })
+                            .child(
+                                div()
+                                    .absolute()
+                                    .top_0()
+                                    .right_0()
+                                    .bottom_0()
+                                    .w_0()
+                                    .flex_shrink_0()
+                                    .border_r_1()
+                                    .border_color(cx.theme().border),
+                            ),
+                    )
+                })
+                .child(
+                    h_flex()
+                        .id(("table-row-cols", row_ix))
+                        .flex_1()
+                        .h_full()
+                        .overflow_hidden()
+                        .relative()
+                        .track_scroll(&horizontal_scroll_handle)
+                        .children({
+                            let columns_count = self.col_groups.len();
+                            let mut items = Vec::with_capacity(columns_count - left_columns_count);
+
+                            (left_columns_count..columns_count).for_each(|col_ix| {
+                                let el = self.render_col_wrap(col_ix, window, cx).child(
+                                    self.render_interactive_cell(col_ix, row_ix, window, cx),
+                                );
+                                items.push(el);
+                            });
+
+                            items
+                        })
+                        .child(self.delegate.render_last_empty_col(window, cx)),
+                )
+                .when(is_selected, |this| {
+                    this.border_color(gpui::transparent_white()).child(
+                        div()
+                            .top(if row_ix == 0 { px(0.) } else { px(-1.) })
+                            .left(px(0.))
+                            .right(px(0.))
+                            .bottom(px(-1.))
+                            .absolute()
+                            .bg(cx.theme().table_active)
+                            .border_2()
+                            .border_color(cx.theme().table_active_border),
+                    )
+                })
+                .when(self.right_clicked_row == Some(row_ix), |this| {
+                    this.border_color(gpui::transparent_white()).child(
+                        div()
+                            .top(if row_ix == 0 { px(0.) } else { px(-1.) })
+                            .left(px(0.))
+                            .right(px(0.))
+                            .bottom(px(-1.))
+                            .absolute()
+                            .border_1()
+                            .border_color(cx.theme().selection),
+                    )
+                })
+                .on_mouse_down(
+                    MouseButton::Right,
+                    cx.listener(move |this, e, window, cx| {
+                        this.on_row_right_click(e, row_ix, window, cx);
+                    }),
+                )
+        } else {
+            self.delegate
+                .render_tr(row_ix, window, cx)
+                .h_flex()
+                .w_full()
+                .h(row_height)
+                .border_b_1()
+                .border_color(cx.theme().table_row_border)
+                .when(is_stripe_row, |this| this.bg(cx.theme().table_even))
+                .children((0..columns_count).map(|col_ix| {
+                    h_flex()
+                        .left(horizontal_scroll_handle.offset().x)
+                        .child(self.render_cell(col_ix, Some(row_ix), window, cx))
+                }))
+                .child(self.delegate.render_last_empty_col(window, cx))
+        }
+    }
+
+    fn calculate_extra_rows_needed(
+        &self,
+        total_height: Pixels,
+        actual_height: Pixels,
+        row_height: Pixels,
+    ) -> usize {
+        let mut extra_rows_needed = 0;
+
+        let remaining_height = total_height - actual_height;
+        if remaining_height > px(0.) {
+            extra_rows_needed = (remaining_height / row_height).floor() as usize;
+        }
+
+        extra_rows_needed
+    }
+
+    #[inline]
+    fn measure_render_td(
+        &mut self,
+        row_ix: usize,
+        col_ix: usize,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let is_row_number_col = self.delegate.row_number_enabled(cx) && col_ix == 0;
+
+        if is_row_number_col {
+            return div()
+                .id(ElementId::Name(format!("row-number-{}", row_ix).into()))
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_end()
+                .text_color(cx.theme().muted_foreground)
+                .child((row_ix + 1).to_string())
+                .on_click(cx.listener(move |this, e, window, cx| {
+                    this.on_row_left_click(e, row_ix, window, cx);
+                }))
+                .into_any_element();
+        }
+
+        let delegate_col_ix = if self.delegate.row_number_enabled(cx) {
+            col_ix - 1
+        } else {
+            col_ix
+        };
+
+        h_flex()
+            .size_full()
+            .items_center()
+            .overflow_hidden()
+            .child(
+                self.delegate
+                    .render_td(row_ix, delegate_col_ix, window, cx)
+                    .into_any_element(),
+            )
+            .into_any_element()
+    }
+
+    fn render_vertical_scrollbar(
+        &mut self,
+        _: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<impl IntoElement> {
+        Some(
+            div()
+                .occlude()
+                .absolute()
+                .top(crate::table_header_height_or(
+                    cx,
+                    self.options.size.table_row_height(),
+                ))
+                .right_0()
+                .bottom_0()
+                .w(SCROLLBAR_WIDTH)
+                .child(
+                    Scrollbar::vertical(&self.vertical_scroll_handle)
+                        .mode(ScrollbarMode::Always)
+                        .viewport_from_layout(),
+                ),
+        )
+    }
+
+    fn render_horizontal_scrollbar(
+        &mut self,
+        _: &mut Window,
+        _: &mut Context<Self>,
+    ) -> impl IntoElement {
+        div()
+            .occlude()
+            .absolute()
+            .left(self.fixed_head_cols_bounds.size.width)
+            .right_0()
+            .bottom_0()
+            .h(SCROLLBAR_WIDTH)
+            .child(
+                Scrollbar::horizontal(&self.horizontal_scroll_handle)
+                    .mode(ScrollbarMode::Always)
+                    .viewport_from_layout(),
+            )
+    }
+}
+
+impl<D> Focusable for EditTableState<D>
+where
+    D: EditTableDelegate,
+{
+    fn focus_handle(&self, _cx: &gpui::App) -> FocusHandle {
+        self.focus_handle.clone()
+    }
+}
+impl<D> EventEmitter<EditTableEvent> for EditTableState<D> where D: EditTableDelegate {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 取 `source` 中 `start` 之后、`end` 之前的片段（含 `start`，不含 `end`）。
+    fn slice_between<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+        let from = source.find(start).expect("起始标记");
+        let rest = &source[from..];
+        let to = rest.find(end).expect("结束标记");
+        &rest[..to]
+    }
+
+    #[test]
+    fn deleted_row_cleanup_clears_cell_selection_and_drag_state() {
+        let mut selection = TableSelection::new();
+        selection.select_single((1, 1));
+
+        let cleanup = deleted_row_selection_cleanup(
+            None,
+            Some((1, 1)),
+            &selection,
+            Some((1, 1)),
+            Some((1, 1, false)),
+            1,
+        );
+
+        assert_eq!(
+            DeletedRowSelectionCleanup {
+                clear_selection: true,
+                clear_drag_end: true,
+                clear_drag_start: true
+            },
+            cleanup
+        );
+    }
+
+    #[test]
+    fn deleted_row_cleanup_preserves_unrelated_selection() {
+        let mut selection = TableSelection::new();
+        selection.select_single((2, 1));
+
+        let cleanup = deleted_row_selection_cleanup(
+            Some(2),
+            Some((2, 1)),
+            &selection,
+            Some((2, 1)),
+            Some((2, 1, false)),
+            1,
+        );
+
+        assert_eq!(DeletedRowSelectionCleanup::default(), cleanup);
+    }
+
+    /// #302：选中态（没有格子在编辑）下，鼠标按下即记录网格拖选起点。
+    #[test]
+    fn grid_drag_starts_from_a_press_while_not_editing() {
+        assert_eq!(
+            Some((3, 2, false)),
+            pending_grid_drag(None, Some((3, 2, false)))
+        );
+        assert_eq!(
+            Some((3, 2, true)),
+            pending_grid_drag(None, Some((3, 2, true)))
+        );
+    }
+
+    /// #302：编辑态下按下**不**记录起点，这次拖动完全交给单元格内的编辑器。
+    #[test]
+    fn grid_drag_is_not_recorded_while_a_cell_is_being_edited() {
+        assert_eq!(None, pending_grid_drag(Some((3, 2)), Some((3, 2, false))));
+    }
+
+    /// #302：即使按下时还没进入编辑（起点已记录），只要拖动真正开始时已在编辑，
+    /// 这次拖选也必须被放弃 —— 否则编辑器里的文本拖选照样会把隔壁选进选区。
+    #[test]
+    fn pending_grid_drag_is_discarded_when_editing_began_after_the_press() {
+        assert_eq!(None, pending_grid_drag(Some((0, 0)), Some((3, 2, false))));
+    }
+
+    /// 没有按下记录就永远不启动拖选（与是否编辑无关）。
+    #[test]
+    fn grid_drag_never_starts_without_a_press() {
+        assert_eq!(None, pending_grid_drag(None, None));
+        assert_eq!(None, pending_grid_drag(Some((0, 0)), None));
+    }
+
+    /// #302 的守卫必须留在拖选链路的每一段上：①按下记录起点 ②拖动启动 ③拖动中扩展。
+    /// 任何一段漏掉，编辑态下的拖动都会重新把相邻单元格纳入选区，而
+    /// `commit_cell_edit` 会把新值写回选区内的所有单元格。
+    #[test]
+    fn the_grid_drag_chain_is_guarded_against_cell_editing() {
+        let source = include_str!("state.rs").replace("\r\n", "\n");
+        // 源码守卫只能看实现区：`include_str!` 会把本测试模块一起读进来，
+        // 直接数全文会「自我命中」。
+        let implementation = source
+            .split_once("\n#[cfg(test)]\nmod tests {")
+            .expect("tests 模块起始标记")
+            .0;
+
+        // 1 处定义 + 2 处调用（on_mouse_down 的记录、on_drag 的启动）。
+        assert_eq!(
+            3,
+            implementation.matches("pending_grid_drag(").count(),
+            "按下记录与拖动启动都必须经 pending_grid_drag"
+        );
+
+        // update_drag_selection 在编辑态下早退，拖到一半也不继续扩展。
+        let update = slice_between(
+            implementation,
+            "pub fn update_drag_selection(",
+            "\n    /// 结束拖选",
+        );
+        assert!(
+            update.contains("editing_cell.is_some()") && update.contains("return;"),
+            "update_drag_selection 必须在编辑态下早退"
+        );
+    }
+
+    #[test]
+    fn data_column_bounds_include_every_data_column_after_row_numbers() {
+        assert_eq!(Some((1, 8)), data_column_selection_bounds(9, 1));
+        assert_eq!(Some((0, 3)), data_column_selection_bounds(4, 0));
+        assert_eq!(None, data_column_selection_bounds(0, 1));
+        assert_eq!(None, data_column_selection_bounds(1, 1));
+    }
+
+    #[test]
+    fn column_already_in_view_keeps_the_horizontal_offset() {
+        // 视口 [100, 400]，列 [120, 220] 完全在视口内。
+        assert_eq!(
+            None,
+            column_scroll_offset(px(120.), px(220.), px(100.), px(400.), px(0.))
+        );
+    }
+
+    #[test]
+    fn column_left_of_the_viewport_moves_the_content_right() {
+        // 列整体在视口左侧 => 偏移量增加（内容右移）。
+        assert_eq!(
+            Some(px(40.)),
+            column_scroll_offset(px(60.), px(160.), px(100.), px(400.), px(0.))
+        );
+        // 已有偏移时是相对当前偏移叠加，不是直接覆盖。
+        assert_eq!(
+            Some(px(130.)),
+            column_scroll_offset(px(-60.), px(40.), px(0.), px(300.), px(70.))
+        );
+    }
+
+    #[test]
+    fn column_right_of_the_viewport_moves_the_content_left() {
+        // 列整体在视口右侧 => 偏移量减少（内容左移），只贴到右边缘。
+        assert_eq!(
+            Some(px(-200.)),
+            column_scroll_offset(px(400.), px(500.), px(0.), px(300.), px(0.))
+        );
+    }
+
+    #[test]
+    fn zero_width_viewport_never_scrolls() {
+        assert_eq!(
+            None,
+            column_scroll_offset(px(0.), px(10.), px(0.), px(0.), px(0.))
+        );
+    }
+
+    #[test]
+    fn selected_delegate_columns_skip_the_row_number_column() {
+        let columns = selected_delegate_column_range(0, 3, 1)
+            .unwrap()
+            .collect::<Vec<_>>();
+
+        assert_eq!(vec![0, 1, 2], columns);
+        assert_eq!(None, selected_delegate_column_range(0, 0, 1));
+    }
+
+    #[test]
+    fn batch_edit_applies_the_same_value_to_every_selected_data_cell() {
+        let changes = batch_edit_changes([(2, 1), (3, 1), (4, 1)], "active".to_string(), 1);
+
+        assert_eq!(
+            vec![
+                (2, 0, "active".to_string()),
+                (3, 0, "active".to_string()),
+                (4, 0, "active".to_string()),
+            ],
+            changes
+        );
+    }
+
+    #[test]
+    fn batch_edit_skips_row_number_cells_and_maps_data_columns() {
+        let changes = batch_edit_changes([(1, 0), (1, 1), (1, 3)], "7".to_string(), 1);
+
+        assert_eq!(
+            vec![(1, 0, "7".to_string()), (1, 2, "7".to_string())],
+            changes
+        );
+    }
+
+    #[test]
+    fn table_scrollbars_use_their_overlay_layout_as_viewport() {
+        let source = include_str!("state.rs");
+
+        assert!(source.contains(
+            "Scrollbar::vertical(&self.vertical_scroll_handle)\n                        .mode(ScrollbarMode::Always)\n                        .viewport_from_layout()"
+        ));
+        assert!(source.contains(
+            "Scrollbar::horizontal(&self.horizontal_scroll_handle)\n                    .mode(ScrollbarMode::Always)\n                    .viewport_from_layout()"
+        ));
+    }
+
+    /// 列头高度与数据行高必须分开取值：开启「列头显示字段注释」只加高列头，
+    /// 数据行仍跟随行高设置；纵向滚动条的起点也要跟着列头下移。
+    #[test]
+    fn the_header_has_its_own_height_while_rows_keep_the_row_height() {
+        let source = include_str!("state.rs").replace("\r\n", "\n");
+        let implementation = source
+            .split_once("\n#[cfg(test)]\nmod tests {")
+            .expect("tests 模块起始标记")
+            .0;
+
+        let header = slice_between(
+            implementation,
+            "fn render_table_header(",
+            "\n    fn render_table_row(",
+        );
+        assert!(
+            header.contains("crate::table_header_height_or("),
+            "列头容器必须使用列头高度"
+        );
+        assert!(
+            !header.contains("crate::table_row_height_or("),
+            "列头容器不得再直接使用数据行高"
+        );
+
+        let body = slice_between(
+            implementation,
+            "fn render_table_row(",
+            "\n    fn render_vertical_scrollbar(",
+        );
+        assert!(
+            body.contains("crate::table_row_height_or("),
+            "数据行必须继续跟随行高设置"
+        );
+        assert!(
+            !body.contains("table_header_height_or("),
+            "数据行不受列头注释行影响"
+        );
+
+        let scrollbar = slice_between(
+            implementation,
+            "fn render_vertical_scrollbar(",
+            "\n    fn render_horizontal_scrollbar(",
+        );
+        assert!(
+            scrollbar.contains("crate::table_header_height_or("),
+            "纵向滚动条要从加高后的列头下方开始"
+        );
+
+        // 行高与列头注释开关都只是应用级全局，替换全局不会通知任何 View；
+        // 表格必须订阅 TableDisplaySettings，已经打开的表格才能立刻重排。
+        let constructor = slice_between(
+            implementation,
+            "pub fn new(delegate: D,",
+            "\n    pub fn delegate(",
+        );
+        assert!(
+            constructor.contains("cx.observe_global::<crate::TableDisplaySettings>"),
+            "EditTableState 必须订阅 TableDisplaySettings 并 notify"
+        );
+    }
+}
+
+impl<D> Render for EditTableState<D>
+where
+    D: EditTableDelegate,
+{
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let columns_count = self.delegate.columns_count(cx);
+        let left_columns_count = self
+            .col_groups
+            .iter()
+            .filter(|col| self.col_fixed && col.column.fixed == Some(ColumnFixed::Left))
+            .count();
+        let rows_count = self.delegate.rows_count(cx);
+        let loading = self.delegate.loading(cx);
+
+        let row_height = crate::table_row_height_or(cx, self.options.size.table_row_height());
+        let total_height = self
+            .vertical_scroll_handle
+            .0
+            .borrow()
+            .base_handle
+            .bounds()
+            .size
+            .height;
+        let actual_height = row_height * rows_count as f32;
+        let extra_rows_count =
+            self.calculate_extra_rows_needed(total_height, actual_height, row_height);
+        let render_rows_count = if self.options.stripe {
+            rows_count + extra_rows_count
+        } else {
+            rows_count
+        };
+        let right_clicked_row = self.right_clicked_row;
+        let is_filled = total_height > Pixels::ZERO && total_height <= actual_height;
+        let find_panel = self.find_panel_visible(cx).then(|| self.find_panel.clone());
+
+        let loading_view = if loading {
+            Some(
+                self.delegate
+                    .render_loading(self.options.size, window, cx)
+                    .into_any_element(),
+            )
+        } else {
+            None
+        };
+
+        let empty_view = if rows_count == 0 {
+            Some(
+                div()
+                    .size_full()
+                    .child(self.delegate.render_empty(window, cx))
+                    .into_any_element(),
+            )
+        } else {
+            None
+        };
+
+        let inner_table = v_flex()
+            .id("table-inner")
+            .key_context("EditTable")
+            .track_focus(&self.focus_handle)
+            .on_action(cx.listener(Self::action_find))
+            .on_action(cx.listener(Self::action_find_next))
+            .on_action(cx.listener(Self::action_find_previous))
+            .on_action(cx.listener(Self::action_copy))
+            .on_action(cx.listener(Self::action_paste))
+            .on_action(cx.listener(Self::action_select_all))
+            .on_action(cx.listener(Self::action_confirm))
+            .on_action(cx.listener(Self::action_cancel))
+            .on_action(cx.listener(Self::action_select_prev))
+            .on_action(cx.listener(Self::action_select_next))
+            .on_action(cx.listener(Self::action_select_prev_col))
+            .on_action(cx.listener(Self::action_select_next_col))
+            .on_action(cx.listener(Self::action_select_first_column))
+            .on_action(cx.listener(Self::action_select_last_column))
+            .on_action(cx.listener(Self::action_select_page_up))
+            .on_action(cx.listener(Self::action_select_page_down))
+            .on_action(cx.listener(Self::action_editing_select_prev_col))
+            .on_action(cx.listener(Self::action_editing_select_next_col))
+            .size_full()
+            .overflow_hidden()
+            .child(self.render_table_header(left_columns_count, window, cx))
+            .context_menu({
+                let view = cx.entity().clone();
+                move |this, window: &mut Window, cx: &mut Context<PopupMenu>| {
+                    let (right_clicked_row, right_clicked_col) = {
+                        let state = view.read(cx);
+                        (state.right_clicked_row, state.right_clicked_col)
+                    };
+                    match (right_clicked_row, right_clicked_col) {
+                        (Some(row_ix), _) => view.update(cx, |menu, cx| {
+                            menu.delegate_mut().context_menu(row_ix, this, window, cx)
+                        }),
+                        (None, Some(col_ix)) => view.update(cx, |menu, cx| {
+                            menu.delegate_mut()
+                                .header_context_menu(col_ix, this, window, cx)
+                        }),
+                        (None, None) => this,
+                    }
+                }
+            })
+            .map(|this| {
+                if rows_count == 0 {
+                    this.children(empty_view)
+                } else {
+                    this.child(
+                        h_flex()
+                            .id("table-body")
+                            .flex_grow_1()
+                            .size_full()
+                            .when(self.options.scrollbar_visible.bottom, |this| {
+                                this.pb(SCROLLBAR_WIDTH)
+                            })
+                            .child(
+                                uniform_list(
+                                    "table-uniform-list",
+                                    render_rows_count,
+                                    cx.processor(
+                                        move |table, visible_range: Range<usize>, window, cx| {
+                                            let col_sizes: Rc<Vec<gpui::Size<Pixels>>> = Rc::new(
+                                                table
+                                                    .col_groups
+                                                    .iter()
+                                                    .skip(left_columns_count)
+                                                    .map(|col| col.bounds.size)
+                                                    .collect(),
+                                            );
+
+                                            table.load_more_if_need(
+                                                rows_count,
+                                                visible_range.end,
+                                                window,
+                                                cx,
+                                            );
+                                            table.update_visible_range_if_need(
+                                                visible_range.clone(),
+                                                Axis::Vertical,
+                                                window,
+                                                cx,
+                                            );
+
+                                            if visible_range.end > rows_count {
+                                                table.scroll_to_row(
+                                                    std::cmp::min(
+                                                        visible_range.start,
+                                                        rows_count.saturating_sub(1),
+                                                    ),
+                                                    cx,
+                                                );
+                                            }
+
+                                            let mut items = Vec::with_capacity(
+                                                visible_range
+                                                    .end
+                                                    .saturating_sub(visible_range.start),
+                                            );
+
+                                            visible_range.for_each(|row_ix| {
+                                                items.push(table.render_table_row(
+                                                    row_ix,
+                                                    rows_count,
+                                                    left_columns_count,
+                                                    col_sizes.clone(),
+                                                    columns_count,
+                                                    is_filled,
+                                                    window,
+                                                    cx,
+                                                ));
+                                            });
+
+                                            items
+                                        },
+                                    ),
+                                )
+                                .flex_grow_1()
+                                .size_full()
+                                .with_sizing_behavior(ListSizingBehavior::Auto)
+                                .track_scroll(&self.vertical_scroll_handle)
+                                .into_any_element(),
+                            ),
+                    )
+                }
+            });
+
+        div()
+            .size_full()
+            .on_scroll(cx.listener(Self::handle_scroll_wheel))
+            .children(loading_view)
+            .when(!loading, |this| {
+                this.child(inner_table)
+                    .child(ScrollableMask::new(
+                        Axis::Horizontal,
+                        &self.horizontal_scroll_handle,
+                    ))
+                    .when(right_clicked_row.is_some(), |this| {
+                        this.on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                            this.right_clicked_row = None;
+                            cx.notify();
+                        }))
+                    })
+            })
+            .child(canvas(
+                {
+                    let state = cx.entity();
+                    move |bounds, _, cx| state.update(cx, |state, _| state.bounds = bounds)
+                },
+                |_, _, _, _| {},
+            ))
+            .when_some(find_panel, |this, panel| {
+                this.child(div().absolute().top_1().right_3().occlude().child(panel))
+            })
+            .when(!window.is_inspector_picking(cx), |this| {
+                this.child(
+                    div()
+                        .absolute()
+                        .top_0()
+                        .size_full()
+                        .when(self.options.scrollbar_visible.bottom, |this| {
+                            this.child(self.render_horizontal_scrollbar(window, cx))
+                        })
+                        .when(
+                            self.options.scrollbar_visible.right && rows_count > 0,
+                            |this| this.children(self.render_vertical_scrollbar(window, cx)),
+                        ),
+                )
+            })
+    }
+}

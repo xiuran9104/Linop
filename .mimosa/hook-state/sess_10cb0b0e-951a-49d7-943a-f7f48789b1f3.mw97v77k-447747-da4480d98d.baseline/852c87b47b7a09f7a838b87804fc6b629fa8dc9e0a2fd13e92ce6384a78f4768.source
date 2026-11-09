@@ -1,0 +1,620 @@
+use std::{path::PathBuf, sync::Arc};
+
+use futures::{FutureExt, future::BoxFuture};
+use gpui::{App, http_client::HttpClient};
+
+use crate::{
+    extension as host_extension,
+    extension::manifest::{build_permission_review, load_from_dir},
+    extension_downloader as host_downloader,
+    extension_package_layout::package_root,
+};
+
+#[derive(Clone, Default)]
+pub struct MainExtensionViewHost;
+
+impl extension_view::ExtensionViewHost for MainExtensionViewHost {
+    fn list_installed(&self) -> anyhow::Result<Vec<extension_view::ExtensionSummary>> {
+        let registry = registry()?;
+        let registry = registry
+            .read()
+            .map_err(|err| anyhow::anyhow!("registry lock poisoned: {err}"))?;
+        Ok(registry
+            .list_all_installed()
+            .into_iter()
+            .map(to_view_summary)
+            .collect())
+    }
+
+    fn load_marketplace_entries(
+        &self,
+        http_client: Arc<dyn HttpClient>,
+    ) -> BoxFuture<'static, anyhow::Result<Vec<extension_view::MarketplaceEntry>>> {
+        async move {
+            let manifest = host_downloader::fetch_default_manifest_url(http_client).await?;
+            Ok(manifest
+                .into_entries()
+                .into_iter()
+                .filter(|entry| entry.kind != host_extension::ExtensionKind::Unsupported)
+                .map(to_view_entry)
+                .collect())
+        }
+        .boxed()
+    }
+
+    fn load_marketplace_entries_from_url(
+        &self,
+        http_client: Arc<dyn HttpClient>,
+        manifest_url: String,
+    ) -> BoxFuture<'static, anyhow::Result<Vec<extension_view::MarketplaceEntry>>> {
+        async move {
+            let manifest = host_downloader::fetch_manifest_url(http_client, &manifest_url).await?;
+            Ok(manifest
+                .into_entries()
+                .into_iter()
+                .filter(|entry| entry.kind != host_extension::ExtensionKind::Unsupported)
+                .map(to_view_entry)
+                .collect())
+        }
+        .boxed()
+    }
+
+    fn review_marketplace_entry(
+        &self,
+        http_client: Arc<dyn HttpClient>,
+        entry: extension_view::MarketplaceEntry,
+    ) -> BoxFuture<'static, anyhow::Result<extension_view::MarketplaceInstallOutcome>> {
+        async move {
+            let host_entry = to_host_entry(entry);
+            let staging =
+                host_downloader::download_marketplace_entry_to_staging(http_client, &host_entry)
+                    .await?;
+            review_downloaded_extension(staging, host_entry.kind, to_view_entry(host_entry))
+        }
+        .boxed()
+    }
+
+    fn review_local_tarball(
+        &self,
+        path: PathBuf,
+    ) -> anyhow::Result<extension_view::MarketplaceInstallOutcome> {
+        let staging = host_downloader::stage_local_tarball(&path)?;
+        let kind = host_downloader::detect_package_kind(&staging)?;
+        let name = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("本地扩展")
+            .to_string();
+        let entry = extension_view::MarketplaceEntry {
+            id: name.clone(),
+            kind: to_view_kind(kind),
+            name,
+            version: String::new(),
+            description: String::new(),
+            file_extensions: Vec::new(),
+            required_host_version: None,
+            host_compatible: true,
+            asset_url: path.display().to_string(),
+            sha256: None,
+            fallback_asset_url: None,
+            manifest_url: None,
+            manifest_fallback_url: None,
+            screenshots: Vec::new(),
+        };
+        review_downloaded_extension(staging, kind, entry)
+    }
+
+    fn install_confirmed_staging(
+        &self,
+        staging: PathBuf,
+    ) -> anyhow::Result<extension_view::ExtensionSummary> {
+        let summary = install_staging_with_permission(&staging);
+        let _ = std::fs::remove_dir_all(&staging);
+        summary
+    }
+
+    fn uninstall(&self, summary: &extension_view::ExtensionSummary) -> anyhow::Result<String> {
+        let registry = registry()?;
+        let registry = registry
+            .read()
+            .map_err(|err| anyhow::anyhow!("registry lock poisoned: {err}"))?;
+        registry.uninstall(to_host_kind(summary.kind), &summary.name)
+    }
+
+    fn reload(
+        &self,
+        summary: &extension_view::ExtensionSummary,
+        cx: &mut App,
+    ) -> anyhow::Result<Vec<extension_view::ExtensionSummary>> {
+        ensure_extension_path_still_installed(summary)?;
+        if summary.kind == extension_view::ExtensionKind::Language {
+            crate::language_extensions::forget_language(&summary.name);
+        }
+        reload_extension_runtime(summary.kind, cx);
+        let installed = self.list_installed()?;
+        ensure_reloaded_path_present(summary, &installed)?;
+        Ok(installed)
+    }
+
+    fn refresh_after_extension_change(&self, kind: extension_view::ExtensionKind, cx: &mut App) {
+        reload_extension_runtime(kind, cx);
+    }
+}
+
+fn registry() -> anyhow::Result<&'static std::sync::RwLock<host_extension::ExtensionRegistry>> {
+    host_extension::ExtensionRegistry::global().ok_or_else(|| anyhow::anyhow!("扩展系统未初始化"))
+}
+
+fn ensure_extension_path_still_installed(
+    summary: &extension_view::ExtensionSummary,
+) -> anyhow::Result<()> {
+    let registry = registry()?;
+    let registry = registry
+        .read()
+        .map_err(|err| anyhow::anyhow!("registry lock poisoned: {err}"))?;
+    let root = registry.root_for(to_host_kind(summary.kind));
+    if !summary.path.starts_with(&root) || !summary.path.exists() {
+        anyhow::bail!(
+            "extension {} not found at {}",
+            summary.name,
+            summary.path.display()
+        );
+    }
+    Ok(())
+}
+
+fn ensure_reloaded_path_present(
+    summary: &extension_view::ExtensionSummary,
+    installed: &[extension_view::ExtensionSummary],
+) -> anyhow::Result<()> {
+    if installed.iter().any(|item| item.path == summary.path) {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "extension {} did not load from {} after reload",
+        summary.name,
+        summary.path.display()
+    );
+}
+
+fn should_reload_languages(kind: extension_view::ExtensionKind) -> bool {
+    matches!(
+        kind,
+        extension_view::ExtensionKind::Language | extension_view::ExtensionKind::LanguageBundle
+    )
+}
+
+fn reload_extension_runtime(kind: extension_view::ExtensionKind, cx: &mut App) {
+    if should_reload_languages(kind) {
+        refresh_language_extension_manifests();
+    }
+    match kind {
+        #[cfg(feature = "database")]
+        extension_view::ExtensionKind::DatabaseDriver => {
+            db::ipc::IpcDriverRegistry::refresh_global_registry();
+        }
+        #[cfg(feature = "remote-desktop")]
+        extension_view::ExtensionKind::RemoteDesktopProvider => {
+            remote_desktop::RemoteDesktopProviderRegistry::refresh_global_registry();
+        }
+        _ => {}
+    }
+    crate::refresh_global_runtime_catalog(cx);
+    crate::extension::refresh_runtime_contributions(cx);
+}
+
+fn refresh_language_extension_manifests() {
+    let Some(root) = crate::extension::extensions_root() else {
+        return;
+    };
+    match crate::extension::register_language_extension_manifests_from_root(&root) {
+        Ok(report) => {
+            if !report.failed.is_empty() {
+                tracing::warn!("语言扩展重新加载失败: {:?}", report.failed);
+            }
+        }
+        Err(err) => {
+            tracing::warn!("重新加载语言扩展失败: {err:?}");
+        }
+    }
+}
+
+fn review_downloaded_extension(
+    staging: PathBuf,
+    kind: host_extension::ExtensionKind,
+    entry: extension_view::MarketplaceEntry,
+) -> anyhow::Result<extension_view::MarketplaceInstallOutcome> {
+    let target_extension_id = if kind == host_extension::ExtensionKind::Composite {
+        load_from_dir(&package_root(&staging)?)?.id
+    } else {
+        entry.id.clone()
+    };
+    let review = match permission_review_for_staging(&staging, kind) {
+        Ok(review) => review,
+        Err(err) => {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(err);
+        }
+    };
+    if review.high_risk_count > 0 {
+        return Ok(extension_view::MarketplaceInstallOutcome::NeedsPermission(
+            extension_view::DownloadedMarketplaceExtension {
+                entry,
+                target_extension_id,
+                staging,
+                review,
+            },
+        ));
+    }
+    let summary = match install_staging_without_permission(&staging, kind) {
+        Ok(summary) => summary,
+        Err(err) => {
+            let _ = std::fs::remove_dir_all(&staging);
+            return Err(err);
+        }
+    };
+    let _ = std::fs::remove_dir_all(&staging);
+    Ok(extension_view::MarketplaceInstallOutcome::Installed(
+        summary,
+    ))
+}
+
+fn permission_review_for_staging(
+    staging: &std::path::Path,
+    kind: host_extension::ExtensionKind,
+) -> anyhow::Result<extension_view::PermissionReviewModel> {
+    let review = if kind == host_extension::ExtensionKind::Composite {
+        let root = package_root(staging)?;
+        let manifest = load_from_dir(&root)?;
+        build_permission_review(&manifest.permissions)?
+    } else {
+        build_permission_review(&[])?
+    };
+    Ok(extension_view::PermissionReviewModel {
+        high_risk_count: review.high_risk_count,
+        summary: review.summary,
+    })
+}
+
+fn install_staging_without_permission(
+    staging: &std::path::Path,
+    kind: host_extension::ExtensionKind,
+) -> anyhow::Result<extension_view::ExtensionSummary> {
+    let registry = registry()?;
+    let registry = registry
+        .read()
+        .map_err(|err| anyhow::anyhow!("registry lock poisoned: {err}"))?;
+    host_downloader::install_from_staging_generic(staging, &registry, Some(kind))
+        .map(to_view_summary)
+}
+
+fn install_staging_with_permission(
+    staging: &std::path::Path,
+) -> anyhow::Result<extension_view::ExtensionSummary> {
+    let registry = registry()?;
+    let registry = registry
+        .read()
+        .map_err(|err| anyhow::anyhow!("registry lock poisoned: {err}"))?;
+    host_downloader::install_from_staging_with_high_risk_permissions(
+        staging,
+        &registry,
+        Some(host_extension::ExtensionKind::Composite),
+    )
+    .map(to_view_summary)
+}
+
+fn to_view_summary(summary: host_extension::ExtensionSummary) -> extension_view::ExtensionSummary {
+    let shell_views = if summary.kind == host_extension::ExtensionKind::Composite {
+        load_from_dir(&summary.path)
+            .map(|manifest| {
+                manifest
+                    .contributes
+                    .shell_views
+                    .into_iter()
+                    .map(|view| extension_view::ShellViewSummary::new(view.id, view.title))
+                    .collect()
+            })
+            .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    extension_view::ExtensionSummary::new(
+        to_view_kind(summary.kind),
+        summary.name,
+        summary.version,
+        summary.path,
+    )
+    .with_description(summary.description)
+    .with_file_extensions(summary.file_extensions)
+    .with_icon(summary.icon)
+    .with_driver_id(summary.driver_id)
+    .with_default_port(summary.default_port)
+    .with_shell_views(shell_views)
+}
+
+fn to_view_entry(mut entry: host_downloader::MarketplaceEntry) -> extension_view::MarketplaceEntry {
+    let host_compatible = entry.check_host_compatibility().is_ok();
+    let asset_url = entry.asset_url().unwrap_or_default();
+    let fallback_asset_url = entry.fallback_asset_url();
+    let sha256 = entry.sha256();
+    let manifest_urls = entry.extension_manifest_urls();
+    let manifest_url = manifest_urls.first().cloned();
+    let manifest_fallback_url = manifest_urls.get(1).cloned();
+    let screenshots = std::mem::take(&mut entry.screenshots);
+    extension_view::MarketplaceEntry {
+        id: entry.id,
+        kind: to_view_kind(entry.kind),
+        name: entry.name,
+        version: entry.version,
+        description: entry.description,
+        file_extensions: entry.file_extensions,
+        required_host_version: (!entry.engines.onetcli.trim().is_empty())
+            .then_some(entry.engines.onetcli),
+        host_compatible,
+        asset_url,
+        sha256,
+        fallback_asset_url,
+        manifest_url,
+        manifest_fallback_url,
+        screenshots,
+    }
+}
+
+fn to_host_entry(entry: extension_view::MarketplaceEntry) -> host_downloader::MarketplaceEntry {
+    let mut download_urls = Vec::new();
+    if !entry.asset_url.trim().is_empty() {
+        download_urls.push(entry.asset_url);
+    }
+    if let Some(fallback_asset_url) = entry.fallback_asset_url {
+        if !fallback_asset_url.trim().is_empty()
+            && !download_urls.iter().any(|url| url == &fallback_asset_url)
+        {
+            download_urls.push(fallback_asset_url);
+        }
+    }
+    let mut manifest_urls = Vec::new();
+    if let Some(manifest_url) = entry.manifest_url {
+        if !manifest_url.trim().is_empty() {
+            manifest_urls.push(manifest_url);
+        }
+    }
+    if let Some(manifest_fallback_url) = entry.manifest_fallback_url {
+        if !manifest_fallback_url.trim().is_empty()
+            && !manifest_urls
+                .iter()
+                .any(|url| url == &manifest_fallback_url)
+        {
+            manifest_urls.push(manifest_fallback_url);
+        }
+    }
+    let required_host_version = entry.required_host_version.clone();
+    let mut host_entry = host_downloader::MarketplaceEntry::from_resolved_urls(
+        entry.id,
+        to_host_kind(entry.kind),
+        entry.name,
+        entry.version,
+        entry.description,
+        entry.file_extensions,
+        download_urls,
+        entry.sha256,
+    )
+    .with_manifest_urls(manifest_urls);
+    if let Some(required) = required_host_version {
+        host_entry.engines.onetcli = required;
+    }
+    host_entry
+}
+
+fn to_view_kind(kind: host_extension::ExtensionKind) -> extension_view::ExtensionKind {
+    match kind {
+        host_extension::ExtensionKind::Language => extension_view::ExtensionKind::Language,
+        host_extension::ExtensionKind::LanguageBundle => {
+            extension_view::ExtensionKind::LanguageBundle
+        }
+        host_extension::ExtensionKind::DatabaseDriver => {
+            extension_view::ExtensionKind::DatabaseDriver
+        }
+        host_extension::ExtensionKind::RemoteDesktopProvider => {
+            extension_view::ExtensionKind::RemoteDesktopProvider
+        }
+        host_extension::ExtensionKind::Composite => extension_view::ExtensionKind::Composite,
+        host_extension::ExtensionKind::Unsupported => {
+            unreachable!("unsupported kind is filtered before view conversion")
+        }
+    }
+}
+
+fn to_host_kind(kind: extension_view::ExtensionKind) -> host_extension::ExtensionKind {
+    match kind {
+        extension_view::ExtensionKind::Language => host_extension::ExtensionKind::Language,
+        extension_view::ExtensionKind::LanguageBundle => {
+            host_extension::ExtensionKind::LanguageBundle
+        }
+        extension_view::ExtensionKind::DatabaseDriver => {
+            host_extension::ExtensionKind::DatabaseDriver
+        }
+        extension_view::ExtensionKind::RemoteDesktopProvider => {
+            host_extension::ExtensionKind::RemoteDesktopProvider
+        }
+        extension_view::ExtensionKind::Composite => host_extension::ExtensionKind::Composite,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+
+    use super::*;
+
+    #[test]
+    fn per_item_reload_only_reloads_language_registry_for_language_extensions() {
+        assert!(should_reload_languages(
+            extension_view::ExtensionKind::Language
+        ));
+        assert!(should_reload_languages(
+            extension_view::ExtensionKind::LanguageBundle
+        ));
+        for kind in [
+            extension_view::ExtensionKind::DatabaseDriver,
+            extension_view::ExtensionKind::RemoteDesktopProvider,
+            extension_view::ExtensionKind::Composite,
+        ] {
+            assert!(
+                !should_reload_languages(kind),
+                "unexpected reload for {kind:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn extension_change_refresh_is_scoped_to_changed_kind() {
+        let source = include_str!("extension_view_host.rs");
+        let refresh = source
+            .split("fn refresh_after_extension_change")
+            .nth(1)
+            .and_then(|rest| rest.split("\n    }").next())
+            .expect("extension change refresh should exist");
+
+        assert!(
+            refresh.contains("kind: extension_view::ExtensionKind"),
+            "refresh must receive the changed extension kind"
+        );
+        assert!(
+            refresh.contains("reload_extension_runtime(kind, cx)"),
+            "refresh must use the changed kind to avoid reloading all language WASM"
+        );
+    }
+
+    #[test]
+    fn language_refresh_registers_manifests_without_loading_wasm() {
+        let source = include_str!("extension_view_host.rs");
+        let refresh = source
+            .split("fn refresh_language_extension_manifests")
+            .nth(1)
+            .and_then(|rest| rest.split("\n}").next())
+            .expect("language manifest refresh should exist");
+
+        assert!(refresh.contains("register_language_extension_manifests_from_root"));
+        assert!(
+            !refresh.contains("load_language_extensions_from_root"),
+            "metadata refresh must not eagerly compile language WASM"
+        );
+    }
+
+    #[test]
+    fn database_driver_reload_refreshes_driver_registry() {
+        let source = include_str!("extension_view_host.rs");
+        let reload = source
+            .split("fn reload_extension_runtime")
+            .nth(1)
+            .and_then(|rest| rest.split("\n}").next())
+            .expect("extension runtime reload should exist");
+
+        assert!(reload.contains("ExtensionKind::DatabaseDriver"));
+        assert!(reload.contains("refresh_global_registry"));
+        assert!(
+            reload.contains("ExtensionKind::RemoteDesktopProvider"),
+            "provider reload must invalidate the single remote-desktop registry too"
+        );
+    }
+
+    #[test]
+    fn to_view_summary_preserves_database_driver_metadata() {
+        let summary = host_extension::ExtensionSummary::new(
+            host_extension::ExtensionKind::DatabaseDriver,
+            "fake_pg",
+            "1.2.3",
+            PathBuf::from("/tmp/fake_pg"),
+        )
+        .with_description("PostgreSQL compatible driver")
+        .with_file_extensions(vec!["sql".to_string()])
+        .with_icon("Database")
+        .with_driver_id("fake_pg")
+        .with_default_port(15432);
+
+        let view = to_view_summary(summary);
+
+        assert_eq!(extension_view::ExtensionKind::DatabaseDriver, view.kind);
+        assert_eq!("fake_pg", view.name);
+        assert_eq!("1.2.3", view.version);
+        assert_eq!("PostgreSQL compatible driver", view.description);
+        assert_eq!(vec!["sql".to_string()], view.file_extensions);
+        assert_eq!(Some("Database"), view.icon.as_deref());
+        assert_eq!(Some("fake_pg"), view.driver_id.as_deref());
+        assert_eq!(Some(15432), view.default_port);
+    }
+
+    #[test]
+    fn marketplace_entry_conversion_preserves_extension_manifest_url() {
+        let mut manifest: host_downloader::MarketplaceManifest = serde_json::from_str(
+            r#"{
+                "schema_version": 2,
+                "extensions": [{
+                    "id": "fake_pg",
+                    "kind": "database_driver",
+                    "name": "Fake PostgreSQL",
+                    "version": "1.2.3",
+                    "release_tag": "fake_pg-v1.2.3",
+                    "engines": { "onetcli": ">=0.10.0" },
+                    "manifest": "fake_pg/manifest.json"
+                }]
+            }"#,
+        )
+        .unwrap();
+        manifest.resolve_downloads(
+            "https://onetcli.test.cn/extensions/manifest.json",
+            "https://github.com/feigeCode/onetcli-extensions/releases/latest/download/extension-manifest.json",
+        );
+        let host_entry = manifest.into_entries().remove(0);
+
+        let view_entry = to_view_entry(host_entry);
+        assert_eq!(
+            Some(">=0.10.0"),
+            view_entry.required_host_version.as_deref()
+        );
+        let round_tripped = to_host_entry(view_entry);
+        assert_eq!(">=0.10.0", round_tripped.engines.onetcli);
+
+        assert!(round_tripped.needs_extension_manifest());
+        assert_eq!(
+            Some("https://onetcli.test.cn/extensions/fake_pg/manifest.json".to_string()),
+            round_tripped.extension_manifest_url()
+        );
+        assert_eq!(
+            vec![
+                "https://onetcli.test.cn/extensions/fake_pg/manifest.json".to_string(),
+                "https://github.com/feigeCode/onetcli-extensions/releases/download/fake_pg-v1.2.3/extension-manifest.json".to_string(),
+            ],
+            round_tripped.extension_manifest_urls()
+        );
+    }
+
+    #[test]
+    fn language_bundle_kind_round_trips_between_host_and_view() {
+        let host_entry = host_downloader::MarketplaceEntry::from_resolved_urls(
+            "tree-sitter-languages",
+            host_extension::ExtensionKind::LanguageBundle,
+            "Tree-sitter Languages",
+            "0.1.0",
+            "Tree-sitter syntax bundle",
+            vec!["rs".to_string(), "js".to_string()],
+            vec![
+                "https://example.test/tree-sitter-languages-language-bundle-universal.tar.gz"
+                    .to_string(),
+            ],
+            Some("abc".to_string()),
+        );
+
+        let view_entry = to_view_entry(host_entry);
+        assert_eq!(
+            extension_view::ExtensionKind::LanguageBundle,
+            view_entry.kind
+        );
+
+        let round_tripped = to_host_entry(view_entry);
+        assert_eq!(
+            host_extension::ExtensionKind::LanguageBundle,
+            round_tripped.kind
+        );
+    }
+}

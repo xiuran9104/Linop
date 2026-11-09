@@ -1,0 +1,145 @@
+use std::sync::Arc;
+
+use gpui::{
+    App, AppContext as _, Context, Entity, EventEmitter, FocusHandle, Focusable, SharedString,
+    Task, Window,
+};
+use gpui_component::Icon;
+use one_core::sidebar_contribution::SidebarContribution;
+use one_core::tab_container::{TabContent, TabContentEvent, TabContentView};
+
+use super::{TerminalWorkspace, TerminalWorkspaceEvent};
+use crate::view::TerminalView;
+
+impl EventEmitter<TabContentEvent> for TerminalWorkspace {}
+impl EventEmitter<TerminalWorkspaceEvent> for TerminalWorkspace {}
+
+impl Focusable for TerminalWorkspace {
+    fn focus_handle(&self, cx: &App) -> FocusHandle {
+        self.active_pane().read(cx).focus_handle(cx)
+    }
+}
+
+impl TabContent for TerminalWorkspace {
+    fn content_key(&self) -> &'static str {
+        "Terminal"
+    }
+
+    fn title(&self, cx: &App) -> SharedString {
+        self.active_pane().read(cx).title(cx)
+    }
+
+    fn icon(&self, cx: &App) -> Option<Icon> {
+        self.active_pane().read(cx).icon(cx)
+    }
+
+    fn can_duplicate(&self, cx: &App) -> bool {
+        self.active_pane().read(cx).duplicate_supported(cx)
+    }
+
+    fn on_activate(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.set_tab_metric_state(true, cx);
+        self.set_active_pane_metric_state(cx);
+        self.active_pane().update(cx, |pane, cx| {
+            pane.on_host_activated(cx);
+        });
+    }
+
+    fn on_deactivate(&mut self, _window: &mut Window, cx: &mut Context<Self>) {
+        self.set_tab_metric_state(false, cx);
+    }
+
+    fn duplicate(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Option<Arc<dyn TabContentView>> {
+        if !self.active_pane().read(cx).duplicate_supported(cx) {
+            return None;
+        }
+        let source = self.active_pane().read(cx).duplicate_source_snapshot(cx)?;
+        let duplicate = cx.new(|cx| {
+            let main = cx.new(|cx| {
+                TerminalView::new_from_duplicate_source(source, window, cx).with_workspace_pane()
+            });
+            Self::from_pane(main, window, cx)
+        });
+        Some(Arc::new(duplicate))
+    }
+
+    fn try_close(
+        &mut self,
+        _tab_id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Task<bool> {
+        if self
+            .panes
+            .values()
+            .any(|pane| pane.read(cx).requires_close_confirmation(cx))
+        {
+            self.confirm_close_all(window, cx)
+        } else {
+            self.close_all_task(cx)
+        }
+    }
+
+    fn apply_title(&mut self, title: &str, _window: &mut Window, cx: &mut Context<Self>) {
+        self.active_pane().update(cx, |pane, cx| {
+            pane.sync_broadcast_label(title, cx);
+        });
+    }
+
+    fn sidebar_contributions(&self, _cx: &App) -> Vec<SidebarContribution> {
+        Vec::new()
+    }
+
+    fn lockable(&self, cx: &App) -> bool {
+        self.active_pane().read(cx).session_lock_capable(cx)
+    }
+
+    fn is_locked(&self, cx: &App) -> bool {
+        self.panes
+            .values()
+            .any(|pane| pane.read(cx).is_session_locked(cx))
+    }
+
+    fn is_disconnected(&self, cx: &App) -> bool {
+        !self.panes.is_empty()
+            && self
+                .panes
+                .values()
+                .all(|pane| pane.read(cx).terminal_is_disconnected(cx))
+    }
+
+    fn connection_status(&self, cx: &App) -> Option<one_core::tab_container::TabConnectionStatus> {
+        self.active_pane().read(cx).terminal_connection_status(cx)
+    }
+
+    fn lock_session(
+        &mut self,
+        password_hash: &str,
+        hide_output: bool,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let panes: Vec<Entity<TerminalView>> = self.panes.values().cloned().collect();
+        for pane in panes {
+            pane.update(cx, |pane, cx| {
+                pane.lock_pane_session(password_hash, hide_output, cx);
+            });
+        }
+        true
+    }
+
+    fn unlock_session(&mut self, password_hash: &str, cx: &mut Context<Self>) -> bool {
+        let panes: Vec<Entity<TerminalView>> = self.panes.values().cloned().collect();
+        let mut unlocked = false;
+        for pane in panes {
+            if pane.update(cx, |pane, cx| pane.unlock_pane_session(password_hash, cx)) {
+                unlocked = true;
+            }
+        }
+        unlocked
+    }
+}

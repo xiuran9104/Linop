@@ -1,0 +1,52 @@
+[package]
+name = "terminal_view"
+version = "0.15.2"
+edition = "2021"
+
+[dependencies]
+one-assets = { workspace = true }
+# Terminal core
+terminal = { workspace = true }
+public_mcp = { workspace = true }
+ssh = { workspace = true }
+sftp = { workspace = true }
+sftp_transfer = { workspace = true }
+ftp = { workspace = true }
+remote_file_editor = { workspace = true }
+remote_image_preview = { workspace = true }
+workspace_explorer = { workspace = true }
+
+# GPUI
+gpui = { workspace = true }
+gpui-component = { workspace = true }
+palette = { workspace = true }
+ai_chat_view = { workspace = true, default-features = false }
+agent_runtime = { workspace = true }
+one-core = { workspace = true }
+tool_runtime = { workspace = true }
+one-ui = { workspace = true }
+connection-form = { workspace = true }
+ssh_form = { workspace = true }
+# Terminal emulation
+alacritty_terminal.workspace = true
+
+# Async
+async-trait = { workspace = true }
+regex = { workspace = true }
+# Utilities
+anyhow = { workspace = true }
+tracing = { workspace = true }
+rust-i18n = { workspace = true }
+url.workspace = true
+chrono = { workspace = true }
+tokio = { workspace = true }
+tokio-util.workspace = true
+serialport = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+sha2 = { workspace = true }
+
+[dev-dependencies]
+gpui = { workspace = true, features = ["test-support"] }
+tempfile = "3"

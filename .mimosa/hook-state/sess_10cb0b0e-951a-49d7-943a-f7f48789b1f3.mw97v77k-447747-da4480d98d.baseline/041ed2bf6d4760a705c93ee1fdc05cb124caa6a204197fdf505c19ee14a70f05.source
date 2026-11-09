@@ -1,0 +1,46 @@
+[package]
+name = "extension-runtime"
+version = "0.15.2"
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+connection-import-protocol = { workspace = true }
+extension-component = { workspace = true }
+extension-protocol = { workspace = true }
+extension-wasm = { workspace = true, optional = true }
+extension_view = { workspace = true }
+flate2 = "1"
+futures = { workspace = true }
+gpui = { workspace = true }
+gpui-component = { workspace = true, features = ["tree-sitter"] }
+html-preview.workspace = true
+one-core = { workspace = true }
+remote_desktop = { workspace = true, optional = true }
+rust-i18n = { workspace = true }
+semver = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+tar = "0.4"
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tree-sitter = { version = "0.26", features = ["wasm"] }
+
+[dev-dependencies]
+smol = { workspace = true }
+tempfile = "3"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = { workspace = true }
+
+[features]
+default = ["wasm-components", "remote-desktop"]
+github-marketplace = []
+wasm-components = ["dep:extension-wasm"]
+remote-desktop = ["dep:remote_desktop"]
+
+[lints]
+workspace = true

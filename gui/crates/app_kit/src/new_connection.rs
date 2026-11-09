@@ -200,20 +200,17 @@ impl ConnectionFormDialog {
             .value()
             .trim()
             .to_ascii_lowercase();
-        let mut list = v_flex()
-            .id("connection-kind-list")
-            .track_scroll(&self.list_scroll)
+        // 外层:检索框常驻顶部(不在滚动区);内层列表 flex_1 约束高度滚动。
+        let column = v_flex()
             .w(px(200.0))
             .h_full()
-            .p_2()
-            .gap_0p5()
-            .overflow_y_scroll()
             .border_r_1()
             .border_color(cx.theme().border)
             .child(
-                gpui_component::input::Input::new(&self.kind_filter)
-                    .small()
-                    .mb_1(),
+                div()
+                    .p_2()
+                    .pb_1()
+                    .child(gpui_component::input::Input::new(&self.kind_filter).small()),
             );
         let filtered: Vec<_> = self
             .kinds
@@ -225,10 +222,19 @@ impl ConnectionFormDialog {
             })
             .cloned()
             .collect();
+        let mut list = v_flex()
+            .id("connection-kind-list")
+            .track_scroll(&self.list_scroll)
+            .flex_1()
+            .min_h_0()
+            .px_2()
+            .pb_2()
+            .gap_0p5()
+            .overflow_y_scroll();
         if filtered.is_empty() {
-            return list.child(
+            return column.child(
                 div()
-                    .mt_2()
+                    .pt_1()
                     .text_sm()
                     .text_color(cx.theme().muted_foreground)
                     .child("没有匹配的连接类型"),
@@ -266,9 +272,10 @@ impl ConnectionFormDialog {
                     .child(kind.display_label(cx)),
             );
         }
-        list
+        column.child(list)
     }
 }
+
 
 /// 以通用请求直接打开连接表单弹窗（导入草稿等宿主复用）。
 ///

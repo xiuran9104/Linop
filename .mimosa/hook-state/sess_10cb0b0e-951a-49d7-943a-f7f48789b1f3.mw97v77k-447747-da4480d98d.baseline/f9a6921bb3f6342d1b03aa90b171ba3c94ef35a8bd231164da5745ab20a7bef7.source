@@ -1,0 +1,351 @@
+use super::*;
+
+const RDP_DISPLAY_MIN_SIZE: f32 = 200.0;
+const RDP_DISPLAY_MAX_SIZE: f32 = 8192.0;
+const MAX_REMOTE_FRAME_PIXELS: f32 = 3840.0 * 2160.0;
+
+#[derive(Default)]
+pub(super) struct InitialSize {
+    pending: Option<PendingInitialSize>,
+    generation: u64,
+}
+
+struct PendingInitialSize {
+    size: (u16, u16),
+    scale_factor: u32,
+    updated_at: Instant,
+    generation: u64,
+}
+
+impl InitialSize {
+    pub(super) fn observe(
+        &mut self,
+        size: (u16, u16),
+        scale_factor: u32,
+        observed_at: Instant,
+    ) -> Option<u64> {
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.size == size && pending.scale_factor == scale_factor)
+        {
+            return None;
+        }
+        self.generation = self.generation.wrapping_add(1).max(1);
+        self.pending = Some(PendingInitialSize {
+            size,
+            scale_factor,
+            updated_at: observed_at,
+            generation: self.generation,
+        });
+        Some(self.generation)
+    }
+
+    pub(super) fn take_ready(
+        &mut self,
+        now: Instant,
+        debounce: Duration,
+    ) -> Option<((u16, u16), u32)> {
+        let pending = self.pending.as_ref()?;
+        if now.saturating_duration_since(pending.updated_at) < debounce {
+            return None;
+        }
+        let pending = self.pending.take()?;
+        Some((pending.size, pending.scale_factor))
+    }
+
+    pub(super) fn take_generation(
+        &mut self,
+        generation: u64,
+    ) -> Option<((u16, u16), u32, Instant)> {
+        let pending = self.pending.as_ref()?;
+        if pending.generation != generation {
+            return None;
+        }
+        let pending = self.pending.take()?;
+        Some((pending.size, pending.scale_factor, pending.updated_at))
+    }
+}
+
+pub(super) fn resize_dimensions(
+    bounds: Bounds<Pixels>,
+    display_scale_factor: f32,
+) -> Option<(u16, u16)> {
+    let display_scale_factor = if display_scale_factor.is_finite() && display_scale_factor > 0.0 {
+        display_scale_factor
+    } else {
+        1.0
+    };
+    let mut width = pixels_to_f32(bounds.size.width) * display_scale_factor;
+    let mut height = pixels_to_f32(bounds.size.height) * display_scale_factor;
+    let area = width * height;
+    if area.is_finite() && area > MAX_REMOTE_FRAME_PIXELS {
+        let scale = (MAX_REMOTE_FRAME_PIXELS / area).sqrt();
+        width *= scale;
+        height *= scale;
+    }
+    let mut width = width
+        .round()
+        .clamp(RDP_DISPLAY_MIN_SIZE, RDP_DISPLAY_MAX_SIZE) as u16;
+    if width % 2 != 0 {
+        width = width.saturating_sub(1);
+    }
+    let height = height
+        .round()
+        .clamp(RDP_DISPLAY_MIN_SIZE, RDP_DISPLAY_MAX_SIZE) as u16;
+    Some((width, height))
+}
+
+pub(super) fn is_meaningful_delta(previous: Option<(u16, u16)>, next: (u16, u16)) -> bool {
+    let Some(previous) = previous else {
+        return true;
+    };
+    previous.0.abs_diff(next.0) >= RESIZE_DELTA_THRESHOLD
+        || previous.1.abs_diff(next.1) >= RESIZE_DELTA_THRESHOLD
+}
+
+/// The session is already running at the requested desktop size, so a resize
+/// request would be a protocol no-op.
+pub(super) fn is_already_applied(remote_size: Option<(u16, u16)>, requested: (u16, u16)) -> bool {
+    remote_size == Some(requested)
+}
+
+/// Whether the last requested desktop size survives a session reset.
+///
+/// A backend-driven reconnect (`Reconnecting`) brings the session back with the
+/// geometry it was already using, so the recorded size stays authoritative.
+/// Forgetting it turns every later layout observation into a fresh resize
+/// request: `is_meaningful_delta(None, size)` always reports a meaningful
+/// delta, so the identical size gets requested again, and a host that cannot
+/// apply dynamic display updates answers each request with a fallback
+/// reconnect. The session then bounces between connect and reconnect forever
+/// (issue #171).
+pub(super) fn preserve_resize_state_on_session_reset(reason: SessionResetReason) -> bool {
+    matches!(reason, SessionResetReason::Reconnecting)
+}
+
+pub(super) fn can_flush_pending_resize(
+    connected: bool,
+    remote_size: Option<(u16, u16)>,
+    capabilities: Option<RemoteDesktopCapabilities>,
+) -> bool {
+    connected
+        && remote_size.is_some()
+        && capabilities
+            .is_some_and(|capabilities| capabilities.resize == ResizeSupport::RemoteResize)
+}
+
+pub(super) fn should_consume_local_resize(
+    connected: bool,
+    remote_size: Option<(u16, u16)>,
+    capabilities: Option<RemoteDesktopCapabilities>,
+) -> bool {
+    connected
+        && remote_size.is_some()
+        && capabilities.is_some_and(|capabilities| {
+            matches!(
+                capabilities.resize,
+                ResizeSupport::Unsupported | ResizeSupport::LocalScaleOnly
+            )
+        })
+}
+
+pub(super) fn scale_factor_percent(display_scale_factor: f32) -> u32 {
+    if !display_scale_factor.is_finite() || display_scale_factor <= 0.0 {
+        return 100;
+    }
+    (display_scale_factor * 100.0).round().clamp(100.0, 300.0) as u32
+}
+
+fn pixels_to_f32(pixels: Pixels) -> f32 {
+    pixels.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, Instant};
+
+    use gpui::{Bounds, point, px, size};
+
+    use super::{
+        InitialSize, can_flush_pending_resize, is_already_applied, is_meaningful_delta,
+        preserve_resize_state_on_session_reset, resize_dimensions, should_consume_local_resize,
+    };
+    use remote_desktop::{RemoteDesktopCapabilities, ResizeSupport};
+
+    #[test]
+    fn waits_for_initial_size_to_stabilize() {
+        let started_at = Instant::now();
+        let debounce = Duration::from_millis(800);
+        let mut initial_size = InitialSize::default();
+
+        initial_size.observe((1280, 800), 200, started_at);
+        assert_eq!(
+            None,
+            initial_size.take_ready(started_at + Duration::from_millis(799), debounce)
+        );
+
+        initial_size.observe((1920, 1080), 200, started_at + Duration::from_millis(500));
+        assert_eq!(
+            None,
+            initial_size.take_ready(started_at + Duration::from_millis(1299), debounce)
+        );
+        assert_eq!(
+            Some(((1920, 1080), 200)),
+            initial_size.take_ready(started_at + Duration::from_millis(1300), debounce)
+        );
+        assert_eq!(
+            None,
+            initial_size.take_ready(started_at + Duration::from_millis(2000), debounce)
+        );
+    }
+
+    #[test]
+    fn repeated_identical_initial_size_does_not_restart_debounce() {
+        let started_at = Instant::now();
+        let debounce = Duration::from_millis(800);
+        let mut initial_size = InitialSize::default();
+
+        assert_eq!(Some(1), initial_size.observe((1920, 1080), 200, started_at));
+        assert_eq!(
+            None,
+            initial_size.observe((1920, 1080), 200, started_at + Duration::from_millis(700))
+        );
+
+        assert_eq!(
+            Some(((1920, 1080), 200)),
+            initial_size.take_ready(started_at + debounce, debounce)
+        );
+    }
+
+    #[test]
+    fn stale_layout_generation_cannot_start() {
+        let started_at = Instant::now();
+        let mut initial_size = InitialSize::default();
+
+        let first = initial_size
+            .observe((1280, 720), 200, started_at)
+            .expect("first layout generation");
+        let second = initial_size
+            .observe((1920, 1080), 200, started_at + Duration::from_millis(20))
+            .expect("second layout generation");
+
+        assert_eq!(None, initial_size.take_generation(first));
+        assert_eq!(
+            Some(((1920, 1080), 200, started_at + Duration::from_millis(20))),
+            initial_size.take_generation(second)
+        );
+    }
+
+    #[test]
+    fn adjusts_to_display_control_limits() {
+        let bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(1281.4), px(720.6)));
+        assert_eq!(Some((1280, 721)), resize_dimensions(bounds, 1.0));
+
+        let oversized = Bounds::new(point(px(0.0), px(0.0)), size(px(90000.0), px(0.0)));
+        assert_eq!(Some((8192, 200)), resize_dimensions(oversized, 1.0));
+    }
+
+    #[test]
+    fn preserves_1080p_at_two_x() {
+        let bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(1920.0), px(1080.0)));
+        assert_eq!(Some((3840, 2160)), resize_dimensions(bounds, 2.0));
+    }
+
+    #[test]
+    fn caps_extreme_hidpi_area() {
+        let bounds = Bounds::new(point(px(0.0), px(0.0)), size(px(5120.0), px(2880.0)));
+        assert_eq!(Some((3840, 2160)), resize_dimensions(bounds, 2.0));
+    }
+
+    #[test]
+    fn requires_meaningful_resize_delta() {
+        assert!(!is_meaningful_delta(Some((1280, 720)), (1284, 726)));
+        assert!(is_meaningful_delta(Some((1280, 720)), (1300, 726)));
+        assert!(is_meaningful_delta(None, (1280, 720)));
+    }
+
+    #[test]
+    fn does_not_flush_resize_while_reconnecting() {
+        let remote_resize = Some(RemoteDesktopCapabilities::rdp_mvp());
+        assert!(!can_flush_pending_resize(
+            false,
+            Some((1920, 1080)),
+            remote_resize
+        ));
+        assert!(can_flush_pending_resize(
+            true,
+            Some((1920, 1080)),
+            remote_resize
+        ));
+        assert!(!can_flush_pending_resize(true, None, remote_resize));
+    }
+
+    #[test]
+    fn local_only_resize_is_consumed_without_remote_request() {
+        let local_scale = Some(RemoteDesktopCapabilities::vnc_mvp());
+        assert!(!can_flush_pending_resize(
+            true,
+            Some((1920, 1080)),
+            local_scale
+        ));
+        assert!(should_consume_local_resize(
+            true,
+            Some((1920, 1080)),
+            local_scale
+        ));
+        assert!(should_consume_local_resize(
+            true,
+            Some((1920, 1080)),
+            Some(RemoteDesktopCapabilities {
+                resize: ResizeSupport::Unsupported,
+                ..RemoteDesktopCapabilities::vnc_mvp()
+            })
+        ));
+        assert!(!should_consume_local_resize(
+            true,
+            Some((1920, 1080)),
+            Some(RemoteDesktopCapabilities::rdp_mvp())
+        ));
+    }
+
+    #[test]
+    fn converts_display_scale_to_rdp_percent() {
+        assert_eq!(100, super::scale_factor_percent(0.0));
+        assert_eq!(200, super::scale_factor_percent(2.0));
+        assert_eq!(300, super::scale_factor_percent(4.0));
+    }
+
+    #[test]
+    fn resize_request_is_skipped_when_the_session_already_has_that_size() {
+        assert!(is_already_applied(Some((1920, 1080)), (1920, 1080)));
+        assert!(!is_already_applied(Some((1920, 1080)), (1280, 720)));
+        // A session that has not reported its size yet must still accept the
+        // first request.
+        assert!(!is_already_applied(None, (1280, 720)));
+    }
+
+    #[test]
+    fn backend_reconnect_keeps_the_requested_desktop_size() {
+        use crate::view::SessionResetReason;
+
+        assert!(preserve_resize_state_on_session_reset(
+            SessionResetReason::Reconnecting
+        ));
+        assert!(!preserve_resize_state_on_session_reset(
+            SessionResetReason::ConnectionFailure
+        ));
+        assert!(!preserve_resize_state_on_session_reset(
+            SessionResetReason::Terminated
+        ));
+    }
+
+    #[test]
+    fn forgotten_resize_size_always_schedules_another_request() {
+        // Guard for the regression behind issue #171: with the recorded size
+        // cleared, the very same layout keeps producing resize requests.
+        let layout = (1920, 1080);
+        assert!(!is_meaningful_delta(Some(layout), layout));
+        assert!(is_meaningful_delta(None, layout));
+    }
+}

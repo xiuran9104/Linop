@@ -1,0 +1,244 @@
+use crate::model::{ExplorerEntry, sort_entries};
+use anyhow::{Context as _, Result};
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
+use remote_file_editor::{
+    FilePolicy, decode_text_content, determine_file_policy, load_language_for_path,
+};
+use std::ffi::{OsStr, OsString};
+use std::fs::{self, OpenOptions};
+use std::path::{Component, Path, PathBuf, Prefix};
+use std::sync::Arc;
+
+mod clipboard;
+
+pub(crate) use clipboard::{copy_entry, move_entry};
+
+pub struct LoadedFile {
+    pub(crate) text: String,
+    pub(crate) policy: FilePolicy,
+    pub(crate) file_size: usize,
+    pub(crate) language: String,
+}
+
+pub(crate) fn read_directory(
+    path: &Path,
+    root_matcher: Option<&Gitignore>,
+    show_hidden: bool,
+    show_ignored: bool,
+) -> Result<Vec<ExplorerEntry>> {
+    let local_matcher = if show_ignored {
+        None
+    } else {
+        local_gitignore(path)
+    };
+    let mut entries = Vec::new();
+    for item in fs::read_dir(path).with_context(|| format!("Unable to read {}", path.display()))? {
+        let item = item?;
+        let name = item.file_name().to_string_lossy().into_owned();
+        if name == ".git" {
+            continue;
+        }
+        let file_type = item.file_type()?;
+        let item_path = item.path();
+        if should_hide_entry(
+            &name,
+            &item_path,
+            file_type.is_dir(),
+            root_matcher,
+            local_matcher.as_ref(),
+            show_hidden,
+            show_ignored,
+        ) {
+            continue;
+        }
+        entries.push(ExplorerEntry {
+            path: item_path,
+            name,
+            is_dir: file_type.is_dir(),
+        });
+    }
+    sort_entries(&mut entries);
+    Ok(entries)
+}
+
+fn should_hide_entry(
+    name: &str,
+    path: &Path,
+    is_dir: bool,
+    root_matcher: Option<&Gitignore>,
+    local_matcher: Option<&Gitignore>,
+    show_hidden: bool,
+    show_ignored: bool,
+) -> bool {
+    if !show_hidden && name.starts_with('.') {
+        return true;
+    }
+    if show_ignored {
+        return false;
+    }
+    let ignored_by_root =
+        root_matcher.is_some_and(|matcher| matcher.matched(path, is_dir).is_ignore());
+    let ignored_by_local =
+        local_matcher.is_some_and(|matcher| matcher.matched(path, is_dir).is_ignore());
+    ignored_by_root || ignored_by_local
+}
+
+fn local_gitignore(dir: &Path) -> Option<Gitignore> {
+    let file = dir.join(".gitignore");
+    if !file.is_file() {
+        return None;
+    }
+    let (matcher, _) = Gitignore::new(file);
+    (!matcher.is_empty()).then_some(matcher)
+}
+
+/// 从工作区根目录的 `.gitignore` 与 `.git/info/exclude` 构建共享匹配器。
+pub(crate) fn root_ignore_matcher(root: &Path) -> Option<Arc<Gitignore>> {
+    let mut builder = GitignoreBuilder::new(root);
+    let mut added = false;
+    for file in [root.join(".gitignore"), root.join(".git/info/exclude")] {
+        if file.is_file() {
+            let _ = builder.add(file);
+            added = true;
+        }
+    }
+    if !added {
+        return None;
+    }
+    builder.build().ok().map(Arc::new)
+}
+
+pub(crate) fn load_file(path: &Path) -> Result<LoadedFile> {
+    let bytes = fs::read(path).with_context(|| format!("Unable to read {}", path.display()))?;
+    let file_size = bytes.len();
+    let policy = determine_file_policy(file_size)?;
+    let text = decode_text_content(&bytes)?;
+    let language = load_language_for_path(&path.to_string_lossy(), policy.is_large_file)?;
+    Ok(LoadedFile {
+        text,
+        policy,
+        file_size,
+        language,
+    })
+}
+
+pub(crate) fn save_file(path: &Path, text: &str) -> Result<()> {
+    fs::write(path, text.as_bytes()).with_context(|| format!("Unable to save {}", path.display()))
+}
+
+pub(crate) fn create_file(parent: &Path, name: &str) -> Result<PathBuf> {
+    let path = child_path(parent, name)?;
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .with_context(|| format!("Unable to create {}", path.display()))?;
+    Ok(path)
+}
+
+pub(crate) fn create_directory(parent: &Path, name: &str) -> Result<PathBuf> {
+    let path = child_path(parent, name)?;
+    fs::create_dir(&path).with_context(|| format!("Unable to create {}", path.display()))?;
+    Ok(path)
+}
+
+pub(crate) fn rename_entry(path: &Path, new_name: &str) -> Result<PathBuf> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("Cannot rename workspace root"))?;
+    let target = validated_child_path(parent, new_name)?;
+    if target == path {
+        return Ok(path.to_path_buf());
+    }
+    ensure_target_does_not_exist(&target)?;
+    fs::rename(path, &target).with_context(|| {
+        format!(
+            "Unable to rename {} to {}",
+            path.display(),
+            target.display()
+        )
+    })?;
+    Ok(target)
+}
+
+pub(crate) fn delete_entry(path: &Path) -> Result<()> {
+    let metadata = fs::symlink_metadata(path)
+        .with_context(|| format!("Unable to inspect {}", path.display()))?;
+    if metadata.is_dir() && !metadata.file_type().is_symlink() {
+        fs::remove_dir_all(path)
+            .with_context(|| format!("Unable to delete directory {}", path.display()))
+    } else {
+        fs::remove_file(path).with_context(|| format!("Unable to delete file {}", path.display()))
+    }
+}
+
+fn child_path(parent: &Path, name: &str) -> Result<PathBuf> {
+    let path = validated_child_path(parent, name)?;
+    ensure_target_does_not_exist(&path)?;
+    Ok(path)
+}
+
+pub(crate) fn validated_child_path(parent: &Path, name: &str) -> Result<PathBuf> {
+    let name = name.trim();
+    if name.is_empty()
+        || name == "."
+        || name == ".."
+        || Path::new(name).components().count() != 1
+        || name.contains('/')
+        || name.contains('\\')
+    {
+        anyhow::bail!("Invalid file name: {name}");
+    }
+    Ok(parent.join(name))
+}
+
+fn ensure_target_does_not_exist(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => anyhow::bail!("{} already exists", path.display()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error).with_context(|| format!("Unable to inspect {}", path.display())),
+    }
+}
+
+pub(crate) fn canonical_workspace_root(path: PathBuf) -> Result<PathBuf> {
+    let canonical = path
+        .canonicalize()
+        .with_context(|| format!("Unable to open workspace {}", path.display()))?;
+    Ok(normalize_canonical_root(canonical))
+}
+
+/// 把 `canonicalize()` 产出的 verbatim UNC 形式还原成普通 UNC 路径。
+///
+/// Windows 上 `canonicalize()` 对网络路径返回 `\\?\UNC\server\share\...`，
+/// `\\?\` 前缀不会被剥掉。这种形式既不适合展示，也无法与用户给出的
+/// `\\server\share\...` 相等比较——而工作区根目录的变更判断依赖相等比较
+/// （WSL 文件树的根目录就是 `\\wsl$\<发行版>` 这样的 UNC 路径）。
+fn normalize_canonical_root(path: PathBuf) -> PathBuf {
+    let Some((server, share, rest)) = verbatim_unc_parts(&path) else {
+        return path;
+    };
+    let mut normalized = OsString::from(r"\\");
+    normalized.push(server);
+    normalized.push(r"\");
+    normalized.push(share);
+    if !rest.as_os_str().is_empty() {
+        normalized.push(r"\");
+        normalized.push(rest);
+    }
+    PathBuf::from(normalized)
+}
+
+/// 拆出 `\\?\UNC\server\share\rest` 的三段；不是 verbatim UNC 路径时返回 `None`。
+fn verbatim_unc_parts(path: &Path) -> Option<(&OsStr, &OsStr, PathBuf)> {
+    let mut components = path.components();
+    let Component::Prefix(prefix) = components.next()? else {
+        return None;
+    };
+    let Prefix::VerbatimUNC(server, share) = prefix.kind() else {
+        return None;
+    };
+    Some((server, share, components.collect()))
+}
+
+#[cfg(test)]
+mod tests;

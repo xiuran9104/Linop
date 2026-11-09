@@ -1,0 +1,9 @@
+[package]
+name = "linop-i18n"
+description = "Trilingual string catalog (en / zh-CN / zh-TW) for Linop"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dev-dependencies]
+serde_json = { workspace = true }

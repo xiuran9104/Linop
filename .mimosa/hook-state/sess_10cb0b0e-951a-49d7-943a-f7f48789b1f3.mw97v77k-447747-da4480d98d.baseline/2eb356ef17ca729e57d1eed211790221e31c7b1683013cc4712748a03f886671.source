@@ -1,0 +1,18 @@
+[package]
+name = "linop-ssh"
+description = "Async SSH client: auth, interactive shell, port forwarding"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+dirs = { workspace = true }
+tokio = { workspace = true }
+russh = { workspace = true }
+thiserror = { workspace = true }
+linop-core = { workspace = true }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+tempfile = "3"
+linop-testsupport = { path = "../linop-testsupport" }

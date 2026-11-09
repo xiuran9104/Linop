@@ -1,0 +1,392 @@
+//! Runtime 外壳:对应 Codex 的 `Codex`。
+//!
+//! 持有会话管理器、共享服务([`RuntimeServices`])与事件广播端,负责接收命令、
+//! 创建会话、启动 / 中断每一轮任务,并把任务结果转换为终态事件。
+
+mod active_turn;
+mod command;
+mod event;
+mod input_queue;
+mod session;
+mod session_manager;
+mod session_state;
+mod task;
+mod turn_context;
+
+pub use active_turn::ActiveTurn;
+pub use command::RuntimeCommand;
+pub use event::{RuntimeEvent, RuntimeEventReceiver, RuntimeEventSender};
+pub use input_queue::{InputImage, InputQueue, TurnInput, UserInput};
+pub use session::Session;
+pub use session::{AcpSessionRef, SessionSnapshot};
+pub use session_manager::SessionManager;
+pub use session_state::SessionState;
+pub use task::{
+    PendingToolApproval, PendingToolCallSummary, RuntimeTask, TaskContext, TaskKind, TaskOutcome,
+    ToolExecutionMode,
+};
+pub use turn_context::TurnContext;
+
+use crate::error::RuntimeError;
+use crate::ids::{SessionId, ToolCallId, TurnId};
+use crate::model::ModelClient;
+use crate::resource::ResourceContext;
+use crate::runtime::session::PendingToolResolution;
+use crate::tasks::{AgentTask, continue_after_tool_decision};
+use crate::tools::ToolRouter;
+use rust_i18n::t;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use tokio_util::sync::CancellationToken;
+
+/// 内置 Agent 单轮模型 / 工具往返次数的默认值。
+pub const DEFAULT_AGENT_MAX_ITERATIONS: usize = 64;
+/// 内置 Agent 单轮模型 / 工具往返次数的最小可配置值。
+pub const MIN_AGENT_MAX_ITERATIONS: usize = 1;
+/// 内置 Agent 单轮模型 / 工具往返次数的最大可配置值。
+pub const MAX_AGENT_MAX_ITERATIONS: usize = 256;
+
+/// Runtime 依赖的共享服务。
+#[derive(Clone)]
+pub struct RuntimeServices {
+    pub model: Arc<dyn ModelClient>,
+    pub tools: Arc<ToolRouter>,
+    agent_max_iterations: Arc<AtomicUsize>,
+}
+
+impl RuntimeServices {
+    pub fn new(model: Arc<dyn ModelClient>, tools: Arc<ToolRouter>) -> Self {
+        Self {
+            model,
+            tools,
+            agent_max_iterations: Arc::new(AtomicUsize::new(DEFAULT_AGENT_MAX_ITERATIONS)),
+        }
+    }
+
+    pub fn with_agent_max_iterations(self, max_iterations: usize) -> Self {
+        self.set_agent_max_iterations(max_iterations);
+        self
+    }
+
+    pub fn agent_max_iterations(&self) -> usize {
+        self.agent_max_iterations.load(Ordering::Relaxed)
+    }
+
+    pub fn set_agent_max_iterations(&self, max_iterations: usize) {
+        self.agent_max_iterations.store(
+            max_iterations.clamp(MIN_AGENT_MAX_ITERATIONS, MAX_AGENT_MAX_ITERATIONS),
+            Ordering::Relaxed,
+        );
+    }
+}
+
+/// 事件广播通道容量。
+const EVENT_CHANNEL_CAPACITY: usize = 256;
+
+/// Agent 运行时。
+pub struct Runtime {
+    sessions: SessionManager,
+    services: Arc<RuntimeServices>,
+    events: RuntimeEventSender,
+}
+
+impl Runtime {
+    pub fn new(services: RuntimeServices) -> Self {
+        let (events, _rx) = tokio::sync::broadcast::channel(EVENT_CHANNEL_CAPACITY);
+        Self {
+            sessions: SessionManager::new(),
+            services: Arc::new(services),
+            events,
+        }
+    }
+
+    pub fn services(&self) -> &Arc<RuntimeServices> {
+        &self.services
+    }
+
+    /// 订阅运行时事件。
+    pub fn subscribe(&self) -> RuntimeEventReceiver {
+        self.events.subscribe()
+    }
+
+    /// 创建一个新会话。
+    pub fn create_session(&self, resources: ResourceContext) -> Arc<Session> {
+        let session = Session::new(SessionId::new(), resources, self.events.clone());
+        self.sessions.insert(session.clone());
+        session
+    }
+
+    /// 由持久化快照恢复一个会话并登记到管理器。若同 ID 会话已存在则覆盖。
+    pub fn restore_session(&self, snapshot: SessionSnapshot) -> Arc<Session> {
+        let session = Session::restore(snapshot, self.events.clone());
+        self.sessions.insert(session.clone());
+        session
+    }
+
+    pub fn session(&self, id: &SessionId) -> Option<Arc<Session>> {
+        self.sessions.get(id)
+    }
+
+    pub fn close_session(&self, id: &SessionId) {
+        if let Some(session) = self.sessions.remove(id) {
+            session.cancel_current_turn();
+        }
+    }
+
+    fn build_task(kind: TaskKind) -> Arc<dyn RuntimeTask> {
+        match kind {
+            TaskKind::Agent | TaskKind::Ask | TaskKind::Plan => Arc::new(AgentTask::new()),
+        }
+    }
+
+    /// 运行中插话(steering)：入队后由当前轮在下一轮采样前注入历史。
+    ///
+    /// 会话空闲时不开新轮——调用方(UI)自己决定何时 `start_turn`，runtime 不抢调度。
+    /// 返回 `false` 表示会话不存在或当前无运行中轮次（挂起等审批也不算）。
+    pub fn steer(&self, session_id: &SessionId, input: UserInput) -> bool {
+        let Some(session) = self.session(session_id) else {
+            return false;
+        };
+        session.steer(input)
+    }
+
+    /// 内联执行一轮并返回结果。适合测试与同步调用方。
+    pub async fn run_turn_blocking(
+        &self,
+        session_id: &SessionId,
+        input: UserInput,
+        kind: TaskKind,
+    ) -> Result<TaskOutcome, RuntimeError> {
+        self.run_turn_blocking_with_tool_mode(session_id, input, kind, ToolExecutionMode::default())
+            .await
+    }
+
+    pub async fn run_turn_blocking_with_tool_mode(
+        &self,
+        session_id: &SessionId,
+        input: UserInput,
+        kind: TaskKind,
+        tool_mode: ToolExecutionMode,
+    ) -> Result<TaskOutcome, RuntimeError> {
+        let session = self
+            .session(session_id)
+            .ok_or_else(|| RuntimeError::SessionNotFound(session_id.clone()))?;
+        let turn = Arc::new(TurnContext::new(session_id.clone(), session.resources()));
+        let cancellation = CancellationToken::new();
+        if !session.try_set_active_turn(ActiveTurn::new(
+            turn.turn_id.clone(),
+            cancellation.clone(),
+            None,
+        )) {
+            return Err(RuntimeError::SessionBusy(session_id.clone()));
+        }
+        session.emit(RuntimeEvent::TurnStarted {
+            session_id: session_id.clone(),
+            turn_id: turn.turn_id.clone(),
+        });
+
+        let task = Self::build_task(kind);
+        let ctx = TaskContext {
+            kind,
+            tool_mode,
+            session: session.clone(),
+            services: self.services.clone(),
+            turn: turn.clone(),
+            input: vec![TurnInput::User(input)],
+        };
+        let outcome = task.run(ctx, cancellation).await;
+
+        if session.clear_active_turn_if(&turn.turn_id) {
+            emit_outcome(&session, &turn.turn_id, &outcome);
+        }
+        Ok(outcome)
+    }
+
+    pub async fn approve_pending_tool(
+        &self,
+        session_id: &SessionId,
+        call_id: &ToolCallId,
+    ) -> Result<TaskOutcome, RuntimeError> {
+        self.resolve_pending_tool(session_id, call_id, true).await
+    }
+
+    pub async fn reject_pending_tool(
+        &self,
+        session_id: &SessionId,
+        call_id: &ToolCallId,
+    ) -> Result<TaskOutcome, RuntimeError> {
+        self.resolve_pending_tool(session_id, call_id, false).await
+    }
+
+    async fn resolve_pending_tool(
+        &self,
+        session_id: &SessionId,
+        call_id: &ToolCallId,
+        approved: bool,
+    ) -> Result<TaskOutcome, RuntimeError> {
+        let session = self
+            .session(session_id)
+            .ok_or_else(|| RuntimeError::SessionNotFound(session_id.clone()))?;
+        let cancellation = CancellationToken::new();
+        let pending = match session.begin_pending_tool_resolution(call_id, cancellation.clone()) {
+            PendingToolResolution::Ready(pending) => pending,
+            PendingToolResolution::Busy => {
+                return Err(RuntimeError::SessionBusy(session_id.clone()));
+            }
+            PendingToolResolution::Missing => {
+                return Err(RuntimeError::Other(anyhow::anyhow!(
+                    t!("AgentRuntime.no_pending_tool").to_string()
+                )));
+            }
+            PendingToolResolution::Mismatch => {
+                return Err(RuntimeError::Other(anyhow::anyhow!(
+                    t!(
+                        "AgentRuntime.tool_approval_mismatch",
+                        call_id = call_id.as_str()
+                    )
+                    .to_string()
+                )));
+            }
+        };
+        session.emit(RuntimeEvent::ToolApprovalResolved {
+            session_id: session_id.clone(),
+            turn_id: pending.turn_id.clone(),
+            call_id: call_id.clone(),
+            approved,
+        });
+
+        let turn_id = pending.turn_id.clone();
+        let outcome = continue_after_tool_decision(
+            self.services.clone(),
+            session.clone(),
+            pending,
+            approved,
+            cancellation,
+        )
+        .await;
+
+        if session.clear_active_turn_if(&turn_id) {
+            emit_outcome(&session, &turn_id, &outcome);
+        }
+        Ok(outcome)
+    }
+
+    /// 在后台启动一轮任务,返回该轮 ID。结果通过事件流观测。
+    pub fn start_turn(
+        &self,
+        session_id: &SessionId,
+        input: UserInput,
+        kind: TaskKind,
+    ) -> Result<TurnId, RuntimeError> {
+        let session = self
+            .session(session_id)
+            .ok_or_else(|| RuntimeError::SessionNotFound(session_id.clone()))?;
+        let turn = Arc::new(TurnContext::new(session_id.clone(), session.resources()));
+        let turn_id = turn.turn_id.clone();
+        let cancellation = CancellationToken::new();
+        // 先登记当前轮,避免任务快速结束时清理早于登记造成的竞态。
+        if !session.try_set_active_turn(ActiveTurn::new(
+            turn_id.clone(),
+            cancellation.clone(),
+            None,
+        )) {
+            return Err(RuntimeError::SessionBusy(session_id.clone()));
+        }
+        session.emit(RuntimeEvent::TurnStarted {
+            session_id: session_id.clone(),
+            turn_id: turn_id.clone(),
+        });
+
+        let task = Self::build_task(kind);
+        let services = self.services.clone();
+        let session_run = session.clone();
+        let turn_run = turn.clone();
+        let cancel_run = cancellation.clone();
+        tokio::spawn(async move {
+            let ctx = TaskContext {
+                kind,
+                tool_mode: ToolExecutionMode::default(),
+                session: session_run.clone(),
+                services,
+                turn: turn_run.clone(),
+                input: vec![TurnInput::User(input)],
+            };
+            let outcome = task.run(ctx, cancel_run).await;
+            if session_run.clear_active_turn_if(&turn_run.turn_id) {
+                emit_outcome(&session_run, &turn_run.turn_id, &outcome);
+            }
+        });
+
+        Ok(turn_id)
+    }
+
+    /// 中断会话当前正在执行的一轮。
+    pub fn interrupt(&self, session_id: &SessionId) -> Result<(), RuntimeError> {
+        let session = self
+            .session(session_id)
+            .ok_or_else(|| RuntimeError::SessionNotFound(session_id.clone()))?;
+        if let Some(turn_id) = session.cancel_and_detach_current_turn() {
+            session.emit(RuntimeEvent::TurnCancelled {
+                session_id: session_id.clone(),
+                turn_id,
+            });
+        }
+        Ok(())
+    }
+
+    /// 处理一条 [`RuntimeCommand`]。
+    pub async fn submit(&self, command: RuntimeCommand) -> Result<(), RuntimeError> {
+        match command {
+            RuntimeCommand::StartTurn {
+                session_id,
+                input,
+                task_kind,
+            } => {
+                self.start_turn(&session_id, input, task_kind)?;
+                Ok(())
+            }
+            RuntimeCommand::Interrupt { session_id } => self.interrupt(&session_id),
+            RuntimeCommand::CloseSession { session_id } => {
+                self.close_session(&session_id);
+                Ok(())
+            }
+        }
+    }
+}
+
+/// 把任务结果转换为终态事件并发出。
+fn emit_outcome(session: &Session, turn_id: &TurnId, outcome: &TaskOutcome) {
+    let session_id = session.id().clone();
+    let event = match outcome {
+        TaskOutcome::Completed { answer } => RuntimeEvent::TurnCompleted {
+            session_id,
+            turn_id: turn_id.clone(),
+            answer: answer.clone(),
+        },
+        TaskOutcome::NeedUserInput {
+            question,
+            pending_tool_call_id,
+            tool_name,
+            arguments,
+            pending_tool_calls,
+        } => RuntimeEvent::NeedUserInput {
+            session_id,
+            turn_id: turn_id.clone(),
+            question: question.clone(),
+            pending_tool_call_id: pending_tool_call_id.clone(),
+            tool_name: tool_name.clone(),
+            arguments: arguments.clone(),
+            pending_tool_calls: pending_tool_calls.clone(),
+        },
+        TaskOutcome::Failed { reason } => RuntimeEvent::TurnFailed {
+            session_id,
+            turn_id: turn_id.clone(),
+            reason: reason.clone(),
+        },
+        TaskOutcome::Cancelled => RuntimeEvent::TurnCancelled {
+            session_id,
+            turn_id: turn_id.clone(),
+        },
+    };
+    session.emit(event);
+}

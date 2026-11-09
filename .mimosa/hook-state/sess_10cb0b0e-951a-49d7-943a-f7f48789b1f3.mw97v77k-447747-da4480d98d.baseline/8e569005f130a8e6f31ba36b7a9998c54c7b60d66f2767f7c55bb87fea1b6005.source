@@ -1,0 +1,31 @@
+[package]
+name = "linop"
+description = "Linop - a native all-in-one terminal workspace for SSH, SFTP and port forwarding"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "linop"
+path = "src/main.rs"
+
+[dependencies]
+linop-core = { workspace = true }
+linop-ssh = { workspace = true }
+linop-sftp = { workspace = true }
+linop-term = { workspace = true }
+linop-monitor = { workspace = true }
+linop-cast = { workspace = true }
+linop-telnet = { workspace = true }
+linop-dbx = { workspace = true }
+tokio = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+anyhow = { workspace = true }
+serde_json = { workspace = true }
+dirs = { workspace = true }
+
+[dev-dependencies]
+linop-testsupport = { path = "../../crates/linop-testsupport" }
+tempfile = "3"
+unicode-width = "0.2"

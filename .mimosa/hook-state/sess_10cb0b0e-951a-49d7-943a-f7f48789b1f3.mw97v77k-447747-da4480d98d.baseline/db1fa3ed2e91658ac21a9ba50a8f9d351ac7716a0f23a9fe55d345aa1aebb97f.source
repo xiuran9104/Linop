@@ -1,0 +1,27 @@
+[package]
+name = "sftp"
+version = "0.15.2"
+publish.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { workspace = true, features = ["fs", "io-util", "net", "sync", "time"] }
+async-trait = { workspace = true }
+anyhow = { workspace = true }
+base64 = { workspace = true }
+futures = { workspace = true }
+tracing = { workspace = true }
+rust-i18n = { workspace = true }
+russh = { workspace = true }
+russh-sftp = { workspace = true }
+sha2 = { workspace = true }
+ssh = { workspace = true }
+tokio-socks = { workspace = true }
+uuid = { workspace = true }
+zeroize = { workspace = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile = "3"

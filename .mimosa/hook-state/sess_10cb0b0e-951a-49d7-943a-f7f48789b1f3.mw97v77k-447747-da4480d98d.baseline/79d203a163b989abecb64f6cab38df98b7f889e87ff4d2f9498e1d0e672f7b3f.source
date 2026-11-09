@@ -1,0 +1,154 @@
+use std::fs;
+use std::path::PathBuf;
+
+fn workspace_source(file: &str) -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("src/workspace")
+        .join(file);
+    fs::read_to_string(&path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
+}
+
+fn sidebar_source(file: &str) -> String {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("src/sidebar")
+        .join(file);
+    fs::read_to_string(&path).unwrap_or_else(|error| panic!("read {}: {error}", path.display()))
+}
+
+#[test]
+fn terminal_pane_uses_a_floating_tool_instead_of_a_layout_header() {
+    let modules = workspace_source("mod.rs");
+    let render = workspace_source("render.rs");
+    let tool = workspace_source("pane_tool.rs");
+
+    assert!(modules.contains("mod pane_tool;"));
+    assert!(!modules.contains("mod pane_header;"));
+    assert!(render.contains("render_pane_floating_tool"));
+    assert!(!render.contains("render_pane_header"));
+    assert!(tool.contains(".absolute()"));
+    assert!(tool.contains(".top_2()"));
+    assert!(tool.contains(".right_2()"));
+}
+
+#[test]
+fn floating_tool_offers_button_driven_splitting() {
+    let modules = workspace_source("mod.rs");
+    let actions = workspace_source("actions.rs");
+    let tool = workspace_source("pane_tool.rs");
+
+    assert!(!modules.contains("mod connections;"));
+    assert!(actions.contains("fn split_pane("));
+    assert!(actions.contains("duplicate_source_snapshot"));
+    assert!(actions.contains("new_from_duplicate_source"));
+    assert!(actions.contains("with_workspace_pane"));
+    assert!(tool.contains("terminal-pane-split"));
+    assert!(tool.contains("dropdown_menu_with_anchor"));
+    assert!(tool.contains("Placement::Left"));
+    assert!(tool.contains("Placement::Right"));
+    assert!(tool.contains("Placement::Top"));
+    assert!(tool.contains("Placement::Bottom"));
+}
+
+#[test]
+fn active_terminal_pane_keeps_a_highlight_border() {
+    let render = workspace_source("render.rs");
+
+    assert!(render.contains("let border = if active"));
+    assert!(render.contains("cx.theme().drag_border"));
+    assert!(render.contains(".border_color(border)"));
+}
+
+#[test]
+fn terminal_tab_drop_region_renders_direct_zones_above_terminal_content() {
+    let tab_drag = workspace_source("tab_drag.rs");
+
+    assert!(tab_drag.contains(".id((\"terminal-tab-drop-region\""));
+    assert!(tab_drag.contains("self.render_tab_drop_zone"));
+    assert!(tab_drag.contains(".drag_over::<DragTab>"));
+    assert!(tab_drag.contains("show_drop_highlight"));
+}
+
+#[test]
+fn file_manager_drop_overlay_follows_gpui_drag_over_lifecycle() {
+    let file_manager = sidebar_source("file_manager_panel.rs");
+
+    assert!(file_manager.contains(".child(render_file_drop_overlay("));
+    assert!(file_manager.contains(".invisible()"));
+    assert!(file_manager.contains(".drag_over::<ExternalPaths>(|style, _, _, _| style.visible())"));
+    assert!(file_manager.contains("cx.theme().drop_target"));
+    assert!(file_manager.contains("cx.theme().drag_border"));
+    assert!(file_manager.contains("this.prepare_uploads(file_paths"));
+    assert!(!file_manager.contains("is_dragging_over"));
+    assert!(!file_manager.contains("gpui::rgba(0x3b82f6"));
+}
+
+#[test]
+fn shared_sidebar_does_not_add_a_workspace_header() {
+    let render = workspace_source("render.rs");
+
+    assert!(!render.contains("render_sidebar_target_header"));
+    assert!(!render.contains("terminal-sidebar-target-pin"));
+}
+
+#[test]
+fn a_single_terminal_reveals_split_action_on_hover_without_a_split_border() {
+    let render = workspace_source("render.rs");
+    let tool = workspace_source("pane_tool.rs");
+
+    assert!(render.contains("let split = self.panes.len() > 1"));
+    assert!(render.contains("when(split"));
+    assert!(render.contains("render_pane_floating_tool"));
+    assert!(render.contains("border_1().border_color(border)"));
+    assert!(render.contains(".group(hover_group.clone())"));
+    assert!(render.contains("pane_id, title, hover_group, cx"));
+    assert!(tool.contains("if !split"));
+    assert!(tool.contains(".invisible()"));
+    assert!(tool.contains(".group_hover(hover_group"));
+    assert!(tool.contains(".child(self.render_split_button("));
+    assert!(tool.contains("render_cancel_split_button"));
+    assert!(tool.contains("render_close_button"));
+}
+
+#[test]
+fn all_terminal_types_share_the_same_split_controls() {
+    let tool = workspace_source("pane_tool.rs");
+
+    assert!(!tool.contains("TerminalConnectionKind"));
+    assert!(!tool.contains("connection_kind(cx)"));
+    assert!(tool.matches(".child(self.render_split_button(").count() >= 2);
+    assert!(tool.contains(".disabled(!split_supported)"));
+}
+
+#[test]
+fn floating_title_has_stable_width_and_can_drag_a_pane_back_to_tabs() {
+    let tool = workspace_source("pane_tool.rs");
+    let transfer = workspace_source("pane_tab_transfer.rs");
+
+    assert!(tool.contains(".min_w(px(190.0))"));
+    assert!(tool.contains("DragTab::from_external"));
+    assert!(transfer.contains("impl ExternalTabDragSource"));
+    assert!(transfer.contains("detach_pane_as_tab"));
+}
+
+#[test]
+fn floating_title_drag_does_not_select_terminal_content() {
+    let tool = workspace_source("pane_tool.rs");
+
+    assert!(tool.contains(".on_mouse_down(MouseButton::Left"));
+    assert!(tool.contains(".on_mouse_move("));
+    assert!(tool.matches("window.prevent_default();").count() >= 3);
+    assert!(tool.matches("cx.stop_propagation();").count() >= 3);
+}
+
+#[test]
+fn all_split_panes_are_equal_and_offer_cancel_split_without_pin() {
+    let view = workspace_source("view.rs");
+    let tool = workspace_source("pane_tool.rs");
+    let actions = workspace_source("actions.rs");
+
+    assert!(!view.contains("main_pane_id"));
+    assert!(!tool.contains("IconName::Pin"));
+    assert!(!actions.contains("toggle_sidebar_target"));
+    assert!(tool.contains("terminal-pane-cancel-split"));
+    assert!(tool.contains("restore_pane_to_tab"));
+}

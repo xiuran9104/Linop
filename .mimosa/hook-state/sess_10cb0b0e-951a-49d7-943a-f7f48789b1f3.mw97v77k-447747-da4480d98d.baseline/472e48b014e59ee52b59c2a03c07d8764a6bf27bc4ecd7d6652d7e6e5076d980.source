@@ -1,0 +1,4169 @@
+use crate::cloud_sync::{GlobalCloudUser, UserInfo};
+use crate::sidebar_contribution::SidebarPlacement;
+use crate::storage::get_config_dir;
+use crate::utils::auto_save_config::AutoSaveConfig;
+use agent_runtime::{
+    DEFAULT_AGENT_MAX_ITERATIONS, MAX_AGENT_MAX_ITERATIONS, MIN_AGENT_MAX_ITERATIONS,
+};
+use gpui::http_client::Url;
+use gpui::{App, Font, FontFallbacks, Global, font, px};
+use gpui_component::{Theme, ThemeMode};
+use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::{BTreeMap, HashMap};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, RwLock};
+use tracing::{error, info};
+
+/// 本次运行是否从「无法解析」的 settings.json 起步。
+///
+/// 为 `true` 时禁止再写盘：坏文件已被隔离成 `.corrupt-*`，放任后续保存会用默认值
+/// 重写 `settings.json`，把「哪一份才是好配置」彻底搅乱（2026-11-01 事故的翻版）。
+static LOAD_DEGRADED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+mod locale;
+mod remote_file_editor;
+
+pub use locale::{
+    LOCALE_EN, LOCALE_SYSTEM, LOCALE_ZH_CN, LOCALE_ZH_HK, effective_locale_for_setting,
+};
+pub use remote_file_editor::{
+    RemoteFileEditorOverride, RemoteFileEditorUserSettings, RemoteFileOpenMode,
+};
+
+// ============================================================================
+// 全局用户状态
+// ============================================================================
+
+/// 全局当前用户状态
+///
+/// 用于在设置面板中显示用户信息和执行登出操作。
+#[derive(Clone, Default)]
+pub struct GlobalCurrentUser {
+    user: Arc<RwLock<Option<UserInfo>>>,
+}
+
+impl Global for GlobalCurrentUser {}
+
+impl GlobalCurrentUser {
+    /// 获取当前用户
+    pub fn get_user(cx: &App) -> Option<UserInfo> {
+        if let Some(state) = cx.try_global::<GlobalCurrentUser>() {
+            state.user.read().ok().and_then(|u| u.clone())
+        } else {
+            None
+        }
+    }
+
+    /// 设置当前用户
+    pub fn set_user(user: Option<UserInfo>, cx: &mut App) {
+        if !cx.has_global::<GlobalCurrentUser>() {
+            cx.set_global(GlobalCurrentUser::default());
+        }
+        if let Some(state) = cx.try_global::<GlobalCurrentUser>() {
+            if let Ok(mut guard) = state.user.write() {
+                *guard = user.clone();
+            }
+        }
+        GlobalCloudUser::set_user(user, cx);
+    }
+}
+
+// ============================================================================
+// 数据库配置
+// ============================================================================
+
+/// 数据库打开方式
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum DatabaseOpenMode {
+    /// 单库模式：每个数据库单独打开一个标签页
+    #[default]
+    Single,
+    /// 工作区模式：按工作区分组打开，同一工作区的数据库在同一标签页
+    Workspace,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LargeTextCellEditorOpenMode {
+    #[default]
+    SidebarPreview,
+    Dialog,
+}
+
+/// 数据表格的显示方式
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TableViewMode {
+    /// 网格：行列平铺，可编辑、可排序
+    #[default]
+    Grid,
+    /// 纵向：每条记录按「列名：值」逐行展开，宽表更易读
+    Vertical,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StartupDefaultPage {
+    #[default]
+    Home,
+    AiWorkbench,
+}
+
+/// 「记住主密码」时主密钥的保存位置。
+///
+/// 系统凭据库由操作系统按当前用户隔离（macOS 钥匙串 / Windows 凭据管理器）；
+/// 本机文件写在数据目录里，使用程序内置密钥加密，安全强度弱于系统凭据库，
+/// 由用户显式选择。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MasterKeyStorage {
+    /// 系统凭据库（macOS 钥匙串 / Windows 凭据管理器）
+    #[default]
+    SystemCredentialStore,
+    /// 本机文件（数据目录，程序内置密钥加密）
+    LocalFile,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HomeConnectionLayout {
+    #[default]
+    Card,
+    List,
+    Tree,
+    Navigation,
+}
+
+/// SQL 格式化时的关键字大小写策略；Preserve 保持用户原文不改变大小写
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SqlKeywordCase {
+    #[default]
+    Preserve,
+    Upper,
+    Lower,
+}
+
+/// SQL 格式化的缩进风格
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SqlIndentStyle {
+    #[default]
+    TwoSpaces,
+    FourSpaces,
+    Tabs,
+}
+
+/// SQL 美化 / 压缩相关的用户设置
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SqlFormatSettings {
+    pub keyword_case: SqlKeywordCase,
+    pub indent: SqlIndentStyle,
+}
+
+impl SqlKeywordCase {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Preserve => "preserve",
+            Self::Upper => "upper",
+            Self::Lower => "lower",
+        }
+    }
+
+    pub fn from_value(value: &str) -> Self {
+        match value {
+            "upper" => Self::Upper,
+            "lower" => Self::Lower,
+            _ => Self::Preserve,
+        }
+    }
+}
+
+impl SqlIndentStyle {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::TwoSpaces => "two_spaces",
+            Self::FourSpaces => "four_spaces",
+            Self::Tabs => "tabs",
+        }
+    }
+
+    pub fn from_value(value: &str) -> Self {
+        match value {
+            "four_spaces" => Self::FourSpaces,
+            "tabs" => Self::Tabs,
+            _ => Self::TwoSpaces,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConnectionSortOrder {
+    /// 名称自然排序：数字段按数值比较（对 IP 地址友好），其余部分忽略大小写
+    #[default]
+    Natural,
+    /// 最近使用优先（LRU）：最近打开过的连接排在最前
+    Lru,
+}
+
+impl ConnectionSortOrder {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Natural => "natural",
+            Self::Lru => "lru",
+        }
+    }
+
+    pub fn from_value(value: &str) -> Self {
+        match value {
+            "lru" => Self::Lru,
+            _ => Self::Natural,
+        }
+    }
+}
+
+impl HomeConnectionLayout {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Card => "card",
+            Self::List => "list",
+            Self::Tree => "tree",
+            Self::Navigation => "navigation",
+        }
+    }
+
+    pub fn from_value(value: &str) -> Self {
+        match value {
+            "list" => Self::List,
+            "tree" => Self::Tree,
+            "navigation" => Self::Navigation,
+            _ => Self::Card,
+        }
+    }
+}
+
+impl StartupDefaultPage {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            StartupDefaultPage::Home => "home",
+            StartupDefaultPage::AiWorkbench => "ai_workbench",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "home" => StartupDefaultPage::Home,
+            _ => StartupDefaultPage::AiWorkbench,
+        }
+    }
+}
+
+impl LargeTextCellEditorOpenMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LargeTextCellEditorOpenMode::SidebarPreview => "sidebar_preview",
+            LargeTextCellEditorOpenMode::Dialog => "dialog",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "dialog" => LargeTextCellEditorOpenMode::Dialog,
+            _ => LargeTextCellEditorOpenMode::SidebarPreview,
+        }
+    }
+}
+
+impl TableViewMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TableViewMode::Grid => "grid",
+            TableViewMode::Vertical => "vertical",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "vertical" => TableViewMode::Vertical,
+            _ => TableViewMode::Grid,
+        }
+    }
+
+    /// 是否处于纵向「列：值」形态。
+    pub fn is_vertical(&self) -> bool {
+        matches!(self, TableViewMode::Vertical)
+    }
+}
+
+impl DatabaseOpenMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DatabaseOpenMode::Single => "single",
+            DatabaseOpenMode::Workspace => "workspace",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "workspace" => DatabaseOpenMode::Workspace,
+            _ => DatabaseOpenMode::Single,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProxyType {
+    Http,
+    Https,
+    #[default]
+    Socks5,
+}
+
+impl ProxyType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ProxyType::Http => "http",
+            ProxyType::Https => "https",
+            ProxyType::Socks5 => "socks5",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GlobalProxySettings {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub proxy_type: ProxyType,
+    #[serde(default)]
+    pub host: String,
+    #[serde(default = "default_proxy_port")]
+    pub port: u16,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password: String,
+}
+
+fn default_proxy_port() -> u16 {
+    1080
+}
+
+impl Default for GlobalProxySettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            proxy_type: ProxyType::default(),
+            host: String::new(),
+            port: default_proxy_port(),
+            username: String::new(),
+            password: String::new(),
+        }
+    }
+}
+
+impl GlobalProxySettings {
+    pub fn validate(&self) -> Result<(), String> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        if self.host.trim().is_empty() {
+            return Err("代理主机不能为空".to_string());
+        }
+
+        if self.port == 0 {
+            return Err("代理端口不能为空".to_string());
+        }
+
+        if self.username.trim().is_empty() && !self.password.is_empty() {
+            return Err("填写代理密码时必须同时填写用户名".to_string());
+        }
+
+        Ok(())
+    }
+
+    pub fn to_proxy_url(&self) -> Result<Option<Url>, String> {
+        if !self.enabled {
+            return Ok(None);
+        }
+
+        self.validate()?;
+
+        let base = format!(
+            "{}://{}:{}",
+            self.proxy_type.as_str(),
+            self.host.trim(),
+            self.port
+        );
+        let mut url = Url::parse(&base).map_err(|err| format!("代理地址格式不正确: {}", err))?;
+
+        if !self.username.trim().is_empty() {
+            url.set_username(self.username.trim())
+                .map_err(|_| "代理用户名格式不正确".to_string())?;
+        }
+
+        if !self.password.is_empty() {
+            url.set_password(Some(&self.password))
+                .map_err(|_| "代理密码格式不正确".to_string())?;
+        }
+
+        Ok(Some(url))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpServerMode {
+    #[default]
+    Temporary,
+    Persistent,
+}
+
+impl McpServerMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            McpServerMode::Temporary => "temporary",
+            McpServerMode::Persistent => "persistent",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "persistent" => McpServerMode::Persistent,
+            _ => McpServerMode::Temporary,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum McpPermissionMode {
+    #[default]
+    Deny,
+    Ask,
+    Allow,
+}
+
+impl McpPermissionMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            McpPermissionMode::Deny => "deny",
+            McpPermissionMode::Ask => "ask",
+            McpPermissionMode::Allow => "allow",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "allow" => McpPermissionMode::Allow,
+            "ask" => McpPermissionMode::Ask,
+            _ => McpPermissionMode::Deny,
+        }
+    }
+
+    pub fn profile_id(&self) -> &'static str {
+        match self {
+            McpPermissionMode::Deny => "safe",
+            McpPermissionMode::Ask => "confirm",
+            McpPermissionMode::Allow => "auto",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolExposureToolsetSettings {
+    #[serde(default = "default_true")]
+    pub terminal: bool,
+    #[serde(default = "default_true")]
+    pub terminal_ssh_exec: bool,
+    #[serde(default = "default_true")]
+    pub terminal_exec: bool,
+    #[serde(default = "default_true")]
+    pub connections: bool,
+    #[serde(default)]
+    pub sftp: bool,
+    #[serde(default)]
+    pub database: bool,
+    #[serde(default)]
+    pub redis: bool,
+    #[serde(default)]
+    pub mongo: bool,
+    #[serde(default)]
+    pub internal_functions: bool,
+}
+
+impl ToolExposureToolsetSettings {
+    pub fn public_mcp_default() -> Self {
+        Self {
+            terminal: true,
+            terminal_ssh_exec: true,
+            terminal_exec: true,
+            connections: true,
+            sftp: false,
+            database: false,
+            redis: false,
+            mongo: false,
+            internal_functions: false,
+        }
+    }
+
+    pub fn agent_default() -> Self {
+        Self {
+            terminal: true,
+            terminal_ssh_exec: true,
+            terminal_exec: true,
+            connections: true,
+            sftp: true,
+            database: true,
+            redis: true,
+            mongo: true,
+            internal_functions: true,
+        }
+    }
+}
+
+impl Default for ToolExposureToolsetSettings {
+    fn default() -> Self {
+        Self::public_mcp_default()
+    }
+}
+
+pub type McpToolsetSettings = ToolExposureToolsetSettings;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ToolExposureSettings {
+    #[serde(default = "ToolExposureToolsetSettings::public_mcp_default")]
+    pub mcp: ToolExposureToolsetSettings,
+    #[serde(default = "ToolExposureToolsetSettings::agent_default")]
+    pub agent: ToolExposureToolsetSettings,
+}
+
+impl Default for ToolExposureSettings {
+    fn default() -> Self {
+        Self {
+            mcp: ToolExposureToolsetSettings::public_mcp_default(),
+            agent: ToolExposureToolsetSettings::agent_default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct McpSettings {
+    #[serde(default)]
+    pub server_enabled: bool,
+    #[serde(default)]
+    pub server_mode: McpServerMode,
+    #[serde(default)]
+    pub permission_mode: McpPermissionMode,
+    #[serde(default = "default_mcp_approval_timeout_ms")]
+    pub approval_timeout_ms: u64,
+    /// 独立产品首次启动时是否已经把本产品的核心工具集写入设置。
+    #[serde(default)]
+    pub toolsets_initialized: bool,
+    #[serde(default, rename = "toolsets", skip_serializing)]
+    pub legacy_toolsets: Option<ToolExposureToolsetSettings>,
+}
+
+pub const DEFAULT_MCP_APPROVAL_TIMEOUT_MS: u64 = 300_000;
+/// Upper bound exposed by the Settings UI for the MCP approval confirmation
+/// window. Use 0 in settings to wait indefinitely instead.
+pub const MAX_MCP_APPROVAL_TIMEOUT_MS: u64 = 3_600_000;
+
+fn default_mcp_approval_timeout_ms() -> u64 {
+    DEFAULT_MCP_APPROVAL_TIMEOUT_MS
+}
+
+impl Default for McpSettings {
+    fn default() -> Self {
+        Self {
+            server_enabled: false,
+            server_mode: McpServerMode::Temporary,
+            permission_mode: McpPermissionMode::Deny,
+            approval_timeout_ms: default_mcp_approval_timeout_ms(),
+            toolsets_initialized: false,
+            legacy_toolsets: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AiChatToolExecutionMode {
+    Auto,
+    ReadOnly,
+    #[default]
+    Manual,
+    /// 问答模式：只回答，不向模型暴露工具（对应 `TaskKind::Ask`）。
+    Ask,
+}
+
+/// 用户在对话里最后选择的驱动后端。
+///
+/// 与 [`AiChatSettings::last_acp_agent_id`] 的区别：后者只记「上次用过的 ACP
+/// agent」，选回内置 One Agent 时无法表达；这个枚举把「内置」也当成一个明确的
+/// 选择记下来，启动时照它恢复，而不是永远回到 One Agent。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", tag = "kind")]
+pub enum AiChatBackendSelection {
+    /// 内置 One Agent（linop 自研内核）。
+    Builtin,
+    /// 外部 ACP agent。
+    Acp { id: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AiChatSettings {
+    #[serde(default)]
+    pub tool_execution_mode: AiChatToolExecutionMode,
+    #[serde(
+        default = "default_agent_max_iterations",
+        deserialize_with = "deserialize_agent_max_iterations"
+    )]
+    pub max_iterations: usize,
+    /// 用户自定义系统提示词（追加在内置 Agent 系统提示词模板之后）。
+    ///
+    /// 空串表示不追加；旧配置缺少该字段时按空串回落。
+    #[serde(default)]
+    pub custom_system_prompt: String,
+    /// 模型请求空闲超时（秒）。
+    ///
+    /// 仅在某次请求持续无数据超过该时长时中断，不限制总时长，避免长流式响应
+    /// （思考/工具循环）被总超时中途掐断。旧配置缺少该字段时按默认值回落。
+    #[serde(
+        default = "default_ai_request_timeout_secs",
+        deserialize_with = "deserialize_ai_request_timeout_secs"
+    )]
+    pub request_timeout_secs: u64,
+    #[serde(default)]
+    pub last_acp_agent_id: Option<String>,
+    /// 上次在对话里明确选择的驱动后端（内置 One Agent 或某个 ACP agent）。
+    ///
+    /// `None` 表示旧配置里没有这条记录，启动时回落到 `last_acp_agent_id` 的
+    /// 旧行为（有值就恢复 ACP，没有就停在 One Agent）。
+    #[serde(default)]
+    pub last_backend: Option<AiChatBackendSelection>,
+    #[serde(default)]
+    pub acp_models: HashMap<String, String>,
+    /// 内置会话 uid → ACP agent id → 该 agent 上次实际在用的协议会话 id。
+    ///
+    /// 重连 / 重启后据此走 `session/load` 或 `session/resume`，而不是每回都 `session/new`：
+    /// 后者会让外接 agent 那边凭空多一个空会话，用户看到的现象是「agent 全忘了」。
+    #[serde(default)]
+    pub acp_sessions: HashMap<String, HashMap<String, String>>,
+    #[serde(default)]
+    pub last_workspace_root: Option<PathBuf>,
+    /// 最近使用的工作区根目录，最近在前。
+    #[serde(default)]
+    pub recent_workspace_roots: Vec<PathBuf>,
+    /// AI 工作台外壳的布局（面板落位、会话栏折叠）。
+    #[serde(default)]
+    pub workbench_layout: WorkbenchLayoutSettings,
+}
+
+/// AI 工作台外壳的布局。
+///
+/// 面板用**稳定字符串 id** 记录，这样 `one_core` 不必反向依赖 `ai_chat_view`；
+/// 悬空 id（面板已下线、或配置被手改坏）由消费方在还原时忽略，见
+/// `ai_chat_view::workbench::WorkbenchState::from_settings`。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct WorkbenchLayoutSettings {
+    /// 会话导航栏是否折叠。默认展开，所以 `false` 是正确缺省。
+    #[serde(default)]
+    pub nav_collapsed: bool,
+    /// 中心区显示的面板 id。
+    #[serde(default)]
+    pub center: Option<String>,
+    /// 左侧单槽的面板 id。
+    #[serde(default)]
+    pub left: Option<String>,
+    /// 底部单槽的面板 id。
+    #[serde(default)]
+    pub bottom: Option<String>,
+    /// 右侧标签组的面板 id，顺序即标签顺序。
+    #[serde(default)]
+    pub right: Vec<String>,
+    /// 右侧标签组当前显示的面板 id。
+    #[serde(default)]
+    pub right_active: Option<String>,
+    /// 会话导航栏宽度（像素）。`None` 用内置默认值。
+    #[serde(default)]
+    pub nav_width: Option<f32>,
+    /// 右侧标签组宽度（像素）。`None` 用内置默认值。
+    #[serde(default)]
+    pub right_width: Option<f32>,
+    /// 右侧标签组是否被顶栏开关收起（标签保留，仅隐藏）。
+    #[serde(default)]
+    pub right_collapsed: bool,
+    /// 右侧标签组是否放大占满工作台行。
+    #[serde(default)]
+    pub right_maximized: bool,
+    /// 侧栏里被用户「移除」的工作区根目录（绝对路径）。分组由此派生，
+    /// 不记名单的话移除后下次渲染又会回来。用户显式切回该工作区时移出名单。
+    #[serde(default)]
+    pub hidden_workspaces: Vec<String>,
+}
+
+/// 自定义系统提示词的最大字符数（按 chars 计），防止拖垮上下文长度。
+pub const MAX_CUSTOM_SYSTEM_PROMPT_CHARS: usize = 8000;
+
+/// 模型请求空闲超时的默认值（秒）。
+pub const DEFAULT_AI_REQUEST_TIMEOUT_SECS: u64 = 120;
+/// 模型请求空闲超时允许的最小值（秒）。
+pub const MIN_AI_REQUEST_TIMEOUT_SECS: u64 = 10;
+/// 模型请求空闲超时允许的最大值（秒），1 小时。
+pub const MAX_AI_REQUEST_TIMEOUT_SECS: u64 = 3600;
+
+/// 最近工作区列表上限，避免设置文件无界增长。
+pub const MAX_RECENT_WORKSPACE_ROOTS: usize = 8;
+
+/// ACP 会话记忆的外层条目上限（按内置会话 uid 计）。
+///
+/// 不按 LRU 精确淘汰：这条信息是可重建的，丢掉一条的代价只是下次多开一个 ACP 会话，
+/// 不值得为此在设置里再维护一份访问序。
+pub const MAX_REMEMBERED_ACP_SESSIONS: usize = 32;
+
+impl AiChatSettings {
+    /// 记住「这个内置会话 + 这个 ACP agent」当前指向的协议会话。
+    ///
+    /// 空值一律忽略：写入空 id 会让下次重连试着 resume 到一个不存在的会话。
+    pub fn remember_acp_session(
+        &mut self,
+        session_uid: &str,
+        agent_id: &str,
+        acp_session_id: &str,
+    ) {
+        if session_uid.is_empty() || agent_id.is_empty() || acp_session_id.is_empty() {
+            return;
+        }
+        self.acp_sessions
+            .entry(session_uid.to_string())
+            .or_default()
+            .insert(agent_id.to_string(), acp_session_id.to_string());
+        while self.acp_sessions.len() > MAX_REMEMBERED_ACP_SESSIONS {
+            let Some(victim) = self
+                .acp_sessions
+                .keys()
+                .find(|uid| uid.as_str() != session_uid)
+                .cloned()
+            else {
+                break;
+            };
+            self.acp_sessions.remove(&victim);
+        }
+    }
+
+    /// 取回「这个内置会话 + 这个 ACP agent」上次用的协议会话 id。
+    pub fn remembered_acp_session(&self, session_uid: &str, agent_id: &str) -> Option<&str> {
+        self.acp_sessions
+            .get(session_uid)?
+            .get(agent_id)
+            .map(String::as_str)
+    }
+
+    /// 记录一个工作区：去重、置顶、限长，并同步 `last_workspace_root`。
+    pub fn remember_workspace_root(&mut self, root: &std::path::Path) {
+        let root = root.to_path_buf();
+        self.recent_workspace_roots
+            .retain(|existing| existing != &root);
+        self.recent_workspace_roots.insert(0, root);
+        self.recent_workspace_roots
+            .truncate(MAX_RECENT_WORKSPACE_ROOTS);
+        self.last_workspace_root = self.recent_workspace_roots.first().cloned();
+    }
+
+    /// 返回规范化后的自定义系统提示词；空白内容返回 `None`。
+    ///
+    /// 超长内容按 [`MAX_CUSTOM_SYSTEM_PROMPT_CHARS`] 截断，避免配置文件里
+    /// 的异常值直接拖垮每次请求的上下文。
+    pub fn effective_custom_system_prompt(&self) -> Option<String> {
+        let trimmed = self.custom_system_prompt.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+        if trimmed.chars().count() <= MAX_CUSTOM_SYSTEM_PROMPT_CHARS {
+            return Some(trimmed.to_string());
+        }
+        Some(
+            trimmed
+                .chars()
+                .take(MAX_CUSTOM_SYSTEM_PROMPT_CHARS)
+                .collect(),
+        )
+    }
+}
+
+fn default_agent_max_iterations() -> usize {
+    DEFAULT_AGENT_MAX_ITERATIONS
+}
+
+fn deserialize_agent_max_iterations<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = usize::deserialize(deserializer)?;
+    Ok(value.clamp(MIN_AGENT_MAX_ITERATIONS, MAX_AGENT_MAX_ITERATIONS))
+}
+
+fn default_ai_request_timeout_secs() -> u64 {
+    DEFAULT_AI_REQUEST_TIMEOUT_SECS
+}
+
+fn deserialize_ai_request_timeout_secs<'de, D>(deserializer: D) -> Result<u64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = u64::deserialize(deserializer)?;
+    Ok(value.clamp(MIN_AI_REQUEST_TIMEOUT_SECS, MAX_AI_REQUEST_TIMEOUT_SECS))
+}
+
+impl Default for AiChatSettings {
+    fn default() -> Self {
+        Self {
+            tool_execution_mode: AiChatToolExecutionMode::default(),
+            max_iterations: default_agent_max_iterations(),
+            custom_system_prompt: String::new(),
+            request_timeout_secs: default_ai_request_timeout_secs(),
+            last_acp_agent_id: None,
+            last_backend: None,
+            acp_models: HashMap::new(),
+            acp_sessions: HashMap::new(),
+            last_workspace_root: None,
+            recent_workspace_roots: Vec::new(),
+            workbench_layout: WorkbenchLayoutSettings::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CustomFont {
+    pub path: String,
+    #[serde(default)]
+    pub families: Vec<String>,
+    #[serde(default)]
+    pub monospace_families: Vec<String>,
+}
+
+fn deserialize_custom_fonts<'de, D>(deserializer: D) -> Result<Vec<CustomFont>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum CustomFontEntry {
+        Path(String),
+        Font(CustomFont),
+    }
+
+    let entries = Vec::<CustomFontEntry>::deserialize(deserializer)?;
+    Ok(entries
+        .into_iter()
+        .map(|entry| match entry {
+            CustomFontEntry::Path(path) => CustomFont {
+                path,
+                families: Vec::new(),
+                monospace_families: Vec::new(),
+            },
+            CustomFontEntry::Font(font) => font,
+        })
+        .collect())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PersonalSyncBackendKind {
+    #[default]
+    Folder,
+    Git,
+    Webdav,
+}
+
+impl PersonalSyncBackendKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Folder => "folder",
+            Self::Git => "git",
+            Self::Webdav => "webdav",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "git" => Self::Git,
+            "webdav" => Self::Webdav,
+            _ => Self::Folder,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncProvider {
+    #[default]
+    OnetCloud,
+    Personal,
+}
+
+impl SyncProvider {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::OnetCloud => "onet_cloud",
+            Self::Personal => "personal",
+        }
+    }
+
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "personal" => Self::Personal,
+            _ => Self::OnetCloud,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersonalGitSyncSettings {
+    #[serde(default = "default_true")]
+    pub auto_push: bool,
+}
+
+impl Default for PersonalGitSyncSettings {
+    fn default() -> Self {
+        Self {
+            auto_push: default_true(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersonalSyncSettings {
+    #[serde(default)]
+    pub backend: PersonalSyncBackendKind,
+    #[serde(default)]
+    pub path: String,
+    #[serde(default = "default_true")]
+    pub auto_sync: bool,
+    #[serde(default)]
+    pub git: PersonalGitSyncSettings,
+    #[serde(default)]
+    pub webdav: PersonalWebdavSyncSettings,
+}
+
+impl Default for PersonalSyncSettings {
+    fn default() -> Self {
+        Self {
+            backend: PersonalSyncBackendKind::Folder,
+            path: String::new(),
+            auto_sync: default_true(),
+            git: PersonalGitSyncSettings::default(),
+            webdav: PersonalWebdavSyncSettings::default(),
+        }
+    }
+}
+
+/// WebDAV 个人同步后端的连接配置。
+///
+/// `password` 在落盘前由调用方经 `cloud_sync::personal::seal_webdav_password` 加密，
+/// 这里保存的是 `ENC:` 前缀密文而非明文；读取时用 `open_webdav_password` 还原。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PersonalWebdavSyncSettings {
+    /// WebDAV 根目录地址，例如 `https://dav.jianguoyun.com/dav/linop/`
+    #[serde(default)]
+    pub url: String,
+    #[serde(default)]
+    pub username: String,
+    /// 加密后的密码（或历史遗留的明文，读取时自动兼容）。
+    #[serde(default)]
+    pub password: String,
+}
+
+impl Default for PersonalWebdavSyncSettings {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            username: String::new(),
+            password: String::new(),
+        }
+    }
+}
+
+impl PersonalWebdavSyncSettings {
+    /// 三个字段都非空才算配置完整，此时 `test_connection` / `sync_now` 才可用。
+    pub fn is_complete(&self) -> bool {
+        !self.url.trim().is_empty() && !self.username.trim().is_empty() && !self.password.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalTerminalProfileKind {
+    #[default]
+    System,
+    Zsh,
+    Bash,
+    Fish,
+    Nushell,
+    PowerShell,
+    Cmd,
+    Wsl,
+    GitBash,
+    Custom,
+}
+
+impl LocalTerminalProfileKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::Zsh => "zsh",
+            Self::Bash => "bash",
+            Self::Fish => "fish",
+            Self::Nushell => "nushell",
+            Self::PowerShell => "powershell",
+            Self::Cmd => "cmd",
+            Self::Wsl => "wsl",
+            Self::GitBash => "git_bash",
+            Self::Custom => "custom",
+        }
+    }
+
+    pub fn parse(value: &str) -> Self {
+        match value {
+            "powershell" => Self::PowerShell,
+            "zsh" => Self::Zsh,
+            "bash" => Self::Bash,
+            "fish" => Self::Fish,
+            "nushell" => Self::Nushell,
+            "cmd" => Self::Cmd,
+            "wsl" => Self::Wsl,
+            "git_bash" => Self::GitBash,
+            "custom" => Self::Custom,
+            _ => Self::System,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct LocalTerminalCustomProfile {
+    pub id: String,
+    pub name: String,
+    pub command: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct LocalTerminalProfileSettings {
+    #[serde(default)]
+    pub kind: LocalTerminalProfileKind,
+    #[serde(default)]
+    pub custom_program: String,
+    #[serde(default)]
+    pub custom_arguments: String,
+    #[serde(default)]
+    pub custom_profiles: Vec<LocalTerminalCustomProfile>,
+    #[serde(default)]
+    pub default_custom_profile_id: Option<String>,
+}
+
+impl LocalTerminalProfileSettings {
+    pub fn effective_custom_profiles(&self) -> Vec<LocalTerminalCustomProfile> {
+        let profiles: Vec<_> = self
+            .custom_profiles
+            .iter()
+            .filter(|profile| !profile.name.trim().is_empty() && !profile.command.trim().is_empty())
+            .cloned()
+            .collect();
+        if !profiles.is_empty() {
+            return profiles;
+        }
+        let program = self.custom_program.trim();
+        if program.is_empty() {
+            return Vec::new();
+        }
+        let command = format_legacy_custom_command(program, self.custom_arguments.trim());
+        vec![LocalTerminalCustomProfile {
+            id: "legacy-custom".to_string(),
+            name: program.to_string(),
+            command,
+        }]
+    }
+
+    pub fn selected_custom_profile(&self) -> Option<LocalTerminalCustomProfile> {
+        let profiles = self.effective_custom_profiles();
+        self.default_custom_profile_id
+            .as_deref()
+            .and_then(|id| profiles.iter().find(|profile| profile.id == id).cloned())
+            .or_else(|| profiles.into_iter().next())
+    }
+}
+
+fn format_legacy_custom_command(program: &str, arguments: &str) -> String {
+    if arguments.is_empty() {
+        program.to_string()
+    } else {
+        format!("{program} {arguments}")
+    }
+}
+
+/// 连接侧栏默认宽度（像素），与主题 `context_sidebar_default` 保持一致。
+pub const DEFAULT_CONNECTION_SIDEBAR_TREE_WIDTH: u32 = 260;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectionSidebarTreeState {
+    #[serde(default)]
+    pub hide_empty_workspaces: bool,
+    #[serde(default)]
+    pub auto_hide_tree: bool,
+    #[serde(default = "default_connection_sidebar_tree_width")]
+    pub tree_width: u32,
+}
+
+impl Default for ConnectionSidebarTreeState {
+    fn default() -> Self {
+        Self {
+            hide_empty_workspaces: false,
+            auto_hide_tree: false,
+            tree_width: DEFAULT_CONNECTION_SIDEBAR_TREE_WIDTH,
+        }
+    }
+}
+
+fn default_connection_sidebar_tree_width() -> u32 {
+    DEFAULT_CONNECTION_SIDEBAR_TREE_WIDTH
+}
+
+/// 点击主窗口关闭按钮时的行为。
+///
+/// 只在系统托盘可用时生效：托盘不可用时一律回退到退出确认，不制造无法恢复的隐藏窗口。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CloseButtonBehavior {
+    /// 弹窗询问：最小化到托盘，还是退出应用（弹窗内可记住选择）
+    #[default]
+    Ask,
+    /// 直接最小化到托盘
+    MinimizeToTray,
+    /// 直接走退出确认
+    Quit,
+}
+
+impl CloseButtonBehavior {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CloseButtonBehavior::Ask => "ask",
+            CloseButtonBehavior::MinimizeToTray => "minimize_to_tray",
+            CloseButtonBehavior::Quit => "quit",
+        }
+    }
+
+    /// 未知取值回退到 [`CloseButtonBehavior::Ask`]：旧版本写下的值不能把新版本卡死。
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "minimize_to_tray" => CloseButtonBehavior::MinimizeToTray,
+            "quit" => CloseButtonBehavior::Quit,
+            _ => CloseButtonBehavior::Ask,
+        }
+    }
+}
+
+/// 更新通道：稳定版 / 测试版（Beta）。
+///
+/// 通道只决定「去哪份更新清单里找新版本」，安装包本身仍是同一套。稳定通道读
+/// `updates/latest.json`，测试通道读 `updates/beta/latest.json`，两边互不覆盖。
+///
+/// 设置里存的是 `Option<UpdateChannel>`：`None` 表示「跟随当前构建」——正式构建走
+/// 稳定通道，带预发布后缀的构建（例如 `0.23.0-beta.2`）自动走测试通道。否则手动下载
+/// 了测试版的人会因为默认值停在稳定清单上，永远收不到后续的 beta。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateChannel {
+    /// 稳定版
+    #[default]
+    Stable,
+    /// 测试版（Beta）
+    Beta,
+}
+
+impl UpdateChannel {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            UpdateChannel::Stable => "stable",
+            UpdateChannel::Beta => "beta",
+        }
+    }
+
+    /// 未知取值回退到 [`UpdateChannel::Stable`]：旧版本写下的值不能把新版本卡住。
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "beta" => UpdateChannel::Beta,
+            _ => UpdateChannel::Stable,
+        }
+    }
+
+    /// 由当前版本号推断「跟随构建」时的通道：带预发布后缀即测试通道。
+    pub fn from_version(version: &str) -> Self {
+        if version.contains('-') {
+            UpdateChannel::Beta
+        } else {
+            UpdateChannel::Stable
+        }
+    }
+
+    /// 把「跟随构建」解析成实际通道。
+    pub fn resolve(configured: Option<Self>, version: &str) -> Self {
+        configured.unwrap_or_else(|| Self::from_version(version))
+    }
+}
+
+/// 检查更新时优先使用的镜像源。
+///
+/// 选中的源只是「排在第一位」，不是「只用它」：连不上或清单缺失时仍会按内置顺序
+/// 依次尝试其它源，避免用户手动选错一次就再也查不到更新。
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UpdateMirror {
+    /// 自动：使用内置顺序（R2 清单 → CNB 镜像 → GitHub Releases）
+    #[default]
+    Auto,
+    /// Cloudflare 上的 JSON 清单（R2 公开域名）
+    Cloudflare,
+    /// GitHub Releases API
+    Github,
+    /// CNB 镜像
+    Cnb,
+}
+
+impl UpdateMirror {
+    /// 下拉框里的全部可选值，顺序即下拉展示顺序（自动排在第一位）。
+    pub const ALL: [UpdateMirror; 4] = [
+        UpdateMirror::Auto,
+        UpdateMirror::Cloudflare,
+        UpdateMirror::Cnb,
+        UpdateMirror::Github,
+    ];
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            UpdateMirror::Auto => "auto",
+            UpdateMirror::Cloudflare => "cloudflare",
+            UpdateMirror::Github => "github",
+            UpdateMirror::Cnb => "cnb",
+        }
+    }
+
+    /// 未知取值回退到「自动」：旧版本写下的新枚举值不能让检查卡在某个不可用的源上。
+    pub fn from_str(value: &str) -> Self {
+        match value {
+            "cloudflare" => UpdateMirror::Cloudflare,
+            "github" => UpdateMirror::Github,
+            "cnb" => UpdateMirror::Cnb,
+            _ => UpdateMirror::Auto,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppSettings {
+    #[serde(default)]
+    pub main_window_size: Option<MainWindowSize>,
+    #[serde(default)]
+    pub main_window_state: Option<MainWindowState>,
+    #[serde(default)]
+    pub close_button_behavior: CloseButtonBehavior,
+    #[serde(default = "default_locale")]
+    pub locale: String,
+    #[serde(default = "default_theme_mode")]
+    pub theme_mode: String,
+    #[serde(default)]
+    pub auto_switch_theme: bool,
+    #[serde(default = "default_light_theme")]
+    pub light_theme: String,
+    #[serde(default = "default_dark_theme")]
+    pub dark_theme: String,
+    #[serde(default)]
+    pub linop_theme_migrated: bool,
+    #[serde(default = "default_window_opacity")]
+    pub window_opacity: f32,
+    #[serde(default)]
+    pub custom_accent_enabled: bool,
+    #[serde(default = "default_custom_accent_color")]
+    pub custom_accent_color: String,
+    #[serde(default = "default_font_family")]
+    pub font_family: String,
+    #[serde(default = "default_font_size")]
+    pub font_size: f64,
+    /// 界面缩放百分比（100 = 默认大小）。
+    ///
+    /// 该值会与 `font_size` 相乘作为 GPUI 的 rem 基准长度，从而整体缩放以 rem
+    /// 表达的界面尺寸，效果等同于浏览器缩放，便于在 4K 等高分辨率屏幕上使用。
+    #[serde(default = "default_ui_scale_percent")]
+    pub ui_scale_percent: u32,
+    #[serde(default = "default_monospace_font_family")]
+    pub sql_editor_font_family: String,
+    #[serde(default = "default_sql_editor_font_size")]
+    pub sql_editor_font_size: f64,
+    /// SQL 编辑器鼠标 hover 是否显示对象详情（需停留约 0.6s）。
+    #[serde(default = "default_sql_editor_hover_enabled")]
+    pub sql_editor_hover_enabled: bool,
+    #[serde(default = "default_monospace_font_family")]
+    pub table_preview_font_family: String,
+    /// Markdown 编辑器代码字体（行内代码、代码块、表格内代码）。
+    #[serde(default = "default_monospace_font_family")]
+    pub markdown_code_font_family: String,
+    #[serde(default = "default_monospace_font_family")]
+    pub terminal_font_family: String,
+    #[serde(
+        default,
+        alias = "custom_font_paths",
+        deserialize_with = "deserialize_custom_fonts"
+    )]
+    pub custom_fonts: Vec<CustomFont>,
+    #[serde(default = "default_terminal_font_size")]
+    pub terminal_font_size: f64,
+    #[serde(default = "default_terminal_scrollback_lines")]
+    pub terminal_scrollback_lines: usize,
+    #[serde(default = "default_true")]
+    pub terminal_auto_copy: bool,
+    #[serde(default = "default_true")]
+    pub terminal_enable_autocomplete: bool,
+    #[serde(default = "default_true")]
+    pub terminal_show_suggestion_popup: bool,
+    /// 命令提示 / cd 补全 / 历史搜索下拉弹层的背景不透明度。
+    ///
+    /// 弹层背景画在终端内容之上，下层文字以 (1 - α) 的权重透进弹层：0.72
+    /// 会透出 28%，与弹层自身文字的对比度同量级，亮色主题下几乎不可读
+    /// （issue #73）；1.0 则完全遮挡终端内容（issue #5）。两个诉求相反，
+    /// 因此暴露给用户自己定，默认 0.96（透出 4%）。
+    #[serde(default = "default_terminal_suggestion_popup_opacity")]
+    pub terminal_suggestion_popup_opacity: f32,
+    #[serde(default = "default_true")]
+    pub terminal_middle_click_paste: bool,
+    #[serde(default)]
+    pub terminal_right_click_paste: bool,
+    #[serde(default = "default_true")]
+    pub terminal_paste_image_upload: bool,
+    #[serde(default = "default_true")]
+    pub terminal_sync_path_with_terminal: bool,
+    #[serde(default = "default_terminal_theme")]
+    pub terminal_theme: String,
+    #[serde(default)]
+    pub terminal_cursor_blink: bool,
+    #[serde(default = "default_true")]
+    pub terminal_confirm_multiline_paste: bool,
+    #[serde(default = "default_true")]
+    pub terminal_confirm_high_risk_command: bool,
+    #[serde(default = "default_true")]
+    pub terminal_auto_session_logging: bool,
+    /// 选中文本后高亮可见区域内所有相同文本
+    #[serde(default = "default_true")]
+    pub terminal_selection_highlight: bool,
+    /// 终端左边距展示每行到达时间
+    #[serde(default)]
+    pub terminal_show_timestamps: bool,
+    /// 终端左边距展示行号
+    #[serde(default)]
+    pub terminal_show_line_numbers: bool,
+    /// 终端侧栏各工具面板的停靠位置。
+    ///
+    /// 键是 `SidebarPanel::local_id()`（如 `terminal.ai-chat`），值是左 / 右 / 底。
+    /// 用户从面板的「移动到」菜单改过位置后写回这里，之后新建或重启的终端侧栏沿用；
+    /// 没有记录的面板保持默认右侧。
+    #[serde(default)]
+    pub terminal_tool_panel_placements: BTreeMap<String, SidebarPlacement>,
+    #[serde(default)]
+    pub local_terminal_profile: LocalTerminalProfileSettings,
+    #[serde(default)]
+    pub log_file_path: String,
+    #[serde(default = "default_true")]
+    pub auto_update: bool,
+    #[serde(default)]
+    pub skipped_update_version: Option<String>,
+    /// 更新通道偏好；`None` 表示跟随当前构建（预发布构建自动进入测试通道）。
+    #[serde(default)]
+    pub update_channel: Option<UpdateChannel>,
+    /// 更新镜像源偏好；`None` 表示自动选择（Cloudflare → CNB → GitHub）。
+    ///
+    /// 选中的镜像只排到第一位，失败时仍会依次回退到其余镜像。
+    #[serde(default)]
+    pub update_mirror: Option<UpdateMirror>,
+    /// 插件更新提示最近一次通知的更新集合签名，用于避免每次启动都重复提示。
+    #[serde(default)]
+    pub plugin_update_notified_signature: Option<String>,
+    /// Whether any configured synchronization provider is allowed to run.
+    #[serde(default)]
+    pub sync_enabled: bool,
+    #[serde(default)]
+    pub sync_provider: SyncProvider,
+    #[serde(default)]
+    pub global_proxy: GlobalProxySettings,
+    #[serde(default)]
+    pub mcp: McpSettings,
+    #[serde(default)]
+    pub tool_exposure: ToolExposureSettings,
+    #[serde(default)]
+    pub ai_chat: AiChatSettings,
+    #[serde(default)]
+    pub personal_sync: PersonalSyncSettings,
+    #[serde(default)]
+    pub remote_file_editor: RemoteFileEditorUserSettings,
+    #[serde(default = "default_true")]
+    pub direct_server_transfer_enabled: bool,
+    #[serde(default)]
+    pub database_open_mode: DatabaseOpenMode,
+    #[serde(default)]
+    pub large_text_cell_editor_open_mode: LargeTextCellEditorOpenMode,
+    #[serde(default)]
+    pub startup_default_page: StartupDefaultPage,
+    /// 是否要求每次启动时输入主密钥后才能访问已保存的连接
+    #[serde(default)]
+    pub require_master_key_on_startup: bool,
+    /// 便携模式下是否在数据目录保存可自动恢复的主密钥副本
+    #[serde(default)]
+    pub portable_remember_master_key: bool,
+    /// 自动解锁时主密钥的保存位置
+    #[serde(default)]
+    pub master_key_storage: MasterKeyStorage,
+    #[serde(default)]
+    pub home_connection_layout: HomeConnectionLayout,
+    /// 首页是否显示「最近连接」分组
+    #[serde(default = "default_true")]
+    pub home_show_recent_connections: bool,
+    /// 连接列表排序方式
+    #[serde(default)]
+    pub connection_sort_order: ConnectionSortOrder,
+    #[serde(default = "default_true")]
+    pub connection_sidebar_expanded: bool,
+    #[serde(default)]
+    pub connection_sidebar_tree_state: ConnectionSidebarTreeState,
+    /// 是否启用SQL查询的自动保存功能
+    #[serde(default = "default_true")]
+    pub enable_sql_auto_save: bool,
+    /// SQL查询自动保存的间隔（秒），默认5秒
+    #[serde(default = "default_auto_save_interval")]
+    pub sql_auto_save_interval: f64,
+    #[serde(default = "default_system_hotkey_macos")]
+    pub system_hotkey_macos: String,
+    #[serde(default = "default_system_hotkey_other")]
+    pub system_hotkey_other: String,
+    /// 表格行高（像素），默认44
+    #[serde(default = "default_table_row_height")]
+    pub table_row_height: u32,
+    /// 数据表格的显示方式：网格（默认）或纵向「列：值」
+    #[serde(default)]
+    pub table_view_mode: TableViewMode,
+    /// 在数据表格列头下方常驻显示字段注释，默认关闭
+    #[serde(default)]
+    pub table_show_column_comment: bool,
+    /// SQL 查询默认最大返回行数，0 表示不限制
+    #[serde(default = "default_sql_query_max_rows")]
+    pub sql_query_max_rows: u32,
+    /// 导出/转储 SQL 时每一条 INSERT 语句合并的数据行数，`1` 表示一行一条语句。
+    ///
+    /// 用作「导出 SQL 文件」窗口里该参数的初始值，并在每次导出时写回，默认与
+    /// Navicat 的「每条语句的数据行数」一致（100）。
+    #[serde(default = "default_sql_export_rows_per_statement")]
+    pub sql_export_rows_per_statement: usize,
+    /// SQL 美化格式化设置
+    #[serde(default)]
+    pub sql_format: SqlFormatSettings,
+    #[serde(default)]
+    pub custom_keybindings: HashMap<String, Vec<String>>,
+}
+
+pub(crate) const DEFAULT_SYSTEM_HOTKEY_MACOS: &str = "cmd-alt-m";
+pub(crate) const DEFAULT_SYSTEM_HOTKEY_OTHER: &str = "ctrl-alt-m";
+pub const DEFAULT_SQL_QUERY_MAX_ROWS: u32 = 1000;
+/// SQL 导出每条语句默认合并的数据行数，与 Navicat 的默认值一致。
+pub const DEFAULT_SQL_EXPORT_ROWS_PER_STATEMENT: usize = 100;
+pub const DEFAULT_TERMINAL_THEME: &str = "application";
+
+fn default_font_family() -> String {
+    "Arial".to_string()
+}
+
+fn default_locale() -> String {
+    LOCALE_SYSTEM.to_string()
+}
+
+fn default_theme_mode() -> String {
+    "light".to_string()
+}
+
+fn default_light_theme() -> String {
+    "Linop Light".to_string()
+}
+
+fn default_dark_theme() -> String {
+    "Linop Dark".to_string()
+}
+
+fn default_window_opacity() -> f32 {
+    1.0
+}
+
+fn default_custom_accent_color() -> String {
+    "#3b82f6".to_string()
+}
+
+fn default_font_size() -> f64 {
+    14.0
+}
+
+/// 界面缩放允许的最小百分比。
+pub const UI_SCALE_PERCENT_MIN: u32 = 50;
+
+/// 界面缩放允许的最大百分比。
+pub const UI_SCALE_PERCENT_MAX: u32 = 300;
+
+/// 界面缩放的默认值（百分比）。
+fn default_ui_scale_percent() -> u32 {
+    100
+}
+
+fn default_sql_editor_font_size() -> f64 {
+    14.0
+}
+
+/// hover 默认关闭：用户此前反馈鼠标滑过即弹详情太吵，需在设置里显式开启。
+fn default_sql_editor_hover_enabled() -> bool {
+    false
+}
+
+fn default_monospace_font_family() -> String {
+    default_grid_monospace_font_family().to_string()
+}
+
+pub fn default_grid_monospace_font_family() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "Menlo"
+    } else if cfg!(target_os = "windows") {
+        "Consolas"
+    } else {
+        "DejaVu Sans Mono"
+    }
+}
+
+fn grid_monospace_resolution_candidates() -> &'static [&'static str] {
+    if cfg!(target_os = "macos") {
+        &[
+            "Menlo",
+            "Monaco",
+            "SF Mono",
+            "Courier New",
+            "Fira Code",
+            "JetBrains Mono",
+            "Source Code Pro",
+            "Cascadia Code",
+            "Hack",
+            "IBM Plex Mono",
+        ]
+    } else if cfg!(target_os = "windows") {
+        &[
+            "Consolas",
+            "Cascadia Mono",
+            "Cascadia Code",
+            "Courier New",
+            "Lucida Console",
+            "Fira Code",
+            "JetBrains Mono",
+            "Source Code Pro",
+            "Hack",
+            "IBM Plex Mono",
+        ]
+    } else {
+        &[
+            "DejaVu Sans Mono",
+            "Ubuntu Mono",
+            "Liberation Mono",
+            "Courier New",
+            "Fira Code",
+            "JetBrains Mono",
+            "Source Code Pro",
+            "Cascadia Code",
+            "Hack",
+            "IBM Plex Mono",
+        ]
+    }
+}
+
+fn is_fallback_only_grid_font(font: &str) -> bool {
+    [
+        "Apple Color Emoji",
+        "Apple Symbols",
+        "Heiti SC",
+        "Hiragino Sans GB",
+        "Kaiti SC",
+        "Microsoft YaHei",
+        "Noto Color Emoji",
+        "Noto Sans CJK SC",
+        "Noto Sans Mono CJK SC",
+        "Noto Sans SC",
+        "Noto Serif CJK SC",
+        "PingFang SC",
+        "PingFang TC",
+        "Segoe UI Emoji",
+        "SimSun",
+        "Songti SC",
+        "Source Han Mono SC",
+        "Source Han Sans SC",
+        "WenQuanYi Micro Hei",
+    ]
+    .iter()
+    .any(|fallback| fallback.eq_ignore_ascii_case(font.trim()))
+}
+
+pub fn is_supported_grid_monospace_font(font: &str) -> bool {
+    let font = font.trim();
+    !font.is_empty() && !is_fallback_only_grid_font(font)
+}
+
+pub fn normalize_grid_monospace_font_family(font: &str) -> String {
+    let font = font.trim();
+    if is_supported_grid_monospace_font(font) {
+        return font.to_string();
+    }
+    default_grid_monospace_font_family().to_string()
+}
+
+pub fn is_installed_font_family(font: &str, installed_font_names: &[String]) -> bool {
+    let font = font.trim();
+    !font.is_empty()
+        && installed_font_names
+            .iter()
+            .any(|installed| installed.trim().eq_ignore_ascii_case(font))
+}
+
+pub fn resolve_installed_grid_monospace_font_family(
+    font_family: &str,
+    installed_font_names: &[String],
+) -> String {
+    let normalized = normalize_grid_monospace_font_family(font_family);
+    if is_installed_font_family(&normalized, installed_font_names) {
+        return normalized;
+    }
+
+    grid_monospace_resolution_candidates()
+        .iter()
+        .copied()
+        .find(|candidate| is_installed_font_family(candidate, installed_font_names))
+        .unwrap_or(default_grid_monospace_font_family())
+        .to_string()
+}
+
+pub fn default_grid_font_fallback_families() -> Vec<String> {
+    if cfg!(target_os = "macos") {
+        vec![
+            "PingFang SC",
+            "PingFang TC",
+            "Hiragino Sans GB",
+            "Noto Sans CJK SC",
+            "Noto Sans Mono CJK SC",
+            "Source Han Sans SC",
+            "Source Han Mono SC",
+            "Apple Color Emoji",
+            "Apple Symbols",
+        ]
+    } else if cfg!(target_os = "windows") {
+        vec![
+            "Microsoft YaHei",
+            "SimSun",
+            "Noto Sans CJK SC",
+            "Noto Sans Mono CJK SC",
+            "Source Han Sans SC",
+            "Source Han Mono SC",
+            "Segoe UI Emoji",
+        ]
+    } else {
+        vec![
+            "Noto Sans CJK SC",
+            "Noto Sans Mono CJK SC",
+            "Source Han Sans SC",
+            "Source Han Mono SC",
+            "WenQuanYi Micro Hei",
+            "Noto Color Emoji",
+        ]
+    }
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
+pub fn grid_monospace_font(font_family: &str) -> Font {
+    let mut font = font(normalize_grid_monospace_font_family(font_family));
+    font.fallbacks = Some(FontFallbacks::from_fonts(
+        default_grid_font_fallback_families(),
+    ));
+    font
+}
+
+pub fn installed_grid_monospace_font(font_family: &str, installed_font_names: &[String]) -> Font {
+    let mut font = font(resolve_installed_grid_monospace_font_family(
+        font_family,
+        installed_font_names,
+    ));
+    font.fallbacks = Some(FontFallbacks::from_fonts(
+        default_grid_font_fallback_families(),
+    ));
+    font
+}
+
+fn default_terminal_font_size() -> f64 {
+    15.0
+}
+
+fn default_terminal_scrollback_lines() -> usize {
+    AppSettings::DEFAULT_TERMINAL_SCROLLBACK_LINES
+}
+
+fn default_terminal_suggestion_popup_opacity() -> f32 {
+    AppSettings::DEFAULT_TERMINAL_SUGGESTION_POPUP_OPACITY
+}
+
+fn default_terminal_theme() -> String {
+    DEFAULT_TERMINAL_THEME.to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_auto_save_interval() -> f64 {
+    5.0
+}
+
+fn default_system_hotkey_macos() -> String {
+    DEFAULT_SYSTEM_HOTKEY_MACOS.to_string()
+}
+
+fn default_system_hotkey_other() -> String {
+    DEFAULT_SYSTEM_HOTKEY_OTHER.to_string()
+}
+
+fn default_table_row_height() -> u32 {
+    44
+}
+
+fn default_sql_query_max_rows() -> u32 {
+    DEFAULT_SQL_QUERY_MAX_ROWS
+}
+
+fn default_sql_export_rows_per_statement() -> usize {
+    DEFAULT_SQL_EXPORT_ROWS_PER_STATEMENT
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            main_window_size: None,
+            main_window_state: None,
+            close_button_behavior: CloseButtonBehavior::default(),
+            locale: default_locale(),
+            theme_mode: default_theme_mode(),
+            auto_switch_theme: false,
+            light_theme: default_light_theme(),
+            dark_theme: default_dark_theme(),
+            linop_theme_migrated: true,
+            window_opacity: default_window_opacity(),
+            custom_accent_enabled: false,
+            custom_accent_color: default_custom_accent_color(),
+            font_family: default_font_family(),
+            font_size: default_font_size(),
+            ui_scale_percent: default_ui_scale_percent(),
+            sql_editor_font_family: default_monospace_font_family(),
+            sql_editor_font_size: default_sql_editor_font_size(),
+            sql_editor_hover_enabled: default_sql_editor_hover_enabled(),
+            table_preview_font_family: default_monospace_font_family(),
+            markdown_code_font_family: default_monospace_font_family(),
+            terminal_font_family: default_monospace_font_family(),
+            custom_fonts: Vec::new(),
+            terminal_font_size: default_terminal_font_size(),
+            terminal_scrollback_lines: default_terminal_scrollback_lines(),
+            terminal_auto_copy: default_true(),
+            terminal_enable_autocomplete: default_true(),
+            terminal_show_suggestion_popup: default_true(),
+            terminal_suggestion_popup_opacity: default_terminal_suggestion_popup_opacity(),
+            terminal_middle_click_paste: default_true(),
+            terminal_right_click_paste: false,
+            terminal_paste_image_upload: default_true(),
+            terminal_sync_path_with_terminal: true,
+            terminal_theme: default_terminal_theme(),
+            terminal_cursor_blink: false,
+            terminal_confirm_multiline_paste: default_true(),
+            terminal_confirm_high_risk_command: default_true(),
+            terminal_auto_session_logging: default_true(),
+            terminal_selection_highlight: default_true(),
+            terminal_show_timestamps: false,
+            terminal_show_line_numbers: false,
+            terminal_tool_panel_placements: BTreeMap::new(),
+            local_terminal_profile: LocalTerminalProfileSettings::default(),
+            log_file_path: String::new(),
+            auto_update: true,
+            skipped_update_version: None,
+            update_channel: None,
+            update_mirror: None,
+            plugin_update_notified_signature: None,
+            sync_enabled: false,
+            sync_provider: SyncProvider::OnetCloud,
+            global_proxy: GlobalProxySettings::default(),
+            mcp: McpSettings::default(),
+            tool_exposure: ToolExposureSettings::default(),
+            ai_chat: AiChatSettings::default(),
+            personal_sync: PersonalSyncSettings::default(),
+            remote_file_editor: RemoteFileEditorUserSettings::default(),
+            direct_server_transfer_enabled: true,
+            database_open_mode: DatabaseOpenMode::default(),
+            large_text_cell_editor_open_mode: LargeTextCellEditorOpenMode::default(),
+            startup_default_page: StartupDefaultPage::default(),
+            require_master_key_on_startup: false,
+            portable_remember_master_key: false,
+            master_key_storage: MasterKeyStorage::SystemCredentialStore,
+            home_connection_layout: HomeConnectionLayout::default(),
+            home_show_recent_connections: true,
+            connection_sort_order: ConnectionSortOrder::default(),
+            connection_sidebar_expanded: true,
+            connection_sidebar_tree_state: ConnectionSidebarTreeState::default(),
+            enable_sql_auto_save: true,
+            sql_auto_save_interval: default_auto_save_interval(),
+            system_hotkey_macos: default_system_hotkey_macos(),
+            system_hotkey_other: default_system_hotkey_other(),
+            table_row_height: default_table_row_height(),
+            table_view_mode: TableViewMode::default(),
+            table_show_column_comment: false,
+            sql_query_max_rows: default_sql_query_max_rows(),
+            sql_export_rows_per_statement: default_sql_export_rows_per_statement(),
+            sql_format: SqlFormatSettings::default(),
+            custom_keybindings: HashMap::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct MainWindowSize {
+    pub width: f32,
+    pub height: f32,
+}
+
+impl MainWindowSize {
+    pub fn new(width: f32, height: f32) -> Option<Self> {
+        (width.is_finite() && height.is_finite() && width > 0.0 && height > 0.0)
+            .then_some(Self { width, height })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct MainWindowState {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+    #[serde(default)]
+    pub display_uuid: Option<String>,
+}
+
+impl MainWindowState {
+    pub fn new(
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        display_uuid: Option<String>,
+    ) -> Option<Self> {
+        (x.is_finite()
+            && y.is_finite()
+            && width.is_finite()
+            && height.is_finite()
+            && width > 0.0
+            && height > 0.0)
+            .then_some(Self {
+                x,
+                y,
+                width,
+                height,
+                display_uuid,
+            })
+    }
+}
+
+impl Global for AppSettings {}
+
+impl AppSettings {
+    pub const MIN_WINDOW_OPACITY: f32 = 0.5;
+    pub const MAX_WINDOW_OPACITY: f32 = 1.0;
+    pub const DEFAULT_TERMINAL_SCROLLBACK_LINES: usize = 100_000;
+    pub const MIN_TERMINAL_SCROLLBACK_LINES: usize = 1_000;
+    pub const MAX_TERMINAL_SCROLLBACK_LINES: usize = 1_000_000;
+    /// 命令提示下拉弹层背景不透明度的默认值：透出权重 4%。
+    pub const DEFAULT_TERMINAL_SUGGESTION_POPUP_OPACITY: f32 = 0.96;
+    pub const MIN_TERMINAL_SUGGESTION_POPUP_OPACITY: f32 = 0.5;
+    pub const MAX_TERMINAL_SUGGESTION_POPUP_OPACITY: f32 = 1.0;
+
+    pub fn master_key_on_startup_required(&self) -> bool {
+        crate::app_paths::master_key_on_startup_required(
+            self.require_master_key_on_startup,
+            self.portable_remember_master_key,
+        )
+    }
+
+    fn migrate_legacy_mcp_toolsets(&mut self) {
+        let Some(toolsets) = self.mcp.legacy_toolsets.take() else {
+            return;
+        };
+        if self.tool_exposure.mcp == ToolExposureToolsetSettings::public_mcp_default() {
+            self.tool_exposure.mcp = toolsets;
+        }
+    }
+
+    pub fn normalize_font_settings(&mut self) {
+        self.sql_editor_font_family =
+            normalize_grid_monospace_font_family(&self.sql_editor_font_family);
+        self.table_preview_font_family =
+            normalize_grid_monospace_font_family(&self.table_preview_font_family);
+        self.markdown_code_font_family =
+            normalize_grid_monospace_font_family(&self.markdown_code_font_family);
+        self.terminal_font_family =
+            normalize_grid_monospace_font_family(&self.terminal_font_family);
+    }
+
+    pub fn normalize_appearance_settings(&mut self) {
+        if !self.linop_theme_migrated {
+            if self.light_theme == "Default Light" && self.dark_theme == "Default Dark" {
+                self.light_theme = default_light_theme();
+                self.dark_theme = default_dark_theme();
+            }
+            self.linop_theme_migrated = true;
+        }
+        if self.auto_switch_theme {
+            self.theme_mode = "system".to_string();
+        } else if !matches!(self.theme_mode.as_str(), "light" | "system" | "dark") {
+            self.theme_mode = default_theme_mode();
+        }
+        self.window_opacity = self
+            .window_opacity
+            .clamp(Self::MIN_WINDOW_OPACITY, Self::MAX_WINDOW_OPACITY);
+        if self.custom_accent_color.trim().is_empty() {
+            self.custom_accent_color = default_custom_accent_color();
+        }
+    }
+
+    pub fn normalize_terminal_scrollback_lines(lines: usize) -> usize {
+        lines.clamp(
+            Self::MIN_TERMINAL_SCROLLBACK_LINES,
+            Self::MAX_TERMINAL_SCROLLBACK_LINES,
+        )
+    }
+
+    pub fn normalize_terminal_suggestion_popup_opacity(opacity: f32) -> f32 {
+        if opacity.is_finite() {
+            opacity.clamp(
+                Self::MIN_TERMINAL_SUGGESTION_POPUP_OPACITY,
+                Self::MAX_TERMINAL_SUGGESTION_POPUP_OPACITY,
+            )
+        } else {
+            Self::DEFAULT_TERMINAL_SUGGESTION_POPUP_OPACITY
+        }
+    }
+
+    pub fn normalize_terminal_settings(&mut self) {
+        self.terminal_scrollback_lines =
+            Self::normalize_terminal_scrollback_lines(self.terminal_scrollback_lines);
+        self.terminal_suggestion_popup_opacity = Self::normalize_terminal_suggestion_popup_opacity(
+            self.terminal_suggestion_popup_opacity,
+        );
+        let terminal_theme = self.terminal_theme.trim();
+        self.terminal_theme = if terminal_theme.is_empty() {
+            default_terminal_theme()
+        } else {
+            terminal_theme.to_string()
+        };
+    }
+
+    pub fn effective_theme_mode(&self, system_mode: ThemeMode) -> ThemeMode {
+        if self.auto_switch_theme || self.theme_mode == "system" {
+            system_mode
+        } else if self.theme_mode == "dark" {
+            ThemeMode::Dark
+        } else {
+            ThemeMode::Light
+        }
+    }
+
+    pub fn current(cx: &App) -> Self {
+        cx.try_global::<AppSettings>().cloned().unwrap_or_default()
+    }
+
+    pub fn global(cx: &App) -> &AppSettings {
+        cx.global::<AppSettings>()
+    }
+
+    pub fn global_mut(cx: &mut App) -> &mut AppSettings {
+        cx.global_mut::<AppSettings>()
+    }
+
+    pub fn update(cx: &mut App, update: impl FnOnce(&mut AppSettings)) {
+        let mut settings = Self::current(cx);
+        update(&mut settings);
+        settings.normalize_font_settings();
+        settings.normalize_appearance_settings();
+        settings.normalize_terminal_settings();
+        cx.set_global(settings);
+    }
+
+    pub fn update_and_save(cx: &mut App, update: impl FnOnce(&mut AppSettings)) {
+        let mut settings = Self::current(cx);
+        update(&mut settings);
+        settings.normalize_font_settings();
+        settings.normalize_appearance_settings();
+        settings.normalize_terminal_settings();
+        settings.save();
+        cx.set_global(settings);
+    }
+
+    pub fn current_system_hotkey(&self) -> &str {
+        #[cfg(target_os = "macos")]
+        {
+            &self.system_hotkey_macos
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        {
+            &self.system_hotkey_other
+        }
+    }
+
+    fn config_path() -> Option<PathBuf> {
+        get_config_dir().ok().map(|dir| dir.join("settings.json"))
+    }
+
+    pub fn load() -> Self {
+        let Some(path) = Self::config_path() else {
+            return Self::default();
+        };
+
+        if !path.exists() {
+            return Self::default();
+        }
+
+        Self::load_from(&path)
+    }
+
+    /// 只把 settings.json 里的 `log_file_path` 取出来，不做整份反序列化。
+    ///
+    /// 启动期必须在 [`Self::load`] **之前**用它初始化 tracing：否则 `load()` 里的
+    /// "Failed to parse settings" 会发生在 subscriber 安装之前，被直接丢掉，生产上就只剩
+    /// 「设置被还原成默认值」这个结果，永远看不到原因。
+    pub fn peek_log_file_path() -> String {
+        let Some(path) = Self::config_path() else {
+            return String::new();
+        };
+
+        Self::peek_log_file_path_from(&path)
+    }
+
+    fn peek_log_file_path_from(path: &Path) -> String {
+        let Ok(content) = std::fs::read_to_string(path) else {
+            return String::new();
+        };
+
+        serde_json::from_str::<serde_json::Value>(&content)
+            .ok()
+            .and_then(|value| {
+                value
+                    .get("log_file_path")
+                    .and_then(|path| path.as_str())
+                    .map(str::to_owned)
+            })
+            .unwrap_or_default()
+    }
+
+    fn load_from(path: &Path) -> Self {
+        match std::fs::read_to_string(path) {
+            Ok(content) => match serde_json::from_str::<Self>(&content) {
+                Ok(mut settings) => {
+                    info!("Settings loaded from {:?}", path);
+                    settings.migrate_legacy_mcp_toolsets();
+                    settings.normalize_font_settings();
+                    settings.normalize_appearance_settings();
+                    settings.normalize_terminal_settings();
+                    settings
+                }
+                Err(parse_error) => {
+                    // 解析失败绝不能静默回落默认值：里层是整份 `Default`，紧接着启动期任意
+                    // 一次 save() 就会把用户设置全量覆盖掉，现象就是「启动后被还原成默认值」。
+                    // 先把坏文件改名留作现场证据，再用 eprintln 兜底（此时 tracing 未必装好）。
+                    let quarantined = quarantine_corrupt_settings(path);
+                    let message = match &quarantined {
+                        Some(path) => format!(
+                            "Failed to parse settings: {parse_error} (坏文件已保留: {})",
+                            path.display()
+                        ),
+                        None => format!("Failed to parse settings: {parse_error}"),
+                    };
+                    error!("{message}");
+                    eprintln!("[settings] {message}");
+                    LOAD_DEGRADED.store(true, std::sync::atomic::Ordering::Relaxed);
+                    Self::default()
+                }
+            },
+            Err(read_error) => {
+                // 读不出来不等于内容坏了（可能是权限或文件被占用），保留原文件不动。
+                let message = format!("Failed to read settings file: {read_error}");
+                error!("{message}");
+                eprintln!("[settings] {message}");
+                LOAD_DEGRADED.store(true, std::sync::atomic::Ordering::Relaxed);
+                Self::default()
+            }
+        }
+    }
+
+    /// 把整份设置写回 `settings.json`。
+    ///
+    /// 两道硬闸，都是为了「设置不能被静默还原」：
+    ///
+    /// 1. 应用路径未初始化时拒绝落盘。测试进程、命令行辅助路径、以及任何在
+    ///    `initialize_app_paths` 之前触发的保存，目录都会经 `app_dirs::config_dir()`
+    ///    回落成正式安装目录，一次整份原子写就把用户真实设置覆盖成默认值
+    ///    （2026-11-01：`cargo test -p db_view` 的用例把 `~/.config/linop/settings.json`
+    ///    写成了 `AppSettings::default()`）。
+    /// 2. 本次运行是从读不出/解析不了的 settings.json 起步时拒绝落盘，避免默认值
+    ///    覆盖已经被隔离成 `.corrupt-*` 的现场（下次启动会正常加载/重建）。
+    pub fn save(&self) {
+        if crate::app_paths::initialized_paths().is_none() {
+            let message = "Refusing to save settings: application paths are not initialized, \
+                 so the write target would fall back to the installed config directory";
+            error!("{message}");
+            eprintln!("[settings] {message}");
+            return;
+        }
+        if LOAD_DEGRADED.load(std::sync::atomic::Ordering::Relaxed) {
+            let message = "Refusing to save settings: this run started from a settings.json \
+                 that could not be loaded (it has been quarantined); saving defaults would \
+                 hide the cause";
+            error!("{message}");
+            eprintln!("[settings] {message}");
+            return;
+        }
+
+        let Some(path) = Self::config_path() else {
+            error!("Could not determine config path");
+            return;
+        };
+
+        self.save_to(&path);
+    }
+
+    fn save_to(&self, path: &Path) {
+        if let Some(parent) = path.parent()
+            && let Err(e) = std::fs::create_dir_all(parent)
+        {
+            error!("Failed to create config directory: {}", e);
+            return;
+        }
+
+        let content = match serde_json::to_string_pretty(self) {
+            Ok(content) => content,
+            Err(e) => {
+                error!("Failed to serialize settings: {}", e);
+                return;
+            }
+        };
+
+        match write_settings_atomically(path, &content) {
+            Ok(()) => info!("Settings saved to {:?}", path),
+            Err(write_error) => {
+                let message = format!("Failed to write settings file: {write_error}");
+                error!("{message}");
+                eprintln!("[settings] {message}");
+            }
+        }
+    }
+
+    pub fn apply(&self, cx: &mut App) {
+        gpui_component::set_locale(effective_locale_for_setting(&self.locale));
+        crate::themes::apply_appearance(self, cx);
+
+        // 同步自动保存配置
+        self.sync_auto_save_config(cx);
+    }
+
+    /// 将通用字体设置（字号 + 字体族）应用到主题，并同步 GPUI 的 Base 层。
+    ///
+    /// 直接修改 `Theme` 的公共字段不会自动刷新 Base 层副本（滚动条、文本视图
+    /// 默认样式等都从 Base 层读取），因此必须调用 [`Theme::sync_base`] 重建。
+    fn apply_font_settings(&self, cx: &mut App) {
+        let family = self.font_family.trim();
+        // 自定义导入字体（通过 add_fonts 注册）在启动早期尚未进入字体列表，
+        // 因此需额外从 custom_fonts 配置中判定，避免被误判为未安装。
+        let is_custom_font = self.custom_fonts.iter().any(|font| {
+            font.families
+                .iter()
+                .any(|candidate| candidate.trim().eq_ignore_ascii_case(family))
+        });
+        let installed = cx.text_system().all_font_names();
+        let resolved = if family.is_empty()
+            || (!is_custom_font && !is_installed_font_family(family, &installed))
+        {
+            // 未安装的字体族回退到系统 UI 字体，避免渲染异常
+            ".SystemUIFont".to_string()
+        } else {
+            family.to_string()
+        };
+
+        let theme = Theme::global_mut(cx);
+        theme.font_family = resolved.into();
+        // GPUI 的 rem 基准长度取自主题字号（gpui-component 的 `Root::render` 会调用
+        // `window.set_rem_size(cx.theme().font_size)`），因此把界面缩放倍率乘进字号，
+        // 即可整体缩放所有以 rem 表达的字体、间距与控件尺寸。
+        theme.font_size = px(self.font_size as f32 * self.ui_scale());
+        Theme::sync_base(cx);
+    }
+
+    pub fn apply_font_size(&self, cx: &mut App) {
+        self.apply_font_settings(cx);
+    }
+
+    /// 界面缩放倍率（1.0 表示 100%）。
+    ///
+    /// 超出允许范围的值会被收敛到 [`UI_SCALE_PERCENT_MIN`] /
+    /// [`UI_SCALE_PERCENT_MAX`] 之间，避免产生不可用的界面尺寸。
+    pub fn ui_scale(&self) -> f32 {
+        self.ui_scale_percent
+            .clamp(UI_SCALE_PERCENT_MIN, UI_SCALE_PERCENT_MAX) as f32
+            / 100.0
+    }
+
+    /// 应用通用字体族设置到主题（设置面板修改"字体"后调用）。
+    pub fn apply_font_family(&self, cx: &mut App) {
+        self.apply_font_settings(cx);
+    }
+
+    /// 同步自动保存配置到全局状态
+    pub fn sync_auto_save_config(&self, cx: &mut App) {
+        Self::update_auto_save_config(self.enable_sql_auto_save, self.sql_auto_save_interval, cx);
+    }
+
+    /// 更新自动保存配置（静态方法，避免借用冲突）
+    pub fn update_auto_save_config(enabled: bool, interval_seconds: f64, cx: &mut App) {
+        if let Some(config) = cx.try_global::<AutoSaveConfig>() {
+            config.set_enabled(enabled);
+            config.set_interval_seconds(interval_seconds);
+        }
+    }
+}
+
+/// 原子写 settings.json，并在覆盖前把上一份滚进多代备份。
+///
+/// 直接 `fs::write` 覆盖有两个老问题：写到一半崩溃会留下半截 JSON，而半截 JSON 会让
+/// [`AppSettings::load`] 走进 `Err` 分支、把整份设置回落成默认值；覆盖前也没有任何可回滚的副本。
+///
+/// 备份保留多代（`settings.json.bak`、`.bak.1`、`.bak.2`）：只留一代时，坏掉的默认值
+/// 被启动期连续 save 两次就会把仅有的好配置顶掉，之后再无回滚可能。
+fn write_settings_atomically(path: &Path, content: &str) -> std::io::Result<()> {
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("settings.json");
+    // 临时文件名带进程号：两个实例同时保存时，固定名 `.tmp` 会互相写穿，
+    // 落盘的就是半截 JSON。
+    let tmp_path = path.with_file_name(format!("{file_name}.{}.tmp", std::process::id()));
+    std::fs::write(&tmp_path, content)?;
+
+    if path.exists() {
+        rotate_settings_backups(path, file_name);
+    }
+
+    std::fs::rename(&tmp_path, path)
+}
+
+/// 备份代数上限：`.bak`、`.bak.1`、`.bak.2`。
+const SETTINGS_BACKUP_GENERATIONS: usize = 3;
+
+fn rotate_settings_backups(path: &Path, file_name: &str) {
+    let generation_path = |generation: usize| {
+        if generation == 0 {
+            path.with_file_name(format!("{file_name}.bak"))
+        } else {
+            path.with_file_name(format!("{file_name}.bak.{generation}"))
+        }
+    };
+
+    let oldest = generation_path(SETTINGS_BACKUP_GENERATIONS - 1);
+    if oldest.exists() {
+        let _ = std::fs::remove_file(&oldest);
+    }
+    for generation in (0..SETTINGS_BACKUP_GENERATIONS - 1).rev() {
+        let from = generation_path(generation);
+        if from.exists() {
+            let to = generation_path(generation + 1);
+            if let Err(error) = std::fs::rename(&from, &to) {
+                error!("Failed to rotate settings backup: {}", error);
+            }
+        }
+    }
+
+    // 备份失败不阻断主写入：保住用户这次的改动比保住旧副本更重要。
+    let backup_path = generation_path(0);
+    if let Err(error) = std::fs::copy(path, &backup_path) {
+        error!("Failed to back up settings file: {}", error);
+    }
+}
+
+/// 把无法解析的 settings.json 改名保留为 `settings.json.corrupt-<时间戳>`。
+///
+/// 只改名不删除：坏文件是「设置为什么被还原」的唯一现场证据。返回 `None` 表示改名失败
+/// （例如目录只读），调用方此时仍按默认值启动，但下一次保存会覆盖掉原文件。
+fn quarantine_corrupt_settings(path: &Path) -> Option<PathBuf> {
+    let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S");
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("settings.json");
+    let quarantined = path.with_file_name(format!("{file_name}.corrupt-{stamp}"));
+
+    match std::fs::rename(path, &quarantined) {
+        Ok(()) => Some(quarantined),
+        Err(e) => {
+            error!("Failed to quarantine corrupt settings file: {}", e);
+            None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use gpui::px;
+    use gpui_component::{Theme, ThemeMode};
+    use std::path::PathBuf;
+
+    use super::{
+        AiChatBackendSelection, AiChatSettings, AiChatToolExecutionMode, AppSettings,
+        CloseButtonBehavior, ConnectionSortOrder, CustomFont, DEFAULT_AI_REQUEST_TIMEOUT_SECS,
+        DEFAULT_MCP_APPROVAL_TIMEOUT_MS, DEFAULT_SQL_EXPORT_ROWS_PER_STATEMENT,
+        DEFAULT_TERMINAL_THEME, HomeConnectionLayout, LOCALE_SYSTEM, LargeTextCellEditorOpenMode,
+        LocalTerminalProfileKind, LocalTerminalProfileSettings, MAX_AI_REQUEST_TIMEOUT_SECS,
+        MAX_CUSTOM_SYSTEM_PROMPT_CHARS, MAX_RECENT_WORKSPACE_ROOTS, MAX_REMEMBERED_ACP_SESSIONS,
+        MIN_AI_REQUEST_TIMEOUT_SECS, MainWindowState, MasterKeyStorage, McpPermissionMode,
+        McpServerMode, PersonalSyncBackendKind, RemoteFileOpenMode, SidebarPlacement,
+        SqlFormatSettings, SqlIndentStyle, SqlKeywordCase, StartupDefaultPage, SyncProvider,
+        TableViewMode, UpdateChannel, UpdateMirror, default_grid_font_fallback_families,
+        default_grid_monospace_font_family, grid_monospace_font, installed_grid_monospace_font,
+        is_installed_font_family, resolve_installed_grid_monospace_font_family,
+    };
+
+    #[test]
+    fn app_settings_disables_sync_by_default() {
+        assert!(!AppSettings::default().sync_enabled);
+    }
+
+    #[test]
+    fn corrupt_settings_file_is_quarantined_instead_of_silently_reset() {
+        // 回归保护：解析失败若直接回落 Default、再被启动期任意一次 save() 全量覆盖，
+        // 用户的设置就永久丢失且不留任何现场证据（现象就是「启动后设置被还原」）。
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"font_size":"不是数字"}"#).expect("write corrupt settings");
+
+        let settings = AppSettings::load_from(&path);
+
+        assert!(
+            (settings.font_size - AppSettings::default().font_size).abs() < f64::EPSILON,
+            "解析失败应回落默认值"
+        );
+        assert!(!path.exists(), "坏文件应被改名挪走，避免下一次保存直接覆盖");
+
+        let names: Vec<String> = std::fs::read_dir(dir.path())
+            .expect("read_dir")
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names.len(), 1, "临时目录里应只剩坏文件副本: {names:?}");
+        assert!(
+            names[0].starts_with("settings.json.corrupt-"),
+            "坏文件应带 .corrupt- 前缀: {names:?}"
+        );
+    }
+
+    #[test]
+    fn save_writes_atomically_and_keeps_previous_file_as_backup() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, r#"{"font_size":21.0}"#).expect("write previous settings");
+
+        let settings = AppSettings {
+            font_size: 13.0,
+            ..AppSettings::default()
+        };
+        settings.save_to(&path);
+
+        let saved: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).expect("read saved settings"))
+                .expect("saved settings is json");
+        assert_eq!(saved["font_size"], serde_json::json!(13.0));
+        assert!(
+            !dir.path().join("settings.json.tmp").exists(),
+            "临时文件应在 rename 后消失"
+        );
+
+        let backup: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(dir.path().join("settings.json.bak")).expect("read backup"),
+        )
+        .expect("backup is json");
+        assert_eq!(
+            backup["font_size"],
+            serde_json::json!(21.0),
+            "备份应保留覆盖前的上一份内容"
+        );
+    }
+
+    #[test]
+    fn peek_log_file_path_works_even_if_full_deserialize_fails() {
+        // 启动期要先靠它装好 tracing，才可能看见随后 load() 的解析错误。
+        let dir = tempfile::tempdir().expect("tempdir");
+        let path = dir.path().join("settings.json");
+        std::fs::write(
+            &path,
+            r#"{"log_file_path":"/tmp/linop.log","font_size":"坏值"}"#,
+        )
+        .expect("write settings");
+
+        assert_eq!(
+            AppSettings::peek_log_file_path_from(&path),
+            "/tmp/linop.log"
+        );
+        assert!(
+            serde_json::from_str::<AppSettings>(
+                &std::fs::read_to_string(&path).expect("read settings")
+            )
+            .is_err(),
+            "整份反序列化应当失败，而 peek 仍要能取到日志路径"
+        );
+    }
+
+    #[test]
+    fn legacy_settings_with_nested_objects_still_deserialize() {
+        // 回归保护：下面这些嵌套对象里存在没有 #[serde(default)] 的字段。一旦给它们新增必填
+        // 字段或改类型，旧配置文件会在加载时整份回落成默认值（「设置被还原」的真凶之一）。
+        let legacy = serde_json::json!({
+            "font_size": 13.0,
+            "main_window_state": {"x": 10.0, "y": 20.0, "width": 1200.0, "height": 800.0},
+            "sql_format": {"keyword_case": "upper", "indent": "tabs"},
+            "local_terminal_profile": {"kind": "system"},
+            "ai_chat": {"tool_execution_mode": "manual", "max_iterations": 32},
+            "unknown_field_from_a_newer_version": {"whatever": true}
+        });
+
+        let settings: AppSettings = serde_json::from_value(legacy).expect("历史配置应能解析");
+        assert!((settings.font_size - 13.0).abs() < f64::EPSILON);
+        assert_eq!(settings.sql_format.keyword_case, SqlKeywordCase::Upper);
+        assert_eq!(settings.sql_format.indent, SqlIndentStyle::Tabs);
+    }
+
+    #[test]
+    fn home_show_recent_connections_defaults_on_and_round_trips() {
+        // 默认开启(与历史行为一致)。
+        assert!(AppSettings::default().home_show_recent_connections);
+
+        // 关闭后序列化往返保持关闭。
+        let settings = AppSettings {
+            home_show_recent_connections: false,
+            ..AppSettings::default()
+        };
+        let json = serde_json::to_string(&settings).expect("serialize app settings");
+        assert!(json.contains(r#""home_show_recent_connections":false"#));
+        let restored: AppSettings = serde_json::from_str(&json).expect("roundtrip");
+        assert!(!restored.home_show_recent_connections);
+
+        // 旧配置文件缺省该字段时,反序列化回退到默认开启(向后兼容)。
+        let legacy_settings: AppSettings =
+            serde_json::from_value(serde_json::json!({})).expect("empty deserialize");
+        assert!(legacy_settings.home_show_recent_connections);
+    }
+
+    #[test]
+    fn sql_format_settings_default_preserves_keyword_case() {
+        let settings = AppSettings::default().sql_format;
+        assert_eq!(SqlKeywordCase::Preserve, settings.keyword_case);
+        assert_eq!(SqlIndentStyle::TwoSpaces, settings.indent);
+    }
+
+    #[test]
+    fn sql_format_settings_round_trips_and_tolerates_missing_fields() {
+        let settings = SqlFormatSettings {
+            keyword_case: SqlKeywordCase::Upper,
+            indent: SqlIndentStyle::Tabs,
+            ..SqlFormatSettings::default()
+        };
+        let json = serde_json::to_string(&settings).expect("serialize sql format settings");
+        assert_eq!(r#"{"keyword_case":"upper","indent":"tabs"}"#, json.as_str());
+        assert_eq!(settings, serde_json::from_str(&json).expect("roundtrip"));
+
+        let partial: SqlFormatSettings =
+            serde_json::from_str(r#"{"keyword_case":"lower"}"#).expect("partial deserialize");
+        assert_eq!(
+            SqlFormatSettings {
+                keyword_case: SqlKeywordCase::Lower,
+                indent: SqlIndentStyle::TwoSpaces,
+                ..SqlFormatSettings::default()
+            },
+            partial
+        );
+    }
+
+    #[test]
+    fn main_window_state_accepts_valid_values() {
+        let state = MainWindowState::new(100.0, -200.0, 1200.0, 800.0, Some("display-1".into()))
+            .expect("valid window state");
+
+        assert_eq!(100.0, state.x);
+        assert_eq!(-200.0, state.y);
+        assert_eq!(1200.0, state.width);
+        assert_eq!(800.0, state.height);
+        assert_eq!(Some("display-1"), state.display_uuid.as_deref());
+    }
+
+    #[test]
+    fn main_window_state_rejects_non_finite_or_non_positive_values() {
+        assert!(MainWindowState::new(f32::NAN, 0.0, 1200.0, 800.0, None).is_none());
+        assert!(MainWindowState::new(0.0, f32::INFINITY, 1200.0, 800.0, None).is_none());
+        assert!(MainWindowState::new(0.0, 0.0, 0.0, 800.0, None).is_none());
+        assert!(MainWindowState::new(0.0, 0.0, 1200.0, -1.0, None).is_none());
+    }
+
+    #[test]
+    fn main_window_state_round_trips_through_settings_json() {
+        let mut settings = AppSettings::default();
+        settings.main_window_state =
+            MainWindowState::new(-1920.0, 80.0, 1200.0, 800.0, Some("display-2".into()));
+
+        let json = serde_json::to_value(&settings).expect("serialize settings");
+        let restored: AppSettings = serde_json::from_value(json).expect("deserialize settings");
+
+        assert_eq!(settings.main_window_state, restored.main_window_state);
+    }
+
+    #[test]
+    fn legacy_app_settings_default_main_window_state_to_none() {
+        let settings: AppSettings =
+            serde_json::from_value(serde_json::json!({})).expect("旧版设置应能反序列化");
+
+        assert!(settings.main_window_state.is_none());
+    }
+
+    #[test]
+    fn close_button_behavior_defaults_to_asking_every_time() {
+        assert_eq!(
+            CloseButtonBehavior::Ask,
+            AppSettings::default().close_button_behavior
+        );
+    }
+
+    #[test]
+    fn legacy_app_settings_without_close_button_behavior_ask_every_time() {
+        let settings: AppSettings =
+            serde_json::from_value(serde_json::json!({})).expect("旧版设置应能反序列化");
+
+        assert_eq!(CloseButtonBehavior::Ask, settings.close_button_behavior);
+    }
+
+    #[test]
+    fn close_button_behavior_round_trips_through_settings_json() {
+        for behavior in [
+            CloseButtonBehavior::Ask,
+            CloseButtonBehavior::MinimizeToTray,
+            CloseButtonBehavior::Quit,
+        ] {
+            let mut settings = AppSettings::default();
+            settings.close_button_behavior = behavior;
+
+            let json = serde_json::to_value(&settings).expect("serialize settings");
+            let restored: AppSettings = serde_json::from_value(json).expect("deserialize settings");
+
+            assert_eq!(behavior, restored.close_button_behavior);
+        }
+    }
+
+    #[test]
+    fn close_button_behavior_strings_are_closed_and_fall_back_to_asking() {
+        for behavior in [
+            CloseButtonBehavior::Ask,
+            CloseButtonBehavior::MinimizeToTray,
+            CloseButtonBehavior::Quit,
+        ] {
+            assert_eq!(behavior, CloseButtonBehavior::from_str(behavior.as_str()));
+        }
+
+        // 未知取值必须回退到询问，而不是静默变成「退出应用」。
+        assert_eq!(
+            CloseButtonBehavior::Ask,
+            CloseButtonBehavior::from_str("something_else")
+        );
+        assert_eq!(CloseButtonBehavior::Ask, CloseButtonBehavior::from_str(""));
+    }
+
+    #[test]
+    fn app_settings_enables_direct_server_transfer_by_default() {
+        assert!(AppSettings::default().direct_server_transfer_enabled);
+    }
+
+    #[test]
+    fn legacy_app_settings_keep_direct_server_transfer_enabled() {
+        let settings: AppSettings =
+            serde_json::from_value(serde_json::json!({})).expect("旧版设置应能反序列化");
+
+        assert!(settings.direct_server_transfer_enabled);
+    }
+
+    #[test]
+    fn app_settings_deserializes_direct_server_transfer_choice() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "direct_server_transfer_enabled": false
+        }))
+        .expect("服务器间直接传输设置应能反序列化");
+
+        assert!(!settings.direct_server_transfer_enabled);
+    }
+
+    #[test]
+    fn legacy_app_settings_keep_sync_disabled_until_explicitly_enabled() {
+        let settings: AppSettings =
+            serde_json::from_value(serde_json::json!({})).expect("旧版设置应能反序列化");
+
+        assert!(!settings.sync_enabled);
+    }
+
+    #[test]
+    fn app_settings_round_trip_preserves_sync_enabled() {
+        let mut settings = AppSettings::default();
+        settings.sync_enabled = true;
+
+        let json = serde_json::to_string(&settings).expect("应序列化同步总开关");
+        let restored: AppSettings = serde_json::from_str(&json).expect("应反序列化同步总开关");
+
+        assert!(restored.sync_enabled);
+    }
+
+    #[test]
+    fn remote_file_editor_settings_default_to_builtin_with_conflict_check() {
+        let settings = AppSettings::default();
+
+        assert_eq!(
+            RemoteFileOpenMode::BuiltIn,
+            settings.remote_file_editor.open_mode
+        );
+        assert!(
+            settings
+                .remote_file_editor
+                .check_remote_modified_before_upload
+        );
+        assert!(settings.remote_file_editor.auto_upload_external_changes);
+        assert!(
+            settings
+                .remote_file_editor
+                .default_external_editor
+                .is_none()
+        );
+        assert!(settings.remote_file_editor.overrides.is_empty());
+    }
+
+    #[test]
+    fn app_settings_deserializes_remote_file_editor_defaults() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "locale": "en",
+            "theme_mode": "dark"
+        }))
+        .expect("legacy settings should deserialize");
+
+        assert_eq!(
+            RemoteFileOpenMode::BuiltIn,
+            settings.remote_file_editor.open_mode
+        );
+        assert!(
+            settings
+                .remote_file_editor
+                .check_remote_modified_before_upload
+        );
+        assert!(settings.remote_file_editor.auto_upload_external_changes);
+    }
+
+    #[test]
+    fn appearance_settings_migrate_with_safe_defaults() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "locale": "en",
+            "auto_switch_theme": false
+        }))
+        .expect("legacy appearance settings should deserialize");
+
+        assert_eq!("light", settings.theme_mode);
+        assert_eq!("Linop Light", settings.light_theme);
+        assert_eq!("Linop Dark", settings.dark_theme);
+        assert_eq!(1.0, settings.window_opacity);
+        assert!(!settings.custom_accent_enabled);
+        assert_eq!("#3b82f6", settings.custom_accent_color);
+    }
+
+    #[test]
+    fn appearance_settings_normalize_opacity_and_mode() {
+        let mut settings = AppSettings {
+            theme_mode: "unknown".to_string(),
+            window_opacity: 2.0,
+            custom_accent_color: String::new(),
+            ..AppSettings::default()
+        };
+
+        settings.normalize_appearance_settings();
+
+        assert_eq!("light", settings.theme_mode);
+        assert_eq!(1.0, settings.window_opacity);
+        assert_eq!("#3b82f6", settings.custom_accent_color);
+
+        settings.window_opacity = 0.1;
+        settings.normalize_appearance_settings();
+        assert_eq!(AppSettings::MIN_WINDOW_OPACITY, settings.window_opacity);
+
+        settings.auto_switch_theme = true;
+        settings.normalize_appearance_settings();
+        assert_eq!("system", settings.theme_mode);
+    }
+
+    #[test]
+    fn legacy_default_theme_pair_migrates_to_linop_once() {
+        let mut settings = AppSettings {
+            light_theme: "Default Light".to_string(),
+            dark_theme: "Default Dark".to_string(),
+            linop_theme_migrated: false,
+            ..AppSettings::default()
+        };
+
+        settings.normalize_appearance_settings();
+        assert_eq!("Linop Light", settings.light_theme);
+        assert_eq!("Linop Dark", settings.dark_theme);
+
+        settings.light_theme = "Default Light".to_string();
+        settings.dark_theme = "Default Dark".to_string();
+        settings.normalize_appearance_settings();
+        assert_eq!("Default Light", settings.light_theme);
+        assert_eq!("Default Dark", settings.dark_theme);
+    }
+
+    #[test]
+    fn appearance_settings_resolve_light_dark_and_system_modes() {
+        let mut settings = AppSettings::default();
+
+        assert_eq!(
+            ThemeMode::Light,
+            settings.effective_theme_mode(ThemeMode::Dark)
+        );
+
+        settings.theme_mode = "dark".to_string();
+        assert_eq!(
+            ThemeMode::Dark,
+            settings.effective_theme_mode(ThemeMode::Light)
+        );
+
+        settings.theme_mode = "system".to_string();
+        assert_eq!(
+            ThemeMode::Dark,
+            settings.effective_theme_mode(ThemeMode::Dark)
+        );
+
+        settings.theme_mode = "light".to_string();
+        settings.auto_switch_theme = true;
+        assert_eq!(
+            ThemeMode::Dark,
+            settings.effective_theme_mode(ThemeMode::Dark)
+        );
+    }
+
+    #[test]
+    fn app_settings_deserializes_disabled_external_auto_upload() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "locale": "en",
+            "theme_mode": "dark",
+            "remote_file_editor": {
+                "auto_upload_external_changes": false
+            }
+        }))
+        .expect("settings should deserialize");
+
+        assert!(!settings.remote_file_editor.auto_upload_external_changes);
+    }
+
+    #[test]
+    fn large_text_editor_open_mode_defaults_to_sidebar_preview() {
+        assert_eq!(
+            LargeTextCellEditorOpenMode::from_str("unknown"),
+            LargeTextCellEditorOpenMode::SidebarPreview
+        );
+    }
+
+    #[test]
+    fn large_text_editor_open_mode_parses_dialog() {
+        assert_eq!(
+            LargeTextCellEditorOpenMode::from_str("dialog"),
+            LargeTextCellEditorOpenMode::Dialog
+        );
+    }
+
+    #[test]
+    fn app_settings_default_keeps_mcp_server_disabled() {
+        let settings = AppSettings::default();
+
+        assert!(!settings.mcp.server_enabled);
+        assert_eq!(settings.mcp.server_mode, McpServerMode::Temporary);
+        assert_eq!(settings.mcp.permission_mode, McpPermissionMode::Deny);
+        assert_eq!(
+            DEFAULT_MCP_APPROVAL_TIMEOUT_MS,
+            settings.mcp.approval_timeout_ms
+        );
+        assert!(settings.tool_exposure.mcp.terminal);
+        assert!(settings.tool_exposure.mcp.terminal_ssh_exec);
+        assert!(settings.tool_exposure.mcp.terminal_exec);
+        assert!(settings.tool_exposure.mcp.connections);
+        assert!(!settings.tool_exposure.mcp.database);
+        assert!(!settings.tool_exposure.mcp.redis);
+        assert!(!settings.tool_exposure.mcp.sftp);
+        assert!(settings.tool_exposure.agent.terminal);
+        assert!(settings.tool_exposure.agent.terminal_ssh_exec);
+        assert!(settings.tool_exposure.agent.terminal_exec);
+        assert!(settings.tool_exposure.agent.connections);
+        assert!(settings.tool_exposure.agent.database);
+        assert!(settings.tool_exposure.agent.redis);
+        assert!(settings.tool_exposure.agent.sftp);
+    }
+
+    #[test]
+    fn mcp_permission_modes_expose_unified_profile_ids() {
+        assert_eq!("safe", McpPermissionMode::Deny.profile_id());
+        assert_eq!("confirm", McpPermissionMode::Ask.profile_id());
+        assert_eq!("auto", McpPermissionMode::Allow.profile_id());
+    }
+
+    #[test]
+    fn app_settings_default_sets_sql_query_max_rows() {
+        let settings = AppSettings::default();
+
+        assert_eq!(1000, settings.sql_query_max_rows);
+    }
+
+    #[test]
+    fn app_settings_default_batches_sql_export_statements() {
+        let settings = AppSettings::default();
+
+        assert_eq!(DEFAULT_SQL_EXPORT_ROWS_PER_STATEMENT, 100);
+        assert_eq!(
+            DEFAULT_SQL_EXPORT_ROWS_PER_STATEMENT,
+            settings.sql_export_rows_per_statement
+        );
+    }
+
+    #[test]
+    fn table_view_mode_round_trips_between_str_and_enum() {
+        // 设置页下拉用字符串读写，枚举与字符串必须一一对应；
+        // 认不出的值一律退回网格，避免坏掉的配置把表格渲成空白。
+        assert_eq!("grid", TableViewMode::Grid.as_str());
+        assert_eq!("vertical", TableViewMode::Vertical.as_str());
+        assert_eq!(TableViewMode::Grid, TableViewMode::from_str("grid"));
+        assert_eq!(TableViewMode::Vertical, TableViewMode::from_str("vertical"));
+        assert_eq!(TableViewMode::Grid, TableViewMode::from_str("unknown"));
+        assert!(!TableViewMode::Grid.is_vertical());
+        assert!(TableViewMode::Vertical.is_vertical());
+    }
+
+    #[test]
+    fn app_settings_defaults_to_the_grid_view() {
+        let settings = AppSettings::default();
+
+        assert_eq!(TableViewMode::Grid, settings.table_view_mode);
+    }
+
+    #[test]
+    fn app_settings_deserializes_missing_table_view_mode_as_grid() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "locale": "en",
+            "theme_mode": "dark"
+        }))
+        .expect("缺少 table_view_mode 的旧版 settings.json 应能读取");
+
+        assert_eq!(TableViewMode::Grid, settings.table_view_mode);
+    }
+
+    #[test]
+    fn app_settings_deserializes_the_vertical_table_view_mode() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "table_view_mode": "vertical"
+        }))
+        .expect("table_view_mode 应能从 settings.json 读回");
+
+        assert_eq!(TableViewMode::Vertical, settings.table_view_mode);
+    }
+
+    #[test]
+    fn table_column_comment_is_off_by_default_and_round_trips() {
+        assert!(
+            !AppSettings::default().table_show_column_comment,
+            "列头注释行默认关闭"
+        );
+
+        let legacy: AppSettings = serde_json::from_value(serde_json::json!({
+            "locale": "en",
+            "table_row_height": 44
+        }))
+        .expect("缺少 table_show_column_comment 的旧版 settings.json 应能读取");
+        assert!(!legacy.table_show_column_comment);
+
+        let enabled: AppSettings = serde_json::from_value(serde_json::json!({
+            "table_show_column_comment": true
+        }))
+        .expect("table_show_column_comment 应能从 settings.json 读回");
+        assert!(enabled.table_show_column_comment);
+    }
+
+    #[test]
+    fn app_settings_default_enables_terminal_file_manager_path_sync() {
+        let settings = AppSettings::default();
+
+        assert!(settings.terminal_sync_path_with_terminal);
+    }
+
+    #[test]
+    fn app_settings_deserializes_terminal_file_manager_path_sync_enabled_by_default() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "locale": "en",
+            "theme_mode": "dark"
+        }))
+        .expect("旧版 settings.json 应能读取");
+
+        assert!(settings.terminal_sync_path_with_terminal);
+    }
+
+    #[test]
+    fn app_settings_disables_terminal_right_click_paste_by_default() {
+        let settings = AppSettings::default();
+
+        assert!(!settings.terminal_right_click_paste);
+    }
+
+    #[test]
+    fn app_settings_enables_terminal_paste_image_upload_by_default() {
+        let settings = AppSettings::default();
+
+        assert!(settings.terminal_paste_image_upload);
+    }
+
+    #[test]
+    fn app_settings_default_opens_home_on_startup() {
+        let settings = AppSettings::default();
+
+        assert_eq!(StartupDefaultPage::Home, settings.startup_default_page);
+    }
+
+    #[test]
+    fn ui_scale_defaults_to_identity_and_clamps_out_of_range_values() {
+        let mut settings = AppSettings::default();
+        assert_eq!(100, settings.ui_scale_percent);
+        assert!((settings.ui_scale() - 1.0).abs() < f32::EPSILON);
+
+        settings.ui_scale_percent = 150;
+        assert!((settings.ui_scale() - 1.5).abs() < f32::EPSILON);
+
+        settings.ui_scale_percent = 10;
+        let min_scale = super::UI_SCALE_PERCENT_MIN as f32 / 100.0;
+        assert!((settings.ui_scale() - min_scale).abs() < f32::EPSILON);
+
+        settings.ui_scale_percent = 10_000;
+        let max_scale = super::UI_SCALE_PERCENT_MAX as f32 / 100.0;
+        assert!((settings.ui_scale() - max_scale).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn ui_scale_percent_is_read_from_persisted_settings() {
+        let settings: AppSettings = serde_json::from_str(r#"{ "ui_scale_percent": 175 }"#)
+            .expect("ui_scale_percent 应能读取");
+        assert_eq!(175, settings.ui_scale_percent);
+        assert!((settings.ui_scale() - 1.75).abs() < f32::EPSILON);
+
+        // 旧配置文件缺少该字段时应回落到 100%。
+        let legacy: AppSettings = serde_json::from_str("{}").expect("旧配置应能读取");
+        assert_eq!(100, legacy.ui_scale_percent);
+    }
+
+    #[test]
+    fn ai_chat_custom_system_prompt_defaults_to_empty_for_legacy_configs() {
+        let settings: AiChatSettings =
+            serde_json::from_str(r#"{ "max_iterations": 32 }"#).expect("旧配置应能读取");
+        assert_eq!(String::new(), settings.custom_system_prompt);
+        assert_eq!(None, settings.effective_custom_system_prompt());
+    }
+
+    #[test]
+    fn ai_chat_custom_system_prompt_trims_blank_values_to_none() {
+        let mut settings = AiChatSettings::default();
+        settings.custom_system_prompt = "   ".to_string();
+        assert_eq!(None, settings.effective_custom_system_prompt());
+
+        settings.custom_system_prompt = "  始终用 DBA 视角回答。\n".to_string();
+        assert_eq!(
+            Some("始终用 DBA 视角回答。".to_string()),
+            settings.effective_custom_system_prompt()
+        );
+    }
+
+    #[test]
+    fn ai_chat_custom_system_prompt_clamps_overlong_values() {
+        let mut settings = AiChatSettings::default();
+        settings.custom_system_prompt = "好".repeat(MAX_CUSTOM_SYSTEM_PROMPT_CHARS + 100);
+        let effective = settings
+            .effective_custom_system_prompt()
+            .expect("非空内容应返回 Some");
+        assert_eq!(MAX_CUSTOM_SYSTEM_PROMPT_CHARS, effective.chars().count());
+
+        // 边界长度不截断。
+        settings.custom_system_prompt = "x".repeat(MAX_CUSTOM_SYSTEM_PROMPT_CHARS);
+        assert_eq!(
+            MAX_CUSTOM_SYSTEM_PROMPT_CHARS,
+            settings
+                .effective_custom_system_prompt()
+                .expect("边界长度应返回 Some")
+                .chars()
+                .count()
+        );
+    }
+
+    #[test]
+    fn app_settings_does_not_require_master_key_on_startup_by_default() {
+        assert!(!AppSettings::default().require_master_key_on_startup);
+    }
+
+    #[test]
+    fn app_settings_deserializes_master_key_startup_lock() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "require_master_key_on_startup": true
+        }))
+        .expect("require_master_key_on_startup 应能读取");
+
+        assert!(settings.require_master_key_on_startup);
+    }
+
+    #[test]
+    fn app_settings_does_not_remember_portable_master_key_by_default() {
+        assert!(!AppSettings::default().portable_remember_master_key);
+    }
+
+    #[test]
+    fn legacy_settings_keep_portable_master_key_persistence_disabled() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "require_master_key_on_startup": false
+        }))
+        .expect("旧设置应能安全迁移");
+
+        assert!(!settings.portable_remember_master_key);
+    }
+
+    #[test]
+    fn app_settings_deserializes_portable_master_key_persistence_choice() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "portable_remember_master_key": true
+        }))
+        .expect("portable_remember_master_key 应能读取");
+
+        assert!(settings.portable_remember_master_key);
+    }
+
+    #[test]
+    fn app_settings_defaults_to_system_credential_store() {
+        assert_eq!(
+            MasterKeyStorage::SystemCredentialStore,
+            AppSettings::default().master_key_storage
+        );
+    }
+
+    #[test]
+    fn legacy_settings_default_to_system_credential_store() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "require_master_key_on_startup": true
+        }))
+        .expect("旧设置应能安全迁移");
+
+        assert_eq!(
+            MasterKeyStorage::SystemCredentialStore,
+            settings.master_key_storage
+        );
+    }
+
+    #[test]
+    fn app_settings_deserializes_local_file_master_key_storage() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "master_key_storage": "local_file"
+        }))
+        .expect("master_key_storage 应能读取");
+
+        assert_eq!(MasterKeyStorage::LocalFile, settings.master_key_storage);
+    }
+
+    #[test]
+    fn app_settings_defaults_to_modern_home_with_cards_and_expanded_sidebar() {
+        let settings = AppSettings::default();
+
+        assert_eq!(HomeConnectionLayout::Card, settings.home_connection_layout);
+        assert_eq!(ConnectionSortOrder::Natural, settings.connection_sort_order);
+        assert!(settings.connection_sidebar_expanded);
+    }
+
+    #[test]
+    fn connection_sort_order_round_trips_via_value() {
+        assert_eq!("natural", ConnectionSortOrder::Natural.as_str());
+        assert_eq!("lru", ConnectionSortOrder::Lru.as_str());
+        assert_eq!(
+            ConnectionSortOrder::Lru,
+            ConnectionSortOrder::from_value("lru")
+        );
+        assert_eq!(
+            ConnectionSortOrder::Natural,
+            ConnectionSortOrder::from_value("natural")
+        );
+        assert_eq!(
+            ConnectionSortOrder::Natural,
+            ConnectionSortOrder::from_value("unknown")
+        );
+    }
+
+    #[test]
+    fn app_settings_deserializes_connection_sort_order() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "connection_sort_order": "lru"
+        }))
+        .expect("connection_sort_order 应能读取");
+
+        assert_eq!(ConnectionSortOrder::Lru, settings.connection_sort_order);
+    }
+
+    #[test]
+    fn app_settings_deserializes_connection_display_preferences() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "home_connection_layout": "list",
+            "home_page_style": "legacy",
+            "connection_sidebar_expanded": false
+        }))
+        .expect("connection display preferences should deserialize");
+
+        assert_eq!(HomeConnectionLayout::List, settings.home_connection_layout);
+        assert!(!settings.connection_sidebar_expanded);
+        assert!(!settings.connection_sidebar_tree_state.hide_empty_workspaces);
+    }
+
+    #[test]
+    fn retired_home_styles_preserve_sidebar_preferences() {
+        for style in [None, Some("legacy"), Some("modern")] {
+            let mut json = serde_json::json!({
+                "connection_sidebar_expanded": false,
+                "connection_sidebar_tree_state": {
+                    "tree_width": 348, "auto_hide_tree": false,
+                    "hide_empty_workspaces": true
+                }
+            });
+            if let Some(style) = style {
+                json["home_page_style"] = style.into();
+            }
+            let settings: AppSettings = serde_json::from_value(json).unwrap();
+            let saved = serde_json::to_value(&settings).unwrap();
+            assert!(saved.get("home_page_style").is_none());
+            assert!(!settings.connection_sidebar_expanded);
+            assert_eq!(348, settings.connection_sidebar_tree_state.tree_width);
+            assert!(!settings.connection_sidebar_tree_state.auto_hide_tree);
+            assert!(settings.connection_sidebar_tree_state.hide_empty_workspaces);
+        }
+    }
+
+    #[test]
+    fn app_settings_defaults_to_showing_empty_workspaces() {
+        let settings = AppSettings::default();
+
+        assert!(!settings.connection_sidebar_tree_state.hide_empty_workspaces);
+    }
+
+    #[test]
+    fn app_settings_deserializes_connection_sidebar_tree_state() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "connection_sidebar_tree_state": {
+                "hide_empty_workspaces": true
+            }
+        }))
+        .expect("connection sidebar tree state should deserialize");
+
+        assert!(settings.connection_sidebar_tree_state.hide_empty_workspaces);
+    }
+
+    #[test]
+    fn app_settings_defaults_to_no_terminal_tool_panel_placements() {
+        let settings = AppSettings::default();
+
+        assert!(settings.terminal_tool_panel_placements.is_empty());
+    }
+
+    #[test]
+    fn app_settings_round_trips_terminal_tool_panel_placements() {
+        let mut settings = AppSettings::default();
+        settings
+            .terminal_tool_panel_placements
+            .insert("terminal.ai-chat".to_string(), SidebarPlacement::Left);
+        settings.terminal_tool_panel_placements.insert(
+            "terminal.file-manager".to_string(),
+            SidebarPlacement::Bottom,
+        );
+
+        let saved = serde_json::to_value(&settings).expect("settings should serialize");
+        assert_eq!(
+            saved["terminal_tool_panel_placements"]["terminal.ai-chat"],
+            "left"
+        );
+        assert_eq!(
+            saved["terminal_tool_panel_placements"]["terminal.file-manager"],
+            "bottom"
+        );
+
+        let restored: AppSettings =
+            serde_json::from_value(saved).expect("settings should round trip");
+        assert_eq!(
+            restored.terminal_tool_panel_placements,
+            settings.terminal_tool_panel_placements
+        );
+    }
+
+    #[test]
+    fn app_settings_without_terminal_tool_panel_placements_keeps_defaults() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "terminal_theme": "Default Dark"
+        }))
+        .expect("旧版 settings.json 应能读取");
+
+        assert!(settings.terminal_tool_panel_placements.is_empty());
+    }
+
+    #[test]
+    fn app_settings_deserializes_home_startup_default_page_from_legacy_json() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "locale": "en",
+            "theme_mode": "dark"
+        }))
+        .expect("旧版 settings.json 应能读取");
+
+        assert_eq!(StartupDefaultPage::Home, settings.startup_default_page);
+    }
+
+    #[test]
+    fn app_settings_deserializes_home_startup_default_page() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "startup_default_page": "home"
+        }))
+        .expect("startup_default_page 应能读取");
+
+        assert_eq!(StartupDefaultPage::Home, settings.startup_default_page);
+    }
+
+    #[test]
+    fn app_settings_default_follows_system_locale() {
+        let settings = AppSettings::default();
+
+        assert_eq!(LOCALE_SYSTEM, settings.locale);
+    }
+
+    #[test]
+    fn app_settings_deserializes_sql_query_max_rows_from_legacy_json() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "locale": "en",
+            "theme_mode": "dark"
+        }))
+        .expect("旧版 settings.json 应能读取");
+
+        assert_eq!(1000, settings.sql_query_max_rows);
+    }
+
+    #[test]
+    fn app_settings_deserializes_missing_sql_export_rows_per_statement() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "locale": "en",
+            "theme_mode": "dark"
+        }))
+        .expect("旧版 settings.json 应能读取");
+
+        assert_eq!(
+            DEFAULT_SQL_EXPORT_ROWS_PER_STATEMENT,
+            settings.sql_export_rows_per_statement
+        );
+    }
+
+    #[test]
+    fn app_settings_deserializes_missing_locale_as_system_mode() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "theme_mode": "dark"
+        }))
+        .expect("缺少 locale 的旧版 settings.json 应能读取");
+
+        assert_eq!(LOCALE_SYSTEM, settings.locale);
+    }
+
+    #[test]
+    fn app_settings_default_disables_personal_sync() {
+        let settings = AppSettings::default();
+
+        assert_eq!(
+            PersonalSyncBackendKind::Folder,
+            settings.personal_sync.backend
+        );
+        assert!(settings.personal_sync.path.is_empty());
+        assert!(settings.personal_sync.auto_sync);
+        assert!(settings.personal_sync.git.auto_push);
+    }
+
+    #[test]
+    fn app_settings_deserializes_personal_sync_defaults_from_legacy_json() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "locale": "en",
+            "theme_mode": "dark"
+        }))
+        .expect("旧版 settings.json 应能读取");
+
+        assert!(settings.personal_sync.auto_sync);
+    }
+
+    #[test]
+    fn app_settings_default_uses_onet_cloud_sync_provider() {
+        let settings = AppSettings::default();
+
+        assert_eq!(SyncProvider::OnetCloud, settings.sync_provider);
+    }
+
+    #[test]
+    fn app_settings_deserializes_personal_sync_provider() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "sync_provider": "personal"
+        }))
+        .expect("应能读取个人同步模式");
+
+        assert_eq!(SyncProvider::Personal, settings.sync_provider);
+    }
+
+    #[test]
+    fn app_settings_round_trip_preserves_personal_sync() {
+        let mut settings = AppSettings::default();
+        settings.personal_sync.backend = PersonalSyncBackendKind::Git;
+        settings.personal_sync.path = "/tmp/repo".to_string();
+        settings.personal_sync.git.auto_push = false;
+
+        let json = serde_json::to_string(&settings).expect("应序列化 AppSettings");
+        let loaded: AppSettings = serde_json::from_str(&json).expect("应反序列化 AppSettings");
+
+        assert_eq!(settings.personal_sync, loaded.personal_sync);
+    }
+
+    #[test]
+    fn app_settings_deserializes_mcp_defaults_from_legacy_json() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "locale": "en",
+            "theme_mode": "dark"
+        }))
+        .expect("旧版 settings.json 应能读取");
+
+        assert_eq!("en", settings.locale);
+        assert!(!settings.mcp.server_enabled);
+        assert_eq!(settings.mcp.permission_mode, McpPermissionMode::Deny);
+        assert_eq!(
+            DEFAULT_MCP_APPROVAL_TIMEOUT_MS,
+            settings.mcp.approval_timeout_ms
+        );
+        assert!(settings.tool_exposure.mcp.terminal);
+        assert!(settings.tool_exposure.mcp.terminal_ssh_exec);
+        assert!(settings.tool_exposure.mcp.terminal_exec);
+        assert!(settings.tool_exposure.mcp.connections);
+        assert!(settings.tool_exposure.agent.database);
+    }
+
+    #[test]
+    fn app_settings_parses_explicit_mcp_approval_timeout() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "mcp": {
+                "approval_timeout_ms": 0
+            }
+        }))
+        .expect("approval_timeout_ms 应能被解析");
+
+        assert_eq!(0, settings.mcp.approval_timeout_ms);
+    }
+
+    #[test]
+    fn app_settings_migrates_legacy_mcp_toolsets_to_tool_exposure() {
+        let mut settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "mcp": {
+                "toolsets": {
+                    "terminal": false,
+                    "connections": false,
+                    "database": true,
+                    "redis": true
+                }
+            }
+        }))
+        .expect("旧版 mcp.toolsets 应能读取");
+
+        assert!(settings.mcp.legacy_toolsets.is_some());
+        settings.migrate_legacy_mcp_toolsets();
+
+        assert!(settings.mcp.legacy_toolsets.is_none());
+        assert!(!settings.tool_exposure.mcp.terminal);
+        assert!(!settings.tool_exposure.mcp.connections);
+        assert!(settings.tool_exposure.mcp.database);
+        assert!(settings.tool_exposure.mcp.redis);
+    }
+
+    #[test]
+    fn app_settings_default_system_hotkey_other_avoids_input_method_shortcut() {
+        let settings = AppSettings::default();
+
+        assert_eq!("ctrl-alt-m", settings.system_hotkey_other);
+    }
+
+    #[test]
+    fn app_settings_deserializes_font_defaults_from_legacy_json() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "locale": "en",
+            "theme_mode": "dark"
+        }))
+        .expect("旧版 settings.json 应能读取");
+
+        assert!(!settings.sql_editor_font_family.is_empty());
+        assert_eq!(
+            AppSettings::default().sql_editor_font_size,
+            settings.sql_editor_font_size
+        );
+        assert_eq!(
+            settings.sql_editor_font_family,
+            settings.table_preview_font_family
+        );
+        assert_eq!(
+            settings.sql_editor_font_family,
+            settings.terminal_font_family
+        );
+        assert!(settings.custom_fonts.is_empty());
+    }
+
+    #[gpui::test]
+    fn app_settings_apply_updates_theme_font_size(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            cx.set_global(Theme::default());
+
+            let mut settings = AppSettings::default();
+            settings.font_size = 18.0;
+
+            settings.apply(cx);
+
+            assert_eq!(px(18.0), Theme::global(cx).font_size);
+        });
+    }
+
+    #[gpui::test]
+    fn app_settings_apply_scales_theme_font_size_by_ui_scale(cx: &mut gpui::TestAppContext) {
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            cx.set_global(Theme::default());
+
+            let mut settings = AppSettings::default();
+            settings.font_size = 14.0;
+            settings.ui_scale_percent = 150;
+
+            settings.apply(cx);
+
+            // 界面缩放会与字号相乘后写入主题字号，而 gpui-component 的 Root 会用它
+            // 作为窗口 rem 基准长度，从而整体缩放界面。
+            assert_eq!(px(21.0), Theme::global(cx).font_size);
+        });
+    }
+
+    #[gpui::test]
+    fn app_settings_apply_keeps_theme_font_size_at_identity_for_default_ui_scale(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(|cx| {
+            gpui_component::init(cx);
+            cx.set_global(Theme::default());
+
+            let settings = AppSettings::default();
+
+            settings.apply(cx);
+
+            // 默认缩放为 100% 时行为与改动前一致。
+            assert_eq!(px(14.0), Theme::global(cx).font_size);
+        });
+    }
+
+    #[test]
+    fn app_settings_normalizes_grid_font_settings() {
+        let mut settings = AppSettings {
+            sql_editor_font_family: "Noto Sans Mono CJK SC".to_string(),
+            table_preview_font_family: "PingFang SC".to_string(),
+            terminal_font_family: "Microsoft YaHei".to_string(),
+            ..AppSettings::default()
+        };
+
+        settings.normalize_font_settings();
+
+        let default = default_grid_monospace_font_family();
+        assert_eq!(default, settings.sql_editor_font_family);
+        assert_eq!(default, settings.table_preview_font_family);
+        assert_eq!(default, settings.terminal_font_family);
+    }
+
+    #[test]
+    fn app_settings_keeps_grid_safe_custom_monospace_fonts() {
+        let mut settings = AppSettings {
+            sql_editor_font_family: "JetBrains Mono".to_string(),
+            table_preview_font_family: "Table Safe Mono".to_string(),
+            terminal_font_family: "Custom Mono".to_string(),
+            ..AppSettings::default()
+        };
+
+        settings.normalize_font_settings();
+
+        assert_eq!("JetBrains Mono", settings.sql_editor_font_family);
+        assert_eq!("Table Safe Mono", settings.table_preview_font_family);
+        assert_eq!("Custom Mono", settings.terminal_font_family);
+    }
+
+    #[test]
+    fn default_grid_font_fallbacks_include_cjk_before_symbol_fonts() {
+        let fallbacks = default_grid_font_fallback_families();
+        let cjk_index = fallbacks
+            .iter()
+            .position(|font| font == "Noto Sans CJK SC" || font == "Microsoft YaHei")
+            .expect("grid font fallback should include a CJK font");
+
+        for symbol_font in ["Apple Color Emoji", "Apple Symbols", "Noto Color Emoji"] {
+            if let Some(symbol_index) = fallbacks.iter().position(|font| font == symbol_font) {
+                assert!(cjk_index < symbol_index);
+            }
+        }
+    }
+
+    #[test]
+    fn grid_monospace_font_normalizes_family_and_sets_fallbacks() {
+        let font = grid_monospace_font("PingFang SC");
+
+        assert_eq!(default_grid_monospace_font_family(), font.family.as_ref());
+        assert!(font.fallbacks.as_ref().is_some_and(|fallbacks| {
+            fallbacks.fallback_list().iter().any(|family| {
+                family == "Noto Sans CJK SC"
+                    || family == "Microsoft YaHei"
+                    || family == "PingFang SC"
+            })
+        }));
+    }
+
+    #[test]
+    fn installed_font_family_matches_case_insensitively() {
+        let installed = vec!["Menlo".to_string(), "JetBrains Mono".to_string()];
+
+        assert!(is_installed_font_family(" jetbrains mono ", &installed));
+        assert!(!is_installed_font_family("Fira Code", &installed));
+    }
+
+    #[test]
+    fn resolve_installed_grid_font_rejects_missing_requested_family() {
+        let default = default_grid_monospace_font_family();
+        let installed = vec![default.to_string(), "PingFang SC".to_string()];
+
+        assert_eq!(
+            default,
+            resolve_installed_grid_monospace_font_family("Fira Code", &installed)
+        );
+        assert_eq!(
+            default,
+            resolve_installed_grid_monospace_font_family("PingFang SC", &installed)
+        );
+    }
+
+    #[test]
+    fn resolve_installed_grid_font_keeps_installed_requested_family() {
+        let installed = vec!["Menlo".to_string(), "JetBrains Mono".to_string()];
+
+        assert_eq!(
+            "JetBrains Mono",
+            resolve_installed_grid_monospace_font_family("JetBrains Mono", &installed)
+        );
+    }
+
+    #[test]
+    fn installed_grid_monospace_font_uses_effective_installed_family() {
+        let default = default_grid_monospace_font_family();
+        let installed = vec![default.to_string()];
+        let font = installed_grid_monospace_font("Fira Code", &installed);
+
+        assert_eq!(default, font.family.as_ref());
+        assert!(font.fallbacks.is_some());
+    }
+
+    #[test]
+    fn app_settings_round_trip_preserves_custom_fonts() {
+        let mut settings = AppSettings::default();
+        settings.custom_fonts = vec![CustomFont {
+            path: "/tmp/NotoSansCJK-Regular.ttc".to_string(),
+            families: vec!["Noto Sans Mono CJK SC".to_string()],
+            monospace_families: vec!["Noto Sans Mono CJK SC".to_string()],
+        }];
+
+        let json = serde_json::to_string(&settings).expect("应序列化 AppSettings");
+        let restored: AppSettings = serde_json::from_str(&json).expect("应反序列化 AppSettings");
+
+        assert_eq!(
+            vec![CustomFont {
+                path: "/tmp/NotoSansCJK-Regular.ttc".to_string(),
+                families: vec!["Noto Sans Mono CJK SC".to_string()],
+                monospace_families: vec!["Noto Sans Mono CJK SC".to_string()],
+            }],
+            restored.custom_fonts
+        );
+    }
+
+    #[test]
+    fn app_settings_reads_legacy_custom_font_paths() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({
+            "custom_font_paths": ["/tmp/NotoSansCJK-Regular.ttc"]
+        }))
+        .expect("旧版自定义字体路径应能读取");
+
+        assert_eq!(
+            vec![CustomFont {
+                path: "/tmp/NotoSansCJK-Regular.ttc".to_string(),
+                families: Vec::new(),
+                monospace_families: Vec::new(),
+            }],
+            settings.custom_fonts
+        );
+    }
+
+    #[test]
+    fn app_settings_round_trip_preserves_mcp_settings() {
+        let mut settings = AppSettings::default();
+        settings.mcp.server_enabled = true;
+        settings.mcp.server_mode = McpServerMode::Persistent;
+        settings.mcp.permission_mode = McpPermissionMode::Ask;
+        settings.mcp.approval_timeout_ms = 0;
+        settings.tool_exposure.mcp.connections = false;
+        settings.tool_exposure.mcp.database = true;
+        settings.tool_exposure.mcp.redis = true;
+        settings.tool_exposure.agent.terminal_exec = false;
+
+        let json = serde_json::to_string(&settings).expect("应序列化 AppSettings");
+        let loaded: AppSettings = serde_json::from_str(&json).expect("应反序列化 AppSettings");
+
+        assert!(loaded.mcp.server_enabled);
+        assert_eq!(loaded.mcp.server_mode, McpServerMode::Persistent);
+        assert_eq!(loaded.mcp.permission_mode, McpPermissionMode::Ask);
+        assert_eq!(0, loaded.mcp.approval_timeout_ms);
+        assert!(loaded.tool_exposure.mcp.terminal);
+        assert!(loaded.tool_exposure.mcp.terminal_ssh_exec);
+        assert!(loaded.tool_exposure.mcp.terminal_exec);
+        assert!(!loaded.tool_exposure.mcp.connections);
+        assert!(loaded.tool_exposure.mcp.database);
+        assert!(loaded.tool_exposure.mcp.redis);
+        assert!(!loaded.tool_exposure.agent.terminal_exec);
+    }
+
+    #[test]
+    fn ai_chat_tool_execution_mode_defaults_to_manual() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({"locale": "zh-CN"}))
+            .expect("旧版设置应能反序列化");
+
+        assert_eq!(
+            AiChatToolExecutionMode::Manual,
+            settings.ai_chat.tool_execution_mode
+        );
+    }
+
+    #[test]
+    fn ai_chat_tool_execution_mode_round_trip_is_preserved() {
+        let mut settings = AppSettings::default();
+        settings.ai_chat.tool_execution_mode = AiChatToolExecutionMode::ReadOnly;
+
+        let json = serde_json::to_string(&settings).expect("应序列化 AI Chat 设置");
+        let restored: AppSettings = serde_json::from_str(&json).expect("应反序列化 AI Chat 设置");
+
+        assert_eq!(
+            AiChatToolExecutionMode::ReadOnly,
+            restored.ai_chat.tool_execution_mode
+        );
+    }
+
+    #[test]
+    fn ai_chat_acp_workspace_selection_round_trip_is_preserved() {
+        let mut settings = AppSettings::default();
+        settings.ai_chat.last_acp_agent_id = Some("builtin.codex".to_string());
+        settings
+            .ai_chat
+            .acp_models
+            .insert("builtin.codex".to_string(), "gpt-5".to_string());
+        settings.ai_chat.last_workspace_root = Some(PathBuf::from("/tmp/project"));
+
+        let json = serde_json::to_string(&settings).expect("serialize AI ACP settings");
+        let restored: AppSettings =
+            serde_json::from_str(&json).expect("deserialize AI ACP settings");
+
+        assert_eq!(
+            settings.ai_chat.last_acp_agent_id,
+            restored.ai_chat.last_acp_agent_id
+        );
+        assert_eq!(settings.ai_chat.acp_models, restored.ai_chat.acp_models);
+        assert_eq!(
+            settings.ai_chat.last_workspace_root,
+            restored.ai_chat.last_workspace_root
+        );
+    }
+
+    #[test]
+    fn ai_chat_backend_selection_round_trips_and_legacy_config_falls_back() {
+        let mut settings = AppSettings::default();
+        settings.ai_chat.last_backend = Some(AiChatBackendSelection::Acp {
+            id: "builtin.codex".to_string(),
+        });
+
+        let json = serde_json::to_string(&settings).expect("serialize AI backend selection");
+        let restored: AppSettings =
+            serde_json::from_str(&json).expect("deserialize AI backend selection");
+        assert_eq!(settings.ai_chat.last_backend, restored.ai_chat.last_backend);
+
+        settings.ai_chat.last_backend = Some(AiChatBackendSelection::Builtin);
+        let json = serde_json::to_string(&settings).expect("serialize builtin selection");
+        let restored: AppSettings =
+            serde_json::from_str(&json).expect("deserialize builtin selection");
+        assert_eq!(
+            Some(AiChatBackendSelection::Builtin),
+            restored.ai_chat.last_backend
+        );
+
+        // 旧配置没有这条记录：保持 None，启动时回落到 last_acp_agent_id 的旧恢复路径。
+        let legacy: AiChatSettings =
+            serde_json::from_str("{}").expect("deserialize legacy ai_chat settings");
+        assert_eq!(None, legacy.last_backend);
+    }
+
+    #[test]
+    fn acp_session_memory_round_trips_per_session_and_agent() {
+        let mut settings = AppSettings::default();
+        settings
+            .ai_chat
+            .remember_acp_session("session-a", "agent-1", "acp-session-a1");
+        settings
+            .ai_chat
+            .remember_acp_session("session-a", "agent-2", "acp-session-a2");
+        settings
+            .ai_chat
+            .remember_acp_session("session-b", "agent-1", "acp-session-b1");
+
+        let json = serde_json::to_string(&settings).expect("serialize ACP session memory");
+        let restored: AppSettings =
+            serde_json::from_str(&json).expect("deserialize ACP session memory");
+
+        assert_eq!(
+            Some("acp-session-a1"),
+            restored
+                .ai_chat
+                .remembered_acp_session("session-a", "agent-1")
+        );
+        assert_eq!(
+            Some("acp-session-a2"),
+            restored
+                .ai_chat
+                .remembered_acp_session("session-a", "agent-2")
+        );
+        assert_eq!(
+            Some("acp-session-b1"),
+            restored
+                .ai_chat
+                .remembered_acp_session("session-b", "agent-1")
+        );
+        // 没记过的组合必须是 None，而不是退回到别的 agent 的会话。
+        assert_eq!(
+            None,
+            restored
+                .ai_chat
+                .remembered_acp_session("session-b", "agent-2")
+        );
+    }
+
+    #[test]
+    fn remembering_an_acp_session_overwrites_the_previous_target() {
+        let mut settings = AiChatSettings::default();
+        settings.remember_acp_session("session-a", "agent", "old");
+        settings.remember_acp_session("session-a", "agent", "new");
+
+        assert_eq!(
+            Some("new"),
+            settings.remembered_acp_session("session-a", "agent")
+        );
+    }
+
+    #[test]
+    fn remembering_an_acp_session_ignores_blank_values() {
+        let mut settings = AiChatSettings::default();
+        settings.remember_acp_session("", "agent", "acp");
+        settings.remember_acp_session("session-a", "", "acp");
+        settings.remember_acp_session("session-a", "agent", "");
+
+        assert!(settings.acp_sessions.is_empty());
+    }
+
+    #[test]
+    fn remembered_acp_sessions_are_capped_without_dropping_the_latest() {
+        let mut settings = AiChatSettings::default();
+        for index in 0..(MAX_REMEMBERED_ACP_SESSIONS + 4) {
+            settings.remember_acp_session(&format!("session-{index}"), "agent", "acp");
+        }
+
+        assert_eq!(MAX_REMEMBERED_ACP_SESSIONS, settings.acp_sessions.len());
+        let latest = format!("session-{}", MAX_REMEMBERED_ACP_SESSIONS + 3);
+        assert_eq!(
+            Some("acp"),
+            settings.remembered_acp_session(&latest, "agent")
+        );
+    }
+
+    #[test]
+    fn remembering_a_workspace_dedupes_moves_to_front_and_caps() {
+        let mut settings = AiChatSettings::default();
+        settings.remember_workspace_root(PathBuf::from("/a").as_path());
+        settings.remember_workspace_root(PathBuf::from("/b").as_path());
+        settings.remember_workspace_root(PathBuf::from("/a").as_path());
+
+        assert_eq!(
+            vec![PathBuf::from("/a"), PathBuf::from("/b")],
+            settings.recent_workspace_roots
+        );
+        assert_eq!(Some(PathBuf::from("/a")), settings.last_workspace_root);
+
+        for index in 0..(MAX_RECENT_WORKSPACE_ROOTS + 4) {
+            settings.remember_workspace_root(PathBuf::from(format!("/extra/{index}")).as_path());
+        }
+        assert_eq!(
+            MAX_RECENT_WORKSPACE_ROOTS,
+            settings.recent_workspace_roots.len()
+        );
+        assert_eq!(
+            Some(PathBuf::from(format!(
+                "/extra/{}",
+                MAX_RECENT_WORKSPACE_ROOTS + 3
+            ))),
+            settings.last_workspace_root
+        );
+    }
+
+    #[test]
+    fn ai_chat_max_iterations_defaults_for_legacy_settings() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({"locale": "zh-CN"}))
+            .expect("旧版设置应能反序列化");
+
+        assert_eq!(
+            agent_runtime::DEFAULT_AGENT_MAX_ITERATIONS,
+            settings.ai_chat.max_iterations
+        );
+    }
+
+    #[test]
+    fn ai_chat_max_iterations_round_trip_is_preserved() {
+        let mut settings = AppSettings::default();
+        settings.ai_chat.max_iterations = 128;
+
+        let json = serde_json::to_string(&settings).expect("应序列化 Agent 设置");
+        let restored: AppSettings = serde_json::from_str(&json).expect("应反序列化 Agent 设置");
+
+        assert_eq!(128, restored.ai_chat.max_iterations);
+    }
+
+    #[test]
+    fn ai_chat_max_iterations_are_clamped_when_deserialized() {
+        let below_minimum: AiChatSettings =
+            serde_json::from_value(serde_json::json!({"max_iterations": 0}))
+                .expect("应读取低于下限的 Agent 设置");
+        let above_maximum: AiChatSettings =
+            serde_json::from_value(serde_json::json!({"max_iterations": 999}))
+                .expect("应读取高于上限的 Agent 设置");
+
+        assert_eq!(
+            agent_runtime::MIN_AGENT_MAX_ITERATIONS,
+            below_minimum.max_iterations
+        );
+        assert_eq!(
+            agent_runtime::MAX_AGENT_MAX_ITERATIONS,
+            above_maximum.max_iterations
+        );
+    }
+
+    #[test]
+    fn ai_request_timeout_defaults_for_legacy_settings() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({"locale": "zh-CN"}))
+            .expect("旧版设置应能反序列化");
+
+        assert_eq!(
+            DEFAULT_AI_REQUEST_TIMEOUT_SECS,
+            settings.ai_chat.request_timeout_secs
+        );
+    }
+
+    #[test]
+    fn ai_request_timeout_round_trip_is_preserved() {
+        let mut settings = AppSettings::default();
+        settings.ai_chat.request_timeout_secs = 600;
+
+        let json = serde_json::to_string(&settings).expect("应序列化 Agent 设置");
+        let restored: AppSettings = serde_json::from_str(&json).expect("应反序列化 Agent 设置");
+
+        assert_eq!(600, restored.ai_chat.request_timeout_secs);
+    }
+
+    #[test]
+    fn ai_request_timeout_is_clamped_when_deserialized() {
+        let below_minimum: AiChatSettings =
+            serde_json::from_value(serde_json::json!({"request_timeout_secs": 0}))
+                .expect("应读取低于下限的 Agent 设置");
+        let above_maximum: AiChatSettings =
+            serde_json::from_value(serde_json::json!({"request_timeout_secs": 999_999}))
+                .expect("应读取高于上限的 Agent 设置");
+
+        assert_eq!(
+            MIN_AI_REQUEST_TIMEOUT_SECS,
+            below_minimum.request_timeout_secs
+        );
+        assert_eq!(
+            MAX_AI_REQUEST_TIMEOUT_SECS,
+            above_maximum.request_timeout_secs
+        );
+    }
+
+    #[test]
+    fn local_terminal_profile_defaults_to_system() {
+        let settings = AppSettings::default();
+
+        assert_eq!(
+            LocalTerminalProfileKind::System,
+            settings.local_terminal_profile.kind
+        );
+        assert!(settings.local_terminal_profile.custom_program.is_empty());
+        assert!(settings.local_terminal_profile.custom_arguments.is_empty());
+    }
+
+    #[test]
+    fn terminal_scrollback_lines_default_and_normalization_are_safe() {
+        let mut settings = AppSettings::default();
+
+        assert_eq!(100_000, settings.terminal_scrollback_lines);
+
+        settings.terminal_scrollback_lines = 10;
+        settings.normalize_terminal_settings();
+        assert_eq!(1_000, settings.terminal_scrollback_lines);
+
+        settings.terminal_scrollback_lines = 2_000_000;
+        settings.normalize_terminal_settings();
+        assert_eq!(1_000_000, settings.terminal_scrollback_lines);
+    }
+
+    #[test]
+    fn terminal_suggestion_popup_opacity_default_and_normalization_are_safe() {
+        let mut settings = AppSettings::default();
+
+        assert_eq!(0.96, settings.terminal_suggestion_popup_opacity);
+
+        settings.terminal_suggestion_popup_opacity = 0.05;
+        settings.normalize_terminal_settings();
+        assert_eq!(0.5, settings.terminal_suggestion_popup_opacity);
+
+        settings.terminal_suggestion_popup_opacity = 3.0;
+        settings.normalize_terminal_settings();
+        assert_eq!(1.0, settings.terminal_suggestion_popup_opacity);
+    }
+
+    #[test]
+    fn legacy_app_settings_receive_default_terminal_suggestion_popup_opacity() {
+        // issue #73：弹层不透明度是后加的字段，旧配置里没有，反序列化必须
+        // 落到 0.96（透出 4%）而不是 f32 的 0.0（弹层全透明、完全读不了）。
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({"locale": "zh-CN"}))
+            .expect("旧版设置应能反序列化");
+
+        assert_eq!(0.96, settings.terminal_suggestion_popup_opacity);
+    }
+
+    #[test]
+    fn legacy_app_settings_receive_default_terminal_theme() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({"locale": "zh-CN"}))
+            .expect("旧版设置应能反序列化");
+
+        assert_eq!(DEFAULT_TERMINAL_THEME, settings.terminal_theme);
+    }
+
+    #[test]
+    fn terminal_theme_round_trip_preserves_independent_selection() {
+        let settings = AppSettings {
+            terminal_theme: "ocean".to_string(),
+            ..AppSettings::default()
+        };
+
+        let json = serde_json::to_string(&settings).expect("应序列化终端主题");
+        let restored: AppSettings = serde_json::from_str(&json).expect("应反序列化终端主题");
+
+        assert_eq!("ocean", restored.terminal_theme);
+    }
+
+    #[test]
+    fn terminal_theme_normalization_trims_and_defaults_empty_values() {
+        let mut settings = AppSettings {
+            terminal_theme: "  ocean  ".to_string(),
+            ..AppSettings::default()
+        };
+
+        settings.normalize_terminal_settings();
+        assert_eq!("ocean", settings.terminal_theme);
+
+        settings.terminal_theme = "   ".to_string();
+        settings.normalize_terminal_settings();
+        assert_eq!(DEFAULT_TERMINAL_THEME, settings.terminal_theme);
+    }
+
+    #[test]
+    fn legacy_app_settings_receive_default_terminal_scrollback_lines() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({"locale": "zh-CN"}))
+            .expect("旧版设置应能反序列化");
+
+        assert_eq!(100_000, settings.terminal_scrollback_lines);
+    }
+
+    #[test]
+    fn legacy_app_settings_enable_automatic_session_logging() {
+        let settings: AppSettings = serde_json::from_value(serde_json::json!({"locale": "zh-CN"}))
+            .expect("旧版设置应能反序列化");
+
+        assert!(settings.terminal_auto_session_logging);
+    }
+
+    #[test]
+    fn automatic_session_logging_round_trip_preserves_selection() {
+        let settings = AppSettings {
+            terminal_auto_session_logging: false,
+            ..AppSettings::default()
+        };
+
+        let json = serde_json::to_string(&settings).expect("应序列化自动会话日志设置");
+        let restored: AppSettings =
+            serde_json::from_str(&json).expect("应反序列化自动会话日志设置");
+
+        assert!(!restored.terminal_auto_session_logging);
+    }
+
+    #[test]
+    fn local_terminal_profile_round_trip_preserves_custom_command() {
+        let mut settings = AppSettings::default();
+        settings.local_terminal_profile = LocalTerminalProfileSettings {
+            kind: LocalTerminalProfileKind::Custom,
+            custom_program: "/opt/homebrew/bin/fish".to_string(),
+            custom_arguments: "--login -C 'echo ready'".to_string(),
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&settings).unwrap();
+        let restored: AppSettings = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(
+            LocalTerminalProfileKind::Custom,
+            restored.local_terminal_profile.kind
+        );
+        assert_eq!(
+            "/opt/homebrew/bin/fish",
+            restored.local_terminal_profile.custom_program
+        );
+        assert_eq!(
+            "--login -C 'echo ready'",
+            restored.local_terminal_profile.custom_arguments
+        );
+        let profile = restored
+            .local_terminal_profile
+            .selected_custom_profile()
+            .unwrap();
+        assert_eq!("/opt/homebrew/bin/fish", profile.name);
+        assert_eq!(
+            "/opt/homebrew/bin/fish --login -C 'echo ready'",
+            profile.command
+        );
+    }
+
+    #[test]
+    fn update_channel_values_match_the_persisted_snake_case_values() {
+        assert_eq!("stable", UpdateChannel::Stable.as_str());
+        assert_eq!("beta", UpdateChannel::Beta.as_str());
+        assert_eq!(UpdateChannel::Stable, UpdateChannel::from_str("stable"));
+        assert_eq!(UpdateChannel::Beta, UpdateChannel::from_str("beta"));
+        // 未知取值必须回退到稳定通道，不能把用户卡在收不到更新的状态。
+        assert_eq!(UpdateChannel::Stable, UpdateChannel::from_str(""));
+        assert_eq!(UpdateChannel::Stable, UpdateChannel::from_str("canary"));
+    }
+
+    #[test]
+    fn update_channel_follows_the_build_unless_the_user_overrides_it() {
+        assert_eq!(
+            UpdateChannel::Stable,
+            UpdateChannel::resolve(None, "0.22.0")
+        );
+        assert_eq!(
+            UpdateChannel::Beta,
+            UpdateChannel::resolve(None, "0.23.0-beta.2")
+        );
+        // 显式选择优先于构建后缀：手动装过测试版的人也能主动留在稳定通道。
+        assert_eq!(
+            UpdateChannel::Stable,
+            UpdateChannel::resolve(Some(UpdateChannel::Stable), "0.23.0-beta.2")
+        );
+        assert_eq!(
+            UpdateChannel::Beta,
+            UpdateChannel::resolve(Some(UpdateChannel::Beta), "0.22.0")
+        );
+    }
+
+    #[test]
+    fn update_channel_round_trips_through_settings_json_and_tolerates_missing_fields() {
+        let mut settings = AppSettings::default();
+        assert_eq!(None, settings.update_channel);
+
+        settings.update_channel = Some(UpdateChannel::Beta);
+        let json = serde_json::to_string(&settings).expect("序列化设置失败");
+        let restored: AppSettings = serde_json::from_str(&json).expect("反序列化设置失败");
+        assert_eq!(Some(UpdateChannel::Beta), restored.update_channel);
+
+        // 老版本的 settings.json 没有这个字段，必须照常读出来并落到「跟随构建」。
+        let legacy: AppSettings = serde_json::from_str("{}").expect("空对象也应可解析");
+        assert_eq!(None, legacy.update_channel);
+    }
+
+    #[test]
+    fn update_mirror_values_match_the_persisted_snake_case_values() {
+        assert_eq!("auto", UpdateMirror::Auto.as_str());
+        assert_eq!("cloudflare", UpdateMirror::Cloudflare.as_str());
+        assert_eq!("github", UpdateMirror::Github.as_str());
+        assert_eq!("cnb", UpdateMirror::Cnb.as_str());
+        assert_eq!(
+            UpdateMirror::Cloudflare,
+            UpdateMirror::from_str("cloudflare")
+        );
+        assert_eq!(UpdateMirror::Github, UpdateMirror::from_str("github"));
+        assert_eq!(UpdateMirror::Cnb, UpdateMirror::from_str("cnb"));
+        // 未知取值回退到「自动」，否则用户会被一个已删除的源永久卡住。
+        assert_eq!(UpdateMirror::Auto, UpdateMirror::from_str(""));
+        assert_eq!(UpdateMirror::Auto, UpdateMirror::from_str("gitee"));
+    }
+
+    #[test]
+    fn update_mirror_round_trips_through_settings_json_and_tolerates_missing_fields() {
+        let mut settings = AppSettings::default();
+        assert_eq!(None, settings.update_mirror);
+
+        settings.update_mirror = Some(UpdateMirror::Cnb);
+        let json = serde_json::to_string(&settings).expect("序列化设置失败");
+        let restored: AppSettings = serde_json::from_str(&json).expect("反序列化设置失败");
+        assert_eq!(Some(UpdateMirror::Cnb), restored.update_mirror);
+
+        let legacy: AppSettings = serde_json::from_str("{}").expect("空对象也应可解析");
+        assert_eq!(None, legacy.update_mirror);
+    }
+}

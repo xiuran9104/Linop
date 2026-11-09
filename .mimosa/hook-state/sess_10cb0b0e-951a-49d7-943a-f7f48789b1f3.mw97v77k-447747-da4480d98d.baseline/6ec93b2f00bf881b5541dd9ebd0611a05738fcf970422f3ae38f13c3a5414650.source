@@ -1,0 +1,475 @@
+[workspace]
+default-members = ["apps/linop"]
+members = [
+    "crates/ai_chat_view",
+    "crates/llm-connector",
+    "crates/html-preview",
+    "crates/connection-import-protocol",
+    "crates/extension-runtime",
+    "crates/extension_view",
+    "crates/agent_runtime",
+    "crates/extension-protocol",
+    "crates/extension-host",
+    "crates/extension-plugin-adapter",
+    "crates/extension-driver",
+    "crates/extension-api",
+    "crates/extension-component",
+    "crates/extension-wasm",
+    "crates/tool_runtime",
+    "crates/domain_api",
+    "crates/mcp_host",
+    "crates/mcp_approval",
+    "crates/app_kit",
+    "crates/shell_domain",
+    "crates/ssh_form",
+    "crates/universal-plugins",
+    "crates/linop_runtime",
+    "crates/public_mcp",
+    "crates/modem-transfer",
+    "crates/terminal",
+    "crates/terminal_view",
+    "crates/markdown-source",
+    "crates/markdown-editor",
+    "crates/workspace_explorer",
+    "crates/port_forwarding",
+    "crates/connection_tunnel",
+    "crates/connection_form",
+    "crates/port_forwarding_view",
+    "crates/process-util",
+    "crates/remote_desktop",
+    "crates/remote_desktop_view",
+    "crates/windows_rdp_host",
+    "crates/notes",
+    "crates/known_hosts_view",
+    "crates/json_view",
+    "crates/one-assets",
+    "tools/gpui-rdp-smoke",
+    "tools/windows-rdp-probe",
+    "crates/linop_db_view",
+    "crates/linop_app",
+    "apps/linop",
+    "apps/linop-shell",
+    "crates/ssh",
+    "crates/x11_forwarding",
+    "crates/sftp",
+    "crates/ftp",
+    "crates/sftp_transfer",
+    "crates/sftp_view",
+    "crates/one_ui",
+    "crates/runtime_core",
+    "crates/runtime_sftp",
+    "crates/license_tool",
+    "crates/remote_file_editor",
+    "crates/remote_image_preview",
+    "crates/resource_view",
+    "crates/embedded_terminal",
+]
+resolver = "2"
+
+[workspace.package]
+publish = false
+edition = "2024"
+
+[workspace.dependencies]
+# gpui-component (repo renamed to `gpui-kit` on GitHub), pinned to a git revision
+# so the workspace resolves it from GitHub instead of a sibling ../gpui-component
+# checkout. The dependency keys keep the crate names linop already imports
+# (`gpui_component`, `gpui_base`, `gpui_shell`, ...).
+# linop 强制 gpui-fast：所有 gpui-kit 系 crate 统一带 features = ["gpui-fast"]，
+# 经 feature 统一把整套 UI 栈切到 GPUI Fast 后端（外部 crate 名 gpui-fast-*）。
+gpui-component = { git = "file:///home/xiuran/Linop/gui/vendor/gpui-kit-bare.git", rev = "7655442ca95ca1728e0e89ba885a184ba5e5d9ab", features = ["gpui-fast"] }
+gpui-component-assets = { package = "gpui-kit-assets", git = "file:///home/xiuran/Linop/gui/vendor/gpui-kit-bare.git", rev = "7655442ca95ca1728e0e89ba885a184ba5e5d9ab", features = ["gpui-fast"] }
+gpui-base = { git = "file:///home/xiuran/Linop/gui/vendor/gpui-kit-bare.git", rev = "7655442ca95ca1728e0e89ba885a184ba5e5d9ab", features = ["gpui-fast"] }
+gpui-shell = { git = "file:///home/xiuran/Linop/gui/vendor/gpui-kit-bare.git", rev = "7655442ca95ca1728e0e89ba885a184ba5e5d9ab", features = ["gpui-fast"] }
+# gpui-webview（原 gpui-wry）强制 GPUI Fast；#3398 后它依赖
+# gpui-pre-util =0.3.8 的版本要求与下面的 fork 快照天然一致（同一 snapshot 0.3.126）。
+gpui-webview = { git = "file:///home/xiuran/Linop/gui/vendor/gpui-kit-bare.git", rev = "7655442ca95ca1728e0e89ba885a184ba5e5d9ab" }
+gpui-kit = { git = "file:///home/xiuran/Linop/gui/vendor/gpui-kit-bare.git", rev = "7655442ca95ca1728e0e89ba885a184ba5e5d9ab", features = ["gpui-fast"] }
+
+gpui = { package = "gpui-fast", version = "0.1" }
+gpui_platform = { package = "gpui-fast-platform", version = "0.1", features = ["font-kit", "x11", "wayland", "runtime_shaders"] }
+gpui_macros = { package = "gpui-fast-macros", version = "0.1" }
+util = { package = "gpui-pre-util", version = "0.3.99" }
+palette = { version = "0.7.7", features = ["serializing"] }
+
+
+sum-tree = { version = "0.3.99", package = "gpui-pre-sum-tree" }
+# reqwest = { version = "0.12.15-zed", package = "zed-reqwest" }
+reqwest = { git = "https://github.com/zed-industries/reqwest.git", rev = "c15662463bda39148ba154100dd44d3fba5873a4", default-features = false, features = [
+    "charset",
+    "http2",
+    "macos-system-configuration",
+    "multipart",
+    "rustls-tls-native-roots",
+    "socks",
+    "stream",
+], package = "zed-reqwest", version = "0.12.15-zed" }
+
+anyhow = "1.0.102"
+argon2 = "0.5.3"
+keyring = { version = "3.6.3", default-features = false }
+log = "0.4"
+markdown = { version = "1.0.0", features = ["serde"] }
+lsp-types = { version = "0.97.0", features = ["proposed"] }
+notify = "7.0.0"
+plist = "1"
+raw-window-handle = "0.6.2"
+ropey = { version = "=2.0.0-beta.1", features = [
+    "metric_lines_lf",
+    "metric_utf16",
+] }
+rust-i18n = "4"
+schemars = "1"
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = { version = "1", features = ["arbitrary_precision"] }
+serde_yaml = "0.9"
+toml = "0.8.23"
+serde_repr = "0.1"
+shell-words = "1.1.1"
+smallvec = "1"
+smol = "2"
+sys-locale = "0.3.2"
+sysinfo = { version = "0.31.4", default-features = false, features = ["user"] }
+tracing = "0.1.41"
+
+
+# Uses the gpui-pre fork's own `reqwest_client` crate (previously a local copy in
+# `crates/reqwest_client`, which had drifted 315 lines behind upstream and duplicated
+# the inlined `http_client_tls` module). The local crate's only fork-specific change —
+# `user_agent()` building a proxy-free client — now lives in the fork itself.
+reqwest_client = { package = "gpui-pre-reqwest-client", version = "0.3.99" }
+agent_runtime = { path = "crates/agent_runtime" }
+ai_chat_view = { path = "crates/ai_chat_view", default-features = false }
+html-preview = { path = "crates/html-preview" }
+agent-client-protocol = "2.2.0"
+public_mcp = { path = "crates/public_mcp" }
+tool_runtime = { path = "crates/tool_runtime" }
+universal-plugins = { path = "crates/universal-plugins" }
+connection-import-protocol = { path = "crates/connection-import-protocol" }
+runtime_core = { path = "crates/runtime_core" }
+runtime_sftp = { path = "crates/runtime_sftp" }
+one-ui = { path = "crates/one_ui" }
+one-assets = { path = "crates/one-assets" }
+ssh = { path = "crates/ssh" }
+x11_forwarding = { path = "crates/x11_forwarding" }
+sftp = { path = "crates/sftp" }
+ftp = { path = "crates/ftp" }
+sftp_transfer = { path = "crates/sftp_transfer" }
+terminal = { path = "crates/terminal" }
+terminal_view = { path = "crates/terminal_view" }
+workspace_explorer = { path = "crates/workspace_explorer" }
+port_forwarding = { path = "crates/port_forwarding" }
+connection_tunnel = { path = "crates/connection_tunnel" }
+connection-form = { path = "crates/connection_form" }
+port_forwarding_view = { path = "crates/port_forwarding_view" }
+process-util = { path = "crates/process-util" }
+remote_desktop = { path = "crates/remote_desktop" }
+remote_desktop_view = { path = "crates/remote_desktop_view" }
+windows_rdp_host = { path = "crates/windows_rdp_host" }
+sftp_view = { path = "crates/sftp_view" }
+one-core = { path = "crates/core" }
+domain_api = { path = "crates/domain_api" }
+mcp_host = { path = "crates/mcp_host" }
+mcp_approval = { path = "crates/mcp_approval" }
+app_kit = { path = "crates/app_kit" }
+data_domain = { path = "crates/data_domain" }
+shell_domain = { path = "crates/shell_domain" }
+ssh_form = { path = "crates/ssh_form" }
+mongodb_view = {path = "crates/mongodb_view"}
+linop_runtime = { path = "crates/linop_runtime", default-features = false }
+remote_file_editor = { path = "crates/remote_file_editor" }
+remote_image_preview = { path = "crates/remote_image_preview" }
+notes = { path = "crates/notes" }
+json_view = { path = "crates/json_view" }
+known_hosts_view = { path = "crates/known_hosts_view" }
+markdown-source = { path = "crates/markdown-source" }
+markdown-editor = { path = "crates/markdown-editor" }
+extension-protocol = { path = "crates/extension-protocol" }
+extension-host = { path = "crates/extension-host" }
+extension-plugin-adapter = { path = "crates/extension-plugin-adapter" }
+ resource_view = { path = "crates/resource_view" }
+embedded_terminal = { path = "crates/embedded_terminal" }
+extension-driver = { path = "crates/extension-driver" }
+extension-runtime = { path = "crates/extension-runtime", default-features = false }
+extension_view = { path = "crates/extension_view" }
+extension-api = { path = "crates/extension-api" }
+extension-component = { path = "crates/extension-component" }
+extension-wasm = { path = "crates/extension-wasm" }
+
+
+json5 = "1.3.0"
+semver = "1.0.22"
+regex = "1.10.0"
+resvg = "0.46.0"
+roxmltree = "0.20"
+futures = "0.3.32"
+image = "0.25.10"
+rustls = "0.23.35"
+tracing-subscriber = "0.3"
+async-trait = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
+tokio-util = "0.7.17"
+dirs = "6.0"
+encoding_rs = "0.8.35"
+aes = "0.8"
+cbc = "0.1"
+chrono = {version = "0.4.23", features = ["serde"]}
+rust_decimal = { version = "1.19.0" }
+hex = "0.4"
+hmac = "0.12"
+tiberius = { version = "0.12.3", default-features = false, features = ["chrono", "rustls", "tds73", "winauth"] }
+oracle = {version = "0.6.3", features = ["chrono"]}
+once_cell = "1.21"
+proptest = "1.4"
+mysql_async = { git = "file:///home/xiuran/Linop/vendor/dbx/git-forks/mysql_async.git", rev = "0c621e0248f2c75563b90b3d04628afae539ba40" }
+mysql_common = "0.35.5"
+tokio-postgres = { version = "0.7.15",features = ["with-serde_json-1", "with-chrono-0_4", "with-uuid-1"] }
+tokio-postgres-rustls = "0.13.0"
+rustls-native-certs = "0.8.1"
+rustls-pemfile = "2.2.0"
+rusqlite = { version = "0.38", features = ["bundled", "column_decltype"] }
+duckdb = { version = "1.10501.0", features = ["bundled"] }
+sqlformat = "0.5.0"
+sqlparser = "0.62.0"
+uuid = { version = "1.23.0", features = ["v4", "serde"] }
+rust_xlsxwriter = "0.94.0"
+dashmap = "5.5.3"
+moka = { version = "0.12", features = ["sync"] }
+thiserror="2.0.14"
+llm-connector = { path = "crates/llm-connector", features = ["streaming"] }
+# `use_tls` 会拼出 `rediss://` URL，必须启用 rustls 的异步 TLS 支持（tokio-rustls-comp
+# 隐含 tokio-comp 与 tls-rustls），否则 `Client::open` 直接返回
+# `InvalidClientConfig("can't connect with TLS, the feature is not enabled")`。
+# 刻意不启用 `tls-rustls-webpki-roots`：redis-rs 一旦启用它就不再加载系统根证书
+# （见 `create_rustls_config`），企业私有 CA 装的根证书会全部失效；保留 native-certs
+# 才能同时信任公共 CA 与用户自行安装的私有 CA。
+redis_client = { package = "redis", version = "0.27", features = [
+    "tokio-comp",
+    "tokio-rustls-comp",
+    "cluster-async",
+    "connection-manager",
+] }
+
+# SSH and SFTP
+# dsa feature enables verifying/offering the legacy ssh-dss host-key algorithm.
+russh = { version = "0.65.0", features = ["dsa"] }
+russh-sftp = "3.0.1"
+tokio-socks = "0.5"
+async_ftp = "6.0.0"
+
+# Encryption
+aes-gcm = "0.10"
+rand = "0.8"
+base64 = "0.22"
+sha2 = "0.10"
+security-framework = "3.7.0"
+subtle = "2.6"
+zeroize = "1"
+
+# Terminal emulation
+alacritty_terminal = "0.26"
+zmodem2 = { package = "modem-transfer", path = "crates/modem-transfer" }
+
+# Serial port
+serialport = "4"
+
+
+
+parking_lot = "0.12"
+bytes = "1.5"
+mongodb = "3.5.1"
+futures-util="0.3.31"
+interprocess = { version = "2.4.0", features = ["tokio"] }
+url = "2.5.4"
+percent-encoding = "2.3.1"
+global-hotkey = "0.7.0"
+ferrum-flow = { path = "vendor/ferrum-flow" }
+errno = { version = "0.3.14", default-features = false }
+
+async-process = { git = "https://github.com/zed-industries/async-process.git", rev = "0b6d6713570af61806e1e5cb40e0f757cb93fd9d" }
+async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "b4486cd71e4e94fbda54ce6302444de14f4d190e" }
+
+
+
+# Use stacker's psm version which may have better WASM support
+psm = { git = "https://github.com/rust-lang/stacker", branch = "master" }
+
+[workspace.dependencies.windows]
+features = ["Wdk", "Wdk_System", "Wdk_System_SystemServices"]
+version = "0.61.0"
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("cargo-clippy"))'] }
+
+[workspace.lints.clippy]
+almost_complete_range = "allow"
+arc_with_non_send_sync = "allow"
+borrowed_box = "allow"
+dbg_macro = "deny"
+let_underscore_future = "allow"
+manual_is_multiple_of = "allow"
+map_entry = "allow"
+module_inception = "allow"
+non_canonical_partial_ord_impl = "allow"
+reversed_empty_ranges = "allow"
+single_range_in_vec_init = "allow"
+style = { level = "allow", priority = -1 }
+todo = "deny"
+type_complexity = "allow"
+
+[profile.dev]
+#codegen-units = 16
+#debug = "limited"
+#split-debuginfo = "unpacked"
+
+# 优化级别：0=无优化（默认，调试最佳），1=轻度优化，2=中度，3=高度
+opt-level = 0
+# 是否启用调试符号：true=启用（默认），false=禁用，"full"=完整符号（推荐）
+debug = true
+# 是否启用 debuginfo 行表（保证调试器能对应源码行）
+debug-assertions = true
+# 是否启用溢出检查（Debug 模式默认开启，Release 关闭）
+overflow-checks = true
+# 是否增量编译（加速二次构建，默认开启）
+incremental = true
+# panic 处理方式："unwind"=展开栈（默认），"abort"=直接终止程序
+panic = "unwind"
+
+[profile.release]
+opt-level = 3
+# fat LTO 在本仓库规模下链接峰值内存超出 WSL2 15Gi(两次 OOM SIGKILL),
+# 与根 workspace 对齐改 thin;codegen-units 同步放开以压峰值。
+lto = "thin"
+codegen-units = 16
+strip = true
+# 关闭展开：省掉 __eh_frame / __gcc_except_tab（约 27MB 元数据）。
+# 代价：release 下 panic 直接 abort，catch_unwind 不再拦截（terminal 录制
+# 观察者、windows_rdp_host 事件回调不再隔离 panic）。
+panic = "abort"
+
+[profile.dev.package]
+resvg = { opt-level = 3 }
+rustybuzz = { opt-level = 3 }
+taffy = { opt-level = 3 }
+ttf-parser = { opt-level = 3 }
+smol = { opt-level = 3 }
+gpui-pre = { opt-level = 3 }
+gpui-pre-macros = { opt-level = 3 }
+gpui-fast = { opt-level = 3 }
+gpui-fast-macros = { opt-level = 3 }
+gpui-fast-platform = { opt-level = 3 }
+tree-sitter = { opt-level = 3 }
+gpui-pre-sum-tree = { opt-level = 3 }
+ropey = { opt-level = 3 }
+lsp-types = { opt-level = 3 }
+gpui-pre-reqwest-client = { opt-level = 3 }
+markdown = { opt-level = 3 }
+xml5ever = { opt-level = 3 }
+
+# >>> local gpui patch (generated by script/patch-local-gpui-pre.py) >>>
+#
+# SELF-MAINTAINED: gpui-fast v0.1.12 快照自含全部 leaf crate，并在快照内提供
+# 全套 gpui-pre-* shim（pub use gpui_fast::* 转发）。gpui-pre fork 不再参与
+# 解析；gpui-kit 的 ^0.3.10 与 linop 的 ^0.3.99 均由 0.3.126 shim 满足。
+[patch.crates-io]
+# The offline Win7 / Server 2012 R2 bundle links the WebView2 SDK 1.0.902.49
+# loader. Loaders >= 1.0.1054.31 import EventSetInformation, which Win7 and
+# Server 2012 R2 do not provide. Keep that loader in the source tree instead of
+# swapping a file inside the cargo registry, because a registry swap bypasses
+# compile caches and once shipped a binary linked against the wrong loader.
+webview2-com-sys = { path = "../vendor/dbx/vendor/webview2-com-sys" }
+# Offline signed update restoration and checked Windows installer launch.
+tauri-plugin-updater = { path = "../vendor/dbx/vendor/tauri-plugin-updater" }
+# Tauri 2.11 uses ctor 0.8, which excludes Rust's win7 vendor. This vendors
+# upstream rust-ctor#443 until tauri-utils moves to ctor 1.x.
+ctor = { path = "../vendor/dbx/vendor/ctor" }
+# rumqttc 0.24 hardcodes MQTT 3.1.1; this patch adds MQTT 3.1 CONNECT encoding.
+rumqttc = { path = "../vendor/dbx/vendor/rumqttc" }
+# Keep two small upstream crates on Win7-compatible API calls. Their current
+# Windows bindings otherwise import COMBASE or WinRT APIs unavailable on Win7.
+dirs-sys = { path = "../vendor/dbx/vendor/dirs-sys" }
+pageant = { path = "../vendor/dbx/vendor/pageant" }
+# Wry 0.55 probes and creates WebView2 with a null browser folder. Pass the
+# bundled Fixed Runtime path explicitly so Windows 7 does not fall back to an
+# unavailable system Runtime. The vendored copy also intercepts the WebView2
+# F6 "Focus Next Pane" accelerator to prevent a black screen on frameless
+# Overlay-titlebar windows, and registers a ProcessFailed handler that
+# auto-recovers the webview when the renderer process fails while the host
+# process stays alive (black screen after an overnight idle session, see
+# vendor/wry/src/webview2/mod.rs). Recovery is layered by process kind
+# (browser exit is fatal, GPU exits are self-healed by WebView2) and bounded
+# by a cooldown plus a maximum reload budget. It also re-owns clipboard
+# writes performed by the WebView2 browser process on the host window so
+# copies show up in Windows Clipboard History / Win+V
+# (MicrosoftEdge/WebView2Feedback#5650, see
+# vendor/wry/src/webview2/clipboard_history.rs).
+wry = { path = "../vendor/dbx/vendor/wry" }
+tokio-postgres = { git = "file:///home/xiuran/Linop/vendor/dbx/git-forks/tokio-postgres-gaussdb.git", rev = "ff64ab59190e427e09fcd187974bdaf088e4f129" }
+postgres-types = { git = "file:///home/xiuran/Linop/vendor/dbx/git-forks/tokio-postgres-gaussdb.git", rev = "ff64ab59190e427e09fcd187974bdaf088e4f129" }
+postgres-protocol = { git = "file:///home/xiuran/Linop/vendor/dbx/git-forks/tokio-postgres-gaussdb.git", rev = "ff64ab59190e427e09fcd187974bdaf088e4f129" }
+# Temporary compatibility patches for deprecated sha256_password accounts and
+# rustls dangerous-mode connections to legacy certificates. Remove after upstream support lands.
+mysql_async = { git = "file:///home/xiuran/Linop/vendor/dbx/git-forks/mysql_async.git", rev = "0c621e0248f2c75563b90b3d04628afae539ba40" }
+# Preserve readable SQL Server result sets when a row contains an unpaired
+# UTF-16 surrogate, or varchar/text bytes that are invalid in the column's
+# collation (replaced with U+FFFD, no BOM sniffing). Remove after the behavior
+# is available in upstream tiberius.
+tiberius = { path = "../vendor/dbx/vendor/tiberius" }
+
+# navop(gpui)fork 全系 —— 上一轮合并 patch 段时被误覆盖,恢复
+gpui-pre                = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-apple          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-bench-metrics          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-collections          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-derive-refineable          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-http-client          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-http-client-tls          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-linux          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-macos          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-macros          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-platform          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-refineable          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-reqwest-client          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-scheduler          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-shared-string          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-sum-tree          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-util          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-web          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-wgpu          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-windows          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-zlog          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-ztracing          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-pre-ztracing-macro          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-fast          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-fast-apple          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-fast-linux          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-fast-macros          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-fast-macos          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-fast-platform          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-fast-web          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-fast-wgpu          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+gpui-fast-windows          = { git = "https://github.com/feigeCode/gpui-fast.git", branch = "release/v0.1.12" }
+# <<< local gpui patch <<<
+
+# navop 全量 gpui-fast 后，整套 gpui-fast-* 都进编译图；同名源已在上面
+# [patch.crates-io] 块内统一钉到 release/v0.1.12，此处不再重复声明。
+
+# Legacy devices (e.g. Huawei VRP gear) put redundant leading `0x00` bytes in the
+# RSA exponent/modulus of their `ssh-rsa` host key, which RFC 4251 § 5 forbids but
+# OpenSSH tolerates when reading a peer's message. Without this patch the whole
+# host key fails to parse and the connection dies with
+# `SshKey: \`mpint\` encoding invalid`. Fork of RustCrypto/SSH carrying tag
+# `ssh-encoding/v0.3.0-navop.1`; drop once the change lands upstream.
+# Regression test: crates/ssh/tests/legacy_hostkey_mpint.rs
+ssh-encoding = { git = "https://github.com/feigeCode/SSH.git", tag = "ssh-encoding/v0.3.0-navop.1" }
+
+# russh（截至 v0.65.0 的全部已发布版本）钉 `rsa =0.10.0-rc.18` +
+# `pkcs1 =0.8.0-rc.4`，而 quickjs-jit-stdlib 0.14.1（gpui-shell 的 quickjs
+# crypto 模块）要求 `rsa ^0.10.0-rc.19`，两者无法同时满足。rsa rc.18→rc.19
+# 仅伴随 pkcs1 rc.4→rc.5 的泛型化（`RsaPrivateKeyRef<'a>` 别名保持
+# `try_from(&[u8])`/`as_bytes()` 旧用法），russh 源码零改动即兼容。Fork of
+# warp-tech/russh carrying tag `v0.65.0-navop.1`（仅改两行版本钉 + 删 CI
+# workflows）；等 russh 上游跟进 rc.19 后可删除。
+# 验证：cargo check -p ssh 与 crates/ssh 全量测试（含 legacy hostkey 回归）。
+russh = { git = "https://github.com/feigeCode/russh.git", tag = "v0.65.0-navop.1" }

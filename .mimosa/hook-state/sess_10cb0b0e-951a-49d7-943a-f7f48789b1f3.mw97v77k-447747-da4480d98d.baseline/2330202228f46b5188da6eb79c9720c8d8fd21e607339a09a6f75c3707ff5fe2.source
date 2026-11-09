@@ -1,0 +1,957 @@
+fn function_region<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
+    source
+        .split(start)
+        .nth(1)
+        .and_then(|source| source.split(end).next())
+        .unwrap_or_else(|| panic!("missing function region between `{start}` and `{end}`"))
+}
+
+fn assert_function_guard_precedes(
+    source: &str,
+    start: &str,
+    end: &str,
+    guard: &str,
+    side_effect: &str,
+    capability: &str,
+) {
+    assert_guard_precedes(
+        function_region(source, start, end),
+        guard,
+        side_effect,
+        capability,
+    );
+}
+
+#[test]
+fn playback_never_registers_or_uses_ssh_broadcast_input() {
+    let source = include_str!("../registrations.rs");
+    let registration = function_region(
+        source,
+        "fn register_broadcast_input",
+        "fn unregister_broadcast_input",
+    );
+    assert!(
+        registration.contains("live_ssh_feature_supported(terminal.live_connection_kind())"),
+        "broadcast registration must authorize the live SSH capability, not source metadata"
+    );
+
+    let broadcast = function_region(
+        source,
+        "fn broadcast_user_input",
+        "fn refresh_public_mcp_session",
+    );
+    let guard = broadcast
+        .find("self.is_live_ssh_terminal(cx)")
+        .expect("broadcast sender must have a live SSH guard");
+    let delivery = broadcast
+        .find("deliveries_from")
+        .expect("broadcast delivery lookup should remain");
+    assert!(guard < delivery, "the live SSH guard must precede delivery");
+}
+
+#[test]
+fn playback_reconnect_is_rejected_before_connection_storage_access() {
+    let source = include_str!("../preferences.rs");
+    let reconnect = function_region(source, "pub fn reconnect", "pub fn sync_terminal_path");
+    let guard = reconnect
+        .find("if !self.accepts_live_terminal_input(cx)")
+        .expect("reconnect must reject playback");
+    let load = reconnect
+        .find("resolve_ssh_reconnect_source")
+        .expect("SSH reconnect source resolution should remain");
+    assert!(
+        guard < load,
+        "playback must be rejected before reading connection storage"
+    );
+}
+
+#[test]
+fn playback_duplicate_is_rejected_at_view_and_workspace_execution_boundaries() {
+    let view_tab = include_str!("../tab_content.rs");
+    let workspace_tab = include_str!("../../workspace/tab_content.rs");
+    let support = include_str!("../workspace_support.rs");
+
+    assert!(
+        function_region(view_tab, "fn duplicate(", "fn try_close")
+            .contains("if !self.duplicate_supported(cx)")
+    );
+    assert!(
+        function_region(workspace_tab, "fn duplicate(", "fn try_close")
+            .contains("if !self.active_pane().read(cx).duplicate_supported(cx)")
+    );
+    assert!(support.contains("pub(crate) fn duplicate_supported(&self, cx: &App) -> bool"));
+    assert!(support.contains("self.terminal.read(cx).live_connection_kind()"));
+}
+
+#[test]
+fn playback_pty_and_ime_writes_are_rejected_before_side_effects() {
+    let source = include_str!("../text_input.rs");
+
+    for (start, end, side_effect, capability) in [
+        (
+            "pub(super) fn write_to_pty",
+            "pub(super) fn write_broadcast_input",
+            "self.write_input_to_terminal",
+            "PTY writes",
+        ),
+        (
+            "pub(super) fn write_input_to_terminal",
+            "pub(super) fn commit_text",
+            "self.terminal_frame_snapshot.display_offset",
+            "terminal input",
+        ),
+        (
+            "pub(super) fn commit_text",
+            "pub(super) fn set_marked_text",
+            "apply_inline_input_to_history_prompt",
+            "IME commits",
+        ),
+        (
+            "pub(super) fn set_marked_text",
+            "pub(super) fn clear_marked_text",
+            "self.ime_state =",
+            "IME composition",
+        ),
+    ] {
+        assert_function_guard_precedes(
+            source,
+            start,
+            end,
+            "if !self.accepts_live_terminal_input(cx)",
+            side_effect,
+            capability,
+        );
+    }
+}
+
+#[test]
+fn playback_key_handler_retains_copy_before_rejecting_input() {
+    let source = include_str!("../text_input.rs");
+    let key_event = source
+        .split("pub(super) fn handle_key_event")
+        .nth(1)
+        .expect("key event handler should exist");
+    let copy = key_event
+        .find("action_id::TERMINAL_COPY")
+        .expect("copy shortcut should remain available");
+    let guard = key_event
+        .find("if !self.accepts_live_terminal_input(cx)")
+        .expect("key input must reject playback");
+    let paste = key_event
+        .find("action_id::TERMINAL_PASTE")
+        .expect("paste shortcut should remain for live terminals");
+    let input_side_effect = key_event
+        .find("BlinkCursor::pause")
+        .expect("live input should still pause cursor blink");
+    assert!(
+        copy < guard && guard < paste && guard < input_side_effect,
+        "copy must remain available before playback is rejected, while paste and input state \
+         changes must remain behind the live capability gate"
+    );
+}
+
+#[test]
+fn quick_command_shortcuts_run_after_terminal_handlers_but_before_raw_input() {
+    let source = include_str!("../text_input.rs");
+    let key_event = source
+        .split("pub(super) fn handle_key_event")
+        .nth(1)
+        .expect("key event handler should exist");
+    let history = key_event
+        .find("self.history_prompt.mode()")
+        .expect("history prompt handling should remain available");
+    let built_in = key_event
+        .find("is_terminal_action_shortcut")
+        .expect("built-in terminal shortcuts should be checked");
+    let quick_command = key_event
+        .find("command_for_shortcut")
+        .expect("quick-command shortcuts should be dispatched");
+    let raw_input = key_event
+        .find("crate::keys::to_esc_str")
+        .expect("ordinary terminal input should remain available");
+
+    assert!(
+        history < built_in && built_in < quick_command && quick_command < raw_input,
+        "history and built-in terminal handling must take priority over quick commands, while \
+         quick commands must run before ordinary terminal input"
+    );
+}
+
+#[test]
+fn quick_command_shortcuts_do_not_override_any_terminal_action_shortcut() {
+    let source = include_str!("../keybindings.rs");
+    let guard = function_region(source, "pub(super) fn is_terminal_action_shortcut", "\n}");
+
+    for action_id in [
+        "action_id::TERMINAL_SEND_TAB",
+        "action_id::TERMINAL_SEND_SHIFT_TAB",
+        "action_id::TERMINAL_COPY",
+        "action_id::TERMINAL_PASTE",
+        "action_id::TERMINAL_SELECT_ALL",
+        "action_id::TERMINAL_CLEAR_SCREEN",
+        "action_id::TERMINAL_CLEAR_SELECTION",
+        "action_id::TERMINAL_SEARCH_FORWARD",
+        "action_id::TERMINAL_SEARCH_BACKWARD",
+        "action_id::TERMINAL_TOGGLE_VI_MODE",
+        "action_id::TERMINAL_INCREASE_FONT",
+        "action_id::TERMINAL_DECREASE_FONT",
+        "action_id::TERMINAL_RESET_FONT",
+        "action_id::TERMINAL_SCROLL_LINE_UP",
+        "action_id::TERMINAL_SCROLL_LINE_DOWN",
+        "action_id::TERMINAL_SCROLL_PAGE_UP",
+        "action_id::TERMINAL_SCROLL_PAGE_DOWN",
+    ] {
+        assert!(
+            guard.contains(action_id),
+            "{action_id} must remain protected from quick-command shortcut overrides"
+        );
+    }
+    assert!(
+        guard.contains("shortcuts_for(cx, action_id, &defaults)"),
+        "the protection catalog must honor user-customized terminal shortcuts"
+    );
+}
+
+#[test]
+fn quick_command_changes_refresh_the_command_bar_cache() {
+    let source = include_str!("../sidebar_events.rs");
+    let handler = function_region(
+        source,
+        "pub(super) fn handle_sidebar_event",
+        "pub(super) fn invalidate_terminal_searches",
+    );
+    let event = handler
+        .find("TerminalSidebarEvent::QuickCommandsChanged")
+        .expect("sidebar should forward quick-command changes");
+    let update = handler[event..]
+        .find("self.command_bar.update")
+        .expect("quick-command changes should update the command bar");
+    let load = handler[event..]
+        .find("load_quick_commands")
+        .expect("quick-command changes should reload the cache");
+    let refresh = handler[event..]
+        .find("refresh_suggestions")
+        .expect("quick-command changes should refresh active suggestions");
+
+    assert!(update < load && load < refresh);
+}
+
+#[test]
+fn quick_command_click_with_explicit_enter_submits_instead_of_pasting() {
+    let source = include_str!("../sidebar_events.rs");
+    let handler = function_region(
+        source,
+        "pub(super) fn handle_sidebar_event",
+        "pub(super) fn invalidate_terminal_searches",
+    );
+    let event = handler
+        .find("TerminalSidebarEvent::ExecuteCommand")
+        .expect("sidebar should forward quick-command clicks");
+    let marker = handler[event..]
+        .find("quick_command_executes_on_click(command)")
+        .expect("click behavior should be gated by the explicit trailing-enter marker");
+    let submit = handler[marker..]
+        .find("TerminalCommandBarEvent::Submit(command.clone())")
+        .expect("commands with trailing Enter should submit");
+    let paste = handler[marker..]
+        .find("self.paste_text(command, window, cx)")
+        .expect("commands without trailing Enter should retain paste/fill behavior");
+
+    assert!(submit < paste);
+}
+
+#[test]
+fn quick_command_sync_refreshes_open_terminal_views_globally() {
+    let initialization = include_str!("../initialization.rs");
+    assert!(
+        initialization.contains("quick_command_sync_notifier(cx)"),
+        "every terminal view must subscribe to the app-wide quick-command notifier"
+    );
+    assert!(
+        initialization.contains("Self::handle_quick_command_sync_event"),
+        "terminal views must retain the app-wide quick-command subscription"
+    );
+
+    let source = include_str!("../sidebar_events.rs");
+    let sync_handler = function_region(
+        source,
+        "pub(super) fn handle_quick_command_sync_event",
+        "pub(super) fn handle_sidebar_event",
+    );
+    let command_bar = sync_handler
+        .find("self.command_bar.update")
+        .expect("sync should refresh the command-bar cache");
+    let load = command_bar
+        + sync_handler[command_bar..]
+            .find("load_quick_commands")
+            .expect("sync should reload quick commands");
+    let sidebar = command_bar
+        + sync_handler[command_bar..]
+            .find("self.sidebar.update")
+            .expect("sync should refresh the sidebar panel");
+    let panel_refresh = sidebar
+        + sync_handler[sidebar..]
+            .find("refresh_quick_commands")
+            .expect("sync should reload sidebar quick commands");
+
+    assert!(command_bar < load && load < sidebar && sidebar < panel_refresh);
+}
+
+#[test]
+fn playback_paste_is_rejected_before_clipboard_or_prompt_side_effects() {
+    let source = include_str!("../clipboard.rs");
+
+    assert_function_guard_precedes(
+        source,
+        "pub(super) fn paste(",
+        "pub(super) fn increase_font",
+        "if !self.accepts_live_terminal_input(cx)",
+        "read_from_clipboard",
+        "clipboard paste",
+    );
+
+    assert_function_guard_precedes(
+        source,
+        "pub(super) fn paste_text(",
+        "pub(super) fn paste_text_unchecked",
+        "if !self.accepts_live_terminal_input(cx)",
+        "normalize_paste_line_endings",
+        "checked text paste",
+    );
+
+    let paste_unchecked = source
+        .split("pub(super) fn paste_text_unchecked")
+        .nth(1)
+        .expect("unchecked paste implementation should exist");
+    assert_guard_precedes(
+        paste_unchecked,
+        "if !self.accepts_live_terminal_input(cx)",
+        "normalize_paste_line_endings",
+        "unchecked text paste",
+    );
+}
+
+#[test]
+fn playback_never_starts_or_completes_sftp_clipboard_uploads() {
+    let source = include_str!("../clipboard_image.rs");
+
+    for (start, end, side_effect, capability) in [
+        (
+            "pub(super) fn paste_clipboard_image_to_remote_cli",
+            "pub(super) fn spawn_clipboard_image_upload",
+            ".ssh_config()",
+            "clipboard image upload",
+        ),
+        (
+            "pub(super) fn spawn_clipboard_image_upload",
+            "pub(super) fn handle_clipboard_image_upload_result",
+            "Tokio::spawn",
+            "SFTP upload task",
+        ),
+        (
+            "pub(super) fn paste_remote_image_path",
+            "pub(super) fn paste_code_block",
+            "apply_paste_to_history_prompt",
+            "uploaded remote path paste",
+        ),
+    ] {
+        assert_function_guard_precedes(
+            source,
+            start,
+            end,
+            "if !self.is_live_ssh_terminal(cx)",
+            side_effect,
+            capability,
+        );
+    }
+}
+
+#[test]
+fn playback_history_assistance_never_starts_sftp_completion() {
+    let source = include_str!("../history_query.rs");
+    assert_function_guard_precedes(
+        source,
+        "pub(super) fn history_prompt_enabled",
+        "pub(super) fn refresh_history_prompt_matches",
+        "let Some(connection_kind) = terminal.live_connection_kind()",
+        "self.terminal_frame_snapshot.mode",
+        "history prompt availability",
+    );
+    assert_function_guard_precedes(
+        source,
+        "pub(super) fn refresh_cd_completion_matches",
+        "\n}",
+        "if !self.is_live_ssh_terminal(cx)",
+        "cd_completion_cache.get",
+        "SFTP directory completion",
+    );
+
+    let query = function_region(
+        source,
+        "pub(super) fn current_cd_completion_query",
+        "pub(super) fn refresh_cd_completion_matches",
+    );
+    assert!(
+        query.contains("live_ssh_feature_supported(terminal.live_connection_kind())"),
+        "cd completion queries must authorize live SSH instead of recording source metadata"
+    );
+}
+
+#[test]
+fn playback_view_initialization_does_not_attach_live_workspace_or_ssh_resources() {
+    let source = include_str!("../initialization.rs");
+    let initialization = function_region(source, "pub(super) fn new_with_terminal", "\n}");
+
+    assert!(
+        initialization
+            .contains("let live_connection_kind = terminal.read(cx).live_connection_kind()")
+    );
+    assert!(initialization.contains(
+        "let is_local_terminal = live_connection_kind == Some(TerminalConnectionKind::Local)"
+    ));
+    let ssh_gate = initialization
+        .find("if live_ssh_feature_supported(live_connection_kind)")
+        .expect("SSH resources must be authorized by the live SSH capability");
+    let ssh_config = initialization
+        .find(".ssh_config()")
+        .expect("live SSH initialization should retain SSH configuration");
+    let ssh_manager = initialization
+        .find(".ssh_session_manager()")
+        .expect("live SSH initialization should retain its session manager");
+    assert!(ssh_gate < ssh_config && ssh_gate < ssh_manager);
+    assert!(initialization.contains("terminal_history_scope(live_connection_kind, connection_id)"));
+    assert!(initialization.contains("if live_connection_kind.is_some()"));
+}
+
+#[test]
+fn playback_has_dedicated_read_only_view_and_workspace_constructors() {
+    let view = include_str!("../constructors.rs");
+    let workspace = include_str!("../../workspace/view.rs");
+
+    let view_constructor =
+        function_region(view, "pub fn new_recording_playback", "pub fn new_serial");
+    assert!(view_constructor.contains("Terminal::new_recording_playback(playback, cx)"));
+    assert!(view_constructor.contains("duplicate_source: None"));
+    assert!(view_constructor.contains("recording_playback_name: Some(display_name)"));
+
+    let workspace_constructor = function_region(
+        workspace,
+        "pub fn new_recording_playback",
+        "pub(super) fn from_pane",
+    );
+    assert!(workspace_constructor.contains("TerminalView::new_recording_playback"));
+    assert!(workspace_constructor.contains("with_workspace_pane()"));
+}
+
+#[test]
+fn workspace_pane_terminal_never_renders_the_internal_sidebar() {
+    // AI 工作台里的终端走 WorkspacePane：它不渲染内建侧栏，因此原始终端侧栏
+    // 恢复出来的 AI 面板不会出现在 AI 工作台的终端里。这里钉住这个前提。
+    let support = include_str!("../workspace_support.rs");
+    let render_layout = include_str!("../render_layout.rs");
+
+    assert!(support.contains("self.render_mode = TerminalRenderMode::WorkspacePane;"));
+    assert!(
+        render_layout.contains(
+            "let render_internal_dock = self.render_mode == TerminalRenderMode::Embedded;"
+        )
+    );
+}
+
+#[test]
+fn playback_duplicate_and_reconnect_require_an_owned_live_source() {
+    let support = include_str!("../workspace_support.rs");
+    let reconnect = include_str!("../preferences.rs");
+
+    assert!(support.contains("pub(crate) fn duplicate_source_snapshot"));
+    assert!(support.contains("self.duplicate_source.clone()?"));
+    assert!(reconnect.contains("let Some(duplicate_source) = self.duplicate_source.as_ref()"));
+}
+
+#[test]
+fn playback_command_bar_events_are_rejected_before_parsing_or_paste() {
+    let source = include_str!("../command_bar_events.rs");
+    for (start, end, side_effect, capability) in [
+        (
+            "TerminalCommandBarEvent::Submit(command) =>",
+            "TerminalCommandBarEvent::InputToPty(command) =>",
+            "command_batch_lines",
+            "command submission",
+        ),
+        (
+            "TerminalCommandBarEvent::InputToPty(command) =>",
+            "TerminalCommandBarEvent::FocusTerminal",
+            "self.paste_text",
+            "command bar PTY input",
+        ),
+    ] {
+        assert_function_guard_precedes(
+            source,
+            start,
+            end,
+            "if !self.accepts_live_terminal_input(cx)",
+            side_effect,
+            capability,
+        );
+    }
+}
+
+#[test]
+fn playback_action_input_paths_are_rejected_before_local_side_effects() {
+    let tool_dock = include_str!("../tool_dock.rs");
+    for (start, end, side_effect, capability) in [
+        (
+            "pub(super) fn send_tab",
+            "pub(super) fn send_shift_tab",
+            "try_accept_explicit_history_prompt",
+            "send-tab action",
+        ),
+        (
+            "pub(super) fn send_shift_tab",
+            "pub(super) fn render_sidebar_resize_handle",
+            "dismiss_history_prompt",
+            "send-shift-tab action",
+        ),
+    ] {
+        assert_function_guard_precedes(
+            tool_dock,
+            start,
+            end,
+            "if !self.accepts_live_terminal_input(cx)",
+            side_effect,
+            capability,
+        );
+    }
+
+    let selection = include_str!("../selection_search.rs");
+    assert_function_guard_precedes(
+        selection,
+        "pub(super) fn clear_screen",
+        "pub(super) fn reset_render_cache",
+        "if !self.accepts_live_terminal_input(cx)",
+        "self.clear_history_prompt",
+        "clear-screen action",
+    );
+
+    let vi_input = include_str!("../vi_input.rs");
+    assert_function_guard_precedes(
+        vi_input,
+        "pub(super) fn handle_vi_key_event",
+        "pub(super) fn vi_start_selection",
+        "if !self.accepts_live_terminal_input(cx)",
+        "PendingTerminalAction::ViMotion",
+        "VI key input",
+    );
+    assert_function_guard_precedes(
+        vi_input,
+        "pub(super) fn toggle_vi_mode",
+        "\n}",
+        "if !self.accepts_live_terminal_input(cx)",
+        "PendingTerminalAction::ToggleViMode",
+        "toggle-VI action",
+    );
+}
+
+#[test]
+fn playback_clear_selection_never_changes_recorded_vi_mode() {
+    let source = include_str!("../selection_search.rs");
+    let clear_selection = function_region(
+        source,
+        "pub(super) fn clear_selection",
+        "pub(super) fn search_forward",
+    );
+    let capability = clear_selection
+        .find("let accepts_live_input = self.accepts_live_terminal_input(cx);")
+        .expect("clear selection must inspect the live input capability");
+    let queued_resolution = clear_selection
+        .find("PendingTerminalAction::ResolveClearSelection")
+        .expect("clear selection must defer terminal inspection without blocking");
+    assert!(capability < queued_resolution);
+
+    let vi_action_source = include_str!("../vi_input.rs");
+    let terminal_action = function_region(
+        vi_action_source,
+        "fn try_apply_terminal_action",
+        "fn finish_terminal_action",
+    );
+    let clear_selection_action = terminal_action
+        .find("PendingTerminalAction::ResolveClearSelection")
+        .expect("clear selection resolution must be handled by the non-blocking action queue");
+    let clear_selection_resolution = &terminal_action[clear_selection_action..];
+    let live_only_branch = clear_selection_resolution
+        .find("else if accepts_live_input")
+        .expect("leaving VI mode must be restricted to live terminals");
+    let toggle = clear_selection_resolution
+        .find("term.toggle_vi_mode()")
+        .expect("live terminals should retain clear-selection VI behavior");
+    assert!(live_only_branch < toggle);
+}
+
+#[test]
+fn terminal_key_and_selection_actions_never_wait_for_the_parser() {
+    let vi_input = include_str!("../vi_input.rs");
+    assert!(
+        !vi_input.contains(".lock()"),
+        "VI key handling must never block the GPUI thread on the terminal parser lock"
+    );
+    assert!(vi_input.contains("term.try_lock_unfair()?"));
+    assert!(vi_input.contains("MAX_PENDING_TERMINAL_ACTIONS"));
+    assert!(vi_input.contains("MAX_TERMINAL_ACTIONS_PER_FRAME"));
+
+    let selection = include_str!("../selection_search.rs");
+    let hot_actions = function_region(
+        selection,
+        "pub(super) fn select_all",
+        "pub(super) fn search_forward",
+    );
+    assert!(
+        !hot_actions.contains(".lock()"),
+        "select-all, clear-screen, cache reset, and Escape handling must not wait for the parser"
+    );
+    assert!(hot_actions.contains("term.try_lock_unfair()"));
+    assert!(hot_actions.contains("PendingTerminalAction::ResolveClearSelection"));
+}
+
+#[test]
+fn terminal_search_never_waits_for_the_parser_on_the_gpui_thread() {
+    let source = include_str!("../sidebar_events.rs");
+    let forward = function_region(
+        source,
+        "pub(super) fn search_forward_internal",
+        "pub(super) fn search_backward_internal",
+    );
+    let backward = function_region(source, "pub(super) fn search_backward_internal", "\n}");
+    assert!(!forward.contains(".lock()"));
+    assert!(!backward.contains(".lock()"));
+    assert!(forward.contains("self.enqueue_terminal_search"));
+    assert!(backward.contains("self.enqueue_terminal_search"));
+
+    let worker = function_region(
+        source,
+        "fn start_next_terminal_search",
+        "/// 内部搜索：向前搜索",
+    );
+    assert!(worker.contains("cx.background_executor().spawn"));
+    assert!(worker.contains("let mut term = term.lock()"));
+    assert!(worker.contains("self.terminal_search_task.is_some()"));
+    assert!(worker.contains("this.terminal_search_task = None"));
+    assert!(worker.contains("this.start_next_terminal_search(cx)"));
+    assert!(worker.contains("terminal_search_generation"));
+    assert!(!worker.contains("term.scroll_to_point"));
+    assert!(source.contains("MAX_PENDING_TERMINAL_SEARCH_RUNS"));
+    assert!(source.contains("MAX_PENDING_TERMINAL_SEARCH_REQUESTS"));
+    assert!(
+        source.contains("usize::from(self.terminal_search_task.is_some())"),
+        "the total search request bound must include the in-flight worker"
+    );
+}
+
+#[test]
+fn playback_mouse_reporting_is_rejected_before_report_side_effects() {
+    let source = include_str!("../scroll.rs");
+
+    assert_function_guard_precedes(
+        source,
+        "pub(super) fn try_report_sgr_mouse_button",
+        "pub(super) fn write_sgr_mouse_button_report",
+        "if !self.accepts_live_terminal_input(cx)",
+        "self.terminal_frame_snapshot.mode",
+        "SGR mouse reporting",
+    );
+    assert_function_guard_precedes(
+        source,
+        "pub(super) fn write_sgr_mouse_button_report",
+        "\n}",
+        "if !self.accepts_live_terminal_input(cx)",
+        "mouse_button_code(button)",
+        "SGR mouse report construction",
+    );
+}
+
+#[test]
+fn playback_mouse_paste_handlers_reject_before_reporting_or_ui_side_effects() {
+    let source = include_str!("../mouse_down.rs");
+
+    assert_function_guard_precedes(
+        source,
+        "pub(super) fn handle_middle_mouse_down",
+        "pub(super) fn handle_right_mouse_down",
+        "if !self.accepts_live_terminal_input(cx)",
+        "self.try_report_sgr_mouse_button",
+        "middle-click reporting and paste",
+    );
+    assert_function_guard_precedes(
+        source,
+        "pub(super) fn handle_right_mouse_down",
+        "\n}",
+        "if !self.accepts_live_terminal_input(cx)",
+        "cx.stop_propagation()",
+        "right-click paste",
+    );
+}
+
+#[test]
+fn playback_stale_sgr_press_never_clears_the_local_selection() {
+    let source = include_str!("../mouse_selection.rs");
+    let mouse_up = function_region(
+        source,
+        "pub(super) fn handle_mouse_up",
+        "pub(super) fn handle_window_mouse_up",
+    );
+    let pending_press = mouse_up
+        .split("if let Some(pending)")
+        .nth(1)
+        .expect("mouse-up should retain pending SGR press handling");
+
+    assert_guard_precedes(
+        pending_press,
+        "if self.accepts_live_terminal_input(cx)",
+        "PendingTerminalSelectionAction::Clear",
+        "pending SGR mouse press",
+    );
+}
+
+#[test]
+fn recorded_local_metadata_never_authorizes_local_path_addons() {
+    for (source, expected_live_checks, capability) in [
+        (
+            include_str!("../terminal_render.rs"),
+            1,
+            "terminal frame addons",
+        ),
+        (include_str!("../mouse_down.rs"), 1, "mouse-down addons"),
+        (
+            include_str!("../mouse_selection.rs"),
+            2,
+            "mouse move/up addons",
+        ),
+    ] {
+        assert!(
+            !source.contains(".connection_kind() == TerminalConnectionKind::Local"),
+            "{capability} must not authorize local paths from recording source metadata"
+        );
+        assert!(
+            source.matches("live_connection_kind()").count() >= expected_live_checks,
+            "{capability} must authorize local paths from the live connection kind"
+        );
+    }
+}
+
+fn assert_guard_precedes(source: &str, guard: &str, side_effect: &str, capability: &str) {
+    let guard_position = source
+        .find(guard)
+        .unwrap_or_else(|| panic!("{capability} must have a live capability guard"));
+    let side_effect_position = source
+        .find(side_effect)
+        .unwrap_or_else(|| panic!("{capability} side effect `{side_effect}` should remain"));
+    assert!(
+        guard_position < side_effect_position,
+        "{capability} must reject playback before `{side_effect}`"
+    );
+}
+
+#[test]
+fn status_badge_sync_emits_state_changed_only_on_transition() {
+    let source = include_str!("../terminal_events.rs");
+    let sync = function_region(
+        source,
+        "fn sync_connection_status_badge",
+        "fn emit_connection_status_notice",
+    );
+    assert!(sync.contains("self.last_connection_status = current"));
+    assert_guard_precedes(
+        sync,
+        "if current == self.last_connection_status",
+        "cx.emit(TabContentEvent::StateChanged)",
+        "status badge sync must skip unchanged connection states",
+    );
+}
+
+#[test]
+fn credential_capture_consumed_keys_block_text_system_passthrough() {
+    let source = include_str!("../terminal_events.rs");
+    let handler = function_region(
+        source,
+        "pub(super) fn handle_credential_capture_key_event",
+        "pub(super) fn capture_append_text",
+    );
+
+    for (action, capability) in [
+        (
+            "self.capture_append_text(keystroke_capture_text(&event.keystroke), cx)",
+            "printable capture input must use the platform-resolved character \
+             (key_char) instead of the unshifted keycap name",
+        ),
+        (
+            "self.handle_credential_capture_submit(window, cx)",
+            "capture submit",
+        ),
+        ("capture.backspace()", "capture backspace"),
+        (
+            "self.handle_credential_capture_cancel(cx)",
+            "capture cancel",
+        ),
+    ] {
+        assert!(
+            handler.contains(action),
+            "{capability} should remain handled by the capture state machine"
+        );
+    }
+
+    let block = handler
+        .find("if handled")
+        .expect("capture must gate blocking on whether the key was consumed");
+    let prevent = handler
+        .find("window.prevent_default()")
+        .expect("capture must prevent the platform default action");
+    let stop = handler
+        .find("cx.stop_propagation()")
+        .expect("capture must stop propagation");
+    assert!(
+        block < prevent && prevent < stop,
+        "consumed capture keys must block passthrough so the text system never appends a second copy"
+    );
+}
+
+#[test]
+fn credential_capture_prompt_does_not_lead_with_a_blank_line() {
+    let source = include_str!("../terminal_events.rs");
+    let prompt = function_region(
+        source,
+        "fn inject_capture_prompt",
+        "pub(super) fn handle_credential_capture_key_event",
+    );
+
+    assert!(
+        prompt.contains("let mut text = String::new()"),
+        "capture prompt must start without a leading line break"
+    );
+    assert!(
+        !prompt.contains("String::from(\"\\r\\n\")"),
+        "the prompt must not inject a leading blank line"
+    );
+}
+
+#[test]
+fn workspace_connection_status_delegates_to_the_active_pane() {
+    let source = include_str!("../../workspace/tab_content.rs");
+    let region = function_region(source, "fn connection_status", "fn lock_session");
+    assert!(
+        region.contains("terminal_connection_status(cx)"),
+        "workspace badge must delegate to the active pane terminal"
+    );
+}
+
+#[test]
+fn sftp_status_badge_emits_state_changed_on_transition() {
+    let source = include_str!("../../../../sftp_view/src/lib.rs");
+    let helper = function_region(source, "fn set_connection_state", "fn reconnect");
+    assert!(helper.contains("cx.emit(TabContentEvent::StateChanged)"));
+    assert_guard_precedes(
+        helper,
+        "if self.connection_state == state",
+        "cx.emit(TabContentEvent::StateChanged)",
+        "SFTP badge must only notify on a real state transition",
+    );
+}
+
+#[test]
+fn copy_writes_to_clipboard_before_dropping_the_selection() {
+    // issue #199：Ctrl+Shift+C 之后选中的块背景要立刻消失，
+    // 否则用户会怀疑组合键没生效。顺序上必须先把文案落到剪贴板再清选区。
+    let clipboard = include_str!("../clipboard.rs");
+    let copy = function_region(
+        clipboard,
+        "pub(super) fn copy(",
+        "pub(super) fn block_selection_text",
+    );
+    let clipboard_write = copy
+        .find("cx.write_to_clipboard")
+        .expect("copy must still write to the clipboard");
+    let clear = copy
+        .find("self.clear_selection_after_copy(cx)")
+        .expect("copy must drop the selection highlight afterwards");
+    assert!(
+        clipboard_write < clear,
+        "必须先复制再清选区，避免清空后取不到文案"
+    );
+
+    let clear_helper = function_region(
+        clipboard,
+        "fn clear_selection_after_copy",
+        "pub(super) fn block_selection_text",
+    );
+    assert!(
+        clear_helper.contains("self.block_selection.take()"),
+        "块选区也要一并清掉"
+    );
+    assert!(
+        clear_helper.contains("PendingTerminalAction::ClearSelectionAfterCopy"),
+        "清选区必须走非阻塞动作队列，终端忙时不能静默丢动作"
+    );
+
+    let vi_input = include_str!("../vi_input.rs");
+    let terminal_action = function_region(
+        vi_input,
+        "fn try_apply_terminal_action",
+        "fn finish_terminal_action",
+    );
+    let copy_clear = function_region(
+        terminal_action,
+        "PendingTerminalAction::ClearSelectionAfterCopy =>",
+        "PendingTerminalAction::SelectAll =>",
+    );
+    assert!(copy_clear.contains("term.selection.take()"));
+    assert!(
+        !copy_clear.contains("toggle_vi_mode"),
+        "复制只清选区，不能顺带切换 VI 模式（那是 Escape/ClearSelection 的语义）"
+    );
+}
+
+#[test]
+fn sidebar_panel_placements_persist_through_settings() {
+    let settings = include_str!("../../../../core/src/settings.rs");
+    assert!(
+        settings.contains("pub terminal_tool_panel_placements: BTreeMap<String, SidebarPlacement>"),
+        "「移动到」之后的停靠位置必须落在 AppSettings 里才谈得上持久化"
+    );
+
+    let sidebar = include_str!("../../sidebar/mod.rs");
+    assert!(
+        sidebar
+            .contains("pub fn tool_panel_placements(&self) -> BTreeMap<String, SidebarPlacement>"),
+        "侧栏要能把各面板的停靠位置快照成设置里的键值"
+    );
+    assert!(
+        sidebar.contains("sidebar.restore_tool_panel_placements(cx);"),
+        "侧栏构造时要按上次保存的位置复位"
+    );
+    assert!(
+        sidebar.contains("self.restore_tool_panel_placements(cx);"),
+        "补建 SSH 面板后也要再套一次保存过的位置"
+    );
+
+    let events = include_str!("../sidebar_events.rs");
+    let handler = function_region(
+        events,
+        "pub(super) fn handle_sidebar_event",
+        "pub(super) fn invalidate_terminal_searches",
+    );
+    let panel_changed = handler
+        .find("TerminalSidebarEvent::PanelChanged")
+        .expect("侧栏面板变化要通知终端视图");
+    assert!(
+        handler[panel_changed..].contains("self.persist_tool_panel_placements(cx)"),
+        "面板移动 / 展开 / 收起后要把停靠位置写回设置"
+    );
+
+    let settings_changed = function_region(
+        events,
+        "pub(super) fn handle_app_settings_changed",
+        "pub(super) fn handle_app_theme_changed",
+    );
+    assert!(
+        settings_changed.contains("restore_tool_panel_placements(cx)"),
+        "别的终端标签改了停靠位置后，本标签要跟着设置复位"
+    );
+}

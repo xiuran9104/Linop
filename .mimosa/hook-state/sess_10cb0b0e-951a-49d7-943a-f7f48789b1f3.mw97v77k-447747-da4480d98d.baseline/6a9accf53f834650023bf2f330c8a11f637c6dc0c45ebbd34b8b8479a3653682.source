@@ -1,0 +1,2056 @@
+//! Terminal Addon Plugin System
+//!
+//! Similar to xterm.js addon architecture, provides extensible plugin mechanism.
+
+use crate::settings::TerminalHighlightRule;
+use alacritty_terminal::grid::Dimensions;
+use alacritty_terminal::index::{Column, Direction, Line, Point as AlacPoint};
+use alacritty_terminal::term::Term;
+use alacritty_terminal::term::search::{RegexIter, RegexSearch};
+use gpui::*;
+use gpui_component::try_parse_color;
+use std::any::Any;
+use std::collections::{HashMap, HashSet};
+use std::ops::{Range, RangeInclusive};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex as StdMutex, mpsc};
+use std::time::{Duration, Instant};
+use url::Url;
+
+use terminal::pty_backend::GpuiEventProxy;
+
+const CWD_ENTRY_CACHE_TTL: Duration = Duration::from_secs(2);
+const CWD_ENTRY_CACHE_LIMIT: usize = 2_000;
+
+// ============================================================================
+// Decoration System
+// ============================================================================
+
+/// Cell decoration type - defines how to decorate terminal cells
+#[derive(Clone, Debug, PartialEq)]
+pub enum CellDecoration {
+    /// Background color decoration
+    Background {
+        color: Hsla,
+        priority: u8, // 0-255, higher number = higher priority
+    },
+
+    /// Foreground color decoration
+    Foreground { color: Hsla, priority: u8 },
+
+    /// Underline decoration
+    Underline {
+        color: Hsla,
+        thickness: Pixels,
+        priority: u8,
+    },
+
+    /// Combined decoration (foreground + background)
+    Highlight {
+        foreground: Hsla,
+        background: Hsla,
+        priority: u8,
+    },
+}
+
+impl CellDecoration {
+    pub fn priority(&self) -> u8 {
+        match self {
+            Self::Background { priority, .. } => *priority,
+            Self::Foreground { priority, .. } => *priority,
+            Self::Underline { priority, .. } => *priority,
+            Self::Highlight { priority, .. } => *priority,
+        }
+    }
+}
+
+/// Decoration span - defines where a decoration applies
+#[derive(Clone, Debug, PartialEq)]
+pub struct DecorationSpan {
+    pub line: usize,             // Screen line number
+    pub col_range: Range<usize>, // Column range
+    pub decoration: CellDecoration,
+}
+
+#[derive(Clone, Debug)]
+pub struct TerminalAddonTooltip {
+    pub action_hint: &'static str,
+    pub action_text: &'static str,
+    pub display_text: String,
+    pub display_color: Hsla,
+}
+
+pub struct TerminalAddonMouseContext<'a> {
+    pub screen_line: usize,
+    pub column: usize,
+    pub line_text: &'a str,
+    pub modifiers: Modifiers,
+    pub position: Point<Pixels>,
+    pub is_local: bool,
+    pub base_dir: Option<&'a Path>,
+    open_url: &'a mut dyn FnMut(&str),
+}
+
+impl<'a> TerminalAddonMouseContext<'a> {
+    pub fn new(
+        screen_line: usize,
+        column: usize,
+        line_text: &'a str,
+        modifiers: Modifiers,
+        position: Point<Pixels>,
+        is_local: bool,
+        base_dir: Option<&'a Path>,
+        open_url: &'a mut dyn FnMut(&str),
+    ) -> Self {
+        Self {
+            screen_line,
+            column,
+            line_text,
+            modifiers,
+            position,
+            is_local,
+            base_dir,
+            open_url,
+        }
+    }
+
+    pub fn open_url(&mut self, url: &str) {
+        (self.open_url)(url);
+    }
+}
+
+#[derive(Default, Clone, Copy, Debug)]
+pub struct HoverUpdate {
+    pub changed: bool,
+    pub hovered: bool,
+    pub exclusive: bool,
+}
+
+/// 终端 damage 提示：告诉 addon 本帧哪些屏幕行发生了变化。
+///
+/// 行号是视口（屏幕）行索引，与 `RenderCache` 增量重建使用的坐标一致；
+/// 滚动、resize 等整屏变化统一上报 [`TerminalDamageHint::Full`]。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TerminalDamageHint {
+    /// 全部可见行都可能已变化。
+    Full,
+    /// 只有这些屏幕行发生了变化。
+    Partial(Vec<usize>),
+}
+
+pub struct TerminalAddonFrameContext<'a> {
+    pub term: &'a Term<GpuiEventProxy>,
+    pub visible_lines: Range<usize>,
+    pub display_offset: usize,
+    pub is_local: bool,
+    pub base_dir: Option<&'a Path>,
+    /// 本帧 damage 快照；由渲染层在分发前统一采集（不消费、不复位 damage）。
+    pub damage: TerminalDamageHint,
+}
+
+// ============================================================================
+// Core Traits
+// ============================================================================
+
+/// Terminal addon trait - similar to xterm.js ITerminalAddon
+pub trait TerminalAddon: Send + Sync {
+    /// Unique identifier for this addon
+    fn id(&self) -> &'static str;
+
+    /// Called when the addon is loaded into the terminal
+    fn activate(&mut self) {}
+
+    /// Called when the addon is being unloaded
+    fn dispose(&mut self) {}
+
+    /// Handle keyboard input before terminal processes it
+    /// Return true to consume the event (prevent terminal from handling it)
+    fn on_key(&mut self, _event: &KeyDownEvent) -> bool {
+        false
+    }
+
+    /// Handle terminal resize
+    fn on_resize(&mut self, _cols: usize, _rows: usize) {}
+
+    /// Handle scroll events
+    fn on_scroll(&mut self, _delta: i32) {}
+
+    /// Handle mouse move events (return whether hover state changed)
+    fn on_mouse_move(&mut self, _context: &mut TerminalAddonMouseContext) -> HoverUpdate {
+        HoverUpdate::default()
+    }
+
+    /// Handle mouse down events (return true to consume)
+    fn on_mouse_down(&mut self, _context: &mut TerminalAddonMouseContext) -> bool {
+        false
+    }
+
+    /// Handle mouse up events (return true to consume)
+    fn on_mouse_up(&mut self, _context: &mut TerminalAddonMouseContext) -> bool {
+        false
+    }
+
+    /// Prepare addon state before rendering
+    fn on_frame(&mut self, _context: &TerminalAddonFrameContext) {}
+
+    /// Clear hover state (return true if state changed)
+    fn clear_hover(&mut self) -> bool {
+        false
+    }
+
+    /// Tooltip info for current hover
+    fn tooltip(&self) -> Option<TerminalAddonTooltip> {
+        None
+    }
+
+    /// Provide decorations for visible terminal cells
+    ///
+    /// # Parameters
+    /// - `visible_lines`: Range of visible screen lines
+    /// - `display_offset`: Current display offset
+    ///
+    /// # Returns
+    /// Vector of decoration spans that this addon wants to apply
+    fn provide_decorations(
+        &self,
+        _visible_lines: Range<usize>,
+        _display_offset: usize,
+    ) -> Vec<DecorationSpan> {
+        Vec::new() // Default: no decorations
+    }
+
+    /// Downcast to concrete type
+    fn as_any(&self) -> &dyn Any;
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+}
+
+// ============================================================================
+// Addon Manager
+// ============================================================================
+
+/// Manages loaded addons for a terminal instance
+pub struct AddonManager {
+    addons: HashMap<&'static str, Box<dyn TerminalAddon>>,
+    load_order: Vec<&'static str>,
+}
+
+impl Default for AddonManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl AddonManager {
+    pub fn new() -> Self {
+        Self {
+            addons: HashMap::new(),
+            load_order: Vec::new(),
+        }
+    }
+
+    /// Load an addon
+    pub fn load(&mut self, mut addon: Box<dyn TerminalAddon>) {
+        let id = addon.id();
+        if self.addons.contains_key(id) {
+            return;
+        }
+
+        addon.activate();
+        self.load_order.push(id);
+        self.addons.insert(id, addon);
+    }
+
+    /// Unload an addon by id
+    pub fn unload(&mut self, id: &str) -> Option<Box<dyn TerminalAddon>> {
+        if let Some(mut addon) = self.addons.remove(id) {
+            addon.dispose();
+            self.load_order.retain(|&x| x != id);
+            Some(addon)
+        } else {
+            None
+        }
+    }
+
+    /// Get addon by id
+    pub fn get(&self, id: &str) -> Option<&dyn TerminalAddon> {
+        self.addons.get(id).map(|a| &**a)
+    }
+
+    /// Get addon as concrete type
+    pub fn get_as<T: 'static>(&self, id: &str) -> Option<&T> {
+        self.addons
+            .get(id)
+            .and_then(|a| a.as_any().downcast_ref::<T>())
+    }
+
+    /// Get addon as concrete type (mutable)
+    pub fn get_as_mut<T: 'static>(&mut self, id: &str) -> Option<&mut T> {
+        self.addons
+            .get_mut(id)
+            .and_then(|a| a.as_any_mut().downcast_mut::<T>())
+    }
+
+    /// Check if addon is loaded
+    pub fn is_loaded(&self, id: &str) -> bool {
+        self.addons.contains_key(id)
+    }
+
+    /// Iterate over all loaded addons
+    pub fn iter_addons(&self) -> impl Iterator<Item = &dyn TerminalAddon> {
+        self.load_order.iter().filter_map(|id| {
+            self.addons
+                .get(id)
+                .map(|addon| &**addon as &dyn TerminalAddon)
+        })
+    }
+
+    /// Dispatch key event to all addons
+    /// Returns true if any addon consumed the event
+    pub fn dispatch_key(&mut self, event: &KeyDownEvent) -> bool {
+        for id in &self.load_order {
+            if let Some(addon) = self.addons.get_mut(id) {
+                if addon.on_key(event) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Dispatch resize event to all addons
+    pub fn dispatch_resize(&mut self, cols: usize, rows: usize) {
+        for id in &self.load_order {
+            if let Some(addon) = self.addons.get_mut(id) {
+                addon.on_resize(cols, rows);
+            }
+        }
+    }
+
+    /// Dispatch scroll event to all addons
+    pub fn dispatch_scroll(&mut self, delta: i32) {
+        for id in &self.load_order {
+            if let Some(addon) = self.addons.get_mut(id) {
+                addon.on_scroll(delta);
+            }
+        }
+    }
+
+    /// Dispatch mouse move event to all addons
+    pub fn dispatch_mouse_move(&mut self, context: &mut TerminalAddonMouseContext) -> bool {
+        let mut changed = false;
+        let mut exclusive_id: Option<&'static str> = None;
+
+        for id in &self.load_order {
+            if let Some(addon) = self.addons.get_mut(id) {
+                let update = addon.on_mouse_move(context);
+                changed |= update.changed;
+                if update.hovered && update.exclusive && exclusive_id.is_none() {
+                    exclusive_id = Some(*id);
+                }
+            }
+        }
+
+        if let Some(exclusive_id) = exclusive_id {
+            for id in &self.load_order {
+                if *id == exclusive_id {
+                    continue;
+                }
+                if let Some(addon) = self.addons.get_mut(id) {
+                    changed |= addon.clear_hover();
+                }
+            }
+        }
+
+        changed
+    }
+
+    /// Dispatch mouse down event to all addons
+    pub fn dispatch_mouse_down(&mut self, context: &mut TerminalAddonMouseContext) -> bool {
+        for id in &self.load_order {
+            if let Some(addon) = self.addons.get_mut(id) {
+                if addon.on_mouse_down(context) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Dispatch mouse up event to all addons
+    pub fn dispatch_mouse_up(&mut self, context: &mut TerminalAddonMouseContext) -> bool {
+        for id in &self.load_order {
+            if let Some(addon) = self.addons.get_mut(id) {
+                if addon.on_mouse_up(context) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Prepare addons before rendering
+    pub fn dispatch_frame(&mut self, context: &TerminalAddonFrameContext) {
+        for id in &self.load_order {
+            if let Some(addon) = self.addons.get_mut(id) {
+                addon.on_frame(context);
+            }
+        }
+    }
+
+    /// Get tooltip from addons
+    pub fn tooltip(&self) -> Option<TerminalAddonTooltip> {
+        for id in &self.load_order {
+            if let Some(addon) = self.addons.get(id) {
+                if let Some(tooltip) = addon.tooltip() {
+                    return Some(tooltip);
+                }
+            }
+        }
+        None
+    }
+}
+
+impl Drop for AddonManager {
+    fn drop(&mut self) {
+        for id in self.load_order.drain(..).collect::<Vec<_>>() {
+            if let Some(mut addon) = self.addons.remove(id) {
+                addon.dispose();
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CompiledHighlightRule {
+    regex: regex::Regex,
+    foreground: Option<Hsla>,
+    background: Option<Hsla>,
+    priority: u8,
+}
+
+fn compile_custom_highlight_rules(rules: &[TerminalHighlightRule]) -> Vec<CompiledHighlightRule> {
+    rules
+        .iter()
+        .filter(|rule| rule.enabled)
+        .filter(|rule| rule.validate().is_ok())
+        .filter_map(|rule| {
+            let regex = regex::Regex::new(&rule.pattern).ok()?;
+            let foreground = rule
+                .foreground
+                .as_deref()
+                .and_then(|value| try_parse_color(value).ok());
+            let background = rule
+                .background
+                .as_deref()
+                .and_then(|value| try_parse_color(value).ok());
+
+            if foreground.is_none() && background.is_none() {
+                return None;
+            }
+
+            Some(CompiledHighlightRule {
+                regex,
+                foreground,
+                background,
+                priority: rule.priority,
+            })
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug)]
+struct CustomHighlightMatch {
+    line: usize,
+    col_range: Range<usize>,
+    decoration: CellDecoration,
+}
+
+// ============================================================================
+// Built-in Addons
+// ============================================================================
+
+/// WebLinks Addon - Detect and handle URLs
+pub struct WebLinksAddon {
+    url_regex: regex::Regex,
+    hovered_link: Option<HoveredLink>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HoveredLink {
+    pub url: String,
+    pub line: usize,
+    pub col_range: Range<usize>,
+}
+
+impl WebLinksAddon {
+    pub fn new() -> Self {
+        Self {
+            url_regex: regex::Regex::new(
+                r"(?i)(https?://|file://|mailto:|git://|ssh://)[^\s<>\[\]{}|\\^`\x00-\x1f\x7f]+",
+            )
+            .expect("Invalid URL regex"),
+            hovered_link: None,
+        }
+    }
+
+    /// Get currently hovered link
+    pub fn hovered_link(&self) -> Option<&HoveredLink> {
+        self.hovered_link.as_ref()
+    }
+
+    /// Clear hovered link
+    pub fn clear_hovered(&mut self) {
+        self.hovered_link = None;
+    }
+
+    /// Detect URL at position in line text
+    pub fn detect_url_at(&mut self, line_text: &str, col: usize, screen_line: usize) -> bool {
+        self.hovered_link = None;
+
+        if line_text.is_empty() {
+            return false;
+        }
+
+        for mat in self.url_regex.find_iter(line_text) {
+            let start_col = line_text[..mat.start()].chars().count();
+            let end_col = line_text[..mat.end()].chars().count();
+
+            if col >= start_col && col < end_col {
+                self.hovered_link = Some(HoveredLink {
+                    url: mat.as_str().to_string(),
+                    line: screen_line,
+                    col_range: start_col..end_col,
+                });
+                return true;
+            }
+        }
+        false
+    }
+}
+
+impl Default for WebLinksAddon {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TerminalAddon for WebLinksAddon {
+    fn id(&self) -> &'static str {
+        "weblinks"
+    }
+
+    fn on_mouse_move(&mut self, context: &mut TerminalAddonMouseContext) -> HoverUpdate {
+        let previous = self.hovered_link.clone();
+        let matched = self.detect_url_at(context.line_text, context.column, context.screen_line);
+        let changed = previous != self.hovered_link;
+
+        HoverUpdate {
+            changed,
+            hovered: matched,
+            exclusive: matched,
+        }
+    }
+
+    fn on_mouse_down(&mut self, context: &mut TerminalAddonMouseContext) -> bool {
+        if !context.modifiers.platform {
+            return false;
+        }
+
+        let matched = self.detect_url_at(context.line_text, context.column, context.screen_line);
+        if !matched {
+            return false;
+        }
+
+        if let Some(link) = self.hovered_link.as_ref() {
+            context.open_url(&link.url);
+            return true;
+        }
+
+        false
+    }
+
+    fn clear_hover(&mut self) -> bool {
+        if self.hovered_link.is_some() {
+            self.hovered_link = None;
+            return true;
+        }
+        false
+    }
+
+    fn tooltip(&self) -> Option<TerminalAddonTooltip> {
+        self.hovered_link.as_ref().map(|link| TerminalAddonTooltip {
+            action_hint: "⌘ + Click",
+            action_text: "to open the link",
+            display_text: link.url.clone(),
+            display_color: rgb(0x66ccff).into(),
+        })
+    }
+
+    fn provide_decorations(
+        &self,
+        _visible_lines: Range<usize>,
+        _display_offset: usize,
+    ) -> Vec<DecorationSpan> {
+        if let Some(ref link) = self.hovered_link {
+            vec![DecorationSpan {
+                line: link.line,
+                col_range: link.col_range.clone(),
+                decoration: CellDecoration::Foreground {
+                    color: hsla(0.55, 0.8, 0.6, 1.0), // Cyan color for links
+                    priority: 50,                     // Medium priority
+                },
+            }]
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// Search Addon - Text search functionality
+pub struct SearchAddon {
+    regex: Option<RegexSearch>,
+    current_match: Option<RangeInclusive<AlacPoint>>,
+    visible_decorations: Vec<DecorationSpan>,
+    pattern: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum TerminalSearchDirection {
+    Forward,
+    Backward,
+}
+
+pub(crate) struct TerminalSearchRequest {
+    pub(crate) regex: RegexSearch,
+    pub(crate) current_match: Option<RangeInclusive<AlacPoint>>,
+    pub(crate) pattern: String,
+}
+
+pub(crate) fn find_terminal_search_match(
+    term: &mut Term<GpuiEventProxy>,
+    regex: &mut RegexSearch,
+    current_match: Option<&RangeInclusive<AlacPoint>>,
+    direction: TerminalSearchDirection,
+) -> Option<RangeInclusive<AlacPoint>> {
+    use alacritty_terminal::index::Side;
+
+    match direction {
+        TerminalSearchDirection::Forward => {
+            let origin = current_match
+                .map(|current| *current.end())
+                .unwrap_or(term.grid().cursor.point);
+            term.search_next(regex, origin, Direction::Right, Side::Left, None)
+                .or_else(|| {
+                    let top = AlacPoint::new(term.topmost_line(), Column(0));
+                    term.search_next(regex, top, Direction::Right, Side::Left, None)
+                })
+        }
+        TerminalSearchDirection::Backward => {
+            let origin = current_match
+                .map(|current| *current.start())
+                .unwrap_or(term.grid().cursor.point);
+            term.search_next(regex, origin, Direction::Left, Side::Right, None)
+                .or_else(|| {
+                    let bottom = AlacPoint::new(term.bottommost_line(), Column(term.columns() - 1));
+                    term.search_next(regex, bottom, Direction::Left, Side::Right, None)
+                })
+        }
+    }
+}
+
+impl SearchAddon {
+    pub fn new() -> Self {
+        Self {
+            regex: None,
+            current_match: None,
+            visible_decorations: Vec::new(),
+            pattern: String::new(),
+        }
+    }
+
+    /// Set search pattern
+    pub fn set_pattern(&mut self, pattern: &str) -> Result<(), regex::Error> {
+        if pattern.is_empty() {
+            self.regex = None;
+            self.current_match = None;
+            self.visible_decorations.clear();
+            self.pattern.clear();
+            return Ok(());
+        }
+
+        let regex = RegexSearch::new(pattern).map_err(|e| regex::Error::Syntax(e.to_string()))?;
+        self.regex = Some(regex);
+        self.current_match = None;
+        self.visible_decorations.clear();
+        self.pattern = pattern.to_string();
+        Ok(())
+    }
+
+    /// Get current pattern
+    pub fn pattern(&self) -> &str {
+        &self.pattern
+    }
+
+    /// Get current match
+    pub fn current_match(&self) -> Option<&RangeInclusive<AlacPoint>> {
+        self.current_match.as_ref()
+    }
+
+    pub(crate) fn search_request(&self) -> Option<TerminalSearchRequest> {
+        Some(TerminalSearchRequest {
+            regex: self.regex.clone()?,
+            current_match: self.current_match.clone(),
+            pattern: self.pattern.clone(),
+        })
+    }
+
+    pub(crate) fn apply_search_result(
+        &mut self,
+        pattern: &str,
+        previous_match: &Option<RangeInclusive<AlacPoint>>,
+        result: Option<RangeInclusive<AlacPoint>>,
+    ) -> bool {
+        if self.pattern != pattern || &self.current_match != previous_match {
+            return false;
+        }
+        let Some(result) = result else {
+            return false;
+        };
+        self.current_match = Some(result);
+        true
+    }
+
+    /// Clear search
+    pub fn clear(&mut self) {
+        self.regex = None;
+        self.current_match = None;
+        self.visible_decorations.clear();
+        self.pattern.clear();
+    }
+
+    /// Find last match in terminal (search from bottom to top)
+    pub fn find_last(
+        &mut self,
+        term: &mut Term<GpuiEventProxy>,
+    ) -> Option<RangeInclusive<AlacPoint>> {
+        use alacritty_terminal::index::{Column, Direction, Side};
+
+        let regex = self.regex.as_mut()?;
+        let bottom = AlacPoint::new(term.bottommost_line(), Column(term.columns() - 1));
+
+        if let Some(match_) = term.search_next(regex, bottom, Direction::Left, Side::Right, None) {
+            term.scroll_to_point(*match_.start());
+            self.current_match = Some(match_.clone());
+            Some(match_)
+        } else {
+            None
+        }
+    }
+
+    /// Find next match in terminal (with wrap around)
+    pub fn find_next(
+        &mut self,
+        term: &mut Term<GpuiEventProxy>,
+    ) -> Option<RangeInclusive<AlacPoint>> {
+        let regex = self.regex.as_mut()?;
+        let match_ = find_terminal_search_match(
+            term,
+            regex,
+            self.current_match.as_ref(),
+            TerminalSearchDirection::Forward,
+        );
+
+        if let Some(match_) = &match_ {
+            term.scroll_to_point(*match_.start());
+            self.current_match = Some(match_.clone());
+        }
+        match_
+    }
+
+    /// Find previous match in terminal (with wrap around)
+    pub fn find_previous(
+        &mut self,
+        term: &mut Term<GpuiEventProxy>,
+    ) -> Option<RangeInclusive<AlacPoint>> {
+        let regex = self.regex.as_mut()?;
+        let match_ = find_terminal_search_match(
+            term,
+            regex,
+            self.current_match.as_ref(),
+            TerminalSearchDirection::Backward,
+        );
+
+        if let Some(match_) = &match_ {
+            term.scroll_to_point(*match_.start());
+            self.current_match = Some(match_.clone());
+        }
+        match_
+    }
+
+    /// Check if search is active
+    pub fn is_active(&self) -> bool {
+        self.regex.is_some()
+    }
+}
+
+impl Default for SearchAddon {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TerminalAddon for SearchAddon {
+    fn id(&self) -> &'static str {
+        "search"
+    }
+
+    fn on_frame(&mut self, context: &TerminalAddonFrameContext) {
+        self.visible_decorations.clear();
+
+        if context.visible_lines.is_empty() || context.term.columns() == 0 {
+            return;
+        }
+
+        let current_match = self.current_match.clone();
+        let Some(regex) = self.regex.as_mut() else {
+            return;
+        };
+
+        let start = AlacPoint::new(
+            Line(context.visible_lines.start as i32 - context.display_offset as i32),
+            Column(0),
+        );
+        let end = AlacPoint::new(
+            Line(context.visible_lines.end as i32 - 1 - context.display_offset as i32),
+            Column(context.term.columns() - 1),
+        );
+
+        for match_range in RegexIter::new(start, end, Direction::Right, context.term, regex) {
+            let is_current = current_match.as_ref() == Some(&match_range);
+            self.visible_decorations.extend(search_match_decorations(
+                &match_range,
+                context.visible_lines.clone(),
+                context.display_offset,
+                context.term.columns(),
+                is_current,
+            ));
+        }
+    }
+
+    fn provide_decorations(
+        &self,
+        _visible_lines: Range<usize>,
+        _display_offset: usize,
+    ) -> Vec<DecorationSpan> {
+        self.visible_decorations.clone()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+fn search_match_decorations(
+    match_range: &RangeInclusive<AlacPoint>,
+    visible_lines: Range<usize>,
+    display_offset: usize,
+    columns: usize,
+    is_current: bool,
+) -> Vec<DecorationSpan> {
+    let start = match_range.start();
+    let end = match_range.end();
+    let start_screen_line = start.line.0 + display_offset as i32;
+    let end_screen_line = end.line.0 + display_offset as i32;
+    let foreground = hsla(0.0, 0.0, 0.0, 1.0);
+    let (background, priority) = if is_current {
+        (hsla(0.15, 0.8, 0.5, 1.0), 100)
+    } else {
+        (hsla(0.15, 0.65, 0.38, 1.0), 90)
+    };
+    let mut decorations = Vec::new();
+
+    for screen_line in start_screen_line..=end_screen_line {
+        if screen_line < 0 {
+            continue;
+        }
+        let screen_line = screen_line as usize;
+        if !visible_lines.contains(&screen_line) {
+            continue;
+        }
+
+        let start_column = if screen_line as i32 == start_screen_line {
+            start.column.0
+        } else {
+            0
+        };
+        let end_column = if screen_line as i32 == end_screen_line {
+            end.column.0 + 1
+        } else {
+            columns
+        };
+        if start_column >= end_column {
+            continue;
+        }
+
+        decorations.push(DecorationSpan {
+            line: screen_line,
+            col_range: start_column..end_column,
+            decoration: CellDecoration::Highlight {
+                foreground,
+                background,
+                priority,
+            },
+        });
+    }
+
+    decorations
+}
+
+pub struct CustomHighlightAddon {
+    compiled_rules: Vec<CompiledHighlightRule>,
+    cached_matches: Vec<CustomHighlightMatch>,
+    /// 上一帧的视口几何 (display_offset, columns, screen_lines)；
+    /// 几何变化时行内容整体移位，必须全量重扫。
+    last_geometry: Option<(usize, usize, usize)>,
+    /// 诊断/测试用：累计重扫的屏幕行数。
+    scanned_lines: u64,
+}
+
+impl CustomHighlightAddon {
+    pub fn new() -> Self {
+        Self {
+            compiled_rules: Vec::new(),
+            cached_matches: Vec::new(),
+            last_geometry: None,
+            scanned_lines: 0,
+        }
+    }
+
+    pub fn set_rules(&mut self, rules: &[TerminalHighlightRule]) {
+        self.compiled_rules = compile_custom_highlight_rules(rules);
+        self.cached_matches.clear();
+        // 规则变化后所有行的缓存匹配都不可信，下一帧强制全量重扫。
+        self.last_geometry = None;
+    }
+
+    fn detect_matches_in_line(&self, line_text: &str, line: usize) -> Vec<CustomHighlightMatch> {
+        if line_text.is_empty() {
+            return Vec::new();
+        }
+
+        let mut matches = Vec::new();
+        for rule in &self.compiled_rules {
+            for mat in rule.regex.find_iter(line_text) {
+                let start_col = line_text[..mat.start()].chars().count();
+                let end_col = line_text[..mat.end()].chars().count();
+                if start_col >= end_col {
+                    continue;
+                }
+
+                let decoration = match (rule.foreground, rule.background) {
+                    (Some(foreground), Some(background)) => CellDecoration::Highlight {
+                        foreground,
+                        background,
+                        priority: rule.priority,
+                    },
+                    (Some(color), None) => CellDecoration::Foreground {
+                        color,
+                        priority: rule.priority,
+                    },
+                    (None, Some(color)) => CellDecoration::Background {
+                        color,
+                        priority: rule.priority,
+                    },
+                    (None, None) => continue,
+                };
+
+                matches.push(CustomHighlightMatch {
+                    line,
+                    col_range: start_col..end_col,
+                    decoration,
+                });
+            }
+        }
+
+        matches
+    }
+}
+
+impl Default for CustomHighlightAddon {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TerminalAddon for CustomHighlightAddon {
+    fn id(&self) -> &'static str {
+        "custom_highlights"
+    }
+
+    /// 增量扫描：只重扫本帧 damage 覆盖的屏幕行，其余行沿用缓存匹配。
+    ///
+    /// 之前的实现每帧清空并重扫全部可见行（逐 cell 拼串 + 全部规则正则），
+    /// 在内置高亮规则常驻命中的情况下，每次重绘都是一次全网格扫描。
+    fn on_frame(&mut self, context: &TerminalAddonFrameContext) {
+        if self.compiled_rules.is_empty() {
+            self.cached_matches.clear();
+            self.last_geometry = None;
+            return;
+        }
+
+        let term = context.term;
+        let display_offset = context.display_offset;
+        let columns = term.columns();
+        let screen_lines = term.screen_lines();
+        let geometry = (display_offset, columns, screen_lines);
+        let geometry_changed = self.last_geometry != Some(geometry);
+        self.last_geometry = Some(geometry);
+
+        let scan_lines: Vec<usize> = match (&context.damage, geometry_changed) {
+            (TerminalDamageHint::Full, _) | (_, true) => (0..screen_lines).collect(),
+            (TerminalDamageHint::Partial(damaged), false) => {
+                let mut dirty: Vec<usize> = damaged
+                    .iter()
+                    .copied()
+                    .filter(|line| context.visible_lines.contains(line))
+                    .collect();
+                dirty.sort_unstable();
+                dirty.dedup();
+                dirty
+            }
+        };
+
+        // 几何收缩时清理越界行的旧匹配。
+        self.cached_matches
+            .retain(|matched| matched.line < screen_lines);
+
+        if scan_lines.is_empty() {
+            return;
+        }
+
+        let scan_set: HashSet<usize> = scan_lines.iter().copied().collect();
+        self.cached_matches
+            .retain(|matched| !scan_set.contains(&matched.line));
+        self.scanned_lines += scan_lines.len() as u64;
+
+        let mut new_matches = Vec::new();
+        for line_idx in scan_lines {
+            let grid_line = Line(line_idx as i32 - display_offset as i32);
+            let grid = term.grid();
+            let mut line_text = String::new();
+            for col in 0..columns {
+                let cell = &grid[grid_line][Column(col)];
+                if cell.c != '\0' {
+                    line_text.push(cell.c);
+                }
+            }
+            new_matches.extend(self.detect_matches_in_line(&line_text, line_idx));
+        }
+        self.cached_matches.extend(new_matches);
+    }
+
+    fn provide_decorations(
+        &self,
+        visible_lines: Range<usize>,
+        _display_offset: usize,
+    ) -> Vec<DecorationSpan> {
+        self.cached_matches
+            .iter()
+            .filter(|matched| visible_lines.contains(&matched.line))
+            .map(|matched| DecorationSpan {
+                line: matched.line,
+                col_range: matched.col_range.clone(),
+                decoration: matched.decoration.clone(),
+            })
+            .collect()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// File Path Addon - Detect and handle local file paths
+pub struct FilePathAddon {
+    path_regex: Option<regex::Regex>,
+    hovered_path: Option<HoveredPath>,
+    cwd_entry_cache: CwdEntryCache,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct HoveredPath {
+    pub display: String,
+    pub path: PathBuf,
+    pub line: usize,
+    pub col_range: Range<usize>,
+}
+
+/// 在途的目录扫描任务：后台线程读目录项，结果经 channel 回收。
+#[derive(Clone, Debug)]
+struct PendingDirEntries {
+    base_dir: PathBuf,
+    receiver: Arc<StdMutex<mpsc::Receiver<HashSet<String>>>>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct CwdEntryCache {
+    base_dir: Option<PathBuf>,
+    entries: HashSet<String>,
+    loaded_at: Option<Instant>,
+    /// 正在后台扫描的目录；期间 `contains` 沿用旧缓存，不阻塞调用方。
+    pending: Option<PendingDirEntries>,
+}
+
+impl CwdEntryCache {
+    fn contains(&mut self, base_dir: &Path, name: &str) -> bool {
+        if self.should_refresh(base_dir) {
+            self.refresh(base_dir);
+        }
+        self.poll_pending();
+        self.entries.contains(name)
+    }
+
+    fn should_refresh(&self, base_dir: &Path) -> bool {
+        if self.base_dir.as_deref() != Some(base_dir) {
+            return true;
+        }
+        self.loaded_at
+            .is_none_or(|loaded_at| loaded_at.elapsed() > CWD_ENTRY_CACHE_TTL)
+    }
+
+    /// 刷新缓存：首次填充同步读取（悬停首发即命中），TTL 过期刷新走后台线程。
+    ///
+    /// 后台化只解决 UI 线程卡顿：目录切换后首次悬停同样同步读取，代价一次
+    /// `read_dir`（上限 [`CWD_ENTRY_CACHE_LIMIT`]），只在 TTL 到期后的刷新路径上
+    /// 才让出 UI 线程、旧缓存先垫着。
+    fn refresh(&mut self, base_dir: &Path) {
+        if self.base_dir.is_none() {
+            self.load_sync(base_dir);
+            return;
+        }
+
+        if self
+            .pending
+            .as_ref()
+            .is_some_and(|pending| pending.base_dir == base_dir)
+        {
+            // 同一目录已在途，等 poll_pending 回收结果即可。
+            return;
+        }
+
+        let (tx, rx) = mpsc::channel();
+        let scan_dir = base_dir.to_path_buf();
+        let spawn_result = std::thread::Builder::new()
+            .name("cwd-entry-scan".into())
+            .spawn(move || tx.send(read_dir_names(&scan_dir)));
+
+        match spawn_result {
+            Ok(_) => {
+                self.base_dir = Some(base_dir.to_path_buf());
+                self.pending = Some(PendingDirEntries {
+                    base_dir: base_dir.to_path_buf(),
+                    receiver: Arc::new(StdMutex::new(rx)),
+                });
+            }
+            Err(error) => {
+                // 线程创建失败时退化为同步读取，保证功能不缺席。
+                tracing::warn!("cwd 目录扫描线程创建失败，退化为同步读取: {error}");
+                self.load_sync(base_dir);
+            }
+        }
+    }
+
+    /// 同步读取目录项并立即填充缓存。
+    fn load_sync(&mut self, base_dir: &Path) {
+        self.base_dir = Some(base_dir.to_path_buf());
+        self.entries = read_dir_names(base_dir);
+        self.loaded_at = Some(Instant::now());
+    }
+
+    /// 回收已完成的在途扫描结果；目录已切换时丢弃过期结果。
+    fn poll_pending(&mut self) {
+        let Some(pending) = &self.pending else {
+            return;
+        };
+        let received = pending.receiver.lock().ok().and_then(|receiver| {
+            match receiver.try_recv() {
+                Ok(entries) => Some(entries),
+                // 扫描线程异常退出：按空目录处理，避免 pending 永久卡住。
+                Err(mpsc::TryRecvError::Disconnected) => Some(HashSet::new()),
+                Err(mpsc::TryRecvError::Empty) => None,
+            }
+        });
+        let Some(entries) = received else {
+            return;
+        };
+        if self.base_dir.as_deref() == Some(pending.base_dir.as_path()) {
+            self.entries = entries;
+            self.loaded_at = Some(Instant::now());
+        }
+        self.pending = None;
+    }
+
+    /// 阻塞等待在途扫描完成；仅供测试使用。
+    #[cfg(test)]
+    fn wait_for_pending_for_tests(&mut self) {
+        let Some(pending) = &self.pending else {
+            return;
+        };
+        let received = pending
+            .receiver
+            .lock()
+            .ok()
+            .and_then(|receiver| receiver.recv().ok());
+        if let Some(entries) = received {
+            if self.base_dir.as_deref() == Some(pending.base_dir.as_path()) {
+                self.entries = entries;
+                self.loaded_at = Some(Instant::now());
+            }
+        }
+        self.pending = None;
+    }
+}
+
+/// 读取目录项名称；条目数达到上限时返回空集合（视为不可信，不做 cwd 高亮）。
+fn read_dir_names(base_dir: &Path) -> HashSet<String> {
+    let mut names = HashSet::new();
+    if let Ok(entries) = std::fs::read_dir(base_dir) {
+        for (index, entry) in entries.flatten().enumerate() {
+            if index >= CWD_ENTRY_CACHE_LIMIT {
+                names.clear();
+                break;
+            }
+            if let Ok(name) = entry.file_name().into_string() {
+                names.insert(name);
+            }
+        }
+    }
+    names
+}
+
+impl FilePathAddon {
+    pub fn new() -> Self {
+        let path_regex = regex::Regex::new(
+            r#"(?x)
+            (?P<path>
+                (?:~|\.{1,2})/[^\s:<>"'|，。；、]+|
+                /[^\s:<>"'|，。；、]+|
+                [A-Za-z]:\\[^\s:<>"'|]+|
+                \\\\[^\s:<>"'|]+|
+                (?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-][^\s:<>"'|，。；、]*|
+                [A-Za-z0-9_.-]+\.[A-Za-z0-9][A-Za-z0-9_.-]*
+            )
+            (?::\d+)?(?::\d+)?
+            "#,
+        )
+        .map_err(|error| {
+            tracing::warn!("文件路径正则构建失败: {error}");
+            error
+        })
+        .ok();
+
+        Self {
+            path_regex,
+            hovered_path: None,
+            cwd_entry_cache: CwdEntryCache::default(),
+        }
+    }
+
+    pub fn hovered_path(&self) -> Option<&HoveredPath> {
+        self.hovered_path.as_ref()
+    }
+
+    pub fn clear_hovered(&mut self) {
+        self.hovered_path = None;
+    }
+
+    pub fn detect_path_at(
+        &mut self,
+        line_text: &str,
+        column: usize,
+        screen_line: usize,
+        base_dir: Option<&Path>,
+    ) -> bool {
+        self.hovered_path = None;
+
+        if line_text.is_empty() {
+            return false;
+        }
+
+        if let Some(path_regex) = self.path_regex.clone() {
+            for mat in path_regex.find_iter(line_text) {
+                if self.detect_regex_path_match(mat, line_text, column, screen_line, base_dir) {
+                    return true;
+                }
+            }
+        }
+
+        self.detect_cwd_entry_at(line_text, column, screen_line, base_dir)
+    }
+
+    fn detect_regex_path_match(
+        &mut self,
+        mat: regex::Match<'_>,
+        line_text: &str,
+        column: usize,
+        screen_line: usize,
+        base_dir: Option<&Path>,
+    ) -> bool {
+        let start_col = line_text[..mat.start()].chars().count();
+        let end_col = line_text[..mat.end()].chars().count();
+        if column < start_col || column >= end_col {
+            return false;
+        }
+
+        let candidate = mat.as_str();
+        if candidate.starts_with("file://") {
+            return false;
+        }
+
+        let (path_part, _line_number, _column_number) = split_path_line_column(candidate);
+        let cleaned_path = trim_trailing_punctuation(&path_part);
+        let path_end_col = start_col + cleaned_path.chars().count();
+        if column >= path_end_col {
+            return false;
+        }
+
+        self.set_hovered_if_exists(cleaned_path, screen_line, start_col..path_end_col, base_dir)
+    }
+
+    fn detect_cwd_entry_at(
+        &mut self,
+        line_text: &str,
+        column: usize,
+        screen_line: usize,
+        base_dir: Option<&Path>,
+    ) -> bool {
+        let Some(base_dir) = base_dir else {
+            return false;
+        };
+        let Some((candidate, col_range)) = cwd_entry_token_at(line_text, column) else {
+            return false;
+        };
+        if !self.cwd_entry_cache.contains(base_dir, &candidate) {
+            return false;
+        }
+
+        self.set_hovered_if_exists(candidate, screen_line, col_range, Some(base_dir))
+    }
+
+    fn set_hovered_if_exists(
+        &mut self,
+        display: String,
+        screen_line: usize,
+        col_range: Range<usize>,
+        base_dir: Option<&Path>,
+    ) -> bool {
+        let Some(resolved_path) = resolve_path(&display, base_dir) else {
+            return false;
+        };
+        if !resolved_path.exists() {
+            return false;
+        }
+        self.hovered_path = Some(HoveredPath {
+            display,
+            path: resolved_path,
+            line: screen_line,
+            col_range,
+        });
+        true
+    }
+}
+
+impl Default for FilePathAddon {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl TerminalAddon for FilePathAddon {
+    fn id(&self) -> &'static str {
+        "file_paths"
+    }
+
+    fn on_mouse_move(&mut self, context: &mut TerminalAddonMouseContext) -> HoverUpdate {
+        if !context.is_local {
+            let changed = self.clear_hover();
+            return HoverUpdate {
+                changed,
+                hovered: false,
+                exclusive: false,
+            };
+        }
+
+        let previous = self.hovered_path.clone();
+        let matched = self.detect_path_at(
+            context.line_text,
+            context.column,
+            context.screen_line,
+            context.base_dir,
+        );
+        let changed = previous != self.hovered_path;
+
+        HoverUpdate {
+            changed,
+            hovered: matched,
+            exclusive: matched,
+        }
+    }
+
+    fn on_mouse_down(&mut self, context: &mut TerminalAddonMouseContext) -> bool {
+        if !context.is_local || !context.modifiers.platform {
+            return false;
+        }
+
+        let matched = self.detect_path_at(
+            context.line_text,
+            context.column,
+            context.screen_line,
+            context.base_dir,
+        );
+
+        if !matched {
+            return false;
+        }
+
+        if let Some(path) = self.hovered_path.as_ref() {
+            if let Some(url) = file_path_to_url(&path.path) {
+                context.open_url(&url);
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn clear_hover(&mut self) -> bool {
+        if self.hovered_path.is_some() {
+            self.hovered_path = None;
+            return true;
+        }
+        false
+    }
+
+    fn tooltip(&self) -> Option<TerminalAddonTooltip> {
+        self.hovered_path.as_ref().map(|path| TerminalAddonTooltip {
+            action_hint: "⌘ + Click",
+            action_text: "to open the path",
+            display_text: path.display.clone(),
+            display_color: rgb(0x9be58e).into(),
+        })
+    }
+
+    fn provide_decorations(
+        &self,
+        _visible_lines: Range<usize>,
+        _display_offset: usize,
+    ) -> Vec<DecorationSpan> {
+        if let Some(ref hovered) = self.hovered_path {
+            vec![DecorationSpan {
+                line: hovered.line,
+                col_range: hovered.col_range.clone(),
+                decoration: CellDecoration::Foreground {
+                    color: hsla(0.33, 0.75, 0.55, 1.0),
+                    priority: 45,
+                },
+            }]
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+pub fn register_default_addons(manager: &mut AddonManager) {
+    manager.load(Box::new(WebLinksAddon::new()));
+    manager.load(Box::new(FilePathAddon::new()));
+    manager.load(Box::new(SearchAddon::new()));
+    manager.load(Box::new(CustomHighlightAddon::new()));
+    manager.load(Box::new(
+        crate::selection_highlight_addon::SelectionHighlightAddon::new(),
+    ));
+}
+
+fn split_path_line_column(candidate: &str) -> (String, Option<u32>, Option<u32>) {
+    let mut path = candidate.to_string();
+    let mut column_number = None;
+    let mut line_number = None;
+
+    if let Some((base, column)) = split_trailing_number(&path) {
+        column_number = Some(column);
+        path = base.to_string();
+    }
+
+    if let Some((base, line)) = split_trailing_number(&path) {
+        line_number = Some(line);
+        path = base.to_string();
+    }
+
+    (path, line_number, column_number)
+}
+
+fn split_trailing_number(candidate: &str) -> Option<(&str, u32)> {
+    let (base, suffix) = candidate.rsplit_once(':')?;
+    if suffix.is_empty() || !suffix.chars().all(|char| char.is_ascii_digit()) {
+        return None;
+    }
+    let number = suffix.parse().ok()?;
+    Some((base, number))
+}
+
+fn trim_trailing_punctuation(candidate: &str) -> String {
+    let trimmed =
+        candidate.trim_end_matches(|char: char| matches!(char, ')' | ']' | '}' | ',' | ';'));
+    trimmed.to_string()
+}
+
+fn cwd_entry_token_at(line_text: &str, column: usize) -> Option<(String, Range<usize>)> {
+    let chars = line_text.char_indices().collect::<Vec<_>>();
+    let (_, char_at_column) = chars.get(column)?;
+    if !is_cwd_entry_token_char(*char_at_column) {
+        return None;
+    }
+
+    let mut start = column;
+    while start > 0 && is_cwd_entry_token_char(chars[start - 1].1) {
+        start -= 1;
+    }
+
+    let mut end = column + 1;
+    while end < chars.len() && is_cwd_entry_token_char(chars[end].1) {
+        end += 1;
+    }
+
+    let start_byte = chars[start].0;
+    let end_byte = chars
+        .get(end)
+        .map(|(byte, _)| *byte)
+        .unwrap_or(line_text.len());
+    let cleaned = trim_trailing_punctuation(&line_text[start_byte..end_byte]);
+    let cleaned_end = start + cleaned.chars().count();
+    if cleaned.is_empty() || column >= cleaned_end {
+        return None;
+    }
+    Some((cleaned, start..cleaned_end))
+}
+
+fn is_cwd_entry_token_char(char: char) -> bool {
+    !char.is_whitespace()
+        && !matches!(
+            char,
+            ':' | '<'
+                | '>'
+                | '"'
+                | '\''
+                | '|'
+                | '('
+                | ')'
+                | '['
+                | ']'
+                | '{'
+                | '}'
+                | ','
+                | ';'
+                | '，'
+                | '。'
+                | '；'
+                | '、'
+        )
+}
+
+fn resolve_path(raw_path: &str, base_dir: Option<&Path>) -> Option<PathBuf> {
+    if raw_path.is_empty() {
+        return None;
+    }
+
+    let expanded = if raw_path == "~" {
+        expand_home("")?
+    } else if let Some(stripped) = raw_path.strip_prefix("~/") {
+        expand_home(stripped)?
+    } else {
+        PathBuf::from(raw_path)
+    };
+
+    if expanded.is_absolute() {
+        return Some(expanded);
+    }
+
+    if let Some(base) = base_dir {
+        return Some(base.join(expanded));
+    }
+
+    let current_dir = std::env::current_dir().ok()?;
+    Some(current_dir.join(expanded))
+}
+
+fn expand_home(suffix: &str) -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)?;
+
+    if suffix.is_empty() {
+        return Some(home);
+    }
+
+    Some(home.join(suffix))
+}
+
+fn file_path_to_url(path: &Path) -> Option<String> {
+    let resolved = match path.canonicalize() {
+        Ok(path) => path,
+        Err(error) => {
+            tracing::warn!("无法打开本地路径: {error}");
+            return None;
+        }
+    };
+
+    let url = match Url::from_file_path(&resolved) {
+        Ok(url) => url.to_string(),
+        Err(()) => format!("file://{}", resolved.display()),
+    };
+
+    Some(url)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        AddonManager, CustomHighlightAddon, CwdEntryCache, FilePathAddon, SearchAddon,
+        TerminalAddon, TerminalAddonFrameContext, TerminalDamageHint,
+        compile_custom_highlight_rules, register_default_addons,
+    };
+    use crate::settings::TerminalHighlightRule;
+    use alacritty_terminal::grid::Dimensions;
+    use alacritty_terminal::term::{Config as TermConfig, Term};
+    use alacritty_terminal::vte::ansi::{Processor, StdSyncHandler};
+    use std::fs;
+    use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use terminal::pty_backend::GpuiEventProxy;
+    use tokio::sync::mpsc::unbounded_channel;
+
+    struct TestTermDimensions {
+        columns: usize,
+        screen_lines: usize,
+    }
+
+    impl Dimensions for TestTermDimensions {
+        fn total_lines(&self) -> usize {
+            self.screen_lines
+        }
+
+        fn screen_lines(&self) -> usize {
+            self.screen_lines
+        }
+
+        fn columns(&self) -> usize {
+            self.columns
+        }
+    }
+
+    fn unique_temp_dir(name: &str) -> std::path::PathBuf {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("onetcli-{name}-{timestamp}"))
+    }
+
+    #[test]
+    fn custom_highlight_rule_requires_pattern_and_color() {
+        let rule = TerminalHighlightRule {
+            id: "rule-1".into(),
+            enabled: true,
+            pattern: String::new(),
+            foreground: None,
+            background: None,
+            priority: 1,
+            note: String::new(),
+        };
+
+        assert!(rule.validate().is_err());
+    }
+
+    #[test]
+    fn custom_highlight_compiler_skips_disabled_rules() {
+        let rules = vec![TerminalHighlightRule {
+            id: "rule-1".into(),
+            enabled: false,
+            pattern: "root".into(),
+            foreground: Some("#ff0000".into()),
+            background: None,
+            priority: 10,
+            note: String::new(),
+        }];
+
+        let compiled = compile_custom_highlight_rules(&rules);
+
+        assert!(compiled.is_empty());
+    }
+
+    #[test]
+    fn register_default_addons_uses_custom_highlights_for_ip_rules() {
+        let mut manager = AddonManager::new();
+
+        register_default_addons(&mut manager);
+
+        assert!(manager.is_loaded("custom_highlights"));
+        assert!(!manager.is_loaded("ip_highlight"));
+    }
+
+    #[test]
+    fn search_addon_highlights_every_visible_match() {
+        let term = test_term_with_content(b"foo foo\r\nbar foo");
+
+        let mut addon = SearchAddon::new();
+        addon.set_pattern("foo").expect("pattern should compile");
+        addon.on_frame(&TerminalAddonFrameContext {
+            term: &term,
+            visible_lines: 0..term.screen_lines(),
+            display_offset: term.grid().display_offset(),
+            is_local: false,
+            base_dir: None,
+            damage: TerminalDamageHint::Full,
+        });
+
+        let decorations =
+            addon.provide_decorations(0..term.screen_lines(), term.grid().display_offset());
+
+        assert_eq!(3, decorations.len());
+        assert_eq!(0..3, decorations[0].col_range);
+        assert_eq!(4..7, decorations[1].col_range);
+        assert_eq!(4..7, decorations[2].col_range);
+    }
+
+    #[test]
+    fn search_addon_marks_current_match_with_higher_priority() {
+        let mut term = test_term_with_content(b"foo foo\r\nbar foo");
+        let mut addon = SearchAddon::new();
+        addon.set_pattern("foo").expect("pattern should compile");
+        addon.find_last(&mut term);
+        addon.on_frame(&TerminalAddonFrameContext {
+            term: &term,
+            visible_lines: 0..term.screen_lines(),
+            display_offset: term.grid().display_offset(),
+            is_local: false,
+            base_dir: None,
+            damage: TerminalDamageHint::Full,
+        });
+
+        let priorities = addon
+            .provide_decorations(0..term.screen_lines(), term.grid().display_offset())
+            .into_iter()
+            .map(|decoration| decoration.decoration.priority())
+            .collect::<Vec<_>>();
+
+        assert_eq!(vec![90, 90, 100], priorities);
+    }
+
+    #[test]
+    fn custom_highlight_rescans_only_damaged_lines() {
+        let term = test_term_with_content(b"ERROR: a\r\nplain\r\nERROR: b");
+        let mut addon = CustomHighlightAddon::new();
+        addon.set_rules(&[TerminalHighlightRule {
+            id: "rule-1".into(),
+            enabled: true,
+            pattern: "ERROR".into(),
+            foreground: Some("#ff0000".into()),
+            background: None,
+            priority: 10,
+            note: String::new(),
+        }]);
+
+        let frame_context = |damage| TerminalAddonFrameContext {
+            term: &term,
+            visible_lines: 0..term.screen_lines(),
+            display_offset: term.grid().display_offset(),
+            is_local: false,
+            base_dir: None,
+            damage,
+        };
+
+        // 首帧 Full：全量扫描，两行各命中一次。
+        addon.on_frame(&frame_context(TerminalDamageHint::Full));
+        assert_eq!(2, addon.cached_matches.len());
+        let scanned_after_full = addon.scanned_lines;
+
+        // 中间行受损：不重扫两行命中行，缓存匹配保留。
+        addon.on_frame(&frame_context(TerminalDamageHint::Partial(vec![1])));
+        assert_eq!(2, addon.cached_matches.len());
+        assert_eq!(scanned_after_full + 1, addon.scanned_lines);
+
+        // 命中行受损：重扫该行并重新产出匹配。
+        addon.on_frame(&frame_context(TerminalDamageHint::Partial(vec![0])));
+        assert_eq!(2, addon.cached_matches.len());
+        assert!(addon.cached_matches.iter().any(|matched| matched.line == 0));
+        assert_eq!(scanned_after_full + 2, addon.scanned_lines);
+    }
+
+    #[test]
+    fn custom_highlight_full_rescan_on_geometry_change_and_rule_update() {
+        let term = test_term_with_content(b"foo\r\nERROR: bad\r\nplain");
+        let mut addon = CustomHighlightAddon::new();
+        addon.set_rules(&[TerminalHighlightRule {
+            id: "rule-1".into(),
+            enabled: true,
+            pattern: "ERROR".into(),
+            foreground: None,
+            background: Some("#330000".into()),
+            priority: 10,
+            note: String::new(),
+        }]);
+
+        let frame_context = |damage| TerminalAddonFrameContext {
+            term: &term,
+            visible_lines: 0..term.screen_lines(),
+            display_offset: term.grid().display_offset(),
+            is_local: false,
+            base_dir: None,
+            damage,
+        };
+
+        addon.on_frame(&frame_context(TerminalDamageHint::Full));
+        let scanned_after_full = addon.scanned_lines;
+
+        // 规则更新后所有缓存失效：即使 damage 是空的也必须全量重扫。
+        addon.set_rules(&[TerminalHighlightRule {
+            id: "rule-2".into(),
+            enabled: true,
+            pattern: "plain".into(),
+            foreground: None,
+            background: Some("#003300".into()),
+            priority: 10,
+            note: String::new(),
+        }]);
+        addon.on_frame(&frame_context(TerminalDamageHint::Partial(vec![])));
+
+        assert_eq!(1, addon.cached_matches.len());
+        assert_eq!(2, addon.cached_matches[0].line);
+        let scanned_after_rule_update = addon.scanned_lines;
+        assert_eq!(
+            scanned_after_full + term.screen_lines() as u64,
+            scanned_after_rule_update
+        );
+    }
+
+    #[test]
+    fn cwd_entry_cache_scans_in_background_and_recovers_results() {
+        let dir = unique_temp_dir("cwd-cache");
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        fs::write(dir.join("marker.txt"), b"x").expect("marker file should be created");
+
+        // 冷启动同步填充：首次悬停（以及既有测试的单次调用链）必须直接命中，
+        // 否则高亮会闪一拍。
+        let mut cache = CwdEntryCache::default();
+        assert!(
+            cache.pending.is_none(),
+            "cold start should not spawn a scan"
+        );
+        assert!(cache.contains(&dir, "marker.txt"));
+        assert!(cache.pending.is_none());
+
+        // TTL 过期刷新走后台线程：refresh 立即返回，旧缓存先垫着。
+        cache.loaded_at = None;
+        cache.refresh(&dir);
+        assert!(
+            cache.pending.is_some(),
+            "TTL refresh should hand off to a background scan"
+        );
+        assert!(
+            cache.contains(&dir, "marker.txt"),
+            "stale cache should still serve hits while a scan is in flight"
+        );
+
+        cache.wait_for_pending_for_tests();
+        assert!(cache.contains(&dir, "marker.txt"));
+
+        // 清理临时目录（Windows 上文件句柄已全部关闭，可直接删除）。
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn async_search_result_requires_the_exact_request_snapshot() {
+        use alacritty_terminal::index::{Column, Line, Point};
+
+        let mut addon = SearchAddon::new();
+        addon.set_pattern("foo").expect("pattern should compile");
+        let first = Point::new(Line(0), Column(0))..=Point::new(Line(0), Column(2));
+        addon.current_match = Some(first.clone());
+
+        let request = addon
+            .search_request()
+            .expect("active search should produce a request");
+        assert_eq!("foo", request.pattern);
+        assert_eq!(Some(first.clone()), request.current_match);
+
+        let next = Point::new(Line(0), Column(4))..=Point::new(Line(0), Column(6));
+        assert!(addon.apply_search_result(
+            &request.pattern,
+            &request.current_match,
+            Some(next.clone()),
+        ));
+        assert_eq!(Some(&next), addon.current_match());
+
+        let stale_pattern_result = Point::new(Line(1), Column(4))..=Point::new(Line(1), Column(6));
+        assert!(
+            !addon.apply_search_result("bar", &Some(next.clone()), Some(stale_pattern_result),)
+        );
+        assert_eq!(Some(&next), addon.current_match());
+
+        assert!(!addon.apply_search_result(
+            "foo",
+            &Some(first),
+            Some(Point::new(Line(1), Column(4))..=Point::new(Line(1), Column(6))),
+        ));
+        assert_eq!(Some(&next), addon.current_match());
+
+        assert!(!addon.apply_search_result("foo", &Some(next.clone()), None));
+        assert_eq!(Some(&next), addon.current_match());
+    }
+
+    #[test]
+    fn file_path_hover_does_not_extend_into_line_number_suffix() {
+        let dir = unique_temp_dir("path-line-suffix");
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        let file = dir.join("row.rs");
+        fs::write(&file, "").expect("temp file should be created");
+        let line = format!("见 {}:22 后续", file.display());
+        let path_column = char_column(&line, line.find("row.rs").expect("path should be present"));
+        let line_number_column =
+            char_column(&line, line.find(":22").expect("line should be present")) + 1;
+        let mut addon = FilePathAddon::new();
+
+        assert!(addon.detect_path_at(&line, path_column, 0, None));
+        assert_eq!(file, addon.hovered_path().expect("path should hover").path);
+        assert!(!addon.detect_path_at(&line, line_number_column, 0, None));
+
+        _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn file_path_hover_resolves_bare_relative_paths_from_base_dir() {
+        let dir = unique_temp_dir("relative-path");
+        let file = dir.join("crates/extension-protocol/src/row.rs");
+        fs::create_dir_all(file.parent().expect("file should have parent"))
+            .expect("parent dir should be created");
+        fs::write(&file, "").expect("temp file should be created");
+        let line = "见 crates/extension-protocol/src/row.rs:22";
+        let column = char_column(line, line.find("row.rs").expect("path should be present"));
+        let mut addon = FilePathAddon::new();
+
+        assert!(addon.detect_path_at(line, column, 0, Some(Path::new(&dir))));
+        assert_eq!(file, addon.hovered_path().expect("path should hover").path);
+
+        _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn file_path_hover_resolves_relative_file_name_from_base_dir() {
+        let dir = unique_temp_dir("relative-file-name");
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        let file = dir.join("comi-biz-api-test-doc.md");
+        fs::write(&file, "").expect("temp file should be created");
+        let line = "Added  comi-biz-api-test-doc.md (+610 -0)";
+        let column = char_column(line, line.find("comi-biz").expect("path should be present"));
+        let mut addon = FilePathAddon::new();
+
+        assert!(addon.detect_path_at(line, column, 0, Some(Path::new(&dir))));
+        assert_eq!(file, addon.hovered_path().expect("path should hover").path);
+
+        _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn file_path_hover_resolves_cwd_entry_without_extension_from_base_dir() {
+        let dir = unique_temp_dir("cwd-entry-file");
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        let file = dir.join("Makefile");
+        fs::write(&file, "").expect("temp file should be created");
+        let line = "Added  Makefile (+12 -0)";
+        let column = char_column(line, line.find("Makefile").expect("path should be present"));
+        let mut addon = FilePathAddon::new();
+
+        assert!(addon.detect_path_at(line, column, 0, Some(Path::new(&dir))));
+        assert_eq!(file, addon.hovered_path().expect("path should hover").path);
+
+        _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn file_path_hover_resolves_cwd_directory_entry_from_base_dir() {
+        let dir = unique_temp_dir("cwd-entry-dir");
+        let child_dir = dir.join("src");
+        fs::create_dir_all(&child_dir).expect("child dir should be created");
+        let line = "Added  src (+0 -0)";
+        let column = char_column(line, line.find("src").expect("path should be present"));
+        let mut addon = FilePathAddon::new();
+
+        assert!(addon.detect_path_at(line, column, 0, Some(Path::new(&dir))));
+        assert_eq!(
+            child_dir,
+            addon.hovered_path().expect("path should hover").path
+        );
+
+        _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn file_path_hover_ignores_plain_word_missing_from_base_dir() {
+        let dir = unique_temp_dir("cwd-entry-missing");
+        fs::create_dir_all(&dir).expect("temp dir should be created");
+        let line = "Added  Generated (+1 -0)";
+        let column = char_column(
+            line,
+            line.find("Generated").expect("word should be present"),
+        );
+        let mut addon = FilePathAddon::new();
+
+        assert!(!addon.detect_path_at(line, column, 0, Some(Path::new(&dir))));
+        assert!(addon.hovered_path().is_none());
+
+        _ = fs::remove_dir_all(dir);
+    }
+
+    fn char_column(text: &str, byte_index: usize) -> usize {
+        text[..byte_index].chars().count()
+    }
+
+    fn test_term_with_content(content: &[u8]) -> Term<GpuiEventProxy> {
+        let (event_tx, _event_rx) = unbounded_channel();
+        let dimensions = TestTermDimensions {
+            columns: 20,
+            screen_lines: 3,
+        };
+        let mut term = Term::new(
+            TermConfig::default(),
+            &dimensions,
+            GpuiEventProxy::new(event_tx),
+        );
+        let mut processor: Processor<StdSyncHandler> = Processor::new();
+        processor.advance(&mut term, content);
+        term
+    }
+}

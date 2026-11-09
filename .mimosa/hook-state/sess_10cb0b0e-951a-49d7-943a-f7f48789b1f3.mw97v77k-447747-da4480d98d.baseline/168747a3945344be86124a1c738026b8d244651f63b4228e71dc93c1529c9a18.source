@@ -1,0 +1,29 @@
+[package]
+name = "linop"
+version = "0.23.0-beta.4"
+edition.workspace = true
+publish = false
+
+# 全量产品：领域特性（database / shell）常开，与全量应用一致。
+# 发布流水线会按 target 显式开关 wasm-components / windows-native-rdp，并从
+# 默认集里剔掉 shell-plugins（32 位 Windows 不支持 quickjs-jit 运行时），
+# 所以这几个特性必须由本包转发给 `linop_app`，不能只依赖依赖项的默认特性。
+[features]
+default = ["wasm-components", "windows-native-rdp", "shell-plugins"]
+wasm-components = ["linop_app/wasm-components"]
+windows-native-rdp = ["linop_app/windows-native-rdp"]
+shell-plugins = ["linop_app/shell-plugins"]
+
+[dependencies]
+linop_app = { path = "../../crates/linop_app", default-features = false, features = ["shell"] }
+linop_db_view = { path = "../../crates/linop_db_view" }
+domain_api = { workspace = true }
+gpui = { workspace = true }
+anyhow = { workspace = true }
+shell_domain = { workspace = true }
+
+[lints]
+workspace = true
+
+[target.'cfg(target_os = "windows")'.build-dependencies]
+winresource = "0.1"

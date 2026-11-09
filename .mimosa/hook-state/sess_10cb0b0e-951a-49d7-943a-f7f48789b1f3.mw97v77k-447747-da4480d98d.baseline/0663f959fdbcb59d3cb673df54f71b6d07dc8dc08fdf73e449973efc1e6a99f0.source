@@ -1,0 +1,32 @@
+[package]
+name = "remote_file_editor"
+version = "0.15.2"
+publish.workspace = true
+edition.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+extension-runtime = { workspace = true, default-features = false }
+futures = { workspace = true }
+gpui = { workspace = true}
+gpui-component = { workspace = true }
+notify = { workspace = true }
+one-core = { workspace = true }
+process-util = { workspace = true }
+rust-i18n.workspace = true
+sftp = { workspace = true }
+smol = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSResponder", "NSView", "NSWindow"] }
+raw-window-handle = { workspace = true, features = ["std"] }
+
+[dev-dependencies]
+async-trait = { workspace = true }
+gpui = { workspace = true, features = ["test-support"] }
+
+[lints]
+workspace = true

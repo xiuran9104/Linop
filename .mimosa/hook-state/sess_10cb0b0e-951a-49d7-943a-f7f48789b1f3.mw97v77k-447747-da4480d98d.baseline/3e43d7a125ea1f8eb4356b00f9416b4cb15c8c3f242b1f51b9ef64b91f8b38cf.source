@@ -1,0 +1,15 @@
+[package]
+name = "connection_tunnel"
+version = "0.15.2"
+publish.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+ssh.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "net"] }
+tracing.workspace = true
+
+[lints]
+workspace = true

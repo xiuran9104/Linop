@@ -1,0 +1,290 @@
+use super::*;
+use std::{cell::Cell, rc::Rc};
+
+use gpui::{
+    AnyElement, AppContext, Context, DragMoveEvent, EntityId, InteractiveElement, IntoElement,
+    ParentElement, Pixels, Render, StatefulInteractiveElement, Styled, Window, div,
+    prelude::FluentBuilder as _, px,
+};
+use gpui_component::{
+    ActiveTheme, Icon, Selectable, Sizable,
+    button::{Button, ButtonCustomVariant, ButtonVariants},
+    h_flex,
+    input::Textarea,
+};
+use one_assets::IconName;
+use rust_i18n::t;
+
+const COMMAND_BAR_COLLAPSED_HEIGHT: f32 = 30.0;
+const COMMAND_BAR_INPUT_MIN_HEIGHT: f32 = 80.0;
+const COMMAND_BAR_INPUT_MAX_HEIGHT: f32 = 400.0;
+const COMMAND_BAR_RESIZE_HANDLE_HEIGHT: f32 = 6.0;
+const COMMAND_BAR_RESIZE_GRIP_WIDTH: f32 = 32.0;
+const COMMAND_BAR_RESIZE_GRIP_HOVER_WIDTH: f32 = 48.0;
+const COMMAND_BAR_RESIZE_GRIP_HEIGHT: f32 = 2.0;
+const COMMAND_BAR_POPOVER_GAP: f32 = 8.0;
+
+#[derive(Clone)]
+struct CommandBarResize {
+    entity_id: EntityId,
+    initial_height: f32,
+    initial_y: Rc<Cell<Option<Pixels>>>,
+}
+
+impl Render for CommandBarResize {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        gpui::Empty
+    }
+}
+
+impl TerminalCommandBar {
+    pub(super) fn popover_bottom_offset(&self) -> f32 {
+        if self.collapsed {
+            COMMAND_BAR_COLLAPSED_HEIGHT + COMMAND_BAR_POPOVER_GAP
+        } else {
+            self.input_height + COMMAND_BAR_POPOVER_GAP
+        }
+    }
+
+    fn render_resize_handle(&self, cx: &mut Context<Self>) -> AnyElement {
+        let initial_y = Rc::new(Cell::new(None));
+        div()
+            .id("terminal-command-resize-handle")
+            .group("terminal-command-resize-handle")
+            .w_full()
+            .h(px(COMMAND_BAR_RESIZE_HANDLE_HEIGHT))
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor_row_resize()
+            .on_drag_move(cx.listener(Self::resize_input))
+            .on_drag(
+                CommandBarResize {
+                    entity_id: cx.entity_id(),
+                    initial_height: self.input_height,
+                    initial_y,
+                },
+                |drag, _, window, cx| {
+                    drag.initial_y.set(Some(window.mouse_position().y));
+                    cx.stop_propagation();
+                    cx.new(|_| drag.clone())
+                },
+            )
+            .child(
+                div()
+                    .w(px(COMMAND_BAR_RESIZE_GRIP_WIDTH))
+                    .h(px(COMMAND_BAR_RESIZE_GRIP_HEIGHT))
+                    .rounded_full()
+                    .bg(self.colors.border)
+                    .group_hover("terminal-command-resize-handle", |handle| {
+                        handle
+                            .w(px(COMMAND_BAR_RESIZE_GRIP_HOVER_WIDTH))
+                            .bg(cx.theme().drag_border)
+                    }),
+            )
+            .into_any_element()
+    }
+
+    fn resize_input(
+        &mut self,
+        event: &DragMoveEvent<CommandBarResize>,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let drag = event.drag(cx);
+        if drag.entity_id != cx.entity_id() {
+            return;
+        }
+        let Some(initial_y) = drag.initial_y.get() else {
+            return;
+        };
+        let delta: f32 = (initial_y - event.event.position.y).into();
+        self.input_height = (drag.initial_height + delta)
+            .clamp(COMMAND_BAR_INPUT_MIN_HEIGHT, COMMAND_BAR_INPUT_MAX_HEIGHT);
+        cx.notify();
+    }
+
+    fn render_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
+        h_flex()
+            .w_full()
+            .h(px(COMMAND_BAR_COLLAPSED_HEIGHT))
+            .items_center()
+            .justify_between()
+            .child(self.render_toolbar_context(cx))
+            .child(self.render_collapsed_hint(cx))
+            .into_any_element()
+    }
+
+    /// 折叠态把「命令输入」入口做成可点击的展开控件：用户会直接点这段文字，
+    /// 所以点击必须真的展开；按键说明由输入框 placeholder 承担，不另起一行。
+    fn render_collapsed_hint(&self, cx: &mut Context<Self>) -> AnyElement {
+        Button::new("terminal-command-collapsed-hint")
+            .label(t!("TerminalCommandBar.collapsed_hint").to_string())
+            .custom(
+                ButtonCustomVariant::new(cx)
+                    .foreground(self.colors.muted_foreground)
+                    .hover(self.colors.muted)
+                    .active(self.colors.muted),
+            )
+            .small()
+            .tooltip(t!("TerminalCommandBar.expand").to_string())
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.toggle_collapsed(window, cx);
+            }))
+            .into_any_element()
+    }
+
+    fn render_toolbar_context(&self, cx: &mut Context<Self>) -> AnyElement {
+        h_flex()
+            .min_w_0()
+            .gap_1()
+            .items_center()
+            .child(self.render_terminal_toggle_button(cx))
+            .child(self.render_quick_command_button(cx))
+            .child(self.render_recording_button(cx))
+            .into_any_element()
+    }
+
+    fn render_terminal_toggle_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        Button::new("terminal-command-terminal-toggle")
+            .child(
+                h_flex()
+                    .items_center()
+                    .gap_1()
+                    .child(Icon::new(IconName::SquareTerminal).xsmall())
+                    .child(
+                        Icon::new(if self.collapsed {
+                            IconName::ChevronUp
+                        } else {
+                            IconName::ChevronDown
+                        })
+                        .xsmall()
+                        .flex_shrink_0(),
+                    ),
+            )
+            .custom(
+                ButtonCustomVariant::new(cx)
+                    .foreground(self.colors.foreground)
+                    .hover(self.colors.muted)
+                    .active(self.colors.muted),
+            )
+            .selected(!self.collapsed)
+            .small()
+            .tooltip(if self.collapsed {
+                t!("TerminalCommandBar.expand").to_string()
+            } else {
+                t!("TerminalCommandBar.collapse").to_string()
+            })
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.toggle_collapsed(window, cx);
+            }))
+            .into_any_element()
+    }
+
+    fn render_quick_command_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        Button::new("terminal-command-quick")
+            .icon(IconName::SquareTerminal)
+            .label(format!(
+                "{} · {}",
+                t!("TerminalCommandBar.quick_commands"),
+                self.quick_commands.len()
+            ))
+            .custom(
+                ButtonCustomVariant::new(cx)
+                    .foreground(self.colors.foreground)
+                    .hover(self.colors.muted)
+                    .active(self.colors.muted),
+            )
+            .selected(self.quick_commands_open)
+            .small()
+            .tooltip(if self.quick_commands_open {
+                t!("TerminalCommandBar.close_quick_commands").to_string()
+            } else {
+                t!("TerminalCommandBar.open_quick_commands").to_string()
+            })
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.toggle_quick_commands(window, cx);
+            }))
+            .into_any_element()
+    }
+
+    fn render_expanded_actions(&self, cx: &mut Context<Self>) -> AnyElement {
+        h_flex()
+            .gap_1()
+            .child(self.render_quick_command_button(cx))
+            .child(self.render_recording_button(cx))
+            .into_any_element()
+    }
+
+    fn render_input_row(&self, cx: &mut Context<Self>) -> AnyElement {
+        h_flex()
+            .w_full()
+            .h(px(self.input_height))
+            .min_h(px(COMMAND_BAR_INPUT_MIN_HEIGHT))
+            .min_w_0()
+            .items_start()
+            .gap_1()
+            .py_1()
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .child(self.render_terminal_toggle_button(cx)),
+            )
+            .child(
+                div().flex_1().min_w_0().h(px(self.input_height)).child(
+                    Textarea::new(&self.input_state)
+                        .appearance(false)
+                        .h(px(self.input_height))
+                        .w_full()
+                        .text_color(self.colors.foreground),
+                ),
+            )
+            .child(
+                div()
+                    .flex_shrink_0()
+                    .child(self.render_expanded_actions(cx)),
+            )
+            .into_any_element()
+    }
+}
+
+impl Render for TerminalCommandBar {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let focused = self
+            .input_state
+            .read(cx)
+            .focus_handle(cx)
+            .is_focused(window);
+        div()
+            .relative()
+            .flex_shrink_0()
+            .w_full()
+            .border_t_1()
+            .border_color(self.colors.border)
+            .bg(self.colors.background)
+            .text_color(self.colors.foreground)
+            .px_3()
+            .py_px()
+            .on_action(cx.listener(Self::handle_history_previous))
+            .on_action(cx.listener(Self::handle_history_next))
+            .on_key_down(cx.listener(Self::handle_key_down))
+            .when(
+                focused
+                    && !self.collapsed
+                    && self.suggestion_popup_enabled
+                    && !self.suggestions.is_empty(),
+                |bar| bar.child(self.render_suggestions(cx)),
+            )
+            .when(self.quick_commands_open, |bar| {
+                bar.child(self.render_quick_commands(cx))
+            })
+            .when(self.recording_controls_open, |bar| {
+                bar.child(self.render_recording_controls(cx))
+            })
+            .when(self.collapsed, |bar| bar.child(self.render_toolbar(cx)))
+            .when(!self.collapsed, |bar| {
+                bar.child(self.render_resize_handle(cx))
+                    .child(self.render_input_row(cx))
+            })
+    }
+}

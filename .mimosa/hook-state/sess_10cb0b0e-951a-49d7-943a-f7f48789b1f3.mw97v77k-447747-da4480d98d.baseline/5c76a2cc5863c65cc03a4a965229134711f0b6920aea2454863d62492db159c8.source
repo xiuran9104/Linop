@@ -1,0 +1,408 @@
+mod backend_preference;
+mod connection_test;
+mod inputs;
+mod persistence;
+mod proxy;
+mod selects;
+#[cfg(test)]
+mod tests;
+mod view;
+
+use connection_form::credential::{
+    CredentialCapabilities, CredentialPickerConfig, CredentialPickerEvent,
+    CredentialReferencePicker, create_credential_picker,
+};
+use connection_form::team::{
+    TeamSelectItem, create_team_select, refresh_team_options, resolve_team_assignment,
+    selected_team_id,
+};
+use gpui::{App, Context, Entity, FocusHandle, Subscription, Window};
+use gpui_component::input::InputState;
+use gpui_component::select::SelectState;
+use one_core::cloud_sync::TeamOption;
+use one_core::storage::{
+    ProxyType, RdpAudioMode, RdpSettings, RemoteDesktopParams, RemoteDesktopProtocol,
+    StoredConnection, Workspace,
+};
+use rust_i18n::t;
+
+use self::connection_test::ConnectionTestState;
+use self::inputs::{create_inputs, input_text, non_empty_text, parse_u16};
+use self::persistence::{emit_saved_connection, persist_connection};
+use self::selects::{WorkspaceSelectItem, create_workspace_select};
+
+/// 远程桌面表单窗口配置。`Clone` 见 `one_core::popup_window::open_reusable_popup_window`。
+#[derive(Clone)]
+pub struct RemoteDesktopFormWindowConfig {
+    pub protocol: RemoteDesktopProtocol,
+    pub editing_connection: Option<StoredConnection>,
+    /// 新建连接向导打开时指定的目标分组：仅新建（非编辑、非复制）时预选，用户仍可修改。
+    pub initial_workspace_id: Option<i64>,
+    pub workspaces: Vec<Workspace>,
+    pub teams: Vec<TeamOption>,
+}
+
+pub struct RemoteDesktopFormWindow {
+    protocol: RemoteDesktopProtocol,
+    focus_handle: FocusHandle,
+    is_editing: bool,
+    editing_id: Option<i64>,
+    editing_cloud_id: Option<String>,
+    editing_last_synced_at: Option<i64>,
+    editing_connection: Option<StoredConnection>,
+    name_input: Entity<InputState>,
+    host_input: Entity<InputState>,
+    port_input: Entity<InputState>,
+    username_input: Entity<InputState>,
+    password_input: Entity<InputState>,
+    credential_picker: Entity<CredentialReferencePicker>,
+    domain_input: Entity<InputState>,
+    proxy_host_input: Entity<InputState>,
+    proxy_port_input: Entity<InputState>,
+    proxy_username_input: Entity<InputState>,
+    proxy_password_input: Entity<InputState>,
+    proxy_credential_picker: Entity<CredentialReferencePicker>,
+    workspace_select: Entity<SelectState<Vec<WorkspaceSelectItem>>>,
+    team_select: Entity<SelectState<Vec<TeamSelectItem>>>,
+    backend_preference: one_core::storage::RemoteDesktopBackendPreference,
+    read_only: bool,
+    audio_playback: bool,
+    // Persisted RDP settings from the edited connection. Kept verbatim unless
+    // the user explicitly changes a control backed by these settings, so
+    // editing an existing connection does not wipe its native RDP
+    // configuration.
+    rdp_settings: Option<RdpSettings>,
+    proxy_enabled: bool,
+    proxy_type: ProxyType,
+    sync_enabled: bool,
+    connection_test: ConnectionTestState,
+    error: Option<String>,
+    _subscriptions: Vec<Subscription>,
+}
+
+impl RemoteDesktopFormWindow {
+    pub fn new(
+        config: RemoteDesktopFormWindowConfig,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let initial_workspace_id = config.initial_workspace_id;
+        let mut form = Self::empty(config, window, cx);
+        form.load_editing_connection(window, cx);
+        // 新建连接向导带着目标分组打开时预选该分组（编辑连接已由上面回填）。
+        if !form.is_editing
+            && let Some(workspace_id) = initial_workspace_id
+        {
+            form.select_workspace(workspace_id, window, cx);
+        }
+        form.focus_handle.focus(window, cx);
+        form
+    }
+
+    fn empty(
+        config: RemoteDesktopFormWindowConfig,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        let is_editing = config.editing_connection.is_some();
+        let inputs = create_inputs(config.protocol, window, cx);
+        let editing_connection = config.editing_connection.clone();
+        let editing_params = config
+            .editing_connection
+            .as_ref()
+            .and_then(|connection| connection.to_remote_desktop_params().ok());
+        let credential_picker = create_credential_picker(
+            CredentialPickerConfig::new(
+                "remote-desktop-credential",
+                CredentialCapabilities::login(),
+            )
+            .reference(
+                editing_params
+                    .as_ref()
+                    .and_then(|params| params.credential_reference.clone()),
+            ),
+            window,
+            cx,
+        );
+        let proxy_credential_picker = create_credential_picker(
+            CredentialPickerConfig::new(
+                "remote-desktop-proxy-credential",
+                CredentialCapabilities::login(),
+            )
+            .reference(
+                editing_params
+                    .as_ref()
+                    .and_then(|params| params.proxy.as_ref())
+                    .and_then(|proxy| proxy.credential_reference.clone()),
+            ),
+            window,
+            cx,
+        );
+        let subscriptions = vec![
+            cx.subscribe(&credential_picker, |_, _, _: &CredentialPickerEvent, cx| {
+                cx.notify()
+            }),
+            cx.subscribe(
+                &proxy_credential_picker,
+                |_, _, _: &CredentialPickerEvent, cx| cx.notify(),
+            ),
+        ];
+        Self {
+            protocol: config.protocol,
+            focus_handle: cx.focus_handle(),
+            is_editing,
+            editing_id: config.editing_connection.as_ref().and_then(|c| c.id),
+            editing_cloud_id: config
+                .editing_connection
+                .as_ref()
+                .and_then(|c| c.cloud_id.clone()),
+            editing_last_synced_at: config
+                .editing_connection
+                .as_ref()
+                .and_then(|c| c.last_synced_at),
+            editing_connection,
+            name_input: inputs.name,
+            host_input: inputs.host,
+            port_input: inputs.port,
+            username_input: inputs.username,
+            password_input: inputs.password,
+            credential_picker,
+            domain_input: inputs.domain,
+            proxy_host_input: inputs.proxy_host,
+            proxy_port_input: inputs.proxy_port,
+            proxy_username_input: inputs.proxy_username,
+            proxy_password_input: inputs.proxy_password,
+            proxy_credential_picker,
+            workspace_select: create_workspace_select(&config, window, cx),
+            team_select: create_team_select(&config.teams, None, window, cx),
+            backend_preference: Default::default(),
+            read_only: false,
+            audio_playback: false,
+            rdp_settings: None,
+            proxy_enabled: false,
+            proxy_type: ProxyType::Socks5,
+            sync_enabled: config
+                .editing_connection
+                .as_ref()
+                .map(|connection| connection.sync_enabled)
+                .unwrap_or(true),
+            connection_test: ConnectionTestState::default(),
+            error: None,
+            _subscriptions: subscriptions,
+        }
+    }
+
+    /// 预选目标分组（新建连接向导从某个分组右键进入时使用），用户仍可在下拉里改。
+    fn select_workspace(&mut self, workspace_id: i64, window: &mut Window, cx: &mut Context<Self>) {
+        self.workspace_select.update(cx, |state, cx| {
+            state.set_selected_value(&Some(workspace_id), window, cx)
+        });
+    }
+
+    fn load_editing_connection(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(connection) = self.editing_connection.clone() else {
+            return;
+        };
+        self.name_input.update(cx, |state, cx| {
+            state.set_value(&connection.name, window, cx)
+        });
+        if let Some(team_id) = &connection.team_id {
+            self.team_select.update(cx, |state, cx| {
+                state.set_selected_value(&Some(team_id.clone()), window, cx)
+            });
+        }
+        if let Some(workspace_id) = connection.workspace_id {
+            self.workspace_select.update(cx, |state, cx| {
+                state.set_selected_value(&Some(workspace_id), window, cx)
+            });
+        }
+        if let Ok(params) = connection.to_remote_desktop_params() {
+            self.apply_params(params, window, cx);
+        }
+    }
+
+    fn apply_params(
+        &mut self,
+        params: RemoteDesktopParams,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.credential_picker.update(cx, |picker, cx| {
+            picker.set_reference(params.credential_reference, window, cx)
+        });
+        let host = params.host;
+        let username = params.username.unwrap_or_default();
+        let password = params.password.unwrap_or_default();
+        let domain = params.domain.unwrap_or_default();
+        self.host_input
+            .update(cx, |state, cx| state.set_value(&host, window, cx));
+        self.port_input.update(cx, |state, cx| {
+            state.set_value(&params.port.to_string(), window, cx)
+        });
+        self.username_input
+            .update(cx, |state, cx| state.set_value(&username, window, cx));
+        self.password_input
+            .update(cx, |state, cx| state.set_value(&password, window, cx));
+        self.domain_input
+            .update(cx, |state, cx| state.set_value(&domain, window, cx));
+        self.read_only = params.read_only;
+        self.rdp_settings = params.rdp;
+        self.audio_playback = match self.rdp_settings.as_ref() {
+            Some(settings) if self.protocol == RemoteDesktopProtocol::Rdp => {
+                settings.audio.mode == RdpAudioMode::Local
+            }
+            _ => audio_playback_for_protocol(self.protocol, params.audio_playback),
+        };
+        self.backend_preference = params.backend_preference;
+        self.apply_proxy(params.proxy, window, cx);
+    }
+
+    fn build_params(&self, cx: &App) -> Result<RemoteDesktopParams, String> {
+        let host = input_text(&self.host_input, cx).trim().to_string();
+        if host.is_empty() {
+            return Err(t!("RemoteDesktopForm.host_required").to_string());
+        }
+        let port_label = t!("RemoteDesktopForm.label_port").to_string();
+        let proxy = proxy::build_proxy_config(
+            self.proxy_enabled,
+            self.proxy_type,
+            &input_text(&self.proxy_host_input, cx),
+            &input_text(&self.proxy_port_input, cx),
+            &input_text(&self.proxy_username_input, cx),
+            &input_text(&self.proxy_password_input, cx),
+            self.proxy_credential_picker.read(cx).selected_reference(),
+        )
+        .map_err(proxy::proxy_error_message)?;
+        let audio_playback = if self.protocol == RemoteDesktopProtocol::Rdp {
+            self.rdp_settings
+                .as_ref()
+                .map(|settings| settings.audio.mode == RdpAudioMode::Local)
+                .unwrap_or(self.audio_playback)
+        } else {
+            false
+        };
+        Ok(RemoteDesktopParams {
+            protocol: self.protocol,
+            host,
+            port: parse_u16(&input_text(&self.port_input, cx), &port_label)?,
+            username: non_empty_text(&self.username_input, cx),
+            password: non_empty_text(&self.password_input, cx),
+            domain: non_empty_text(&self.domain_input, cx),
+            read_only: self.read_only,
+            audio_playback,
+            proxy,
+            credential_reference: self.credential_picker.read(cx).selected_reference(),
+            backend_preference: self.backend_preference,
+            // Preserve loaded RDP settings (including non-binary audio modes)
+            // unless the corresponding form control changed them. Switching
+            // to VNC clears them.
+            rdp: rdp_settings_for_protocol(self.protocol, self.rdp_settings.clone()),
+        })
+    }
+
+    fn on_save(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.connection_test.is_testing() {
+            return;
+        }
+        match self
+            .build_params(cx)
+            .and_then(|params| self.save_connection(params, cx).map_err(|e| e.to_string()))
+        {
+            Ok(connection) => {
+                // 保存已经落地：先把表单切到「已保存」（编辑）状态，再关窗。
+                // 关窗返回 `Retained` 时窗口会留在屏幕上（隐藏失败），没有这一步用户再点
+                // 一次「保存」就会按「新建」再插一条连接。
+                let is_editing = self.is_editing;
+                self.mark_saved(&connection, cx);
+                emit_saved_connection(connection, is_editing, cx);
+                let _ = one_core::window_close::close_window_after_save(window, cx);
+            }
+            Err(error) => {
+                self.error = Some(error);
+                cx.notify();
+            }
+        }
+    }
+
+    /// 保存已经落地：把表单切到「已保存」（编辑）状态。
+    ///
+    /// 不能依赖「窗口反正会消失」来结束这轮操作：关闭漏斗返回 `Retained` 时窗口会留在
+    /// 屏幕上（隐藏失败），没有这一步用户再点一次「保存」会按「新建」再插一条连接。
+    fn mark_saved(&mut self, saved: &StoredConnection, cx: &mut Context<Self>) {
+        self.is_editing = true;
+        self.editing_id = saved.id;
+        self.editing_cloud_id = saved.cloud_id.clone();
+        self.editing_last_synced_at = saved.last_synced_at;
+        self.editing_connection = Some(saved.clone());
+        cx.notify();
+    }
+
+    fn save_connection(
+        &self,
+        params: RemoteDesktopParams,
+        cx: &mut Context<Self>,
+    ) -> anyhow::Result<StoredConnection> {
+        let mut connection = StoredConnection::new_remote_desktop(
+            self.connection_name(&params, cx),
+            params,
+            self.workspace_id(cx),
+        );
+        connection.sync_enabled = self.sync_enabled;
+        let assignment = resolve_team_assignment(
+            self.team_id(cx),
+            self.is_editing,
+            self.editing_connection
+                .as_ref()
+                .and_then(|connection| connection.owner_id.clone()),
+            cx,
+        )
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+        connection.team_id = assignment.team_id;
+        connection.owner_id = assignment.owner_id;
+        if self.is_editing {
+            connection.id = self.editing_id;
+            connection.cloud_id = self.editing_cloud_id.clone();
+            connection.last_synced_at = self.editing_last_synced_at;
+        }
+        persist_connection(connection, self.is_editing, cx)
+    }
+
+    fn request_team_sync(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        refresh_team_options(&self.team_select, window, cx);
+    }
+
+    fn connection_name(&self, params: &RemoteDesktopParams, cx: &App) -> String {
+        let name = input_text(&self.name_input, cx).trim().to_string();
+        if name.is_empty() {
+            format!("{}:{}", params.host, params.port)
+        } else {
+            name
+        }
+    }
+
+    fn workspace_id(&self, cx: &App) -> Option<i64> {
+        self.workspace_select
+            .read(cx)
+            .selected_value()
+            .cloned()
+            .flatten()
+    }
+
+    fn team_id(&self, cx: &App) -> Option<String> {
+        selected_team_id(&self.team_select, cx)
+    }
+}
+
+fn audio_playback_for_protocol(protocol: RemoteDesktopProtocol, enabled: bool) -> bool {
+    protocol == RemoteDesktopProtocol::Rdp && enabled
+}
+
+fn rdp_settings_for_protocol(
+    protocol: RemoteDesktopProtocol,
+    settings: Option<RdpSettings>,
+) -> Option<RdpSettings> {
+    match protocol {
+        RemoteDesktopProtocol::Rdp => settings,
+        _ => None,
+    }
+}

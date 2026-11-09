@@ -512,6 +512,13 @@ pub fn open_popup_window<F, E>(
 /// 复用**原生窗口**，不复用业务会话：窗口关闭时会卸载业务 view（见
 /// [`end_popup_session`]），下次打开用本次 factory 重建。所以调用方不需要写
 /// 任何复位逻辑，也不要把「关闭后还能读回上次的输入」当成契约。
+/// Wayland 后端判定:WAYLAND_DISPLAY 非空即视为走 Wayland。
+pub fn is_wayland_backend() -> bool {
+    std::env::var_os("WAYLAND_DISPLAY")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false)
+}
+
 pub fn open_reusable_popup_window<F, E>(
     options: PopupWindowOptions,
     reuse_key: impl Into<String>,
@@ -638,8 +645,14 @@ fn open_popup_window_inner(
             display_id: parent_display_id,
             kind: WindowKind::Normal,
             window_background: gpui::WindowBackgroundAppearance::Transparent,
+            // Wayland(WSLg):交给 Weston 画标题栏(Server),避免系统条与
+            // 自绘条叠加;X11 维持 Client(gpui 自绘,WM 装饰残缺)。
             #[cfg(target_os = "linux")]
-            window_decorations: Some(gpui::WindowDecorations::Client),
+            window_decorations: Some(if is_wayland_backend() {
+                gpui::WindowDecorations::Server
+            } else {
+                gpui::WindowDecorations::Client
+            }),
             ..Default::default()
         };
 
@@ -753,6 +766,12 @@ impl Render for PopupWindowContent {
         let dialog_layer = render_dialog_layer(window, cx);
         let notification_layer = render_notification_layer(window, cx);
         let auto_hide_titlebar = self.hide_titlebar_when_fullscreen && window.is_fullscreen();
+        // Server 装饰(Wayland/Weston)下系统已提供标题栏与关闭钮,
+        // 自绘条叠加会形成双标题 —— 直接让位。
+        let server_decorated = matches!(
+            window.window_decorations(),
+            gpui::Decorations::Server
+        );
 
         v_flex()
             .relative()
@@ -769,7 +788,7 @@ impl Render for PopupWindowContent {
             .size_full()
             .bg(cx.theme().background)
             .opacity(crate::settings::AppSettings::global(cx).window_opacity)
-            .when(!auto_hide_titlebar, |this| {
+            .when(!auto_hide_titlebar && !server_decorated, |this| {
                 this.child(render_popup_titlebar(self.title.clone()))
             })
             .children(self.view.clone())

@@ -1,0 +1,25 @@
+[package]
+name = "linop-dbx"
+description = "Database module backed by DBX (linop-db-core vendored): shared connection store, query, UI launch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+thiserror = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true }
+linop-db-core = { path = "../../vendor/dbx/crates/linop-db-core" }
+linop-db-types = { path = "../../vendor/dbx/crates/linop-db-types" }
+linop-core = { path = "../linop-core" }
+linop-ssh = { path = "../linop-ssh" }
+
+[[bin]]
+name = "linop-dbx"
+path = "src/main.rs"
+
+[dev-dependencies]
+tempfile = "3"
+linop-testsupport = { path = "../linop-testsupport" }
+anyhow = { workspace = true }

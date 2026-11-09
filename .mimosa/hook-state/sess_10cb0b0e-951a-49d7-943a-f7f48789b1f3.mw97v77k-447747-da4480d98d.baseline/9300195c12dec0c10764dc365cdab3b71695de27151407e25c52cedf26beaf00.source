@@ -1,0 +1,519 @@
+use anyhow::{Context as _, Result, anyhow};
+use ftp::FtpConnectConfig;
+use one_core::storage::models::StoredConnection;
+use ssh::{HostKeyVerifier, SshAuth, SshConnectConfig};
+
+/// SSH 目标解析复用 `sftp_transfer`：终端侧边栏的远端文件面板需要在会话中途
+/// 切换目标主机，双栏视图与它共用同一套规则（SFTP 专用账号覆盖、跳板机、
+/// 代理、初始目录），避免两份实现漂移。
+pub(crate) use sftp_transfer::{sftp_initial_directory_of, ssh_config_for};
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct SshCredentialPromptPolicy {
+    pub(crate) username: bool,
+    pub(crate) password: bool,
+}
+
+impl SshCredentialPromptPolicy {
+    pub(crate) fn requires_prompt(self) -> bool {
+        self.username || self.password
+    }
+}
+
+pub(crate) struct ResolvedSftpConnection {
+    pub(crate) config: SshConnectConfig,
+    pub(crate) credential_prompt_policy: SshCredentialPromptPolicy,
+    /// 连接成功后进入的 SFTP 初始目录；`None` 时回退到服务器登录目录。
+    pub(crate) sftp_initial_directory: Option<String>,
+}
+
+/// 解析连接，并附加双栏视图独有的凭据提示策略。
+///
+/// 连接参数与初始目录的解析复用 `sftp_transfer::resolve_ssh_target`，
+/// 保证与终端侧边栏切目标时用的是同一套规则。
+pub(crate) fn resolve_ssh_connection(
+    connection: &StoredConnection,
+) -> Result<ResolvedSftpConnection> {
+    let params = connection
+        .to_ssh_params()
+        .context("connection does not contain valid SSH parameters")?;
+    let credential_prompt_policy = SshCredentialPromptPolicy {
+        username: params.prompts_for_username(),
+        password: params.prompts_for_password() && params.auth_method.contains_password(),
+    };
+    let target = sftp_transfer::resolve_ssh_target(connection)?;
+    Ok(ResolvedSftpConnection {
+        config: target.config,
+        credential_prompt_policy,
+        sftp_initial_directory: target.sftp_initial_directory,
+    })
+}
+
+/// 连接记录的远程文件协议为 FTP 时，构造独立的 FTP 连接配置。
+///
+/// SFTP 协议返回 `None`；协议声明为 FTP 但缺少 FTP 参数时同样返回
+/// `None`（连接表单校验应阻止保存该状态）。
+pub(crate) fn ftp_config_from_connection(
+    connection: &StoredConnection,
+) -> Option<FtpConnectConfig> {
+    sftp_transfer::ftp_connect_config_from_stored(connection)
+}
+
+/// 远程文件协议为 FTP 时，凭据提示策略来自 FTP 参数，
+/// 而不是 SSH 顶层参数（FTP 不复用 SSH 的认证状态）。
+pub(crate) fn ftp_credential_prompt_policy(
+    connection: &StoredConnection,
+) -> SshCredentialPromptPolicy {
+    let ftp = match connection.connection_type {
+        one_core::storage::ConnectionType::Ftp => connection.to_ftp_params().ok(),
+        _ => connection
+            .to_ssh_params()
+            .ok()
+            .and_then(|params| params.ftp_params().cloned()),
+    };
+    ftp.map(|ftp| SshCredentialPromptPolicy {
+        username: ftp.prompts_for_username(),
+        password: ftp.prompts_for_password(),
+    })
+    .unwrap_or_default()
+}
+
+/// 纯 FTP 连接（`ConnectionType::Ftp`）没有 SSH 参数，但双栏视图的
+/// 结构体仍持有 SSH 配置字段。FTP 模式下所有建连路径都按 FTP 配置
+/// 分流，不会使用该字段；这里提供一个明确的占位值避免 panic。
+pub(crate) fn unused_ssh_config_placeholder() -> SshConnectConfig {
+    SshConnectConfig {
+        host: String::new(),
+        port: 0,
+        username: String::new(),
+        auth: SshAuth::Password(String::new()),
+        timeout: None,
+        keepalive_interval: None,
+        keepalive_max: None,
+        jump_server: None,
+        proxy: None,
+        keyboard_interactive_responder: None,
+        host_key_verifier: HostKeyVerifier::default(),
+        x11_forwarding: false,
+        allow_legacy_algorithms: false,
+        forward_agent: false,
+        agent_identities: Vec::new(),
+    }
+}
+
+/// 将连接时输入的运行时凭据注入 FTP 连接配置。
+pub(crate) fn ftp_config_with_runtime_credentials(
+    base_config: &FtpConnectConfig,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> Result<FtpConnectConfig> {
+    let mut config = base_config.clone();
+
+    if let Some(username) = username {
+        let username = username.trim();
+        if username.is_empty() {
+            return Err(anyhow!("FTP username is empty"));
+        }
+        config.username = username.to_string();
+    }
+
+    if let Some(password) = password {
+        if password.is_empty() {
+            return Err(anyhow!("FTP password is empty"));
+        }
+        config.password = password.to_string();
+    }
+
+    Ok(config)
+}
+
+pub(crate) fn ssh_config_with_runtime_credentials(
+    base_config: &SshConnectConfig,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> Result<SshConnectConfig> {
+    let mut config = base_config.clone();
+
+    if let Some(username) = username {
+        let username = username.trim();
+        if username.is_empty() {
+            return Err(anyhow!("SSH username is empty"));
+        }
+        config.username = username.to_string();
+    }
+
+    if let Some(password) = password {
+        if password.is_empty() {
+            return Err(anyhow!("SSH password is empty"));
+        }
+        match &mut config.auth {
+            SshAuth::Password(configured_password) => {
+                *configured_password = password.to_string();
+            }
+            _ => {
+                return Err(anyhow!(
+                    "runtime SSH password is only valid for password authentication"
+                ));
+            }
+        }
+    }
+
+    Ok(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        resolve_ssh_connection, sftp_initial_directory_of, ssh_config_for,
+        ssh_config_with_runtime_credentials,
+    };
+    use one_core::storage::models::FtpParams;
+    use one_core::storage::{SftpAccount, SshAuthMethod, SshParams, StoredConnection};
+    use sftp_transfer::sftp_initial_directory;
+    use ssh::SshAuth;
+
+    fn connection_with_auth(auth_method: SshAuthMethod) -> StoredConnection {
+        StoredConnection::new_ssh(
+            "source".to_string(),
+            SshParams {
+                remote_file: None,
+                sftp_default_directory: None,
+                disabled_jump_server: None,
+                sftp_account: None,
+                host: "source.internal".to_string(),
+                port: 2222,
+                username: "deploy".to_string(),
+                auth_method,
+                credential_reference: None,
+                prompt_username: None,
+                prompt_password: None,
+                keyboard_interactive: None,
+                terminal_encoding: Default::default(),
+                terminal_type: Default::default(),
+                connect_timeout: Some(12),
+                keepalive_interval: None,
+                keepalive_max: None,
+                default_directory: None,
+                init_script: None,
+                disable_shell_integration: None,
+                x11_forwarding: None,
+                allow_legacy_algorithms: Some(true),
+                forward_agent: None,
+                agent_forward_key: None,
+                jump_server: None,
+                proxy: None,
+                os_id: None,
+                icon: None,
+                icon_file_path: None,
+                account_expect: Default::default(),
+            },
+            None,
+        )
+    }
+
+    #[test]
+    fn stored_password_connection_maps_to_runtime_config() {
+        let connection = connection_with_auth(SshAuthMethod::Password {
+            password: "secret".to_string(),
+        });
+
+        let config = ssh_config_for(&connection).expect("valid SSH connection");
+        assert_eq!(config.host, "source.internal");
+        assert_eq!(config.port, 2222);
+        assert!(matches!(config.auth, SshAuth::Password(ref value) if value == "secret"));
+        assert!(config.allow_legacy_algorithms);
+    }
+
+    #[test]
+    fn password_prompt_policy_is_preserved_for_sftp() {
+        let mut connection = connection_with_auth(SshAuthMethod::Password {
+            password: String::new(),
+        });
+        let mut params = connection.to_ssh_params().expect("valid SSH params");
+        params.prompt_username = Some(true);
+        params.prompt_password = Some(true);
+        connection.params = serde_json::to_string(&params).expect("serialize SSH params");
+
+        let resolved = resolve_ssh_connection(&connection).expect("valid SSH connection");
+
+        assert!(resolved.credential_prompt_policy.username);
+        assert!(resolved.credential_prompt_policy.password);
+    }
+
+    #[test]
+    fn password_prompt_policy_is_ignored_for_non_password_authentication() {
+        let mut connection = connection_with_auth(SshAuthMethod::Agent);
+        let mut params = connection.to_ssh_params().expect("valid SSH params");
+        params.prompt_password = Some(true);
+        connection.params = serde_json::to_string(&params).expect("serialize SSH params");
+
+        let resolved = resolve_ssh_connection(&connection).expect("valid SSH connection");
+
+        assert!(!resolved.credential_prompt_policy.password);
+    }
+
+    #[test]
+    fn sftp_account_overrides_main_credentials() {
+        let mut connection = connection_with_auth(SshAuthMethod::Password {
+            password: "main-secret".to_string(),
+        });
+        let mut params = connection.to_ssh_params().expect("valid SSH params");
+        params.sftp_account = Some(SftpAccount {
+            username: "sftp-user".to_string(),
+            password: "sftp-secret".to_string(),
+        });
+        connection.params = serde_json::to_string(&params).expect("serialize SSH params");
+
+        let config = ssh_config_for(&connection).expect("valid SSH connection");
+
+        assert_eq!(config.username, "sftp-user");
+        assert!(matches!(
+            config.auth,
+            SshAuth::Password(ref value) if value == "sftp-secret"
+        ));
+    }
+
+    #[test]
+    fn empty_sftp_account_falls_back_to_main_credentials() {
+        let mut connection = connection_with_auth(SshAuthMethod::Password {
+            password: "main-secret".to_string(),
+        });
+        let mut params = connection.to_ssh_params().expect("valid SSH params");
+        params.sftp_account = Some(SftpAccount {
+            username: String::new(),
+            password: String::new(),
+        });
+        connection.params = serde_json::to_string(&params).expect("serialize SSH params");
+
+        let config = ssh_config_for(&connection).expect("valid SSH connection");
+
+        assert_eq!(config.username, "deploy");
+        assert!(matches!(
+            config.auth,
+            SshAuth::Password(ref value) if value == "main-secret"
+        ));
+    }
+
+    #[test]
+    fn sftp_account_is_ignored_when_unset() {
+        let connection = connection_with_auth(SshAuthMethod::Password {
+            password: "main-secret".to_string(),
+        });
+
+        let config = ssh_config_for(&connection).expect("valid SSH connection");
+
+        assert_eq!(config.username, "deploy");
+        assert!(matches!(
+            config.auth,
+            SshAuth::Password(ref value) if value == "main-secret"
+        ));
+    }
+
+    #[test]
+    fn runtime_credentials_are_injected_without_mutating_base_config() {
+        let connection = connection_with_auth(SshAuthMethod::Password {
+            password: String::new(),
+        });
+        let base = ssh_config_for(&connection).expect("valid SSH connection");
+
+        let runtime =
+            ssh_config_with_runtime_credentials(&base, Some(" runtime-user "), Some("secret"))
+                .expect("runtime credentials should be accepted");
+
+        assert_eq!(runtime.username, "runtime-user");
+        assert!(matches!(
+            runtime.auth,
+            SshAuth::Password(ref password) if password == "secret"
+        ));
+        assert_eq!(base.username, "deploy");
+        assert!(matches!(
+            base.auth,
+            SshAuth::Password(ref password) if password.is_empty()
+        ));
+    }
+
+    #[test]
+    fn empty_runtime_password_is_rejected() {
+        let connection = connection_with_auth(SshAuthMethod::Password {
+            password: String::new(),
+        });
+        let base = ssh_config_for(&connection).expect("valid SSH connection");
+
+        let error = match ssh_config_with_runtime_credentials(&base, None, Some("")) {
+            Ok(_) => panic!("empty password should be rejected"),
+            Err(error) => error,
+        };
+
+        assert!(error.to_string().contains("password is empty"));
+    }
+
+    #[test]
+    fn runtime_password_is_rejected_for_non_password_authentication() {
+        let connection = connection_with_auth(SshAuthMethod::Agent);
+        let base = ssh_config_for(&connection).expect("valid SSH connection");
+
+        let error = match ssh_config_with_runtime_credentials(&base, None, Some("secret")) {
+            Ok(_) => panic!("password should not be accepted for agent authentication"),
+            Err(error) => error,
+        };
+
+        assert!(
+            error
+                .to_string()
+                .contains("only valid for password authentication")
+        );
+    }
+
+    #[test]
+    fn resolved_connection_carries_configured_sftp_initial_directory() {
+        let mut connection = connection_with_auth(SshAuthMethod::Password {
+            password: "secret".to_string(),
+        });
+        let mut params = connection.to_ssh_params().expect("valid SSH params");
+        params.sftp_default_directory = Some("/data/upload".to_string());
+        connection.params = serde_json::to_string(&params).expect("serialize SSH params");
+
+        let resolved = resolve_ssh_connection(&connection).expect("valid SSH connection");
+
+        assert_eq!(
+            resolved.sftp_initial_directory,
+            Some("/data/upload".to_string())
+        );
+    }
+
+    #[test]
+    fn sftp_initial_directory_without_configuration_is_none() {
+        let connection = connection_with_auth(SshAuthMethod::Password {
+            password: "secret".to_string(),
+        });
+
+        let resolved = resolve_ssh_connection(&connection).expect("valid SSH connection");
+
+        assert_eq!(resolved.sftp_initial_directory, None);
+    }
+
+    #[test]
+    fn sftp_initial_directory_trims_whitespace_and_ignores_blank_values() {
+        let mut params = connection_with_auth(SshAuthMethod::Agent)
+            .to_ssh_params()
+            .expect("valid SSH params");
+
+        params.sftp_default_directory = Some("  /data/upload  ".to_string());
+        assert_eq!(
+            sftp_initial_directory(&params),
+            Some("/data/upload".to_string())
+        );
+
+        params.sftp_default_directory = Some("   ".to_string());
+        assert_eq!(sftp_initial_directory(&params), None);
+
+        params.sftp_default_directory = None;
+        assert_eq!(sftp_initial_directory(&params), None);
+    }
+
+    #[test]
+    fn sftp_initial_directory_of_invalid_connection_is_none() {
+        let mut connection = connection_with_auth(SshAuthMethod::Password {
+            password: "secret".to_string(),
+        });
+        let mut params = connection.to_ssh_params().expect("valid SSH params");
+        params.sftp_default_directory = Some("/data/upload".to_string());
+        connection.params = serde_json::to_string(&params).expect("serialize SSH params");
+        assert_eq!(
+            sftp_initial_directory_of(&connection),
+            Some("/data/upload".to_string())
+        );
+
+        connection.params = "not-json".to_string();
+        assert_eq!(sftp_initial_directory_of(&connection), None);
+    }
+
+    fn connection_with_ftp_params(ftp: FtpParams) -> StoredConnection {
+        let mut connection = connection_with_auth(SshAuthMethod::Password {
+            password: "ssh-secret".to_string(),
+        });
+        let mut params = connection.to_ssh_params().expect("valid SSH params");
+        // SSH 顶层也配置为提示输入，用于验证 FTP 模式不借用该策略。
+        params.prompt_username = Some(true);
+        params.prompt_password = Some(true);
+        params.remote_file = Some(one_core::storage::models::RemoteFileParams {
+            protocol: one_core::storage::models::RemoteFileProtocol::Ftp,
+            ftp: Some(ftp),
+        });
+        connection.params = serde_json::to_string(&params).expect("serialize SSH params");
+        connection
+    }
+
+    #[test]
+    fn ftp_credential_prompt_policy_ignores_ssh_top_level_flags() {
+        let ftp = FtpParams {
+            host: "ftp.example".to_string(),
+            port: 21,
+            username: "ftp-user".to_string(),
+            password: "ftp-secret".to_string(),
+            credential_reference: None,
+            prompt_username: None,
+            prompt_password: Some(true),
+            passive_mode: true,
+            use_tls: false,
+            connect_timeout: None,
+        };
+        let connection = connection_with_ftp_params(ftp);
+
+        let policy = super::ftp_credential_prompt_policy(&connection);
+
+        // SSH 顶层 prompt 标志为 true，但 FTP 模式只看嵌套 FTP 参数。
+        assert!(!policy.username);
+        assert!(policy.password);
+    }
+
+    #[test]
+    fn ftp_runtime_credentials_are_injected_without_mutating_base_config() {
+        let base = super::FtpConnectConfig {
+            host: "ftp.example".to_string(),
+            port: 21,
+            username: "stored-user".to_string(),
+            password: String::new(),
+            passive_mode: true,
+            use_tls: false,
+            connect_timeout: None,
+        };
+
+        let runtime = super::ftp_config_with_runtime_credentials(
+            &base,
+            Some(" runtime-user "),
+            Some("ftp-secret"),
+        )
+        .expect("runtime credentials should be accepted");
+
+        assert_eq!(runtime.username, "runtime-user");
+        assert_eq!(runtime.password, "ftp-secret");
+        assert_eq!(base.username, "stored-user");
+        assert_eq!(base.password, "");
+    }
+
+    #[test]
+    fn ftp_runtime_empty_credentials_are_rejected() {
+        let base = super::FtpConnectConfig {
+            host: "ftp.example".to_string(),
+            port: 21,
+            username: "stored-user".to_string(),
+            password: String::new(),
+            passive_mode: true,
+            use_tls: false,
+            connect_timeout: None,
+        };
+
+        let error = match super::ftp_config_with_runtime_credentials(&base, Some("  "), None) {
+            Ok(_) => panic!("empty username should be rejected"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("username is empty"));
+
+        let error = match super::ftp_config_with_runtime_credentials(&base, None, Some("")) {
+            Ok(_) => panic!("empty password should be rejected"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("password is empty"));
+    }
+}

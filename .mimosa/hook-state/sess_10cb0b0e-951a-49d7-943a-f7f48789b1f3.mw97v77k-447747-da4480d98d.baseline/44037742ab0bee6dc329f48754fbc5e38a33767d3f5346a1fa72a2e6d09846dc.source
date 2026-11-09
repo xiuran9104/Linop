@@ -1,0 +1,26 @@
+[package]
+name = "linop_runtime"
+version = "0.15.2"
+publish.workspace = true
+edition.workspace = true
+
+[dependencies]
+futures = { workspace = true }
+one-core = { workspace = true }
+runtime_core = { workspace = true }
+runtime_sftp = { workspace = true, optional = true }
+serde_json = { workspace = true }
+tool_runtime = { workspace = true }
+
+[features]
+default = ["sftp"]
+sftp = ["dep:runtime_sftp"]
+
+[dev-dependencies]
+rusqlite = { workspace = true }
+tempfile = "3"
+tokio = { workspace = true, features = ["rt-multi-thread"] }
+tokio-util = { workspace = true }
+
+[lints]
+workspace = true

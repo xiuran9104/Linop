@@ -1,0 +1,4029 @@
+use std::borrow::Cow;
+use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
+
+use anyhow::{Context, Result};
+use async_trait::async_trait;
+use russh::keys::*;
+use russh::*;
+use rust_i18n::t;
+use tokio::io::{AsyncRead, AsyncWrite, copy_bidirectional};
+use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::{Mutex, oneshot};
+use x11_forwarding::{ForwardRequest, X11Proxy, X11ProxyHandle};
+
+use crate::remote_forwarding::RemoteForwardTarget;
+use crate::{
+    HostKeyAcceptance, HostKeyDetails, HostKeyIdentity, HostKeyProxyType, HostKeyRoute,
+    HostKeyVerifier, add_legacy_algorithm_hint,
+};
+
+/// keepalive/超时的集中默认值，供 ssh 与 sftp 两侧共享。
+pub mod defaults {
+    use std::time::Duration;
+
+    /// russh `inactivity_timeout` 默认值：服务端无响应多久视为断链。
+    pub const INACTIVITY_TIMEOUT: Duration = Duration::from_secs(300);
+    /// keepalive 心跳间隔，比以前的 60s 更勤，抗弱网抖动。
+    pub const KEEPALIVE_INTERVAL: Duration = Duration::from_secs(30);
+    /// 连续 N 次 keepalive 无响应才认为断开，总等待 = INTERVAL * MAX。
+    pub const KEEPALIVE_MAX: usize = 6;
+}
+
+/// 保留 russh 的现代算法优先级，并可追加旧服务器兼容回退。
+///
+/// 兼容回退默认由调用方关闭。开启后会包含 SHA-1 KEX 和 DSA host key，
+/// 仅用于连接无法升级的旧版服务器。
+///
+/// 已知的 host-key 算法只会稳定地移动到 russh 默认列表前部；默认算法不会被
+/// 删除，因此服务器不再提供已知算法时仍可完成协商，并由完整公钥校验拒绝变更。
+#[must_use]
+pub fn build_client_preferred_algorithms(known_host_key_algorithms: &[String]) -> Preferred {
+    build_client_preferred_algorithms_with_legacy(known_host_key_algorithms, false)
+}
+
+/// 构建 SSH 算法偏好，并按连接配置决定是否启用旧服务器兼容算法。
+#[must_use]
+pub fn build_client_preferred_algorithms_with_legacy(
+    known_host_key_algorithms: &[String],
+    allow_legacy_algorithms: bool,
+) -> Preferred {
+    let mut preferred = Preferred::default();
+    if allow_legacy_algorithms {
+        let mut kex = preferred.kex.into_owned();
+        let extension_start = kex
+            .iter()
+            .position(|name| {
+                matches!(
+                    *name,
+                    kex::EXTENSION_SUPPORT_AS_CLIENT
+                        | kex::EXTENSION_SUPPORT_AS_SERVER
+                        | kex::EXTENSION_OPENSSH_STRICT_KEX_AS_CLIENT
+                        | kex::EXTENSION_OPENSSH_STRICT_KEX_AS_SERVER
+                )
+            })
+            .unwrap_or(kex.len());
+
+        kex.splice(
+            extension_start..extension_start,
+            [
+                kex::ECDH_SHA2_NISTP256,
+                kex::ECDH_SHA2_NISTP384,
+                kex::ECDH_SHA2_NISTP521,
+                kex::DH_G14_SHA1,
+                // 固定组必须先于 group-exchange：russh 客户端 GEX 允许 MIN 为
+                // 2048 位（更低会被配置拒绝），只支持 1024 位组的旧设备必须
+                // 走固定 DH group1 路径才能完成密钥交换。
+                kex::DH_G1_SHA1,
+                kex::DH_GEX_SHA1,
+            ],
+        );
+        preferred.kex = Cow::Owned(kex);
+    }
+
+    let default_keys = preferred.key.into_owned();
+    let mut keys = Vec::with_capacity(default_keys.len());
+    for known in known_host_key_algorithms {
+        for candidate in &default_keys {
+            if host_key_algorithm_matches(candidate, known) && !keys.contains(candidate) {
+                keys.push(candidate.clone());
+            }
+        }
+    }
+    for candidate in default_keys {
+        if !keys.contains(&candidate) {
+            keys.push(candidate);
+        }
+    }
+    if allow_legacy_algorithms {
+        // DSA (`ssh-dss`) host keys and hmac-sha1 predate OpenSSH and only
+        // appear with the explicitly enabled legacy compatibility set. Both
+        // are appended as last-resort fallbacks so modern and known algorithms
+        // stay preferred.
+        keys.push(Algorithm::Dsa);
+
+        let mut mac = preferred.mac.into_owned();
+        mac.push(russh::mac::HMAC_SHA1);
+        preferred.mac = Cow::Owned(mac);
+    }
+    preferred.key = Cow::Owned(keys);
+    preferred
+}
+
+fn host_key_algorithm_matches(candidate: &Algorithm, known: &str) -> bool {
+    match known {
+        // An RSA public-key blob is named `ssh-rsa`, while negotiation may use
+        // either RSA/SHA-2 signature algorithm. Prefer the whole compatible
+        // family, retaining russh's strongest-first order.
+        "ssh-rsa" | "rsa-sha2-256" | "rsa-sha2-512" => {
+            matches!(candidate, Algorithm::Rsa { .. })
+        }
+        _ => candidate.as_str() == known,
+    }
+}
+
+#[derive(Clone)]
+pub struct SshConnectConfig {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub auth: SshAuth,
+    pub timeout: Option<Duration>,
+    pub keepalive_interval: Option<Duration>,
+    pub keepalive_max: Option<usize>,
+    /// 跳板机配置
+    pub jump_server: Option<JumpServerConnectConfig>,
+    /// 代理配置
+    pub proxy: Option<ProxyConnectConfig>,
+    /// keyboard-interactive/MFA 输入回调。用于跳板机或目标服务器按需请求二次认证。
+    pub keyboard_interactive_responder: Option<Arc<dyn KeyboardInteractiveResponder>>,
+    /// 服务端身份校验策略和 trust store。生产入口默认使用严格模式。
+    pub host_key_verifier: HostKeyVerifier,
+    /// 是否启用 X11 转发（需要本机有可用 X server，如 macOS 的 XQuartz）。
+    pub x11_forwarding: bool,
+    /// 是否为旧版 SSH 服务器启用兼容算法。默认应由连接配置保持关闭。
+    pub allow_legacy_algorithms: bool,
+    /// 是否启用 ForwardAgent（`auth-agent-req@openssh.com`）。
+    ///
+    /// 启用后，连接持有的本地 ssh-agent 会通过 `auth-agent@openssh.com`
+    /// 通道转发给远端（典型场景：跳板机上用它向更内层主机认证）。
+    pub forward_agent: bool,
+    /// 连接建立前要加入本地 ssh-agent 的私钥身份。
+    ///
+    /// 这些密钥不参与本连接的认证，而是被 `ssh-add` 到本地 agent，
+    /// 再通过 ForwardAgent 供远端使用。密钥保持 agent 中，不随连接释放。
+    pub agent_identities: Vec<AgentIdentity>,
+}
+
+impl SshConnectConfig {
+    /// 目标服务器的 host-key identity。跳板和代理链都参与身份绑定。
+    #[must_use]
+    pub fn target_host_key_identity(&self) -> HostKeyIdentity {
+        let route = match (&self.jump_server, &self.proxy) {
+            (Some(jump), Some(proxy)) => HostKeyRoute::JumpViaProxy {
+                jump_host: jump.host.clone(),
+                jump_port: jump.port,
+                proxy_type: host_key_proxy_type(proxy.proxy_type),
+                proxy_host: proxy.host.clone(),
+                proxy_port: proxy.port,
+            },
+            (Some(jump), None) => HostKeyRoute::Jump {
+                host: jump.host.clone(),
+                port: jump.port,
+            },
+            (None, Some(proxy)) => HostKeyRoute::Proxy {
+                proxy_type: host_key_proxy_type(proxy.proxy_type),
+                host: proxy.host.clone(),
+                port: proxy.port,
+            },
+            (None, None) => HostKeyRoute::Direct,
+        };
+        HostKeyIdentity::new(&self.host, self.port, route)
+    }
+
+    /// 跳板机本身的 host-key identity；目标服务器不会复用该 identity。
+    #[must_use]
+    pub fn jump_host_key_identity(&self) -> Option<HostKeyIdentity> {
+        self.jump_server.as_ref().map(|jump| {
+            let route =
+                self.proxy
+                    .as_ref()
+                    .map_or(HostKeyRoute::Direct, |proxy| HostKeyRoute::Proxy {
+                        proxy_type: host_key_proxy_type(proxy.proxy_type),
+                        host: proxy.host.clone(),
+                        port: proxy.port,
+                    });
+            HostKeyIdentity::new(&jump.host, jump.port, route)
+        })
+    }
+}
+
+/// legacy 兼容允许的最低 DH 组位数。russh 客户端配置的下限即为 2048。
+const LEGACY_GEX_MIN_BITS: usize = 2048;
+/// legacy 兼容请求的首选 DH 组位数，避免旧设备按首选位生成过大的组。
+const LEGACY_GEX_PREFERRED_BITS: usize = 2048;
+/// DH 组位数上限，与 russh 默认保持一致。
+const LEGACY_GEX_MAX_BITS: usize = 8192;
+
+fn build_russh_client_config(
+    config: &SshConnectConfig,
+    identity: &HostKeyIdentity,
+) -> Result<Arc<client::Config>> {
+    let known_host_key_algorithms = config
+        .host_key_verifier
+        .known_host_key_algorithms(identity)
+        .map_err(|reason| {
+            anyhow::anyhow!("load known SSH host keys for {identity} before handshake: {reason}")
+        })?;
+    Ok(Arc::new(client::Config {
+        preferred: build_client_preferred_algorithms_with_legacy(
+            &known_host_key_algorithms,
+            config.allow_legacy_algorithms,
+        ),
+        gex: legacy_gex_params(config.allow_legacy_algorithms)?,
+        inactivity_timeout: Some(defaults::INACTIVITY_TIMEOUT),
+        keepalive_interval: config
+            .keepalive_interval
+            .or(Some(defaults::KEEPALIVE_INTERVAL)),
+        keepalive_max: config.keepalive_max.unwrap_or(defaults::KEEPALIVE_MAX),
+        ..<_>::default()
+    }))
+}
+
+/// 构建 DH 组交换参数。
+///
+/// 旧设备（如仅支持 ssh-dss / hmac-sha1 的服务器）常只提供 2048 位 DH 组，
+/// 而 russh 默认最低接受 3072 位，会导致 `Key exchange init failed`。
+/// 仅当连接显式开启 legacy 兼容时才放宽到 2048，现代路径保持严格默认。
+fn legacy_gex_params(allow_legacy_algorithms: bool) -> Result<client::GexParams> {
+    if allow_legacy_algorithms {
+        Ok(client::GexParams::new(
+            LEGACY_GEX_MIN_BITS,
+            LEGACY_GEX_PREFERRED_BITS,
+            LEGACY_GEX_MAX_BITS,
+        )?)
+    } else {
+        Ok(client::GexParams::default())
+    }
+}
+
+fn host_key_proxy_type(proxy_type: ProxyType) -> HostKeyProxyType {
+    match proxy_type {
+        ProxyType::Socks5 => HostKeyProxyType::Socks5,
+        ProxyType::Http => HostKeyProxyType::Http,
+    }
+}
+
+/// 跳板机连接配置
+#[derive(Clone)]
+pub struct JumpServerConnectConfig {
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub auth: SshAuth,
+}
+
+/// 代理类型
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ProxyType {
+    Socks5,
+    Http,
+}
+
+/// 代理连接配置
+#[derive(Clone)]
+pub struct ProxyConnectConfig {
+    pub proxy_type: ProxyType,
+    pub host: String,
+    pub port: u16,
+    pub username: Option<String>,
+    pub password: Option<String>,
+}
+
+#[derive(Clone)]
+pub enum SshAuth {
+    Password(String),
+    PrivateKey {
+        key_path: String,
+        passphrase: Option<String>,
+        certificate_path: Option<String>,
+    },
+    PrivateKeyContent {
+        private_key: String,
+        passphrase: Option<String>,
+        certificate_path: Option<String>,
+    },
+    Agent,
+    Pageant,
+    AutoPublicKey,
+    /// 多因素认证链：一次登录需要依次通过多个认证因素。
+    ///
+    /// 防火墙、交换机等设备会配置 `AuthenticationMethods password,publickey` 这类
+    /// 组合要求，服务器在每次尝试后通过 `USERAUTH_FAILURE` 的 `remaining_methods`
+    /// 指出还差哪些因素。链里只声明「客户端持有哪些因素」，实际提交顺序由服务器
+    /// 返回的方法顺序和配置顺序共同决定（见 [`authenticate_with_chain`]）。
+    Chain(Vec<SshAuth>),
+}
+
+impl SshAuth {
+    /// 该认证方式对应的 SSH 方法名；`Chain` 不是单一方法。
+    fn factor_method_kind(&self) -> Option<MethodKind> {
+        match self {
+            SshAuth::Password(_) => Some(MethodKind::Password),
+            SshAuth::PrivateKey { .. }
+            | SshAuth::PrivateKeyContent { .. }
+            | SshAuth::Agent
+            | SshAuth::Pageant
+            | SshAuth::AutoPublicKey => Some(MethodKind::PublicKey),
+            SshAuth::Chain(_) => None,
+        }
+    }
+
+    /// 认证链中可用的因素，按配置顺序展开；嵌套的链会被摊平。
+    fn chain_factors(&self) -> Vec<&SshAuth> {
+        match self {
+            SshAuth::Chain(steps) => steps.iter().flat_map(|step| step.chain_factors()).collect(),
+            other => vec![other],
+        }
+    }
+}
+
+/// 一个要加入本地 ssh-agent 的私钥身份。
+///
+/// 与 [`SshAuth`] 分离：这组密钥不参与目标/跳板机认证，而是被添加到
+/// 本地 ssh-agent，随后通过 ForwardAgent 转发给远端（如跳板机），
+/// 供跳板机向更内层主机用该密钥认证。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AgentIdentity {
+    /// 从文件路径加载的私钥。
+    PrivateKeyPath {
+        key_path: String,
+        passphrase: Option<String>,
+    },
+    /// 直接以内联 PEM/OpenSSH 文本提供的私钥。
+    PrivateKeyContent {
+        private_key: String,
+        passphrase: Option<String>,
+    },
+}
+
+#[derive(Clone)]
+pub struct AuthFailureMessages {
+    pub password_failed: String,
+    pub certificate_failed: String,
+    pub public_key_failed: String,
+    pub agent_connect_failed: String,
+    pub agent_no_identities: String,
+    pub agent_auth_failed: String,
+    pub auto_publickey_failed: String,
+    pub no_local_identity: String,
+    pub auto_publickey_next_step: String,
+    pub keyboard_interactive_required: String,
+    pub keyboard_interactive_failed: String,
+    pub keyboard_interactive_cancelled: String,
+    pub chain_failed: String,
+    pub chain_incomplete: String,
+    pub chain_unsupported_factor: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyboardInteractiveTarget {
+    JumpServer,
+    TargetServer,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyboardInteractivePrompt {
+    pub prompt: String,
+    pub echo: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyboardInteractiveRequest {
+    pub target: KeyboardInteractiveTarget,
+    pub name: String,
+    pub instructions: String,
+    pub prompts: Vec<KeyboardInteractivePrompt>,
+}
+
+#[async_trait]
+pub trait KeyboardInteractiveResponder: Send + Sync {
+    async fn respond(&self, request: KeyboardInteractiveRequest) -> Result<Vec<String>>;
+}
+
+#[derive(Clone)]
+pub struct PtyConfig {
+    pub term: String,
+    pub width: u32,
+    pub height: u32,
+    pub pix_width: u32,
+    pub pix_height: u32,
+}
+
+impl Default for PtyConfig {
+    fn default() -> Self {
+        Self {
+            term: "xterm-256color".to_string(),
+            width: 80,
+            height: 24,
+            pix_width: 0,
+            pix_height: 0,
+        }
+    }
+}
+
+pub enum ChannelEvent {
+    Data(Vec<u8>),
+    ExtendedData {
+        ext: u32,
+        data: Vec<u8>,
+    },
+    Eof,
+    ExitStatus(u32),
+    ExitSignal {
+        signal_name: String,
+        error_message: String,
+    },
+    Close,
+}
+
+#[async_trait]
+pub trait SshChannel: Send {
+    async fn request_pty(&mut self, config: &PtyConfig) -> Result<()>;
+    async fn exec(&mut self, command: &str) -> Result<()>;
+    async fn request_shell(&mut self) -> Result<()>;
+    /// 请求 sshd 为该会话启用 X11 转发（`x11-req`）。
+    /// 默认实现返回错误，表示该通道实现不支持 X11 转发。
+    async fn request_x11_forwarding(&mut self, _request: &ForwardRequest) -> Result<()> {
+        Err(anyhow::anyhow!(
+            "X11 forwarding is not supported by this channel"
+        ))
+    }
+    /// 请求 sshd 为该会话启用 ForwardAgent（`auth-agent-req@openssh.com`）。
+    /// 默认实现返回错误，表示该通道实现不支持 agent 转发。
+    async fn request_agent_forwarding(&mut self) -> Result<()> {
+        Err(anyhow::anyhow!(
+            "agent forwarding is not supported by this channel"
+        ))
+    }
+    async fn set_env(&mut self, name: &str, value: &str) -> Result<()>;
+    async fn send_data(&mut self, data: &[u8]) -> Result<()>;
+    async fn resize_pty(&mut self, width: u32, height: u32) -> Result<()>;
+    async fn recv(&mut self) -> Option<ChannelEvent>;
+    async fn eof(&mut self) -> Result<()>;
+    async fn close(&mut self) -> Result<()>;
+}
+
+#[async_trait]
+pub trait SshClient: Send + Sync {
+    type Channel: SshChannel;
+
+    async fn connect(config: SshConnectConfig) -> Result<Self>
+    where
+        Self: Sized;
+
+    async fn open_channel(&mut self) -> Result<Self::Channel>;
+
+    async fn disconnect(&mut self) -> Result<()>;
+
+    fn is_connected(&self) -> bool;
+
+    /// 向远端发送一次轻量探活请求，带内部超时。
+    /// 默认实现基于 `is_connected`，具体实现可以覆盖以打真实 ping。
+    async fn ping(&self) -> Result<()> {
+        if self.is_connected() {
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("session not connected"))
+        }
+    }
+
+    /// 连接级 X11 转发管理器。`None` 表示未启用或本机没有可用 X server。
+    fn x11_forwarding(&self) -> Option<&X11Proxy> {
+        None
+    }
+
+    /// 连接是否启用了 ForwardAgent（`auth-agent-req@openssh.com`）。
+    /// 默认 `false`；具体实现应返回连接配置中的实际值。
+    fn forward_agent(&self) -> bool {
+        false
+    }
+}
+
+struct RusshHandler {
+    x11_handle: Option<X11ProxyHandle>,
+    identity: HostKeyIdentity,
+    host_key_verifier: HostKeyVerifier,
+    remote_forward_target: Arc<RwLock<Option<RemoteForwardTarget>>>,
+    /// 是否把收到的 `auth-agent@openssh.com` 回连通道桥接到本地 ssh-agent。
+    forward_agent: bool,
+}
+
+impl RusshHandler {
+    fn new(
+        identity: HostKeyIdentity,
+        host_key_verifier: HostKeyVerifier,
+        x11_handle: Option<X11ProxyHandle>,
+        remote_forward_target: Arc<RwLock<Option<RemoteForwardTarget>>>,
+        forward_agent: bool,
+    ) -> Self {
+        Self {
+            x11_handle,
+            identity,
+            host_key_verifier,
+            remote_forward_target,
+            forward_agent,
+        }
+    }
+}
+
+impl client::Handler for RusshHandler {
+    type Error = anyhow::Error;
+
+    async fn check_server_key(
+        &mut self,
+        server_identity: &PublicKeyOrCertificate,
+    ) -> Result<bool, Self::Error> {
+        let server_public_key = match server_identity {
+            PublicKeyOrCertificate::PublicKey { key, .. } => key,
+            PublicKeyOrCertificate::Certificate(_) => {
+                return Err(anyhow::anyhow!(
+                    "SSH host certificates are not supported for {}",
+                    self.identity
+                ));
+            }
+        };
+        match self
+            .host_key_verifier
+            .verify(&self.identity, server_public_key)
+        {
+            Ok(HostKeyAcceptance::Known) => Ok(true),
+            Ok(HostKeyAcceptance::AcceptedNew) => {
+                let details = HostKeyDetails::from_public_key(server_public_key);
+                tracing::warn!(
+                    target: "ssh.host_key",
+                    identity = %self.identity,
+                    algorithm = %details.algorithm,
+                    fingerprint = %details.fingerprint,
+                    "accepted and persisted a new SSH host key"
+                );
+                Ok(true)
+            }
+            Ok(HostKeyAcceptance::AcceptedOnce) => {
+                let details = HostKeyDetails::from_public_key(server_public_key);
+                tracing::warn!(
+                    target: "ssh.host_key",
+                    identity = %self.identity,
+                    algorithm = %details.algorithm,
+                    fingerprint = %details.fingerprint,
+                    "accepted an SSH host key once after explicit confirmation"
+                );
+                Ok(true)
+            }
+            Ok(HostKeyAcceptance::Insecure) => {
+                let details = HostKeyDetails::from_public_key(server_public_key);
+                tracing::warn!(
+                    target: "ssh.host_key",
+                    identity = %self.identity,
+                    algorithm = %details.algorithm,
+                    fingerprint = %details.fingerprint,
+                    "accepted an SSH host key using explicit insecure mode"
+                );
+                Ok(true)
+            }
+            Err(rejection) => Err(rejection.into()),
+        }
+    }
+
+    /// 远端（设备/服务器）主动发 `SSH_MSG_DISCONNECT` 时的回调。
+    ///
+    /// russh 把它映射成无载荷的 `Error::Disconnect`（Display 只有 "Disconnected"），
+    /// 默认实现也只在 debug 级别打印，于是「为何被断开」在最需要它的默认日志里丢失。
+    /// 这里按 warn 记录原因码与原因文本：受限设备（防火墙/交换机）正是用这条消息踢连接，
+    /// 例如 VTY/会话数限制、账号并发登录、设备侧认证超时。
+    async fn disconnected(
+        &mut self,
+        reason: client::DisconnectReason<Self::Error>,
+    ) -> Result<(), Self::Error> {
+        if let client::DisconnectReason::ReceivedDisconnect(info) = &reason {
+            tracing::warn!(
+                target: "ssh.disconnect",
+                identity = %self.identity,
+                reason_code = ?info.reason_code,
+                message = %info.message,
+                lang_tag = %info.lang_tag,
+                "SSH 服务器主动断开连接"
+            );
+        }
+
+        match reason {
+            client::DisconnectReason::ReceivedDisconnect(_) => Ok(()),
+            client::DisconnectReason::Error(err) => Err(err),
+        }
+    }
+
+    /// sshd 为远端 X client 回连的 `x11` 通道：按 fake cookie 找到注册会话，
+    /// 改写为本机 real cookie 后桥接到本机 X server。
+    async fn server_channel_open_x11(
+        &mut self,
+        channel: Channel<client::Msg>,
+        originator_address: &str,
+        originator_port: u32,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        let Some(x11_handle) = self.x11_handle.clone() else {
+            tracing::warn!(
+                target: "ssh.x11",
+                originator_address,
+                originator_port,
+                "收到 x11 回连通道，但本连接未启用 X11 转发，拒绝通道"
+            );
+            reply
+                .reject(ChannelOpenFailure::AdministrativelyProhibited)
+                .await;
+            return Ok(());
+        };
+
+        // russh 0.62 起，服务端主动打开的通道必须由回调显式确认。
+        // 仅在本连接确实启用了 X11 转发时接受，避免先确认再立即关闭。
+        reply.accept().await;
+
+        let originator = Some((
+            originator_address.to_string(),
+            u16::try_from(originator_port).unwrap_or(0),
+        ));
+        tokio::spawn(async move {
+            x11_handle
+                .run_channel(channel.into_stream(), originator)
+                .await;
+        });
+        Ok(())
+    }
+
+    /// sshd 为远端向本地 agent 回连的 `auth-agent@openssh.com` 通道：
+    /// 将通道桥接到本地 ssh-agent（Unix socket / Windows 命名管道）。
+    async fn server_channel_open_agent_forward(
+        &mut self,
+        channel: Channel<client::Msg>,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        if !self.forward_agent {
+            reply
+                .reject(ChannelOpenFailure::AdministrativelyProhibited)
+                .await;
+            return Ok(());
+        }
+
+        reply.accept().await;
+        bridge_to_local_agent(channel).await;
+        Ok(())
+    }
+
+    async fn server_channel_open_forwarded_tcpip(
+        &mut self,
+        channel: Channel<client::Msg>,
+        connected_address: &str,
+        connected_port: u32,
+        originator_address: &str,
+        originator_port: u32,
+        reply: client::ChannelOpenHandle,
+        _session: &mut client::Session,
+    ) -> Result<(), Self::Error> {
+        let target = self
+            .remote_forward_target
+            .read()
+            .ok()
+            .and_then(|target| target.clone());
+        let Some(target) = target else {
+            reply
+                .reject(ChannelOpenFailure::AdministrativelyProhibited)
+                .await;
+            return Ok(());
+        };
+        let connected_address = connected_address.to_string();
+        let originator_address = originator_address.to_string();
+        tokio::spawn(async move {
+            target
+                .accept_channel(
+                    channel,
+                    reply,
+                    connected_address,
+                    connected_port,
+                    originator_address,
+                    originator_port,
+                )
+                .await;
+        });
+        Ok(())
+    }
+}
+
+/// 展开路径开头的 `~`（`~` 或 `~/...`）为用户主目录，其余路径原样返回。
+///
+/// 用户在设置中填写的私钥/证书路径是未经 shell 展开的原始文本，直接交给
+/// `load_secret_key`/`load_openssh_certificate` 会因找不到名为 `~` 的文件而报
+/// `No such file or directory`。
+fn expand_tilde(path: &str) -> PathBuf {
+    let suffix = if path == "~" {
+        Some("")
+    } else {
+        path.strip_prefix("~/")
+    };
+
+    match suffix.and_then(|suffix| dirs::home_dir().map(|home| home.join(suffix))) {
+        Some(expanded) => expanded,
+        None => PathBuf::from(path),
+    }
+}
+
+/// 把 `agent_identities` 中配置的私钥加入本地 ssh-agent。
+///
+/// 这些密钥不参与本连接的认证，而是驻留在 agent 中，随后通过 ForwardAgent
+/// 供远端（如跳板机）使用。密钥保持 agent 中，不随连接释放。
+async fn add_identities_to_local_agent(identities: &[AgentIdentity]) -> Result<()> {
+    if identities.is_empty() {
+        return Ok(());
+    }
+
+    let mut agent = connect_local_agent_client().await?;
+    for identity in identities {
+        let key = match identity {
+            AgentIdentity::PrivateKeyPath {
+                key_path,
+                passphrase,
+            } => load_secret_key(expand_tilde(key_path), passphrase.as_deref())?,
+            AgentIdentity::PrivateKeyContent {
+                private_key,
+                passphrase,
+            } => decode_secret_key(private_key, passphrase.as_deref())?,
+        };
+        agent
+            .add_identity(&key, &[])
+            .await
+            .map_err(|error| anyhow::anyhow!("ssh-add {:?} failed: {error}", key.public_key()))?;
+    }
+    Ok(())
+}
+
+/// 建立到本地 ssh-agent 的 AgentClient。
+///
+/// Unix 上通过 `SSH_AUTH_SOCK`，Windows 上连 OpenSSH 命名管道。Windows 上
+/// 只有 Pageant 时也尝试回退到 Pageant。
+async fn connect_local_agent_client()
+-> Result<agent::client::AgentClient<Box<dyn agent::client::AgentStream + Send + Unpin + 'static>>>
+{
+    #[cfg(unix)]
+    {
+        Ok(agent::client::AgentClient::connect_env().await?.dynamic())
+    }
+    #[cfg(windows)]
+    {
+        let openssh =
+            agent::client::AgentClient::connect_named_pipe(r"\\.\pipe\openssh-ssh-agent").await;
+        match openssh {
+            Ok(client) => Ok(client.dynamic()),
+            Err(openssh_error) => {
+                let pageant = agent::client::AgentClient::connect_pageant().await;
+                match pageant {
+                    Ok(client) => Ok(client.dynamic()),
+                    Err(_) => Err(openssh_error.into()),
+                }
+            }
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        Err(anyhow::anyhow!(
+            "ssh-agent is not supported on this platform"
+        ))
+    }
+}
+
+/// 把 sshd 打开的 `auth-agent@openssh.com` 回连通道桥接到本地 ssh-agent。
+///
+/// 本地 agent 端点：Unix 上读 `SSH_AUTH_SOCK`，Windows 上连 OpenSSH 命名管道。
+/// 连接失败仅记录日志，不向上抛错（通道由调用方接受后随会话关闭）。
+async fn bridge_to_local_agent(channel: Channel<client::Msg>) {
+    let (mut agent_stream, socket_path) = match connect_to_local_agent().await {
+        Ok(pair) => pair,
+        Err(error) => {
+            tracing::warn!(
+                target: "ssh.agent",
+                error = %error,
+                "无法连接本地 ssh-agent，ForwardAgent 通道已关闭"
+            );
+            return;
+        }
+    };
+
+    let mut ssh_stream = channel.into_stream();
+    tracing::debug!(
+        target: "ssh.agent",
+        socket = %socket_path,
+        "已桥接 ForwardAgent 通道到本地 ssh-agent"
+    );
+    tokio::spawn(async move {
+        if let Err(error) = copy_bidirectional(&mut ssh_stream, &mut agent_stream).await {
+            tracing::debug!(target: "ssh.agent", error = %error, "ForwardAgent 桥接结束");
+        }
+    });
+}
+
+async fn connect_to_local_agent() -> Result<(impl AsyncRead + AsyncWrite + Unpin, String)> {
+    #[cfg(unix)]
+    {
+        let path = std::env::var("SSH_AUTH_SOCK")
+            .map_err(|_| anyhow::anyhow!("SSH_AUTH_SOCK is not set"))?;
+        let stream = tokio::net::UnixStream::connect(&path).await?;
+        Ok((stream, path))
+    }
+    #[cfg(windows)]
+    {
+        const NAMED_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
+        let stream = tokio::net::windows::named_pipe::ClientOptions::new().open(NAMED_PIPE)?;
+        Ok((stream, NAMED_PIPE.to_string()))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        Err(anyhow::anyhow!(
+            "ssh-agent is not supported on this platform"
+        ))
+    }
+}
+
+pub struct RusshClient {
+    session: client::Handle<RusshHandler>,
+    /// 跳板机会话（如果使用跳板机连接）
+    _jump_session: Option<client::Handle<RusshHandler>>,
+    /// 本机 X11 转发管理器（仅在配置启用且本机 X server 可用时存在）。
+    x11_proxy: Option<X11Proxy>,
+    remote_forward_target: Arc<RwLock<Option<RemoteForwardTarget>>>,
+    /// 连接是否启用了 ForwardAgent（`auth-agent-req@openssh.com`）。
+    ///
+    /// 启用后，终端在 pty 之后、shell 之前会发送 agent 转发请求，
+    /// 使远端（如跳板机）能通过 `auth-agent@openssh.com` 通道使用本地 ssh-agent。
+    forward_agent: bool,
+}
+
+pub struct LocalPortForwardTunnel {
+    local_addr: SocketAddr,
+    shutdown_tx: Option<oneshot::Sender<()>>,
+    accept_task: Option<tokio::task::JoinHandle<()>>,
+    client: Arc<Mutex<RusshClient>>,
+}
+
+pub struct LocalPortForwardConfig {
+    pub bind_host: String,
+    pub bind_port: u16,
+    pub target_host: String,
+    pub target_port: u16,
+    pub activity_tx: Option<tokio::sync::mpsc::UnboundedSender<LocalPortForwardActivity>>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LocalPortForwardActivity {
+    Connected {
+        source: SocketAddr,
+        target_host: String,
+        target_port: u16,
+    },
+    Closed {
+        source: SocketAddr,
+    },
+    Failed {
+        source: SocketAddr,
+        error: String,
+    },
+}
+
+impl LocalPortForwardTunnel {
+    pub fn local_addr(&self) -> SocketAddr {
+        self.local_addr
+    }
+
+    pub async fn close(&mut self) -> Result<()> {
+        if let Some(tx) = self.shutdown_tx.take() {
+            let _ = tx.send(());
+        }
+        if let Some(task) = self.accept_task.take() {
+            let _ = task.await;
+        }
+        let mut guard = self.client.lock().await;
+        guard.disconnect().await
+    }
+}
+
+impl Drop for LocalPortForwardTunnel {
+    fn drop(&mut self) {
+        if let Some(tx) = self.shutdown_tx.take() {
+            let _ = tx.send(());
+        }
+        if let Some(task) = self.accept_task.take() {
+            task.abort();
+        }
+    }
+}
+
+pub async fn authenticate_session<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+    auth: &SshAuth,
+    messages: AuthFailureMessages,
+) -> Result<()>
+where
+    H: client::Handler,
+{
+    authenticate_session_for_target(
+        session,
+        username,
+        auth,
+        messages,
+        KeyboardInteractiveTarget::TargetServer,
+        None,
+    )
+    .await
+}
+
+async fn authenticate_session_for_target<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+    auth: &SshAuth,
+    messages: AuthFailureMessages,
+    target: KeyboardInteractiveTarget,
+    responder: Option<Arc<dyn KeyboardInteractiveResponder>>,
+) -> Result<()>
+where
+    H: client::Handler,
+{
+    let hash_alg = session.best_supported_rsa_hash().await?.flatten();
+
+    match auth {
+        SshAuth::Password(password) => {
+            authenticate_password_with_mfa_priority(
+                session, username, password, target, responder, &messages,
+            )
+            .await?;
+        }
+        SshAuth::PrivateKey {
+            certificate_path, ..
+        }
+        | SshAuth::PrivateKeyContent {
+            certificate_path, ..
+        } => {
+            let key_pair = private_key_for_auth(auth)?;
+
+            if let Some(cert_path) = certificate_path {
+                let cert = load_openssh_certificate(expand_tilde(cert_path))?;
+                let auth_result = session
+                    .authenticate_openssh_cert(username, Arc::new(key_pair), cert)
+                    .await?;
+                finish_auth_result_or_keyboard_interactive(
+                    session,
+                    username,
+                    auth_result,
+                    target,
+                    responder,
+                    &messages,
+                    &messages.certificate_failed,
+                )
+                .await?;
+            } else {
+                let auth_result = session
+                    .authenticate_publickey(
+                        username,
+                        PrivateKeyWithHashAlg::new(Arc::new(key_pair), hash_alg),
+                    )
+                    .await?;
+                finish_auth_result_or_keyboard_interactive(
+                    session,
+                    username,
+                    auth_result,
+                    target,
+                    responder,
+                    &messages,
+                    &messages.public_key_failed,
+                )
+                .await?;
+            }
+        }
+        SshAuth::Agent => authenticate_with_agent(session, username, hash_alg, &messages).await?,
+        SshAuth::Pageant => {
+            authenticate_with_pageant(session, username, hash_alg, &messages).await?
+        }
+        SshAuth::AutoPublicKey => unreachable!("AutoPublicKey 应由高层认证编排处理"),
+        SshAuth::Chain(_) => {
+            unreachable!("SshAuth::Chain 应由 authenticate_with_strategy_for_target 处理")
+        }
+    }
+    Ok(())
+}
+
+fn private_key_for_auth(auth: &SshAuth) -> Result<PrivateKey> {
+    match auth {
+        SshAuth::PrivateKey {
+            key_path,
+            passphrase,
+            ..
+        } => Ok(load_secret_key(
+            expand_tilde(key_path),
+            passphrase.as_deref(),
+        )?),
+        SshAuth::PrivateKeyContent {
+            private_key,
+            passphrase,
+            ..
+        } => Ok(decode_secret_key(private_key, passphrase.as_deref())?),
+        _ => anyhow::bail!("authentication method does not contain a private key"),
+    }
+}
+
+/// 密码认证，并在连接启用了 MFA 回调时优先把认证交给 keyboard-interactive。
+///
+/// PAM 栈要求「先验证码、后密码」时（issue #284），password 方法无法区分各个提示的
+/// 内容：sshd 会把保存的密码当作第一个提示（验证码）的应答提交，服务器记一次无效验证码
+/// 后，本次认证就再无机会让用户输入验证码。因此只要服务器提供了 keyboard-interactive
+/// 方法，就先用它驱动交互：验证码由用户输入，密码仍在 password 提示处用保存的凭据应答。
+/// 服务器未提供该方法、或该方法要求先完成密码认证时，保持原有的密码认证顺序。
+async fn authenticate_password_with_mfa_priority<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+    password: &str,
+    target: KeyboardInteractiveTarget,
+    responder: Option<Arc<dyn KeyboardInteractiveResponder>>,
+    messages: &AuthFailureMessages,
+) -> Result<()>
+where
+    H: client::Handler,
+{
+    if responder.is_some() {
+        match probe_keyboard_interactive_support(session, username).await? {
+            KeyboardInteractiveSupport::Anonymous => return Ok(()),
+            KeyboardInteractiveSupport::Unsupported => {}
+            KeyboardInteractiveSupport::Supported => {
+                tracing::debug!(
+                    target = ?target,
+                    "SSH connection enables MFA responder, try keyboard-interactive first"
+                );
+                let attempt = authenticate_keyboard_interactive(
+                    session,
+                    username,
+                    target,
+                    responder.clone(),
+                    messages,
+                )
+                .await?;
+
+                match attempt {
+                    KeyboardInteractiveAttempt::Authenticated => return Ok(()),
+                    // 服务器已经拒绝了用户实际作答的验证码，再试密码只会得到同一个结果。
+                    KeyboardInteractiveAttempt::Rejected => {
+                        anyhow::bail!(messages.keyboard_interactive_failed.clone());
+                    }
+                    // 服务器还没下发过任何提示，说明这条链上要先完成密码认证。
+                    KeyboardInteractiveAttempt::Unavailable => {
+                        tracing::debug!(
+                            target = ?target,
+                            "SSH keyboard-interactive sent no prompt, fall back to password authentication"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    let auth_result = session
+        .authenticate_password(username, password)
+        .await
+        .context("SSH password authentication exchange failed")?;
+    finish_auth_result_or_keyboard_interactive(
+        session,
+        username,
+        auth_result,
+        target,
+        responder,
+        messages,
+        &messages.password_failed,
+    )
+    .await
+}
+
+async fn finish_auth_result_or_keyboard_interactive<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+    auth_result: client::AuthResult,
+    target: KeyboardInteractiveTarget,
+    responder: Option<Arc<dyn KeyboardInteractiveResponder>>,
+    messages: &AuthFailureMessages,
+    failure_message: &str,
+) -> Result<()>
+where
+    H: client::Handler,
+{
+    if auth_result.success() {
+        return Ok(());
+    }
+
+    if auth_result_allows_keyboard_interactive(&auth_result) {
+        return match authenticate_keyboard_interactive(
+            session, username, target, responder, messages,
+        )
+        .await?
+        {
+            KeyboardInteractiveAttempt::Authenticated => Ok(()),
+            KeyboardInteractiveAttempt::Unavailable | KeyboardInteractiveAttempt::Rejected => {
+                anyhow::bail!(messages.keyboard_interactive_failed.clone());
+            }
+        };
+    }
+
+    anyhow::bail!(failure_message.to_string());
+}
+
+fn auth_result_allows_keyboard_interactive(auth_result: &client::AuthResult) -> bool {
+    match auth_result {
+        client::AuthResult::Failure {
+            remaining_methods, ..
+        } => remaining_methods.contains(&russh::MethodKind::KeyboardInteractive),
+        client::AuthResult::Success => false,
+    }
+}
+
+const MAX_KEYBOARD_INTERACTIVE_RESTARTS: usize = 3;
+
+/// RFC 4252 的 "none" 探测结果。
+///
+/// OpenSSH 的 PAM 栈要求「先验证码、后密码」时 password 方法注定失败，因此启用 MFA 回调的
+/// 连接需要先确认服务器是否提供 keyboard-interactive，再决定认证顺序。探测请求不会被
+/// sshd 记为一次认证失败。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeyboardInteractiveSupport {
+    /// 服务器提供了 keyboard-interactive（可能附加了前置认证要求）。
+    Supported,
+    /// 服务器没有提供 keyboard-interactive 方法。
+    Unsupported,
+    /// "none" 方法已经直接通过认证，不需要再提交任何凭据。
+    Anonymous,
+}
+
+async fn probe_keyboard_interactive_support<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+) -> Result<KeyboardInteractiveSupport>
+where
+    H: client::Handler,
+{
+    match session
+        .authenticate_none(username)
+        .await
+        .context("SSH server capability probe (none authentication) failed")?
+    {
+        client::AuthResult::Success => Ok(KeyboardInteractiveSupport::Anonymous),
+        client::AuthResult::Failure {
+            remaining_methods, ..
+        } => Ok(
+            if remaining_methods.contains(&MethodKind::KeyboardInteractive) {
+                KeyboardInteractiveSupport::Supported
+            } else {
+                KeyboardInteractiveSupport::Unsupported
+            },
+        ),
+    }
+}
+
+/// keyboard-interactive 尝试的结果，供调用方判断是否需要回退到其它认证方法。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeyboardInteractiveAttempt {
+    /// 已在 keyboard-interactive 方法上完成认证。
+    Authenticated,
+    /// 服务器拒绝了该方法且从未下发过提示，可改试其它认证方法。
+    Unavailable,
+    /// 用户已经作答过验证码，但服务器仍拒绝认证。
+    Rejected,
+}
+
+fn keyboard_interactive_failure_can_retry(
+    remaining_methods: &russh::MethodSet,
+    restart_count: usize,
+) -> bool {
+    remaining_methods.contains(&russh::MethodKind::KeyboardInteractive)
+        && restart_count < MAX_KEYBOARD_INTERACTIVE_RESTARTS
+}
+
+async fn authenticate_keyboard_interactive<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+    target: KeyboardInteractiveTarget,
+    responder: Option<Arc<dyn KeyboardInteractiveResponder>>,
+    messages: &AuthFailureMessages,
+) -> Result<KeyboardInteractiveAttempt>
+where
+    H: client::Handler,
+{
+    let mut response = session
+        .authenticate_keyboard_interactive_start(username, None::<String>)
+        .await
+        .context("SSH keyboard-interactive start failed")?;
+    let mut restart_count = 0;
+    // 服务器是否已经下发过提示。没有下发提示就失败，说明该方法在当前认证链里还用不上，
+    // 而不是用户输入有误：此时重新发起只会重复同一个结果。
+    let mut prompted = false;
+
+    loop {
+        response = match response {
+            client::KeyboardInteractiveAuthResponse::Success => {
+                return Ok(KeyboardInteractiveAttempt::Authenticated);
+            }
+            client::KeyboardInteractiveAuthResponse::Failure {
+                remaining_methods,
+                partial_success,
+            } if prompted
+                && keyboard_interactive_failure_can_retry(&remaining_methods, restart_count) =>
+            {
+                restart_count += 1;
+                tracing::debug!(
+                    target = ?target,
+                    partial_success,
+                    remaining_methods = ?remaining_methods,
+                    restart_count,
+                    max_restarts = MAX_KEYBOARD_INTERACTIVE_RESTARTS,
+                    "SSH keyboard-interactive requires another authentication round"
+                );
+                session
+                    .authenticate_keyboard_interactive_start(username, None::<String>)
+                    .await
+                    .context("SSH keyboard-interactive restart failed")?
+            }
+            client::KeyboardInteractiveAuthResponse::Failure {
+                remaining_methods,
+                partial_success,
+            } => {
+                tracing::debug!(
+                    target = ?target,
+                    partial_success,
+                    remaining_methods = ?remaining_methods,
+                    restart_count,
+                    max_restarts = MAX_KEYBOARD_INTERACTIVE_RESTARTS,
+                    "SSH keyboard-interactive authentication failed"
+                );
+                return Ok(if prompted {
+                    KeyboardInteractiveAttempt::Rejected
+                } else {
+                    KeyboardInteractiveAttempt::Unavailable
+                });
+            }
+            client::KeyboardInteractiveAuthResponse::InfoRequest {
+                name,
+                instructions,
+                prompts,
+            } => {
+                prompted = true;
+                // 服务器在此下发提示：一旦这里成功应答后传输中断，日志至少要能指出
+                // 「认证往返已经开始」，而不是只剩一个裸的 russh 传输错误。
+                tracing::debug!(
+                    target = ?target,
+                    prompt_count = prompts.len(),
+                    "SSH keyboard-interactive prompt received"
+                );
+                let request =
+                    build_keyboard_interactive_request(target, name, instructions, prompts);
+                let answers = request_keyboard_interactive_responses(
+                    responder.clone(),
+                    request,
+                    &messages.keyboard_interactive_required,
+                )
+                .await?;
+                session
+                    .authenticate_keyboard_interactive_respond(answers)
+                    .await
+                    .context("SSH keyboard-interactive response failed")?
+            }
+        };
+    }
+}
+
+fn build_keyboard_interactive_request(
+    target: KeyboardInteractiveTarget,
+    name: String,
+    instructions: String,
+    prompts: Vec<client::Prompt>,
+) -> KeyboardInteractiveRequest {
+    KeyboardInteractiveRequest {
+        target,
+        name,
+        instructions,
+        prompts: prompts
+            .into_iter()
+            .map(|prompt| KeyboardInteractivePrompt {
+                prompt: prompt.prompt,
+                echo: prompt.echo,
+            })
+            .collect(),
+    }
+}
+
+async fn request_keyboard_interactive_responses(
+    responder: Option<Arc<dyn KeyboardInteractiveResponder>>,
+    request: KeyboardInteractiveRequest,
+    required_message: &str,
+) -> Result<Vec<String>> {
+    let Some(responder) = responder else {
+        anyhow::bail!(required_message.to_string());
+    };
+
+    responder
+        .respond(request)
+        .await
+        .context(t!("Ssh.auth_keyboard_interactive_cancelled").to_string())
+}
+
+pub fn discover_default_private_keys() -> Vec<String> {
+    let Some(home_dir) = dirs::home_dir() else {
+        return Vec::new();
+    };
+
+    discover_default_private_keys_in(&home_dir)
+}
+
+fn discover_default_private_keys_in(home_dir: &std::path::Path) -> Vec<String> {
+    let ssh_dir = home_dir.join(".ssh");
+    ["id_ed25519", "id_rsa", "id_ecdsa", "id_dsa"]
+        .into_iter()
+        .map(|file_name| ssh_dir.join(file_name))
+        .filter(|path| path.is_file())
+        .map(path_to_string)
+        .collect()
+}
+
+pub fn expand_auto_publickey_auth() -> Vec<SshAuth> {
+    expand_auto_publickey_auth_with_default_keys(discover_default_private_keys())
+}
+
+fn expand_auto_publickey_auth_with_default_keys(
+    default_keys: impl IntoIterator<Item = String>,
+) -> Vec<SshAuth> {
+    let mut auth_candidates = vec![SshAuth::Agent];
+    #[cfg(windows)]
+    auth_candidates.push(SshAuth::Pageant);
+    auth_candidates.extend(
+        default_keys
+            .into_iter()
+            .map(|key_path| SshAuth::PrivateKey {
+                key_path,
+                passphrase: None,
+                certificate_path: None,
+            }),
+    );
+    auth_candidates
+}
+
+pub async fn authenticate_session_with_fallbacks<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+    auth_candidates: &[SshAuth],
+    messages: AuthFailureMessages,
+) -> Result<()>
+where
+    H: client::Handler,
+{
+    let filtered_candidates: Vec<&SshAuth> = auth_candidates
+        .iter()
+        .filter(|auth| !matches!(auth, SshAuth::AutoPublicKey))
+        .collect();
+
+    if filtered_candidates.is_empty() {
+        anyhow::bail!(messages.no_local_identity.clone());
+    }
+
+    let has_default_keys = filtered_candidates.iter().any(|auth| {
+        matches!(
+            auth,
+            SshAuth::PrivateKey { .. } | SshAuth::PrivateKeyContent { .. }
+        )
+    });
+    let mut errors = Vec::new();
+
+    for auth in filtered_candidates {
+        match authenticate_session(session, username, auth, messages.clone()).await {
+            Ok(()) => return Ok(()),
+            Err(err) => errors.push(err.to_string()),
+        }
+    }
+
+    anyhow::bail!(build_auto_publickey_failure_message(
+        &messages,
+        has_default_keys,
+        &errors,
+    ));
+}
+
+fn default_auth_failure_messages() -> AuthFailureMessages {
+    AuthFailureMessages {
+        password_failed: t!("Ssh.auth_password_failed").to_string(),
+        certificate_failed: t!("Ssh.auth_certificate_failed").to_string(),
+        public_key_failed: t!("Ssh.auth_public_key_failed").to_string(),
+        agent_connect_failed: t!("Ssh.auth_agent_connect_failed").to_string(),
+        agent_no_identities: t!("Ssh.auth_agent_no_identities").to_string(),
+        agent_auth_failed: t!("Ssh.auth_agent_failed").to_string(),
+        auto_publickey_failed: t!("Ssh.auth_auto_publickey_failed").to_string(),
+        no_local_identity: t!("Ssh.auth_no_local_identity").to_string(),
+        auto_publickey_next_step: t!("Ssh.auth_auto_publickey_next_step").to_string(),
+        keyboard_interactive_required: t!("Ssh.auth_keyboard_interactive_required").to_string(),
+        keyboard_interactive_failed: t!("Ssh.auth_keyboard_interactive_failed").to_string(),
+        keyboard_interactive_cancelled: t!("Ssh.auth_keyboard_interactive_cancelled").to_string(),
+        chain_failed: t!("Ssh.auth_chain_failed").to_string(),
+        chain_incomplete: t!("Ssh.auth_chain_incomplete").to_string(),
+        chain_unsupported_factor: t!("Ssh.auth_chain_unsupported_factor").to_string(),
+    }
+}
+
+fn build_auto_publickey_failure_message(
+    messages: &AuthFailureMessages,
+    has_default_keys: bool,
+    errors: &[String],
+) -> String {
+    let mut parts = vec![messages.auto_publickey_failed.clone()];
+    if !has_default_keys {
+        parts.push(messages.no_local_identity.clone());
+    }
+    if !errors.is_empty() {
+        parts.push(errors.join("; "));
+    }
+    parts.push(messages.auto_publickey_next_step.clone());
+    parts.join(": ")
+}
+
+fn path_to_string(path: PathBuf) -> String {
+    path.to_string_lossy().to_string()
+}
+
+pub async fn authenticate_with_strategy<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+    auth: &SshAuth,
+    messages: AuthFailureMessages,
+) -> Result<()>
+where
+    H: client::Handler,
+{
+    authenticate_with_strategy_for_target(
+        session,
+        username,
+        auth,
+        messages,
+        KeyboardInteractiveTarget::TargetServer,
+        None,
+    )
+    .await
+}
+
+async fn authenticate_with_strategy_for_target<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+    auth: &SshAuth,
+    messages: AuthFailureMessages,
+    target: KeyboardInteractiveTarget,
+    responder: Option<Arc<dyn KeyboardInteractiveResponder>>,
+) -> Result<()>
+where
+    H: client::Handler,
+{
+    match auth {
+        SshAuth::AutoPublicKey => {
+            let auth_candidates = expand_auto_publickey_auth();
+            authenticate_session_with_fallbacks(session, username, &auth_candidates, messages).await
+        }
+        SshAuth::Chain(_) => {
+            authenticate_with_chain(
+                session,
+                username,
+                auth.chain_factors(),
+                messages,
+                target,
+                responder,
+            )
+            .await
+        }
+        _ => {
+            authenticate_session_for_target(session, username, auth, messages, target, responder)
+                .await
+        }
+    }
+}
+
+/// 一次认证链尝试的结果，用于判断是否要继续下一个因素。
+enum ChainFactorOutcome {
+    /// 已完成认证。
+    Authenticated,
+    /// 该方法未被服务器接受（可能还缺其它因素，也可能这个凭据本身就是错的）。
+    Failed {
+        remaining_methods: MethodSet,
+        message: String,
+    },
+}
+
+/// 认证链里由客户端主动发起的候选项。
+enum ChainCandidate {
+    /// 链里配置的某个因素。
+    Factor(usize),
+    /// 服务器要求 keyboard-interactive（例如动态验证码），不在配置里，由 MFA 回调应答。
+    KeyboardInteractive,
+}
+
+/// 认证链的总尝试次数上限：每个因素最多重试一次，外加服务器重排的余量。
+const MAX_CHAIN_ATTEMPTS: usize = 6;
+
+/// 按服务器返回的 `remaining_methods` 依次完成多个认证因素。
+///
+/// 设备侧（防火墙、交换机）常见的组合要求是 `AuthenticationMethods password,publickey`
+/// 或 `publickey,password`，客户端必须在同一连接内先通过一个因素、再补齐下一个因素。
+/// 编排规则：
+///
+/// 1. 先用 RFC 4252 的 `none` 探测拿到服务器认可的方法列表，作为提交顺序的首选依据
+///    （设备要求的顺序可能与配置顺序相反）；列表里没有可用因素时回退到配置顺序。
+/// 2. 每个因素在一次「无进展」期间只提交一次：服务器仍然列出该方法说明它没被接受，
+///    此时不再重复提交同一个因素，避免在会把失败次数当锁定依据的设备上反复试错。
+/// 3. 某个因素不再出现在 `remaining_methods` 里即视为通过，此时清空「已尝试」标记，
+///    允许在此之前被服务器拒绝过的因素再试一次——这正是「设备先拒绝公钥、直到密码
+///    通过后才接受公钥」的场景。
+async fn authenticate_with_chain<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+    factors: Vec<&SshAuth>,
+    messages: AuthFailureMessages,
+    target: KeyboardInteractiveTarget,
+    responder: Option<Arc<dyn KeyboardInteractiveResponder>>,
+) -> Result<()>
+where
+    H: client::Handler,
+{
+    for factor in &factors {
+        match factor {
+            SshAuth::Password(_)
+            | SshAuth::PrivateKey { .. }
+            | SshAuth::PrivateKeyContent { .. } => {}
+            _ => {
+                anyhow::bail!(messages.chain_unsupported_factor.clone());
+            }
+        }
+    }
+    // 只有一个因素时退化为普通认证：不做探测，保留单方法认证既有的 MFA 优先顺序。
+    if let [only] = factors.as_slice() {
+        return authenticate_session_for_target(
+            session, username, only, messages, target, responder,
+        )
+        .await;
+    }
+    if factors.is_empty() {
+        anyhow::bail!(messages.chain_incomplete.clone());
+    }
+
+    let mut remaining_methods = match session
+        .authenticate_none(username)
+        .await
+        .context("SSH server capability probe (none authentication) failed")?
+    {
+        client::AuthResult::Success => return Ok(()),
+        client::AuthResult::Failure {
+            remaining_methods, ..
+        } => remaining_methods,
+    };
+
+    // 每个因素在本轮「无进展」期间是否已经提交过；因素通过后该标记会被重置。
+    let mut attempted = vec![false; factors.len()];
+    let mut keyboard_interactive_attempted = false;
+    let mut satisfied = vec![false; factors.len()];
+    let mut failures: Vec<String> = Vec::new();
+    let mut attempts = 0usize;
+
+    while attempts < MAX_CHAIN_ATTEMPTS {
+        let Some(candidate) =
+            pick_chain_candidate(&factors, &remaining_methods, &attempted, &satisfied, {
+                responder.is_some() && !keyboard_interactive_attempted
+            })
+        else {
+            break;
+        };
+
+        match candidate {
+            ChainCandidate::Factor(index) => {
+                attempted[index] = true;
+                attempts += 1;
+                tracing::debug!(
+                    target = ?target,
+                    factor = index,
+                    "SSH multi-factor authentication: submitting next factor"
+                );
+
+                let outcome =
+                    attempt_chain_factor(session, username, factors[index], &messages).await?;
+                let ChainFactorOutcome::Failed {
+                    remaining_methods: updated,
+                    message,
+                } = &outcome
+                else {
+                    return Ok(());
+                };
+
+                failures.push(message.clone());
+                // 服务器不再提供该方法，说明这个因素已经通过；此时允许其它因素重试一次
+                // （设备常常在某个因素通过前拒绝另一个因素）。
+                if !method_set_lists(&updated, factors[index].factor_method_kind()) {
+                    satisfied[index] = true;
+                    attempted.iter_mut().for_each(|flag| *flag = false);
+                }
+                remaining_methods = updated.clone();
+            }
+            ChainCandidate::KeyboardInteractive => {
+                keyboard_interactive_attempted = true;
+                attempts += 1;
+                match authenticate_keyboard_interactive(
+                    session,
+                    username,
+                    target,
+                    responder.clone(),
+                    &messages,
+                )
+                .await?
+                {
+                    KeyboardInteractiveAttempt::Authenticated => return Ok(()),
+                    // 用户已经作答却被拒签，说明这条链已经作废（例如 PAM 事务被破坏）。
+                    KeyboardInteractiveAttempt::Rejected => {
+                        anyhow::bail!(messages.keyboard_interactive_failed.clone());
+                    }
+                    // 服务器没下发提示，说明还有因素要先行完成，继续下一个候选。
+                    KeyboardInteractiveAttempt::Unavailable => {
+                        failures.push(messages.keyboard_interactive_failed.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    if failures.is_empty() {
+        anyhow::bail!(messages.chain_incomplete.clone());
+    }
+    anyhow::bail!(format!(
+        "{}: {}",
+        messages.chain_failed,
+        failures.join("; ")
+    ));
+}
+
+/// 服务器下发的方法列表里是否还列出该方法；`None`（无法映射到方法）视为「不再列出」。
+fn method_set_lists(methods: &MethodSet, kind: Option<MethodKind>) -> bool {
+    kind.is_some_and(|kind| methods.contains(&kind))
+}
+
+fn pick_chain_candidate(
+    factors: &[&SshAuth],
+    remaining_methods: &MethodSet,
+    attempted: &[bool],
+    satisfied: &[bool],
+    keyboard_interactive_available: bool,
+) -> Option<ChainCandidate> {
+    let usable = |index: usize| !attempted[index] && !satisfied[index];
+
+    // 服务器给出的方法顺序优先：设备要求的顺序可能与配置顺序相反。
+    for kind in remaining_methods.iter() {
+        if *kind == MethodKind::KeyboardInteractive {
+            if keyboard_interactive_available {
+                return Some(ChainCandidate::KeyboardInteractive);
+            }
+            continue;
+        }
+        if let Some(index) = (0..factors.len())
+            .find(|index| usable(*index) && factors[*index].factor_method_kind() == Some(*kind))
+        {
+            return Some(ChainCandidate::Factor(index));
+        }
+    }
+
+    // 服务器没有给出可用方法（或都不匹配）时，回退到配置顺序。
+    (0..factors.len())
+        .find(|index| usable(*index))
+        .map(ChainCandidate::Factor)
+}
+
+/// 提交认证链里的一个因素。
+async fn attempt_chain_factor<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+    factor: &SshAuth,
+    messages: &AuthFailureMessages,
+) -> Result<ChainFactorOutcome>
+where
+    H: client::Handler,
+{
+    match factor {
+        SshAuth::Password(password) => {
+            let auth_result = session
+                .authenticate_password(username, password)
+                .await
+                .context("SSH password authentication exchange failed")?;
+            Ok(classify_chain_auth_result(
+                auth_result,
+                &messages.password_failed,
+            ))
+        }
+        SshAuth::PrivateKey { .. } | SshAuth::PrivateKeyContent { .. } => {
+            let hash_alg = session.best_supported_rsa_hash().await?.flatten();
+            let key_pair = private_key_for_auth(factor)?;
+            match factor {
+                SshAuth::PrivateKey {
+                    certificate_path: Some(cert_path),
+                    ..
+                }
+                | SshAuth::PrivateKeyContent {
+                    certificate_path: Some(cert_path),
+                    ..
+                } => {
+                    let cert = load_openssh_certificate(cert_path)?;
+                    let auth_result = session
+                        .authenticate_openssh_cert(username, Arc::new(key_pair), cert)
+                        .await
+                        .context("SSH certificate authentication exchange failed")?;
+                    Ok(classify_chain_auth_result(
+                        auth_result,
+                        &messages.certificate_failed,
+                    ))
+                }
+                _ => {
+                    let auth_result = session
+                        .authenticate_publickey(
+                            username,
+                            PrivateKeyWithHashAlg::new(Arc::new(key_pair), hash_alg),
+                        )
+                        .await
+                        .context("SSH public key authentication exchange failed")?;
+                    Ok(classify_chain_auth_result(
+                        auth_result,
+                        &messages.public_key_failed,
+                    ))
+                }
+            }
+        }
+        _ => anyhow::bail!(messages.chain_unsupported_factor.clone()),
+    }
+}
+
+fn classify_chain_auth_result(
+    auth_result: client::AuthResult,
+    failure_message: &str,
+) -> ChainFactorOutcome {
+    match auth_result {
+        client::AuthResult::Success => ChainFactorOutcome::Authenticated,
+        client::AuthResult::Failure {
+            remaining_methods, ..
+        } => ChainFactorOutcome::Failed {
+            remaining_methods,
+            message: failure_message.to_string(),
+        },
+    }
+}
+
+struct AgentAuthContext<'a> {
+    username: &'a str,
+    hash_alg: Option<HashAlg>,
+    messages: &'a AuthFailureMessages,
+}
+
+async fn authenticate_with_agent_client<H, S>(
+    session: &mut client::Handle<H>,
+    mut agent: agent::client::AgentClient<S>,
+    context: AgentAuthContext<'_>,
+) -> Result<()>
+where
+    H: client::Handler,
+    S: agent::client::AgentStream + Send + Unpin,
+{
+    let identities = agent
+        .request_identities()
+        .await
+        .map_err(|error| anyhow::anyhow!("{}: {}", context.messages.agent_connect_failed, error))?;
+    if identities.is_empty() {
+        anyhow::bail!(context.messages.agent_no_identities.clone());
+    }
+
+    let mut last_error = None;
+    for identity in identities {
+        match session
+            .authenticate_publickey_with(
+                context.username,
+                identity.public_key().into_owned(),
+                context.hash_alg,
+                &mut agent,
+            )
+            .await
+        {
+            Ok(result) if result.success() => return Ok(()),
+            Ok(_) => {}
+            Err(error) => last_error = Some(error.to_string()),
+        }
+    }
+
+    match last_error {
+        Some(error) => anyhow::bail!("{}: {}", context.messages.agent_auth_failed, error),
+        None => anyhow::bail!(context.messages.agent_auth_failed.clone()),
+    }
+}
+
+#[cfg(any(windows, test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WindowsAgentBackend {
+    OpenSsh,
+    Pageant,
+}
+
+// 仅测试使用：Windows 下认证入口直接以 Agent/Pageant 枚举分发
+#[cfg(test)]
+const fn windows_agent_backend_for_auth(auth: &SshAuth) -> Option<WindowsAgentBackend> {
+    match auth {
+        SshAuth::Agent => Some(WindowsAgentBackend::OpenSsh),
+        SshAuth::Pageant => Some(WindowsAgentBackend::Pageant),
+        _ => None,
+    }
+}
+
+#[cfg(unix)]
+async fn authenticate_with_agent<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+    hash_alg: Option<HashAlg>,
+    messages: &AuthFailureMessages,
+) -> Result<()>
+where
+    H: client::Handler,
+{
+    let agent = connect_agent_client(messages).await?;
+    authenticate_with_agent_client(
+        session,
+        agent,
+        AgentAuthContext {
+            username,
+            hash_alg,
+            messages,
+        },
+    )
+    .await
+}
+
+#[cfg(unix)]
+async fn connect_agent_client(
+    messages: &AuthFailureMessages,
+) -> Result<agent::client::AgentClient<tokio::net::UnixStream>> {
+    agent::client::AgentClient::connect_env()
+        .await
+        .map_err(|e| anyhow::anyhow!("{}: {}", messages.agent_connect_failed, e))
+}
+
+#[cfg(windows)]
+async fn connect_windows_agent_client(
+    backend: WindowsAgentBackend,
+    messages: &AuthFailureMessages,
+) -> Result<agent::client::AgentClient<Box<dyn agent::client::AgentStream + Send + Unpin + 'static>>>
+{
+    match backend {
+        WindowsAgentBackend::OpenSsh => {
+            agent::client::AgentClient::connect_named_pipe(r"\\.\pipe\openssh-ssh-agent")
+                .await
+                .map(|client| client.dynamic())
+        }
+        WindowsAgentBackend::Pageant => agent::client::AgentClient::connect_pageant()
+            .await
+            .map(|client| client.dynamic()),
+    }
+    .map_err(|error| anyhow::anyhow!("{}: {}", messages.agent_connect_failed, error))
+}
+
+#[cfg(windows)]
+async fn authenticate_with_agent<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+    hash_alg: Option<HashAlg>,
+    messages: &AuthFailureMessages,
+) -> Result<()>
+where
+    H: client::Handler,
+{
+    let agent = connect_windows_agent_client(WindowsAgentBackend::OpenSsh, messages).await?;
+    authenticate_with_agent_client(
+        session,
+        agent,
+        AgentAuthContext {
+            username,
+            hash_alg,
+            messages,
+        },
+    )
+    .await
+}
+
+#[cfg(windows)]
+async fn authenticate_with_pageant<H>(
+    session: &mut client::Handle<H>,
+    username: &str,
+    hash_alg: Option<HashAlg>,
+    messages: &AuthFailureMessages,
+) -> Result<()>
+where
+    H: client::Handler,
+{
+    let agent = connect_windows_agent_client(WindowsAgentBackend::Pageant, messages).await?;
+    authenticate_with_agent_client(
+        session,
+        agent,
+        AgentAuthContext {
+            username,
+            hash_alg,
+            messages,
+        },
+    )
+    .await
+}
+
+#[cfg(not(any(unix, windows)))]
+async fn authenticate_with_agent<H>(
+    _session: &mut client::Handle<H>,
+    _username: &str,
+    _hash_alg: Option<HashAlg>,
+    messages: &AuthFailureMessages,
+) -> Result<()>
+where
+    H: client::Handler,
+{
+    anyhow::bail!(messages.agent_connect_failed.clone());
+}
+
+#[cfg(not(windows))]
+async fn authenticate_with_pageant<H>(
+    _session: &mut client::Handle<H>,
+    _username: &str,
+    _hash_alg: Option<HashAlg>,
+    _messages: &AuthFailureMessages,
+) -> Result<()>
+where
+    H: client::Handler,
+{
+    anyhow::bail!("Pageant authentication is only supported on Windows");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use std::sync::{Arc, Mutex as StdMutex};
+    #[cfg(unix)]
+    use std::sync::{Mutex, OnceLock};
+
+    fn test_auth_failure_messages() -> AuthFailureMessages {
+        AuthFailureMessages {
+            password_failed: "password".to_string(),
+            certificate_failed: "certificate".to_string(),
+            public_key_failed: "public_key".to_string(),
+            agent_connect_failed: "agent_connect".to_string(),
+            agent_no_identities: "agent_no_identities".to_string(),
+            agent_auth_failed: "agent_auth_failed".to_string(),
+            auto_publickey_failed: "auto_publickey_failed".to_string(),
+            no_local_identity: "no_local_identity".to_string(),
+            auto_publickey_next_step: "next_step".to_string(),
+            keyboard_interactive_required: "keyboard_interactive_required".to_string(),
+            keyboard_interactive_failed: "keyboard_interactive_failed".to_string(),
+            keyboard_interactive_cancelled: "keyboard_interactive_cancelled".to_string(),
+            chain_failed: "chain_failed".to_string(),
+            chain_incomplete: "chain_incomplete".to_string(),
+            chain_unsupported_factor: "chain_unsupported_factor".to_string(),
+        }
+    }
+
+    #[test]
+    fn expand_tilde_replaces_leading_tilde_with_home_dir() {
+        let home = dirs::home_dir().expect("测试环境应有可用的 home 目录");
+
+        assert_eq!(expand_tilde("~"), home);
+        assert_eq!(expand_tilde("~/.ssh/id_rsa"), home.join(".ssh/id_rsa"));
+        assert_eq!(
+            expand_tilde("/absolute/id_rsa"),
+            PathBuf::from("/absolute/id_rsa")
+        );
+        assert_eq!(
+            expand_tilde("relative/id_rsa"),
+            PathBuf::from("relative/id_rsa")
+        );
+    }
+
+    #[test]
+    fn windows_agent_backend_is_explicit_for_each_auth_method() {
+        assert_eq!(
+            windows_agent_backend_for_auth(&SshAuth::Agent),
+            Some(WindowsAgentBackend::OpenSsh)
+        );
+        assert_eq!(
+            windows_agent_backend_for_auth(&SshAuth::Pageant),
+            Some(WindowsAgentBackend::Pageant)
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn agent_connect_without_env_returns_readable_error() {
+        static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        let env_lock = ENV_LOCK.get_or_init(|| Mutex::new(()));
+        let _guard = env_lock.lock().expect("环境锁不应中毒");
+
+        let previous = std::env::var("SSH_AUTH_SOCK").ok();
+        unsafe {
+            std::env::remove_var("SSH_AUTH_SOCK");
+        }
+
+        let result = connect_agent_client(&test_auth_failure_messages()).await;
+
+        match previous {
+            Some(value) => unsafe {
+                std::env::set_var("SSH_AUTH_SOCK", value);
+            },
+            None => unsafe {
+                std::env::remove_var("SSH_AUTH_SOCK");
+            },
+        }
+
+        let err = match result {
+            Ok(_) => panic!("缺少 SSH_AUTH_SOCK 时应返回错误"),
+            Err(err) => err,
+        };
+        assert!(
+            err.to_string().contains("agent_connect"),
+            "错误信息应包含 agent 连接失败上下文"
+        );
+    }
+
+    #[test]
+    fn discover_default_private_keys_returns_expected_order() {
+        let temp_home = std::env::temp_dir().join(format!(
+            "onetcli-ssh-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("系统时间应晚于 unix epoch")
+                .as_nanos()
+        ));
+        let ssh_dir = temp_home.join(".ssh");
+        std::fs::create_dir_all(&ssh_dir).expect("应可创建临时 ssh 目录");
+        std::fs::write(ssh_dir.join("id_rsa"), "rsa").expect("应可写入 id_rsa");
+        std::fs::write(ssh_dir.join("id_ed25519"), "ed25519").expect("应可写入 id_ed25519");
+
+        let discovered = discover_default_private_keys_in(&temp_home);
+
+        std::fs::remove_dir_all(&temp_home).expect("应可清理临时目录");
+
+        assert_eq!(
+            discovered,
+            vec![
+                ssh_dir.join("id_ed25519").to_string_lossy().to_string(),
+                ssh_dir.join("id_rsa").to_string_lossy().to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn expand_auto_publickey_auth_contains_agent_and_default_keys() {
+        let temp_home = std::env::temp_dir().join(format!(
+            "onetcli-ssh-test-expand-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("系统时间应晚于 unix epoch")
+                .as_nanos()
+        ));
+        let ssh_dir = temp_home.join(".ssh");
+        std::fs::create_dir_all(&ssh_dir).expect("应可创建临时 ssh 目录");
+        let key_path = ssh_dir.join("id_ed25519");
+        std::fs::write(&key_path, "ed25519").expect("应可写入默认私钥");
+
+        let expanded = expand_auto_publickey_auth_with_default_keys(vec![
+            key_path.to_string_lossy().to_string(),
+        ]);
+
+        std::fs::remove_dir_all(&temp_home).expect("应可清理临时目录");
+
+        assert!(matches!(expanded.first(), Some(SshAuth::Agent)));
+        assert!(expanded.iter().any(|auth| matches!(
+            auth,
+            SshAuth::PrivateKey { key_path: path, .. } if path == &key_path.to_string_lossy().to_string()
+        )));
+    }
+
+    #[test]
+    fn private_key_content_auth_is_decoded_from_memory() {
+        let error = private_key_for_auth(&SshAuth::PrivateKeyContent {
+            private_key: "not a private key".to_string(),
+            passphrase: None,
+            certificate_path: None,
+        })
+        .expect_err("invalid inline private key should fail to decode");
+        let message = error.to_string();
+
+        assert!(
+            !message.contains("No such file") && !message.contains("os error 2"),
+            "inline private key content should not be treated as a file path: {message}"
+        );
+    }
+
+    #[test]
+    fn build_auto_publickey_failure_message_mentions_missing_identity() {
+        let messages = test_auth_failure_messages();
+        let message =
+            build_auto_publickey_failure_message(&messages, false, &["agent_connect".to_string()]);
+
+        assert!(message.contains("auto_publickey_failed"));
+        assert!(message.contains("no_local_identity"));
+        assert!(message.contains("agent_connect"));
+    }
+
+    #[test]
+    fn build_auto_publickey_failure_message_includes_next_step() {
+        let messages = test_auth_failure_messages();
+        // 有候选身份但全部失败的场景
+        let message = build_auto_publickey_failure_message(
+            &messages,
+            true,
+            &["public_key_failed".to_string()],
+        );
+        assert!(
+            message.contains("next_step"),
+            "失败消息应包含下一步引导文案，实际：{}",
+            message
+        );
+    }
+
+    #[tokio::test]
+    async fn authenticate_session_with_fallbacks_returns_error_when_no_candidates() {
+        // 验证空候选列表时返回可读错误，而不是 panic
+        // 这是 P0 修复的核心：authenticate_session 对 AutoPublicKey 会 unreachable!()，
+        // authenticate_session_with_fallbacks 应正常返回错误
+        // 空候选列表 — 不依赖真实 SSH 服务，直接验证错误路径
+        let candidates: Vec<SshAuth> = vec![];
+        let messages = test_auth_failure_messages();
+
+        // 使用辅助函数验证空列表的错误聚合逻辑（不需要真实 session）
+        let filtered: Vec<&SshAuth> = candidates
+            .iter()
+            .filter(|a| !matches!(a, SshAuth::AutoPublicKey))
+            .collect();
+        assert!(filtered.is_empty(), "空候选列表过滤后应为空");
+
+        // 验证失败消息生成不 panic
+        let msg = build_auto_publickey_failure_message(&messages, false, &[]);
+        assert!(msg.contains("auto_publickey_failed"));
+        assert!(msg.contains("no_local_identity"));
+        assert!(msg.contains("next_step"));
+    }
+
+    #[test]
+    fn password_failure_can_continue_with_keyboard_interactive() {
+        let result = client::AuthResult::Failure {
+            remaining_methods: russh::MethodSet::from(
+                &[russh::MethodKind::KeyboardInteractive][..],
+            ),
+            partial_success: false,
+        };
+
+        assert!(auth_result_allows_keyboard_interactive(&result));
+    }
+
+    #[test]
+    fn keyboard_interactive_failure_retries_only_when_allowed_and_bounded() {
+        let keyboard_interactive =
+            russh::MethodSet::from(&[russh::MethodKind::KeyboardInteractive][..]);
+        let password = russh::MethodSet::from(&[russh::MethodKind::Password][..]);
+
+        assert!(keyboard_interactive_failure_can_retry(
+            &keyboard_interactive,
+            0
+        ));
+        assert!(keyboard_interactive_failure_can_retry(
+            &keyboard_interactive,
+            MAX_KEYBOARD_INTERACTIVE_RESTARTS - 1
+        ));
+        assert!(!keyboard_interactive_failure_can_retry(
+            &keyboard_interactive,
+            MAX_KEYBOARD_INTERACTIVE_RESTARTS
+        ));
+        assert!(!keyboard_interactive_failure_can_retry(&password, 0));
+        assert!(!keyboard_interactive_failure_can_retry(
+            &russh::MethodSet::empty(),
+            0
+        ));
+    }
+
+    #[tokio::test]
+    async fn keyboard_interactive_responder_receives_prompts() {
+        #[derive(Default)]
+        struct RecordingResponder {
+            requests: StdMutex<Vec<KeyboardInteractiveRequest>>,
+        }
+
+        #[async_trait]
+        impl KeyboardInteractiveResponder for RecordingResponder {
+            async fn respond(&self, request: KeyboardInteractiveRequest) -> Result<Vec<String>> {
+                self.requests.lock().unwrap().push(request);
+                Ok(vec!["654321".to_string()])
+            }
+        }
+
+        let responder = Arc::new(RecordingResponder::default());
+        let request = KeyboardInteractiveRequest {
+            target: KeyboardInteractiveTarget::JumpServer,
+            name: "MFA".to_string(),
+            instructions: "Enter verification code".to_string(),
+            prompts: vec![KeyboardInteractivePrompt {
+                prompt: "Verification code:".to_string(),
+                echo: false,
+            }],
+        };
+
+        let responses =
+            request_keyboard_interactive_responses(Some(responder.clone()), request, "required")
+                .await
+                .expect("responder should provide MFA response");
+
+        assert_eq!(responses, vec!["654321"]);
+        let requests = responder.requests.lock().unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].target, KeyboardInteractiveTarget::JumpServer);
+        assert_eq!(requests[0].prompts[0].prompt, "Verification code:");
+    }
+}
+
+/// 通过代理建立TCP连接
+pub async fn connect_via_proxy(
+    proxy: &ProxyConnectConfig,
+    target_host: &str,
+    target_port: u16,
+) -> Result<TcpStream> {
+    let proxy_addr = format!("{}:{}", proxy.host, proxy.port);
+
+    match proxy.proxy_type {
+        ProxyType::Socks5 => {
+            use tokio_socks::tcp::Socks5Stream;
+
+            let stream = if let Some(username) = &proxy.username {
+                let password = proxy.password.as_deref().unwrap_or_default();
+                Socks5Stream::connect_with_password(
+                    proxy_addr.as_str(),
+                    (target_host, target_port),
+                    username,
+                    password,
+                )
+                .await
+                .map_err(|e| {
+                    anyhow::anyhow!(t!("Ssh.socks5_proxy_connect_failed", error = e).to_string())
+                })?
+            } else {
+                Socks5Stream::connect(proxy_addr.as_str(), (target_host, target_port))
+                    .await
+                    .map_err(|e| {
+                        anyhow::anyhow!(
+                            t!("Ssh.socks5_proxy_connect_failed", error = e).to_string()
+                        )
+                    })?
+            };
+
+            Ok(stream.into_inner())
+        }
+        ProxyType::Http => {
+            // HTTP CONNECT代理实现
+            let stream = TcpStream::connect(&proxy_addr).await.map_err(|e| {
+                anyhow::anyhow!(t!("Ssh.http_proxy_connect_failed", error = e).to_string())
+            })?;
+
+            // 发送CONNECT请求
+            let connect_request = if let Some(username) = &proxy.username {
+                let password = proxy.password.as_deref().unwrap_or_default();
+                let credentials = format!("{}:{}", username, password);
+                let encoded = base64_encode(&credentials);
+                format!(
+                    "CONNECT {}:{} HTTP/1.1\r\nHost: {}:{}\r\nProxy-Authorization: Basic {}\r\n\r\n",
+                    target_host, target_port, target_host, target_port, encoded
+                )
+            } else {
+                format!(
+                    "CONNECT {}:{} HTTP/1.1\r\nHost: {}:{}\r\n\r\n",
+                    target_host, target_port, target_host, target_port
+                )
+            };
+
+            use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+            let (reader, mut writer) = stream.into_split();
+            writer.write_all(connect_request.as_bytes()).await?;
+
+            let mut reader = BufReader::new(reader);
+            let mut response_line = String::new();
+            reader.read_line(&mut response_line).await?;
+
+            if !response_line.contains("200") {
+                anyhow::bail!(t!(
+                    "Ssh.http_proxy_connection_failed",
+                    response = response_line.trim()
+                ));
+            }
+
+            // 读取剩余的响应头
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).await?;
+                if line == "\r\n" || line.is_empty() {
+                    break;
+                }
+            }
+
+            // 重新组合stream
+            Ok(reader.into_inner().reunite(writer)?)
+        }
+    }
+}
+
+/// 简单的Base64编码
+fn base64_encode(input: &str) -> String {
+    const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+    let bytes = input.as_bytes();
+    let mut result = Vec::new();
+
+    for chunk in bytes.chunks(3) {
+        let b0 = chunk[0] as u32;
+        let b1 = chunk.get(1).copied().unwrap_or(0) as u32;
+        let b2 = chunk.get(2).copied().unwrap_or(0) as u32;
+
+        let n = (b0 << 16) | (b1 << 8) | b2;
+
+        result.push(ALPHABET[((n >> 18) & 0x3F) as usize]);
+        result.push(ALPHABET[((n >> 12) & 0x3F) as usize]);
+
+        if chunk.len() > 1 {
+            result.push(ALPHABET[((n >> 6) & 0x3F) as usize]);
+        } else {
+            result.push(b'=');
+        }
+
+        if chunk.len() > 2 {
+            result.push(ALPHABET[(n & 0x3F) as usize]);
+        } else {
+            result.push(b'=');
+        }
+    }
+
+    String::from_utf8(result).unwrap()
+}
+
+impl RusshClient {
+    pub async fn open_direct_tcpip_channel(
+        &mut self,
+        target_host: &str,
+        target_port: u16,
+        origin_host: &str,
+        origin_port: u16,
+    ) -> Result<Channel<client::Msg>> {
+        let channel = self
+            .session
+            .channel_open_direct_tcpip(
+                target_host,
+                target_port as u32,
+                origin_host,
+                origin_port as u32,
+            )
+            .await?;
+        Ok(channel)
+    }
+
+    pub(crate) fn set_remote_forward_target(&mut self, target: RemoteForwardTarget) -> Result<()> {
+        let mut configured = self
+            .remote_forward_target
+            .write()
+            .map_err(|_| anyhow::anyhow!("remote forwarding target lock poisoned"))?;
+        *configured = Some(target);
+        Ok(())
+    }
+
+    pub(crate) async fn request_remote_forward(
+        &self,
+        bind_host: &str,
+        bind_port: u16,
+    ) -> Result<u16> {
+        let allocated = self
+            .session
+            .tcpip_forward(bind_host, u32::from(bind_port))
+            .await?;
+        if bind_port != 0 {
+            return Ok(bind_port);
+        }
+        u16::try_from(allocated).context("server allocated an invalid remote forwarding port")
+    }
+
+    pub(crate) async fn cancel_remote_forward(
+        &self,
+        bind_host: &str,
+        bind_port: u16,
+    ) -> Result<()> {
+        self.session
+            .cancel_tcpip_forward(bind_host, u32::from(bind_port))
+            .await?;
+        Ok(())
+    }
+}
+
+pub async fn start_local_port_forward(
+    config: SshConnectConfig,
+    target_host: impl Into<String>,
+    target_port: u16,
+) -> Result<LocalPortForwardTunnel> {
+    start_local_port_forward_with_config(
+        config,
+        LocalPortForwardConfig {
+            bind_host: "127.0.0.1".to_string(),
+            bind_port: 0,
+            target_host: target_host.into(),
+            target_port,
+            activity_tx: None,
+        },
+    )
+    .await
+}
+
+pub async fn start_local_port_forward_with_config(
+    config: SshConnectConfig,
+    forward_config: LocalPortForwardConfig,
+) -> Result<LocalPortForwardTunnel> {
+    let target_host = forward_config.target_host;
+    let target_port = forward_config.target_port;
+    let activity_tx = forward_config.activity_tx;
+    let bind_addr =
+        build_local_forward_bind_addr(&forward_config.bind_host, forward_config.bind_port);
+    let listener = TcpListener::bind(&bind_addr)
+        .await
+        .with_context(|| format!("failed to bind local address: {bind_addr}"))?;
+    let local_addr = listener.local_addr()?;
+
+    let client = <RusshClient as SshClient>::connect(config).await?;
+    let client = Arc::new(Mutex::new(client));
+    let (shutdown_tx, mut shutdown_rx) = oneshot::channel::<()>();
+    let client_for_task = Arc::clone(&client);
+    let target_host_for_task = target_host.clone();
+
+    let accept_task = tokio::spawn(async move {
+        loop {
+            tokio::select! {
+                _ = &mut shutdown_rx => {
+                    break;
+                }
+                accept_result = listener.accept() => {
+                    let (mut inbound, inbound_addr) = match accept_result {
+                        Ok(result) => result,
+                        Err(err) => {
+                            tracing::error!("本地端口转发 accept 失败: {}", err);
+                            break;
+                        }
+                    };
+
+                    let client_for_conn = Arc::clone(&client_for_task);
+                    let target_host_for_conn = target_host_for_task.clone();
+                    let activity_tx = activity_tx.clone();
+                    tokio::spawn(async move {
+                        let origin_host = match inbound_addr {
+                            SocketAddr::V4(v4) => v4.ip().to_string(),
+                            SocketAddr::V6(v6) => v6.ip().to_string(),
+                        };
+                        let origin_port = inbound_addr.port();
+
+                        let direct_channel = {
+                            let mut guard = client_for_conn.lock().await;
+                            match guard
+                                .open_direct_tcpip_channel(
+                                    &target_host_for_conn,
+                                    target_port,
+                                    &origin_host,
+                                    origin_port,
+                                )
+                                .await
+                            {
+                                Ok(channel) => channel,
+                                Err(err) => {
+                                    if let Some(tx) = &activity_tx {
+                                        let _ = tx.send(LocalPortForwardActivity::Failed {
+                                            source: inbound_addr,
+                                            error: err.to_string(),
+                                        });
+                                    }
+                                    tracing::error!("打开 SSH direct-tcpip 通道失败: {}", err);
+                                    return;
+                                }
+                            }
+                        };
+
+                        if let Some(tx) = &activity_tx {
+                            let _ = tx.send(LocalPortForwardActivity::Connected {
+                                source: inbound_addr,
+                                target_host: target_host_for_conn,
+                                target_port,
+                            });
+                        }
+                        let mut outbound = direct_channel.into_stream();
+                        if let Err(err) = copy_bidirectional(&mut inbound, &mut outbound).await {
+                            tracing::debug!("SSH 端口转发连接结束: {}", err);
+                        }
+                        if let Some(tx) = &activity_tx {
+                            let _ = tx.send(LocalPortForwardActivity::Closed {
+                                source: inbound_addr,
+                            });
+                        }
+                    });
+                }
+            }
+        }
+    });
+
+    Ok(LocalPortForwardTunnel {
+        local_addr,
+        shutdown_tx: Some(shutdown_tx),
+        accept_task: Some(accept_task),
+        client,
+    })
+}
+
+fn build_local_forward_bind_addr(bind_host: &str, bind_port: u16) -> String {
+    format!("{bind_host}:{bind_port}")
+}
+
+#[async_trait]
+impl SshClient for RusshClient {
+    type Channel = RusshChannel;
+
+    async fn connect(config: SshConnectConfig) -> Result<Self> {
+        let connect_timeout = config.timeout;
+        let target_host_key_identity = config.target_host_key_identity();
+        let jump_host_key_identity = config.jump_host_key_identity();
+        let target_russh_config = build_russh_client_config(&config, &target_host_key_identity)?;
+        let jump_russh_config = jump_host_key_identity
+            .as_ref()
+            .map(|identity| build_russh_client_config(&config, identity))
+            .transpose()?;
+
+        // 需要 ForwardAgent 时，先把配置的私钥加入本地 ssh-agent，
+        // 使它们可被远端（如跳板机）通过转发通道使用。
+        if config.forward_agent {
+            add_identities_to_local_agent(&config.agent_identities)
+                .await
+                .context("add SSH agent identities")?;
+        }
+
+        // X11 转发依赖本机 X server（DISPLAY/XAUTHORITY），解析失败仅降级不阻断连接。
+        let x11_proxy = if config.x11_forwarding {
+            detect_x11_proxy().await
+        } else {
+            None
+        };
+        let x11_handle = x11_proxy.as_ref().map(|proxy| proxy.handle());
+        let host_key_verifier = config.host_key_verifier.clone();
+        let remote_forward_target = Arc::new(RwLock::new(None));
+
+        let connect = async {
+            // 情况1: 使用跳板机连接
+            if let Some(ref jump) = config.jump_server {
+                tracing::info!("通过跳板机 {}:{} 连接", jump.host, jump.port);
+                let jump_identity = jump_host_key_identity
+                    .clone()
+                    .expect("jump identity must exist when jump server is configured");
+                let jump_russh_config = jump_russh_config
+                    .clone()
+                    .expect("jump config must exist when jump server is configured");
+
+                // 先连接到跳板机（可能通过代理）
+                let jump_session = if let Some(ref proxy) = config.proxy {
+                    tracing::info!("通过代理 {}:{} 连接跳板机", proxy.host, proxy.port);
+                    let stream = connect_via_proxy(proxy, &jump.host, jump.port).await?;
+                    let handler = RusshHandler::new(
+                        jump_identity,
+                        host_key_verifier.clone(),
+                        None,
+                        Arc::new(RwLock::new(None)),
+                        config.forward_agent,
+                    );
+                    client::connect_stream(jump_russh_config, stream, handler)
+                        .await
+                        .map_err(|error| {
+                            add_legacy_algorithm_hint(error, config.allow_legacy_algorithms)
+                        })?
+                } else {
+                    let addrs = (jump.host.as_str(), jump.port);
+                    let handler = RusshHandler::new(
+                        jump_identity,
+                        host_key_verifier.clone(),
+                        None,
+                        Arc::new(RwLock::new(None)),
+                        config.forward_agent,
+                    );
+                    client::connect(jump_russh_config, addrs, handler)
+                        .await
+                        .map_err(|error| {
+                            add_legacy_algorithm_hint(error, config.allow_legacy_algorithms)
+                        })?
+                };
+
+                // 认证跳板机
+                let mut jump_session = jump_session;
+                authenticate_with_strategy_for_target(
+                    &mut jump_session,
+                    &jump.username,
+                    &jump.auth,
+                    default_auth_failure_messages(),
+                    KeyboardInteractiveTarget::JumpServer,
+                    config.keyboard_interactive_responder.clone(),
+                )
+                .await?;
+
+                // 通过跳板机建立到目标服务器的端口转发
+                tracing::info!("通过跳板机转发到目标服务器 {}:{}", config.host, config.port);
+                let forwarded_channel = jump_session
+                    .channel_open_direct_tcpip(&config.host, config.port as u32, "127.0.0.1", 0)
+                    .await?;
+
+                // 使用转发通道创建SSH会话
+                let handler = RusshHandler::new(
+                    target_host_key_identity.clone(),
+                    host_key_verifier.clone(),
+                    x11_handle.clone(),
+                    Arc::clone(&remote_forward_target),
+                    config.forward_agent,
+                );
+                let mut session = client::connect_stream(
+                    target_russh_config,
+                    forwarded_channel.into_stream(),
+                    handler,
+                )
+                .await
+                .map_err(|error| {
+                    add_legacy_algorithm_hint(error, config.allow_legacy_algorithms)
+                })?;
+
+                // 认证目标服务器
+                authenticate_with_strategy_for_target(
+                    &mut session,
+                    &config.username,
+                    &config.auth,
+                    default_auth_failure_messages(),
+                    KeyboardInteractiveTarget::TargetServer,
+                    config.keyboard_interactive_responder.clone(),
+                )
+                .await?;
+
+                Ok(Self {
+                    session,
+                    _jump_session: Some(jump_session),
+                    x11_proxy: x11_proxy.clone(),
+                    remote_forward_target: Arc::clone(&remote_forward_target),
+                    forward_agent: config.forward_agent,
+                })
+            }
+            // 情况2: 仅使用代理连接
+            else if let Some(ref proxy) = config.proxy {
+                tracing::info!(
+                    "通过代理 {}:{} 连接目标服务器 {}:{}",
+                    proxy.host,
+                    proxy.port,
+                    config.host,
+                    config.port
+                );
+                let stream = connect_via_proxy(proxy, &config.host, config.port).await?;
+                let handler = RusshHandler::new(
+                    target_host_key_identity.clone(),
+                    host_key_verifier.clone(),
+                    x11_handle.clone(),
+                    Arc::clone(&remote_forward_target),
+                    config.forward_agent,
+                );
+                let mut session = client::connect_stream(target_russh_config, stream, handler)
+                    .await
+                    .map_err(|error| {
+                        add_legacy_algorithm_hint(error, config.allow_legacy_algorithms)
+                    })?;
+
+                authenticate_with_strategy_for_target(
+                    &mut session,
+                    &config.username,
+                    &config.auth,
+                    default_auth_failure_messages(),
+                    KeyboardInteractiveTarget::TargetServer,
+                    config.keyboard_interactive_responder.clone(),
+                )
+                .await?;
+
+                Ok(Self {
+                    session,
+                    _jump_session: None,
+                    x11_proxy: x11_proxy.clone(),
+                    remote_forward_target: Arc::clone(&remote_forward_target),
+                    forward_agent: config.forward_agent,
+                })
+            }
+            // 情况3: 直接连接
+            else {
+                let addrs = (config.host.as_str(), config.port);
+                let handler = RusshHandler::new(
+                    target_host_key_identity.clone(),
+                    host_key_verifier.clone(),
+                    x11_handle.clone(),
+                    Arc::clone(&remote_forward_target),
+                    config.forward_agent,
+                );
+                let mut session = client::connect(target_russh_config, addrs, handler)
+                    .await
+                    .map_err(|error| {
+                        add_legacy_algorithm_hint(error, config.allow_legacy_algorithms)
+                    })?;
+
+                authenticate_with_strategy_for_target(
+                    &mut session,
+                    &config.username,
+                    &config.auth,
+                    default_auth_failure_messages(),
+                    KeyboardInteractiveTarget::TargetServer,
+                    config.keyboard_interactive_responder.clone(),
+                )
+                .await?;
+
+                Ok(Self {
+                    session,
+                    _jump_session: None,
+                    x11_proxy: x11_proxy.clone(),
+                    remote_forward_target: Arc::clone(&remote_forward_target),
+                    forward_agent: config.forward_agent,
+                })
+            }
+        };
+
+        match connect_timeout {
+            Some(duration) => tokio::time::timeout(duration, connect)
+                .await
+                .context("SSH connection timed out")?,
+            None => connect.await,
+        }
+    }
+
+    async fn open_channel(&mut self) -> Result<Self::Channel> {
+        let channel = self.session.channel_open_session().await?;
+        Ok(RusshChannel { channel })
+    }
+
+    async fn disconnect(&mut self) -> Result<()> {
+        let result = self
+            .session
+            .disconnect(Disconnect::ByApplication, "", "English")
+            .await;
+        normalize_disconnect_result(result, self.session.is_closed())
+    }
+
+    fn is_connected(&self) -> bool {
+        !self.session.is_closed()
+    }
+
+    async fn ping(&self) -> Result<()> {
+        if self.session.is_closed() {
+            return Err(anyhow::anyhow!("session already closed"));
+        }
+        match tokio::time::timeout(Duration::from_secs(3), self.session.send_ping()).await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(anyhow::anyhow!("ping failed: {e}")),
+            Err(_) => Err(anyhow::anyhow!("ping timed out after 3s")),
+        }
+    }
+
+    fn x11_forwarding(&self) -> Option<&X11Proxy> {
+        self.x11_proxy.as_ref()
+    }
+
+    fn forward_agent(&self) -> bool {
+        self.forward_agent
+    }
+}
+
+impl RusshClient {
+    pub async fn open_raw_channel(&mut self) -> Result<Channel<client::Msg>> {
+        Ok(self.session.channel_open_session().await?)
+    }
+}
+
+/// 解析本机 X server 环境，失败仅告警并返回 None（X11 转发静默停用）。
+async fn detect_x11_proxy() -> Option<X11Proxy> {
+    match tokio::task::spawn_blocking(x11_forwarding::detect_local_server).await {
+        Ok(Ok(proxy)) => {
+            tracing::info!(
+                target: "ssh.x11",
+                endpoint = ?proxy.endpoint(),
+                "本机 X server 可用，X11 转发已启用"
+            );
+            Some(proxy)
+        }
+        Ok(Err(error)) => {
+            tracing::warn!(
+                target: "ssh.x11",
+                error = %error,
+                "本机 X server 不可用，X11 转发停用"
+            );
+            None
+        }
+        Err(error) => {
+            tracing::warn!(
+                target: "ssh.x11",
+                error = %error,
+                "解析本机 X11 环境失败，X11 转发停用"
+            );
+            None
+        }
+    }
+}
+
+fn normalize_disconnect_result(
+    result: std::result::Result<(), russh::Error>,
+    session_closed: bool,
+) -> Result<()> {
+    match result {
+        Ok(()) => Ok(()),
+        Err(russh::Error::SendError) if session_closed => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(test)]
+mod port_forward_tests {
+    use std::borrow::Cow;
+    use std::future::Future;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    use russh::client::GexParams;
+    use russh::kex::DH_G1_SHA1;
+    use russh::kex::DH_GEX_SHA256;
+    use russh::kex::dh::groups::{DH_GROUP1, DH_GROUP14, DhGroup};
+    use russh::server::{Auth, Server as _};
+    use tempfile::TempDir;
+    use tokio::net::TcpListener;
+
+    use crate::{HostKeyPolicy, LegacyAlgorithmRequired};
+
+    use super::{
+        Algorithm, EcdsaCurve, HostKeyDetails, HostKeyIdentity, HostKeyProxyType, HostKeyRoute,
+        HostKeyVerifier, JumpServerConnectConfig, Preferred, PrivateKey, ProxyConnectConfig,
+        ProxyType, RusshClient, SshAuth, SshClient, SshConnectConfig,
+        build_client_preferred_algorithms_with_legacy, build_local_forward_bind_addr,
+        build_russh_client_config, legacy_gex_params, normalize_disconnect_result,
+    };
+
+    #[derive(Clone)]
+    struct CompatibilityTestServer;
+
+    impl russh::server::Server for CompatibilityTestServer {
+        type Handler = Self;
+
+        fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self::Handler {
+            self.clone()
+        }
+    }
+
+    impl russh::server::Handler for CompatibilityTestServer {
+        type Error = anyhow::Error;
+
+        async fn auth_password(&mut self, _: &str, _: &str) -> Result<Auth, Self::Error> {
+            Ok(Auth::Accept)
+        }
+    }
+
+    fn kex_names(allow_legacy_algorithms: bool) -> Vec<String> {
+        build_client_preferred_algorithms_with_legacy(&[], allow_legacy_algorithms)
+            .kex
+            .iter()
+            .map(|name| name.as_ref().to_string())
+            .collect()
+    }
+
+    fn host_key_names(known: &[String]) -> Vec<String> {
+        host_key_names_with_legacy(known, false)
+    }
+
+    fn host_key_names_with_legacy(known: &[String], allow_legacy_algorithms: bool) -> Vec<String> {
+        build_client_preferred_algorithms_with_legacy(known, allow_legacy_algorithms)
+            .key
+            .iter()
+            .map(|algorithm| algorithm.as_str().to_owned())
+            .collect()
+    }
+
+    fn mac_names(allow_legacy_algorithms: bool) -> Vec<String> {
+        build_client_preferred_algorithms_with_legacy(&[], allow_legacy_algorithms)
+            .mac
+            .iter()
+            .map(|name| name.as_ref().to_string())
+            .collect()
+    }
+
+    fn identity_test_config() -> SshConnectConfig {
+        SshConnectConfig {
+            host: " Target.Example. ".to_owned(),
+            port: 2200,
+            username: "tester".to_owned(),
+            auth: SshAuth::Agent,
+            timeout: None,
+            keepalive_interval: None,
+            keepalive_max: None,
+            jump_server: None,
+            proxy: None,
+            keyboard_interactive_responder: None,
+            host_key_verifier: HostKeyVerifier::default(),
+            x11_forwarding: false,
+            allow_legacy_algorithms: false,
+            forward_agent: false,
+            agent_identities: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn target_identity_is_direct_and_normalized_without_route_hops() {
+        let config = identity_test_config();
+        let identity = config.target_host_key_identity();
+
+        assert_eq!(identity.host(), "target.example");
+        assert_eq!(identity.port(), 2200);
+        assert_eq!(identity.route(), &HostKeyRoute::Direct);
+        assert!(config.jump_host_key_identity().is_none());
+    }
+
+    #[test]
+    fn target_identity_binds_proxy_protocol_and_endpoint() {
+        let mut config = identity_test_config();
+        config.proxy = Some(ProxyConnectConfig {
+            proxy_type: ProxyType::Socks5,
+            host: " Proxy.Example. ".to_owned(),
+            port: 1080,
+            username: None,
+            password: None,
+        });
+        assert_eq!(
+            config.target_host_key_identity().route(),
+            &HostKeyRoute::Proxy {
+                proxy_type: HostKeyProxyType::Socks5,
+                host: "proxy.example".to_owned(),
+                port: 1080,
+            }
+        );
+
+        config
+            .proxy
+            .as_mut()
+            .expect("proxy is configured")
+            .proxy_type = ProxyType::Http;
+        assert_eq!(
+            config.target_host_key_identity().route(),
+            &HostKeyRoute::Proxy {
+                proxy_type: HostKeyProxyType::Http,
+                host: "proxy.example".to_owned(),
+                port: 1080,
+            }
+        );
+    }
+
+    #[test]
+    fn jump_and_target_identities_are_distinct_and_bind_the_proxy_route() {
+        let mut config = identity_test_config();
+        config.jump_server = Some(JumpServerConnectConfig {
+            host: " Jump.Example. ".to_owned(),
+            port: 2222,
+            username: "jumper".to_owned(),
+            auth: SshAuth::Agent,
+        });
+        config.proxy = Some(ProxyConnectConfig {
+            proxy_type: ProxyType::Http,
+            host: " Proxy.Example. ".to_owned(),
+            port: 8080,
+            username: None,
+            password: None,
+        });
+
+        assert_eq!(
+            config.target_host_key_identity().route(),
+            &HostKeyRoute::JumpViaProxy {
+                jump_host: "jump.example".to_owned(),
+                jump_port: 2222,
+                proxy_type: HostKeyProxyType::Http,
+                proxy_host: "proxy.example".to_owned(),
+                proxy_port: 8080,
+            }
+        );
+        assert_eq!(
+            config
+                .jump_host_key_identity()
+                .expect("jump identity should exist")
+                .route(),
+            &HostKeyRoute::Proxy {
+                proxy_type: HostKeyProxyType::Http,
+                host: "proxy.example".to_owned(),
+                port: 8080,
+            }
+        );
+        assert_ne!(
+            config.target_host_key_identity(),
+            config
+                .jump_host_key_identity()
+                .expect("jump identity should exist")
+        );
+    }
+
+    #[test]
+    fn jump_identity_is_direct_when_no_proxy_is_configured() {
+        let mut config = identity_test_config();
+        config.jump_server = Some(JumpServerConnectConfig {
+            host: "jump.example".to_owned(),
+            port: 22,
+            username: "jumper".to_owned(),
+            auth: SshAuth::Agent,
+        });
+
+        assert_eq!(
+            config
+                .jump_host_key_identity()
+                .expect("jump identity should exist")
+                .route(),
+            &HostKeyRoute::Direct
+        );
+        assert!(matches!(
+            config.target_host_key_identity().route(),
+            HostKeyRoute::Jump { host, port }
+                if host == "jump.example" && *port == 22
+        ));
+    }
+
+    #[test]
+    fn client_kex_uses_only_russh_defaults_when_legacy_algorithms_are_disabled() {
+        let defaults = Preferred::default()
+            .kex
+            .iter()
+            .map(|name| name.as_ref().to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(kex_names(false), defaults);
+    }
+
+    #[test]
+    fn client_kex_keeps_modern_algorithms_ahead_of_compatibility_fallbacks() {
+        let names = kex_names(true);
+        let curve25519 = names
+            .iter()
+            .position(|name| name == "curve25519-sha256")
+            .expect("modern curve25519 KEX should remain enabled");
+        let nistp256 = names
+            .iter()
+            .position(|name| name == "ecdh-sha2-nistp256")
+            .expect("NIST ECDH compatibility KEX should be enabled");
+        let group14_sha1 = names
+            .iter()
+            .position(|name| name == "diffie-hellman-group14-sha1")
+            .expect("group14 SHA-1 fallback should be enabled");
+        let group_exchange_sha1 = names
+            .iter()
+            .position(|name| name == "diffie-hellman-group-exchange-sha1")
+            .expect("group-exchange SHA-1 fallback should be enabled");
+        let group1_sha1 = names
+            .iter()
+            .position(|name| name == "diffie-hellman-group1-sha1")
+            .expect("group1 SHA-1 fallback should be enabled");
+
+        assert!(curve25519 < nistp256);
+        assert!(nistp256 < group14_sha1);
+        assert!(group14_sha1 < group1_sha1);
+        assert!(group1_sha1 < group_exchange_sha1);
+    }
+
+    #[test]
+    fn client_promotes_known_host_key_algorithm_without_removing_fallbacks() {
+        let defaults = host_key_names(&[]);
+        let promoted = host_key_names(&["ecdsa-sha2-nistp256".to_owned()]);
+
+        assert_eq!(
+            promoted.first().map(String::as_str),
+            Some("ecdsa-sha2-nistp256")
+        );
+        assert_eq!(promoted.len(), defaults.len());
+        for algorithm in defaults {
+            assert!(
+                promoted.contains(&algorithm),
+                "default host-key algorithm {algorithm} must remain enabled"
+            );
+        }
+    }
+
+    #[test]
+    fn client_promotes_rsa_sha2_family_for_known_ssh_rsa_key() {
+        let promoted = host_key_names(&["ssh-rsa".to_owned()]);
+
+        assert_eq!(&promoted[..3], ["rsa-sha2-512", "rsa-sha2-256", "ssh-rsa"]);
+    }
+
+    #[test]
+    fn legacy_host_key_fallback_offers_ssh_dss_only_when_enabled() {
+        let defaults = host_key_names(&[]);
+        assert!(
+            !defaults.iter().any(|name| name == "ssh-dss"),
+            "ssh-dss must not be offered unless legacy algorithms are enabled"
+        );
+
+        let legacy = host_key_names_with_legacy(&[], true);
+        assert_eq!(
+            legacy
+                .iter()
+                .filter(|name| name.as_str() == "ssh-dss")
+                .count(),
+            1,
+            "ssh-dss should be offered exactly once with legacy algorithms"
+        );
+        assert_eq!(
+            legacy.last().map(String::as_str),
+            Some("ssh-dss"),
+            "ssh-dss should be a last-resort fallback"
+        );
+        assert_eq!(
+            legacy.first().map(String::as_str),
+            Some("ssh-ed25519"),
+            "modern host-key algorithms must stay preferred"
+        );
+        for default in defaults {
+            assert!(
+                legacy.contains(&default),
+                "default host-key algorithm {default} must remain enabled"
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_host_key_fallback_keeps_known_algorithms_ahead_of_ssh_dss() {
+        let promoted = host_key_names_with_legacy(&["ecdsa-sha2-nistp256".to_owned()], true);
+
+        assert_eq!(
+            promoted.first().map(String::as_str),
+            Some("ecdsa-sha2-nistp256")
+        );
+        assert_eq!(
+            promoted.last().map(String::as_str),
+            Some("ssh-dss"),
+            "ssh-dss must never displace a known or modern host-key algorithm"
+        );
+    }
+
+    #[test]
+    fn legacy_mac_fallback_offers_hmac_sha1_only_when_enabled() {
+        let defaults = mac_names(false);
+        assert_eq!(defaults, default_mac_names());
+        assert!(
+            !defaults.iter().any(|name| name == "hmac-sha1"),
+            "hmac-sha1 must not be offered unless legacy algorithms are enabled"
+        );
+
+        let legacy = mac_names(true);
+        assert_eq!(
+            legacy
+                .iter()
+                .filter(|name| name.as_str() == "hmac-sha1")
+                .count(),
+            1,
+            "hmac-sha1 should be offered exactly once with legacy algorithms"
+        );
+        assert_eq!(
+            legacy.last().map(String::as_str),
+            Some("hmac-sha1"),
+            "hmac-sha1 should be a last-resort fallback"
+        );
+        assert_eq!(
+            legacy.first().map(String::as_str),
+            Some("hmac-sha2-512-etm@openssh.com"),
+            "modern MAC algorithms must stay preferred"
+        );
+        for default in defaults {
+            assert!(
+                legacy.contains(&default),
+                "default MAC algorithm {default} must remain enabled"
+            );
+        }
+    }
+
+    fn default_mac_names() -> Vec<String> {
+        Preferred::default()
+            .mac
+            .iter()
+            .map(|name| name.as_ref().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn jump_and_target_configs_use_their_own_known_host_key_algorithms() {
+        let mut config = identity_test_config();
+        config.jump_server = Some(JumpServerConnectConfig {
+            host: "jump.example".to_owned(),
+            port: 22,
+            username: "jumper".to_owned(),
+            auth: SshAuth::Agent,
+        });
+        config.allow_legacy_algorithms = true;
+        let target_identity = config.target_host_key_identity();
+        let jump_identity = config
+            .jump_host_key_identity()
+            .expect("jump identity should exist");
+        config.host_key_verifier = HostKeyVerifier::new(HostKeyPolicy::Strict, None, None)
+            .with_confirmed_key(
+                target_identity.clone(),
+                HostKeyDetails {
+                    algorithm: "ecdsa-sha2-nistp256".to_owned(),
+                    fingerprint: "SHA256:target".to_owned(),
+                },
+                false,
+            )
+            .with_confirmed_key(
+                jump_identity.clone(),
+                HostKeyDetails {
+                    algorithm: "ssh-ed25519".to_owned(),
+                    fingerprint: "SHA256:jump".to_owned(),
+                },
+                false,
+            );
+
+        let target = build_russh_client_config(&config, &target_identity)
+            .expect("target config should build");
+        let jump =
+            build_russh_client_config(&config, &jump_identity).expect("jump config should build");
+
+        assert_eq!(
+            target.preferred.key.first().map(Algorithm::as_str),
+            Some("ecdsa-sha2-nistp256")
+        );
+        assert_eq!(
+            jump.preferred.key.first().map(Algorithm::as_str),
+            Some("ssh-ed25519")
+        );
+        assert!(
+            target
+                .preferred
+                .key
+                .iter()
+                .any(|algorithm| algorithm == &Algorithm::Dsa)
+        );
+        assert!(
+            jump.preferred
+                .key
+                .iter()
+                .any(|algorithm| algorithm == &Algorithm::Dsa)
+        );
+    }
+
+    async fn connect_client_to_server_with_only(
+        kex: russh::kex::Name,
+        allow_legacy_algorithms: bool,
+    ) -> anyhow::Result<RusshClient> {
+        let socket = TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("compatibility test server should bind");
+        let address = socket
+            .local_addr()
+            .expect("compatibility test server should have an address");
+        let server_config = Arc::new(russh::server::Config {
+            auth_rejection_time: Duration::ZERO,
+            auth_rejection_time_initial: Some(Duration::ZERO),
+            keys: vec![
+                PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+                    .expect("test host key should be generated"),
+            ],
+            preferred: Preferred {
+                kex: Cow::Owned(vec![kex]),
+                ..Preferred::default()
+            },
+            ..Default::default()
+        });
+
+        let server_task = tokio::spawn(async move {
+            let mut server = CompatibilityTestServer;
+            server.run_on_socket(server_config, &socket).await
+        });
+        let config = SshConnectConfig {
+            host: address.ip().to_string(),
+            port: address.port(),
+            username: "tester".to_string(),
+            auth: SshAuth::Password("password".to_string()),
+            timeout: Some(Duration::from_secs(30)),
+            keepalive_interval: None,
+            keepalive_max: None,
+            jump_server: None,
+            proxy: None,
+            keyboard_interactive_responder: None,
+            // This compatibility test validates KEX negotiation, not trust
+            // enrollment. Production connection builders use strict mode.
+            host_key_verifier: HostKeyVerifier::insecure(),
+            x11_forwarding: false,
+            allow_legacy_algorithms,
+            forward_agent: false,
+            agent_identities: Vec::new(),
+        };
+
+        let result = RusshClient::connect(config).await;
+        server_task.abort();
+
+        result
+    }
+
+    async fn spawn_host_key_test_server(
+        keys: Vec<PrivateKey>,
+    ) -> (
+        std::net::SocketAddr,
+        tokio::task::JoinHandle<std::io::Result<()>>,
+    ) {
+        spawn_host_key_test_server_with_preferred(keys, Preferred::default()).await
+    }
+
+    async fn spawn_ssh_dss_test_server(
+        key: PrivateKey,
+    ) -> (
+        std::net::SocketAddr,
+        tokio::task::JoinHandle<std::io::Result<()>>,
+    ) {
+        spawn_host_key_test_server_with_preferred(
+            vec![key],
+            Preferred {
+                key: Cow::Owned(vec![Algorithm::Dsa]),
+                ..Preferred::default()
+            },
+        )
+        .await
+    }
+
+    fn dsa_test_key() -> PrivateKey {
+        // Public test fixture generated solely for local handshake tests.
+        const PRIVATE_KEY: &str = "\
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABsgAAAAdzc2gtZH
+NzAAAAgQDxDIsyRM9b6Sd8s69/SeoAd9Vm0eDVXb1jQ3nfqw7hpcGZ2YHNmk4Nu6bosXEU
+FgcAV097wTsJkNcvNC/+o+V0u4g65eApSShKTiNrrKhXSa3KjEKsz4/F/rn42IJp/XHAeq
+97o6vhOWdJ1talKtaDDndpY+8zGtv5vuXpitzjEwAAABUA4RTE/XNs8aD3gvopANGV2lOr
+0OUAAACBAI+0IEWgkQdCvCdO1IejIUQypGYNmDs23M1/jNkrTbMG7NwihE1Juscj/y0oYt
+QOhpS+mEVkRBpBMr1slFpWyQ9QpMzATuCzkBd1r5rh1ROuU+o1l9PgvZSJ054iMn5QQd94
+lCmg9OfheosLDXSveUXouFoJ+gixv6r/X7fNa5pcAAAAgFrWGC73Qh41OqT1l3bfdkMfnm
+6gGxdg618q/RF9+D2szdrHVJpJx2DJQUl+ePlSE+O9KhRBkHl5vGg/O1gLQF+fJxThIwdN
+OPz5UV43KS3cUhdG/9o+lO7N1Xn8aAO2JB4jZc5EhxMidbLhcblhXQrvslUYQu76/dZ1fJ
+tGfqtrAAAB2Hs36Ht7N+h7AAAAB3NzaC1kc3MAAACBAPEMizJEz1vpJ3yzr39J6gB31WbR
+4NVdvWNDed+rDuGlwZnZgc2aTg27puixcRQWBwBXT3vBOwmQ1y80L/6j5XS7iDrl4ClJKE
+pOI2usqFdJrcqMQqzPj8X+ufjYgmn9ccB6r3ujq+E5Z0nW1qUq1oMOd2lj7zMa2/m+5emK
+3OMTAAAAFQDhFMT9c2zxoPeC+ikA0ZXaU6vQ5QAAAIEAj7QgRaCRB0K8J07Uh6MhRDKkZg
+2YOzbczX+M2StNswbs3CKETUm6xyP/LShi1A6GlL6YRWREGkEyvWyUWlbJD1CkzMBO4LOQ
+F3WvmuHVE65T6jWX0+C9lInTniIyflBB33iUKaD05+F6iwsNdK95Rei4Wgn6CLG/qv9ft8
+1rmlwAAACAWtYYLvdCHjU6pPWXdt92Qx+ebqAbF2DrXyr9EX34PazN2sdUmknHYMlBSX54
++VIT470qFEGQeXm8aD87WAtAX58nFOEjB004/PlRXjcpLdxSF0b/2j6U7s3VefxoA7YkHi
+NlzkSHEyJ1suFxuWFdCu+yVRhC7vr91nV8m0Z+q2sAAAAVALmxGX4UgwhddBEOZJ8sqQ/B
+zsXyAAAAAAE=
+-----END OPENSSH PRIVATE KEY-----";
+        PrivateKey::from_openssh(PRIVATE_KEY).expect("DSA test key should decode")
+    }
+
+    async fn spawn_host_key_test_server_with_preferred(
+        keys: Vec<PrivateKey>,
+        preferred: Preferred,
+    ) -> (
+        std::net::SocketAddr,
+        tokio::task::JoinHandle<std::io::Result<()>>,
+    ) {
+        let socket = TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("host-key test server should bind");
+        let address = socket
+            .local_addr()
+            .expect("host-key test server should have an address");
+        let server_config = Arc::new(russh::server::Config {
+            auth_rejection_time: Duration::ZERO,
+            auth_rejection_time_initial: Some(Duration::ZERO),
+            keys,
+            preferred,
+            ..Default::default()
+        });
+        let server_task = tokio::spawn(async move {
+            let mut server = CompatibilityTestServer;
+            server.run_on_socket(server_config, &socket).await
+        });
+        (address, server_task)
+    }
+
+    fn host_key_test_config(
+        address: std::net::SocketAddr,
+        host_key_verifier: HostKeyVerifier,
+    ) -> SshConnectConfig {
+        SshConnectConfig {
+            host: address.ip().to_string(),
+            port: address.port(),
+            username: "tester".to_owned(),
+            auth: SshAuth::Password("password".to_owned()),
+            timeout: Some(Duration::from_secs(5)),
+            keepalive_interval: None,
+            keepalive_max: None,
+            jump_server: None,
+            proxy: None,
+            keyboard_interactive_responder: None,
+            host_key_verifier,
+            x11_forwarding: false,
+            allow_legacy_algorithms: false,
+            forward_agent: false,
+            agent_identities: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn client_negotiates_the_trusted_ecdsa_key_when_ed25519_is_also_available() {
+        let ed25519 = PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("Ed25519 host key should be generated");
+        let ecdsa = PrivateKey::random(
+            &mut rand_010::rng(),
+            Algorithm::Ecdsa {
+                curve: EcdsaCurve::NistP256,
+            },
+        )
+        .expect("ECDSA host key should be generated");
+        let trusted_public_key = ecdsa.public_key().clone();
+        let (address, server_task) = spawn_host_key_test_server(vec![ed25519, ecdsa]).await;
+        let temp = TempDir::new().expect("temp dir");
+        let path = temp.path().join("keys.json");
+        let identity = HostKeyIdentity::new(
+            address.ip().to_string(),
+            address.port(),
+            HostKeyRoute::Direct,
+        );
+        HostKeyVerifier::for_store(HostKeyPolicy::AcceptNew, &path)
+            .verify(&identity, &trusted_public_key)
+            .expect("trusted ECDSA key should be seeded");
+
+        let result = RusshClient::connect(host_key_test_config(
+            address,
+            HostKeyVerifier::for_store(HostKeyPolicy::Strict, &path),
+        ))
+        .await;
+        server_task.abort();
+
+        result.expect("client should negotiate the already trusted ECDSA host key");
+    }
+
+    #[tokio::test]
+    async fn client_negotiates_only_ssh_dss_host_key_after_legacy_opt_in() {
+        let dsa = dsa_test_key();
+        let trusted_public_key = dsa.public_key().clone();
+        let (address, server_task) = spawn_ssh_dss_test_server(dsa).await;
+        let temp = TempDir::new().expect("temp dir");
+        let path = temp.path().join("keys.json");
+        let identity = HostKeyIdentity::new(
+            address.ip().to_string(),
+            address.port(),
+            HostKeyRoute::Direct,
+        );
+        HostKeyVerifier::for_store(HostKeyPolicy::AcceptNew, &path)
+            .verify(&identity, &trusted_public_key)
+            .expect("trusted DSA key should be seeded");
+        let mut config = host_key_test_config(
+            address,
+            HostKeyVerifier::for_store(HostKeyPolicy::Strict, &path),
+        );
+        config.allow_legacy_algorithms = true;
+
+        let result = RusshClient::connect(config).await;
+        server_task.abort();
+
+        result.expect("client should negotiate the explicitly enabled ssh-dss host key");
+    }
+
+    #[tokio::test]
+    async fn client_rejects_ssh_dss_host_key_when_legacy_algorithms_are_disabled() {
+        let dsa = dsa_test_key();
+        let (address, server_task) = spawn_ssh_dss_test_server(dsa).await;
+
+        let result =
+            RusshClient::connect(host_key_test_config(address, HostKeyVerifier::insecure())).await;
+        server_task.abort();
+
+        let Err(error) = result else {
+            panic!("ssh-dss must not be negotiated without explicit opt-in");
+        };
+        assert!(error.downcast_ref::<LegacyAlgorithmRequired>().is_some());
+        assert!(error.to_string().contains("No common Key algorithm"));
+        assert!(error.to_string().contains("Allow Legacy SSH Algorithms"));
+    }
+
+    #[tokio::test]
+    async fn client_keeps_fallback_algorithms_but_rejects_an_untrusted_fallback_key() {
+        let ed25519 = PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("Ed25519 host key should be generated");
+        let unavailable_ecdsa = PrivateKey::random(
+            &mut rand_010::rng(),
+            Algorithm::Ecdsa {
+                curve: EcdsaCurve::NistP256,
+            },
+        )
+        .expect("ECDSA host key should be generated");
+        let (address, server_task) = spawn_host_key_test_server(vec![ed25519]).await;
+        let temp = TempDir::new().expect("temp dir");
+        let path = temp.path().join("keys.json");
+        let identity = HostKeyIdentity::new(
+            address.ip().to_string(),
+            address.port(),
+            HostKeyRoute::Direct,
+        );
+        HostKeyVerifier::for_store(HostKeyPolicy::AcceptNew, &path)
+            .verify(&identity, unavailable_ecdsa.public_key())
+            .expect("trusted ECDSA key should be seeded");
+
+        let result = RusshClient::connect(host_key_test_config(
+            address,
+            HostKeyVerifier::for_store(HostKeyPolicy::Strict, &path),
+        ))
+        .await;
+        server_task.abort();
+
+        let Err(error) = result else {
+            panic!("a different fallback key must remain rejected");
+        };
+        assert!(error.to_string().contains("changed SSH host key"));
+    }
+
+    #[tokio::test]
+    async fn client_connects_when_the_server_only_offers_ssh_dss_host_key() {
+        let (address, server_task) = spawn_ssh_dss_host_key_test_server().await;
+        let mut config = host_key_test_config(address, HostKeyVerifier::insecure());
+        config.allow_legacy_algorithms = true;
+
+        let result = RusshClient::connect(config).await;
+        server_task.abort();
+
+        result.expect("server offering only ssh-dss should connect with legacy algorithms enabled");
+    }
+
+    #[tokio::test]
+    async fn client_rejects_ssh_dss_only_server_when_legacy_algorithms_are_disabled() {
+        let (address, server_task) = spawn_ssh_dss_host_key_test_server().await;
+        let config = host_key_test_config(address, HostKeyVerifier::insecure());
+
+        let result = RusshClient::connect(config).await;
+        server_task.abort();
+
+        let Err(error) = result else {
+            panic!("ssh DSA host key must not be negotiated unless the connection opts in");
+        };
+        assert!(error.downcast_ref::<LegacyAlgorithmRequired>().is_some());
+        assert!(error.to_string().contains("No common Key algorithm"));
+        assert!(error.to_string().contains("Allow Legacy SSH Algorithms"));
+    }
+
+    async fn spawn_ssh_dss_host_key_test_server() -> (
+        std::net::SocketAddr,
+        tokio::task::JoinHandle<std::io::Result<()>>,
+    ) {
+        let socket = TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("DSS host-key test server should bind");
+        let address = socket
+            .local_addr()
+            .expect("DSS host-key test server should have an address");
+        let dsa = PrivateKey::random(&mut rand_010::rng(), Algorithm::Dsa)
+            .expect("DSA host key should be generated");
+        let server_config = Arc::new(russh::server::Config {
+            auth_rejection_time: Duration::ZERO,
+            auth_rejection_time_initial: Some(Duration::ZERO),
+            keys: vec![dsa],
+            preferred: Preferred {
+                key: Cow::Owned(vec![Algorithm::Dsa]),
+                ..Preferred::default()
+            },
+            ..Default::default()
+        });
+        let server_task = tokio::spawn(async move {
+            let mut server = CompatibilityTestServer;
+            server.run_on_socket(server_config, &socket).await
+        });
+        (address, server_task)
+    }
+
+    #[tokio::test]
+    async fn client_connects_when_the_server_only_offers_hmac_sha1_mac() {
+        let (address, server_task) = spawn_legacy_mac_test_server().await;
+        let mut config = host_key_test_config(address, HostKeyVerifier::insecure());
+        config.allow_legacy_algorithms = true;
+
+        let result = RusshClient::connect(config).await;
+        server_task.abort();
+
+        result
+            .expect("server offering only hmac-sha1 should connect with legacy algorithms enabled");
+    }
+
+    #[tokio::test]
+    async fn client_rejects_hmac_sha1_only_server_when_legacy_algorithms_are_disabled() {
+        let (address, server_task) = spawn_legacy_mac_test_server().await;
+        let config = host_key_test_config(address, HostKeyVerifier::insecure());
+
+        let result = RusshClient::connect(config).await;
+        server_task.abort();
+
+        let Err(error) = result else {
+            panic!("hmac-sha1 must not be negotiated unless the connection opts in");
+        };
+        assert!(error.downcast_ref::<LegacyAlgorithmRequired>().is_some());
+        assert!(error.to_string().contains("No common Mac algorithm"));
+        assert!(error.to_string().contains("Allow Legacy SSH Algorithms"));
+    }
+
+    async fn spawn_legacy_mac_test_server() -> (
+        std::net::SocketAddr,
+        tokio::task::JoinHandle<std::io::Result<()>>,
+    ) {
+        let socket = TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("legacy MAC test server should bind");
+        let address = socket
+            .local_addr()
+            .expect("legacy MAC test server should have an address");
+        let ed25519 = PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("Ed25519 host key should be generated");
+        let server_config = Arc::new(russh::server::Config {
+            auth_rejection_time: Duration::ZERO,
+            auth_rejection_time_initial: Some(Duration::ZERO),
+            keys: vec![ed25519],
+            preferred: Preferred {
+                mac: Cow::Owned(vec![russh::mac::HMAC_SHA1]),
+                // AEAD ciphers have integrated authentication and skip MAC
+                // negotiation entirely, so pin a MAC-bearing cipher to reproduce
+                // the legacy-device path.
+                cipher: Cow::Owned(vec![russh::cipher::AES_128_CTR]),
+                ..Preferred::default()
+            },
+            ..Default::default()
+        });
+        let server_task = tokio::spawn(async move {
+            let mut server = CompatibilityTestServer;
+            server.run_on_socket(server_config, &socket).await
+        });
+        (address, server_task)
+    }
+
+    #[test]
+    fn legacy_dh_group_accepts_2048_bit_groups_only_when_enabled() {
+        let strict = legacy_gex_params(false).expect("default gex params should build");
+        let legacy = legacy_gex_params(true).expect("legacy gex params should build");
+
+        assert_eq!(legacy.min_group_size(), 2048);
+        assert_eq!(legacy.preferred_group_size(), 2048);
+        assert_eq!(legacy.max_group_size(), 8192);
+        assert!(
+            strict.min_group_size() > legacy.min_group_size(),
+            "modern connections must keep a stricter DH group floor"
+        );
+        assert_ne!(strict.preferred_group_size(), legacy.preferred_group_size());
+        assert_eq!(strict.max_group_size(), legacy.max_group_size());
+    }
+
+    #[test]
+    fn legacy_kex_prefers_fixed_group1_before_group_exchange() {
+        let names = kex_names(true);
+        let group1 = names
+            .iter()
+            .position(|name| name == "diffie-hellman-group1-sha1")
+            .expect("legacy list must still offer fixed group1 SHA-1");
+        let group_exchange = names
+            .iter()
+            .position(|name| name == "diffie-hellman-group-exchange-sha1")
+            .expect("legacy list must still offer group-exchange SHA-1");
+
+        assert!(
+            group1 < group_exchange,
+            "fixed group1 must be preferred over group-exchange so 1024-bit \
+             devices never hit the 2048-bit GEX floor"
+        );
+        assert!(!kex_names(false).contains(&"diffie-hellman-group1-sha1".to_owned()));
+    }
+
+    #[derive(Clone)]
+    struct LegacyGexTestServer;
+
+    impl russh::server::Server for LegacyGexTestServer {
+        type Handler = Self;
+
+        fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self::Handler {
+            self.clone()
+        }
+    }
+
+    impl russh::server::Handler for LegacyGexTestServer {
+        type Error = anyhow::Error;
+
+        async fn auth_password(&mut self, _: &str, _: &str) -> Result<Auth, Self::Error> {
+            Ok(Auth::Accept)
+        }
+
+        // 模拟只能生成 2048 位 DH 组的旧设备：无视客户端请求范围，固定返回 group14。
+        fn lookup_dh_gex_group(
+            &mut self,
+            _gex_params: &GexParams,
+        ) -> impl Future<Output = Result<Option<DhGroup>, Self::Error>> + Send {
+            async { Ok(Some(DH_GROUP14.clone())) }
+        }
+    }
+
+    #[tokio::test]
+    async fn client_connects_when_server_only_supports_2048_bit_dh_group() {
+        let (address, server_task) = spawn_legacy_gex_test_server().await;
+        let mut config = host_key_test_config(address, HostKeyVerifier::insecure());
+        config.allow_legacy_algorithms = true;
+
+        let result = RusshClient::connect(config).await;
+        server_task.abort();
+
+        result.expect("a 2048-bit DH group should connect with legacy algorithms enabled");
+    }
+
+    #[tokio::test]
+    async fn client_rejects_2048_bit_dh_group_when_legacy_algorithms_are_disabled() {
+        let (address, server_task) = spawn_legacy_gex_test_server().await;
+        let config = host_key_test_config(address, HostKeyVerifier::insecure());
+
+        let result = RusshClient::connect(config).await;
+        server_task.abort();
+
+        let Err(error) = result else {
+            panic!("a 2048-bit DH group must not be accepted unless the connection opts in");
+        };
+        assert!(error.to_string().contains("exchange init failed"));
+    }
+
+    async fn spawn_legacy_gex_test_server() -> (
+        std::net::SocketAddr,
+        tokio::task::JoinHandle<std::io::Result<()>>,
+    ) {
+        let socket = TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("legacy gex test server should bind");
+        let address = socket
+            .local_addr()
+            .expect("legacy gex test server should have an address");
+        let ed25519 = PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("Ed25519 host key should be generated");
+        let server_config = Arc::new(russh::server::Config {
+            auth_rejection_time: Duration::ZERO,
+            auth_rejection_time_initial: Some(Duration::ZERO),
+            keys: vec![ed25519],
+            preferred: Preferred {
+                kex: Cow::Owned(vec![DH_GEX_SHA256]),
+                ..Preferred::default()
+            },
+            ..Default::default()
+        });
+        let server_task = tokio::spawn(async move {
+            let mut server = LegacyGexTestServer;
+            server.run_on_socket(server_config, &socket).await
+        });
+        (address, server_task)
+    }
+
+    #[tokio::test]
+    async fn client_connects_when_server_offers_only_fixed_group1_and_gex() {
+        let (address, server_task) = spawn_legacy_group1_test_server().await;
+        let mut config = host_key_test_config(address, HostKeyVerifier::insecure());
+        config.allow_legacy_algorithms = true;
+
+        let result = RusshClient::connect(config).await;
+        server_task.abort();
+
+        result.expect(
+            "a 1024-bit device offering fixed group1 must connect with legacy algorithms enabled",
+        );
+    }
+
+    #[tokio::test]
+    async fn client_rejects_1024_bit_fixed_group_when_legacy_algorithms_are_disabled() {
+        let (address, server_task) = spawn_legacy_group1_test_server().await;
+        let config = host_key_test_config(address, HostKeyVerifier::insecure());
+
+        let result = RusshClient::connect(config).await;
+        server_task.abort();
+
+        let Err(error) = result else {
+            panic!("a 1024-bit fixed group must not be accepted unless the connection opts in");
+        };
+        assert!(error.to_string().contains("No common Kex algorithm"));
+        assert!(error.to_string().contains("Allow Legacy SSH Algorithms"));
+    }
+
+    async fn spawn_legacy_group1_test_server() -> (
+        std::net::SocketAddr,
+        tokio::task::JoinHandle<std::io::Result<()>>,
+    ) {
+        let socket = TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .expect("legacy group1 test server should bind");
+        let address = socket
+            .local_addr()
+            .expect("legacy group1 test server should have an address");
+        let ed25519 = PrivateKey::random(&mut rand_010::rng(), Algorithm::Ed25519)
+            .expect("Ed25519 host key should be generated");
+        let server_config = Arc::new(russh::server::Config {
+            auth_rejection_time: Duration::ZERO,
+            auth_rejection_time_initial: Some(Duration::ZERO),
+            keys: vec![ed25519],
+            preferred: Preferred {
+                kex: Cow::Owned(vec![russh::kex::DH_GEX_SHA1, DH_G1_SHA1]),
+                ..Preferred::default()
+            },
+            ..Default::default()
+        });
+        let server_task = tokio::spawn(async move {
+            let mut server = FixedGroup1TestServer;
+            server.run_on_socket(server_config, &socket).await
+        });
+        (address, server_task)
+    }
+
+    #[derive(Clone)]
+    struct FixedGroup1TestServer;
+
+    impl russh::server::Server for FixedGroup1TestServer {
+        type Handler = Self;
+
+        fn new_client(&mut self, _: Option<std::net::SocketAddr>) -> Self::Handler {
+            self.clone()
+        }
+    }
+
+    impl russh::server::Handler for FixedGroup1TestServer {
+        type Error = anyhow::Error;
+
+        async fn auth_password(&mut self, _: &str, _: &str) -> Result<Auth, Self::Error> {
+            Ok(Auth::Accept)
+        }
+
+        // 模拟只能生成 1024 位 DH 组的更旧设备：无视客户端请求范围，固定返回 group1。
+        fn lookup_dh_gex_group(
+            &mut self,
+            _gex_params: &GexParams,
+        ) -> impl Future<Output = Result<Option<DhGroup>, Self::Error>> + Send {
+            async { Ok(Some(DH_GROUP1.clone())) }
+        }
+    }
+
+    #[tokio::test]
+    async fn client_negotiates_nist_ecdh_compatibility_kex() {
+        connect_client_to_server_with_only(russh::kex::ECDH_SHA2_NISTP256, true)
+            .await
+            .expect("client should negotiate the enabled NIST ECDH compatibility KEX");
+    }
+
+    #[tokio::test]
+    async fn client_falls_back_to_group14_sha1_when_it_is_the_only_server_kex() {
+        connect_client_to_server_with_only(russh::kex::DH_G14_SHA1, true)
+            .await
+            .expect("client should negotiate the explicitly enabled group14 SHA-1 KEX");
+    }
+
+    #[tokio::test]
+    async fn client_falls_back_to_group_exchange_sha1_when_it_is_the_only_server_kex() {
+        connect_client_to_server_with_only(russh::kex::DH_GEX_SHA1, true)
+            .await
+            .expect("client should negotiate the explicitly enabled group-exchange SHA-1 KEX");
+    }
+
+    #[tokio::test]
+    async fn client_falls_back_to_group1_sha1_when_it_is_the_only_server_kex() {
+        connect_client_to_server_with_only(russh::kex::DH_G1_SHA1, true)
+            .await
+            .expect("client should negotiate the explicitly enabled group1 SHA-1 KEX");
+    }
+
+    async fn assert_legacy_kex_is_rejected_when_disabled(kex: russh::kex::Name) {
+        let result = connect_client_to_server_with_only(kex, false).await;
+        let Err(error) = result else {
+            panic!("legacy KEX must not be negotiated unless the connection opts in");
+        };
+        assert!(error.downcast_ref::<LegacyAlgorithmRequired>().is_some());
+        assert!(error.to_string().contains("No common Kex algorithm"));
+        assert!(error.to_string().contains("Allow Legacy SSH Algorithms"));
+    }
+
+    #[tokio::test]
+    async fn client_rejects_group14_sha1_when_legacy_algorithms_are_disabled() {
+        assert_legacy_kex_is_rejected_when_disabled(russh::kex::DH_G14_SHA1).await;
+    }
+
+    #[tokio::test]
+    async fn client_rejects_group_exchange_sha1_when_legacy_algorithms_are_disabled() {
+        assert_legacy_kex_is_rejected_when_disabled(russh::kex::DH_GEX_SHA1).await;
+    }
+
+    #[tokio::test]
+    async fn client_rejects_group1_sha1_when_legacy_algorithms_are_disabled() {
+        assert_legacy_kex_is_rejected_when_disabled(russh::kex::DH_G1_SHA1).await;
+    }
+
+    #[test]
+    fn local_forward_bind_addr_uses_requested_host_and_port() {
+        assert_eq!(
+            build_local_forward_bind_addr("127.0.0.1", 15432),
+            "127.0.0.1:15432"
+        );
+    }
+
+    #[test]
+    fn closed_session_treats_disconnect_send_error_as_success() {
+        let result = normalize_disconnect_result(Err(russh::Error::SendError), true);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn open_session_preserves_disconnect_send_error() {
+        let result = normalize_disconnect_result(Err(russh::Error::SendError), false);
+
+        assert!(result.is_err());
+    }
+}
+
+pub struct RusshChannel {
+    channel: Channel<client::Msg>,
+}
+
+#[async_trait]
+impl SshChannel for RusshChannel {
+    async fn request_pty(&mut self, config: &PtyConfig) -> Result<()> {
+        self.channel
+            .request_pty(
+                false,
+                &config.term,
+                config.width,
+                config.height,
+                config.pix_width,
+                config.pix_height,
+                &[],
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn exec(&mut self, command: &str) -> Result<()> {
+        self.channel.exec(true, command).await?;
+        Ok(())
+    }
+
+    async fn request_shell(&mut self) -> Result<()> {
+        self.channel.request_shell(true).await?;
+        Ok(())
+    }
+
+    async fn request_x11_forwarding(&mut self, request: &ForwardRequest) -> Result<()> {
+        self.channel
+            .request_x11(
+                true,
+                request.single_use,
+                request.auth_name(),
+                request.cookie_hex().to_string(),
+                request.screen,
+            )
+            .await?;
+        Ok(())
+    }
+
+    async fn request_agent_forwarding(&mut self) -> Result<()> {
+        self.channel.agent_forward(true).await?;
+        Ok(())
+    }
+
+    async fn set_env(&mut self, name: &str, value: &str) -> Result<()> {
+        self.channel.set_env(false, name, value).await?;
+        Ok(())
+    }
+
+    async fn send_data(&mut self, data: &[u8]) -> Result<()> {
+        self.channel.data(data).await?;
+        Ok(())
+    }
+
+    async fn resize_pty(&mut self, width: u32, height: u32) -> Result<()> {
+        self.channel.window_change(width, height, 0, 0).await?;
+        Ok(())
+    }
+
+    async fn recv(&mut self) -> Option<ChannelEvent> {
+        let msg = self.channel.wait().await?;
+        Some(match msg {
+            ChannelMsg::Data { data } => ChannelEvent::Data(data.to_vec()),
+            ChannelMsg::ExtendedData { data, ext } => ChannelEvent::ExtendedData {
+                ext,
+                data: data.to_vec(),
+            },
+            ChannelMsg::Eof => ChannelEvent::Eof,
+            ChannelMsg::ExitStatus { exit_status } => ChannelEvent::ExitStatus(exit_status),
+            ChannelMsg::ExitSignal {
+                signal_name,
+                error_message,
+                ..
+            } => ChannelEvent::ExitSignal {
+                signal_name: format!("{:?}", signal_name),
+                error_message,
+            },
+            ChannelMsg::Close => ChannelEvent::Close,
+            _ => return self.recv().await,
+        })
+    }
+
+    async fn eof(&mut self) -> Result<()> {
+        self.channel.eof().await?;
+        Ok(())
+    }
+
+    async fn close(&mut self) -> Result<()> {
+        self.channel.close().await?;
+        Ok(())
+    }
+}

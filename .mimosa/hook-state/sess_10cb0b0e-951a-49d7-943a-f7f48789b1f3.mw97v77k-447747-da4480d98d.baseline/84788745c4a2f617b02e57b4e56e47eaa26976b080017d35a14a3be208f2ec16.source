@@ -1,0 +1,239 @@
+use std::time::{Duration, Instant};
+
+use super::*;
+
+const RECONNECT_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const RECONNECT_DELAYS: [Duration; 4] = [
+    Duration::from_secs(1),
+    Duration::from_secs(2),
+    Duration::from_secs(5),
+    Duration::from_secs(10),
+];
+/// A session that drops earlier than this is treated as flapping rather than as
+/// a healthy connection that was lost, so the reconnect backoff keeps growing
+/// instead of restarting at one second.
+const STABLE_SESSION_DURATION: Duration = Duration::from_secs(30);
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum ReconnectDecision {
+    Retry(RemoteDesktopReconnectReason),
+    ConnectionFailure(RemoteDesktopFailure),
+    Terminated(RemoteDesktopFailure),
+}
+
+pub(super) fn wait_before_reconnect(
+    connect: &mut HelperRequest,
+    latest_clipboard_text: &mut Option<String>,
+    latest_clipboard_files: &mut Option<ClipboardFilesSnapshot>,
+    input_rx: &mut tokio::sync::mpsc::UnboundedReceiver<RemoteDesktopInput>,
+    delay: Duration,
+    protocol: RemoteDesktopProtocol,
+) -> bool {
+    let deadline = Instant::now() + delay;
+    loop {
+        match input_rx.try_recv() {
+            Ok(RemoteDesktopInput::Close) => return false,
+            Ok(RemoteDesktopInput::Reconnect) => return true,
+            Ok(input) => remember_reconnect_state(
+                &input,
+                connect,
+                latest_clipboard_text,
+                latest_clipboard_files,
+                protocol,
+            ),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {}
+            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => return false,
+        }
+        if Instant::now() >= deadline {
+            return true;
+        }
+        std::thread::sleep(RECONNECT_POLL_INTERVAL);
+    }
+}
+
+pub(super) fn remember_reconnect_state(
+    input: &RemoteDesktopInput,
+    connect: &mut HelperRequest,
+    latest_clipboard_text: &mut Option<String>,
+    latest_clipboard_files: &mut Option<ClipboardFilesSnapshot>,
+    protocol: RemoteDesktopProtocol,
+) {
+    match input {
+        RemoteDesktopInput::Resize {
+            width,
+            height,
+            scale_factor,
+        } => remember_size(connect, *width, *height, *scale_factor),
+        RemoteDesktopInput::ClipboardText { text } => {
+            *latest_clipboard_text = Some(text.clone());
+            *latest_clipboard_files = None;
+        }
+        RemoteDesktopInput::ClipboardFiles { transfer_id, paths }
+            if protocol == RemoteDesktopProtocol::Rdp =>
+        {
+            tracing::debug!(
+                transfer_id,
+                file_count = paths.len(),
+                "remembering RDP clipboard files for helper reconnect"
+            );
+            *latest_clipboard_text = None;
+            *latest_clipboard_files = Some(ClipboardFilesSnapshot {
+                transfer_id: *transfer_id,
+                paths: paths.clone(),
+            });
+        }
+        RemoteDesktopInput::CancelClipboardTransfer { transfer_id } => {
+            forget_cancelled_files(latest_clipboard_files, *transfer_id);
+        }
+        _ => {}
+    }
+}
+
+fn remember_size(connect: &mut HelperRequest, width: u16, height: u16, scale_factor: u32) {
+    if let HelperRequest::Connect {
+        width: connect_width,
+        height: connect_height,
+        scale_factor: connect_scale_factor,
+        ..
+    } = connect
+    {
+        *connect_width = width;
+        *connect_height = height;
+        *connect_scale_factor = scale_factor;
+    }
+}
+
+fn forget_cancelled_files(
+    latest_clipboard_files: &mut Option<ClipboardFilesSnapshot>,
+    transfer_id: u64,
+) {
+    if latest_clipboard_files
+        .as_ref()
+        .is_some_and(|snapshot| snapshot.transfer_id == transfer_id)
+    {
+        *latest_clipboard_files = None;
+    }
+}
+
+pub(super) fn reconnect_delay(attempt: usize) -> Duration {
+    RECONNECT_DELAYS[attempt.min(RECONNECT_DELAYS.len() - 1)]
+}
+
+/// Whether a finished session ran long enough to restart the reconnect backoff.
+///
+/// Restarting on `was_connected` alone makes a flapping session reconnect once
+/// per second for as long as the fault lasts, which reads as the client
+/// "hammering" the server with reconnects (issue #171). Only a session that
+/// stayed up counts as progress.
+pub(super) fn session_is_stable(was_connected: bool, connected_for: Option<Duration>) -> bool {
+    was_connected && connected_for.is_some_and(|elapsed| elapsed >= STABLE_SESSION_DURATION)
+}
+
+pub(super) fn reconnect_event(
+    reason: RemoteDesktopReconnectReason,
+    delay: Duration,
+) -> RemoteDesktopReconnect {
+    RemoteDesktopReconnect {
+        reason,
+        delay_secs: Some(delay.as_secs()),
+    }
+}
+
+pub(super) fn reconnect_decision(
+    reason: &str,
+    was_connected: bool,
+    disconnect_kind: Option<HelperDisconnectKind>,
+) -> ReconnectDecision {
+    let normalized = reason.to_ascii_lowercase();
+    if contains_any(
+        &normalized,
+        &[
+            "another user connected to the server",
+            "forcing the disconnection of the current connection",
+            "disconnected by other connection",
+            "disconnectedbyotherconnection",
+        ],
+    ) {
+        return ReconnectDecision::Terminated(RemoteDesktopFailure::SessionTakenOver);
+    }
+    if contains_any(
+        &normalized,
+        &[
+            "credssp",
+            "access denied",
+            "logon failure",
+            "authentication failed",
+            "invalid credentials",
+            "wrong password",
+            "invalid password",
+            "status_logon_failure",
+            "sec_e_logon_denied",
+        ],
+    ) {
+        return ReconnectDecision::ConnectionFailure(RemoteDesktopFailure::AuthenticationFailed);
+    }
+    if contains_any(
+        &normalized,
+        &[
+            "rpc initiated disconnect",
+            "rpc initiated logoff",
+            "server ended the session",
+            "server ended this session",
+            "administrator has ended",
+            "administratively disconnected",
+        ],
+    ) {
+        return ReconnectDecision::Terminated(RemoteDesktopFailure::ServerEndedSession);
+    }
+    if !was_connected
+        && contains_any(
+            &normalized,
+            &[
+                "connection refused",
+                "connection timed out",
+                "timed out",
+                "no route to host",
+                "host unreachable",
+                "network is unreachable",
+                "could not resolve",
+                "name or service not known",
+                "failed to lookup address",
+            ],
+        )
+    {
+        return ReconnectDecision::ConnectionFailure(RemoteDesktopFailure::HostUnreachable);
+    }
+
+    match disconnect_kind {
+        Some(HelperDisconnectKind::Terminated) => {
+            ReconnectDecision::Terminated(RemoteDesktopFailure::ServerEndedSession)
+        }
+        Some(HelperDisconnectKind::ConnectionFailure) if !was_connected => {
+            ReconnectDecision::ConnectionFailure(RemoteDesktopFailure::ConnectionFailed)
+        }
+        _ if !was_connected => {
+            ReconnectDecision::ConnectionFailure(RemoteDesktopFailure::ConnectionFailed)
+        }
+        _ => ReconnectDecision::Retry(classify_disconnect_reason(&normalized)),
+    }
+}
+
+fn classify_disconnect_reason(reason: &str) -> RemoteDesktopReconnectReason {
+    if reason.contains("fast-path") {
+        RemoteDesktopReconnectReason::DisplayUpdate
+    } else if reason.contains("/users/") || reason.contains(".cargo/git/checkouts") {
+        RemoteDesktopReconnectReason::SessionError
+    } else {
+        RemoteDesktopReconnectReason::ConnectionLost
+    }
+}
+
+fn contains_any(reason: &str, candidates: &[&str]) -> bool {
+    candidates
+        .iter()
+        .any(|candidate| reason.contains(candidate))
+}
+
+#[cfg(test)]
+#[path = "reconnect_tests.rs"]
+mod tests;

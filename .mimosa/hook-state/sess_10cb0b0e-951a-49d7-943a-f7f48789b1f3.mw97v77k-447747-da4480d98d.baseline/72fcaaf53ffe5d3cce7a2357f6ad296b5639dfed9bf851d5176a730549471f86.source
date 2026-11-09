@@ -1,0 +1,13 @@
+[package]
+name = "linop-cast"
+description = "asciinema cast v2 session recording: writer, parser (navop session recording counterpart)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
