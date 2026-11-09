@@ -630,10 +630,13 @@ fn open_popup_window_inner(
             return Ok(());
         }
 
-        // Wayland 下 xdg_toplevel 的初始位置由合成器决定,传入坐标不仅无效,
-        // 还可能把窗口摆到屏幕外(级联锚点失真);交给 Weston 摆位 + 系统标题栏。
+        // Wayland 下 xdg_toplevel 的初始位置由合成器决定(原点清零交其摆位,
+        // 避免父窗坐标把窗口带出屏幕外);尺寸仍然生效。
         let window_bounds = if is_wayland_backend() {
-            None
+            Some(WindowBounds::Windowed(Bounds {
+                origin: Default::default(),
+                size: window_bounds.size,
+            }))
         } else if options.fullscreen {
             Some(WindowBounds::Fullscreen(window_bounds))
         } else {
