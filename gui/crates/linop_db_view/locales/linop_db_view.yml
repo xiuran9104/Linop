@@ -1,0 +1,16 @@
+ConnectionForm:
+  kind:
+    database:
+      en: Database (SQL / Redis)
+      zh-CN: 数据库 (SQL / Redis)
+      zh-HK: 資料庫 (SQL / Redis)
+
+DbxForm:
+  cancel:
+    en: Cancel
+    zh-CN: 取消
+    zh-HK: 取消
+  save:
+    en: Save
+    zh-CN: 保存
+    zh-HK: 儲存

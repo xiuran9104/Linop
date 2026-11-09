@@ -1,5 +1,8 @@
 //! Linop 数据库面板(DBX 内核,GPUI 原生)。
 
+rust_i18n::i18n!("locales", fallback = "en");
+
+pub mod connection_form;
 pub mod mcp;
 pub mod panel;
 
@@ -95,6 +98,7 @@ impl Domain for DbxDomain {
 
     fn register(&self, registry: &mut DomainRegistry) {
         mcp::register_mcp_toolsets();
+        registry.register_form_provider(Arc::new(connection_form::DbxConnectionFormProvider));
         registry.register_connection_opener(
             ConnectionType::Database,
             std::sync::Arc::new(DbxConnectionOpener),
